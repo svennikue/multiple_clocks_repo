@@ -1,0 +1,24 @@
+def walk_steps(startcoords, stopcoords):
+
+    #import pdb; pdb.set_trace()
+    stepsxdir = stopcoords[0]-startcoords[0]
+    stepsydir = stopcoords[1]-startcoords[1]
+    num_steps = abs(stepsxdir) + abs(stepsydir) 
+    currcoord = list(startcoords)
+    path = list()
+    path.append(startcoords)
+    for i in range(abs(stepsxdir)):
+        if stepsxdir < 0: # if smaller than 0, go left
+            currcoord[0]=currcoord[0]-1
+            path.append([x for x in currcoord])
+        elif stepsxdir > 0: # if smaller than 0, go right
+            currcoord[0]=currcoord[0]+1
+            path.append([x for x in currcoord])                
+    for i in range(abs(stepsydir)):
+        if stepsydir < 0: # if smaller than 0, go up
+            currcoord[1]=currcoord[1]-1
+            path.append([x for x in currcoord])
+        elif stepsydir > 0: # if bigger than 0, go down
+            currcoord[1]=currcoord[1]+1
+            path.append([x for x in currcoord])        
+    return path, num_steps
