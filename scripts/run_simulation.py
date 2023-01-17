@@ -13,35 +13,36 @@ distinct from phase clock neuron activation patterns.
 
 # %reset -f
 
-import random
-from itertools import product
-import matplotlib.pyplot as plt
-from matplotlib import cm
-import numpy as np
-import pandas as pd
-from numpy import pi
-from matplotlib.gridspec import GridSpec
+import mc
+
 
 
 ## Section 1.
 ## Create the task
 ##
-# first create the 3 x 3 grid and plot.
-coord = [list(p) for p in product(range(3), range(3))]
-cmap = cm.get_cmap('tab20b')
-plt.scatter([x[0] for x in coord], [x[1] for x in coord], c=cmap(6), s=250)
+reward_coords = mc.simulation.grid.create_grid()
+reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords)
 
-# create 4 reward locations
-points = random.sample(coord, 4)
-# note that points[0:4] are my states: 
-    # points[1] = A - dark red
-    # points[2] = B - red
-    # points[3] = C - medium red
-    # points[4] = D - bright red
-for i, x in enumerate(points):
-    plt.scatter(x[0], x[1], c=cmap(i+11), s=250)
+############## 
 
-plt.yticks([0,1,2])
-plt.xticks([0,1,2])
-plt.grid(True)
+ 
+## Section 2. 
+## Setting the Clocks and Location Matrix. 
+##
 
+# now create the two matrices, print them and plot them. 
+first_clocks_matrix, total_steps  = mc.simulation.predictions.set_clocks(reshaped_visited_fields, all_stepnums, 3)           
+location_matrix, total_steps = mc.simulation.predictions.set_location_matrix(reshaped_visited_fields, all_stepnums, 3, 0) 
+ 
+print(first_clocks_matrix)
+print(location_matrix)
+ 
+mc.simulation.predictions.plotlocation(location_matrix, reshaped_visited_fields, all_stepnums)
+mc.simulation.predictions.plotclocks(first_clocks_matrix)
+
+#########################
+
+
+## Section 3. 
+## Create 'neuron plots'
+##

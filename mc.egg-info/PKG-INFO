@@ -1,0 +1,8 @@
+Metadata-Version: 2.1
+Name: mc
+Version: 0.0.0
+Summary: These are all scripts to run the multiple clocks project.
+
+In particular, there are several sub-modules that do different things. 
+    Firstly, the simulation sub-module allows to create a 3x3 grid with 4 rewards on it, and 
+    codes predictions of neural firing pattern for space and multiple phase clocks.

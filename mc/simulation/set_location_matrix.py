@@ -1,3 +1,5 @@
+import numpy as np
+
 def set_location_matrix(walked_path, step_number, phases):
     #import pdb; pdb.set_trace()
     n_states = len(step_number)
