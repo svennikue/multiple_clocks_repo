@@ -202,6 +202,7 @@ def plotlocation(location_matrix):
 
 # create polar plots that visualize neuron firing per phase
 def plot_neurons(data):  
+    #import pdb; pdb.set_trace()
     data.index = data['bearing'] * 2*pi / 360
     
     fig = plt.figure(figsize=(8, 3))
@@ -216,13 +217,13 @@ def plot_neurons(data):
     ax2.set_theta_direction(-1)
     ax2.bar(x=data.index, height=data['value'], width=pi/4)
     ax2.set_xticklabels(data.phases)
-    ax2.set_rgrids([10, 20, 30])
+    #ax2.set_rgrids([0, , 30])
     
 
 
 # loop function to create an average prediction.
-def manf_configs_loop(loop_no, which_matrix):
-    import pdb; pdb.set_trace()
+def many_configs_loop(loop_no, which_matrix):
+    # import pdb; pdb.set_trace()
     if which_matrix != 'clocks' and which_matrix != 'location':
         raise TypeError("Please enter 'location' or 'clocks' to create the correct matrix")   
     for loop in range(loop_no):
@@ -233,10 +234,10 @@ def manf_configs_loop(loop_no, which_matrix):
         elif which_matrix == 'clocks':
             temp_matrix, total_steps  = mc.simulation.predictions.set_clocks(reshaped_visited_fields, all_stepnums, 3)
         if loop < 1:
-            average_matrix = temp_matrix[:,:]
+            sum_matrix = temp_matrix[:]
         else:
-            average_matrix = average_matrix + temp_matrix[:,:]
-    average_matrix/loop_no
+            sum_matrix = np.nansum(np.dstack((sum_matrix[:],temp_matrix[:])),2)
+    average_matrix = sum_matrix[:]/loop_no
     return average_matrix
 
 

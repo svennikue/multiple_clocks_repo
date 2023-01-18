@@ -67,31 +67,39 @@ mc.simulation.predictions.plotclocks(first_clocks_matrix)
 # for multiple clocks, since this is the crucial one!! It just creates an empty matrix.
 
     
-loops = 50
+loops = 500
 matrixtype = 'location'
-first_average_loc = mc.simulation.predictions.manf_configs_loop(loops, matrixtype)
+first_average_loc = mc.simulation.predictions.many_configs_loop(loops, matrixtype)
 matrixtypetwo = 'clocks'
-first_average_clock = mc.simulation.predictions.manf_configs_loop(loops, matrixtypetwo)
+first_average_clock = mc.simulation.predictions.many_configs_loop(loops, matrixtypetwo)
+# 0,36,72,108,144,180,216,252,288 are respective field-anchors. 144 might be most interesting
  
 
 mc.simulation.predictions.plotlocation(first_average_loc)
 mc.simulation.predictions.plotclocks(first_average_clock)
 
- 
-# then fill in pd.DataFrame
-# then plot selected neurons > adjust the plot neuron function for which row/ neuron to plot.
 
+plt_neuron = first_average_clock[145,:]
+randomneuron = pd.DataFrame({'value': plt_neuron, #these will be averages
+                     'bearing': range(0, 360, 30),
+                     'phases': ['4. reward', '1. early', '1. late', '1. reward', '2. early', '2. late', '2. reward', '3. early', '3. late', '3. reward', '4. early', '4. late']})   
+
+plt_neurontwo = first_average_clock[146,:]
+randomneurontwo = pd.DataFrame({'value': plt_neurontwo, #these will be averages
+                     'bearing': range(0, 360, 30),
+                     'phases': ['4. reward', '1. early', '1. late', '1. reward', '2. early', '2. late', '2. reward', '3. early', '3. late', '3. reward', '4. early', '4. late']})   
 
 
 # data = pd.DataFrame({'value': [0, 20, 30, 20, 0, 10, 15, 10, 0, 0, 0, 0], #these will be averages
 #                      'bearing': range(0, 360, 30),
 #                      'phases': ['4. reward', '1. early', '1. late', '1. reward', '2. early', '2. late', '2. reward', '3. early', '3. late', '3. reward', '4. early', '4. late']})      
 
-# mc.simulation.predictions.plot_neurons(data)
+mc.simulation.predictions.plot_neurons(randomneuron)
+mc.simulation.predictions.plot_neurons(randomneurontwo)
 
 
-#
-
+# IT SEEMS LIKE I CODED FOR PHASE CELLS. WAS THAT INTENDED?? Re-READ THE MANUSCRIPT
+# AND REVISIT WHAT I ACTUALLY WANTED TO CODE. 
 
 
 #########################
