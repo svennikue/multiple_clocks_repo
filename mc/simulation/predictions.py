@@ -12,7 +12,9 @@ It also includes functions to plot those.
 """
 import numpy as np
 import matplotlib.pyplot as plt
-
+from numpy import pi
+from matplotlib.gridspec import GridSpec
+import mc
 
 # If you successfully ran mc.simulation.grid.create_grid() and mc.simulation.grid.walk_paths(reward_coords),
 # you now have 4 locations, 4 states, and paths between the locations/states,
@@ -140,13 +142,11 @@ def set_location_matrix(walked_path, step_number, phases, neighbour_activation =
     # if not, I will adjust either length, and then use the zip function 
     # to loop through both together and fill the matrix.
     for count_paths, (pathlength) in enumerate(step_number):
-        print('Entered loop which goes through every subpath, currently at', count_paths)
         phasecount = len(phase_loop) #this needs to be reset for every subpath.
         if count_paths > 0:
             curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
         elif count_paths == 0:
             curr_path = walked_path[1:cumsumsteps[count_paths]+1]
-        print('Now I defined the current walked path:', curr_path)
         # if pathlength < phases -> 
         # it can be either pathlength == 1 or == 2. In both cases,
         # dublicate the field until it matches length phases
@@ -156,20 +156,17 @@ def set_location_matrix(walked_path, step_number, phases, neighbour_activation =
         # zip both lists and loop through them together.
         if pathlength < phasecount: 
             finished = False
-            print('Entered a loop for paths shorter than 3 phases')
             while not finished:
                 curr_path.insert(0, curr_path[0]) # dublicate first field 
                 pathlength = len(curr_path)
                 finished = pathlength == phasecount
         elif pathlength > phasecount:
             finished = False
-            print('Entered a loop for paths longer than 3 phases')
             while not finished:
                 phase_loop.insert(0,phase_loop[0]) #make more early phases
                 phasecount = len(phase_loop)
                 finished = pathlength == phasecount
         if pathlength == phasecount:
-            print('Now finally entered a loop where paths = phases')
             for phase, step in zip(phase_loop, curr_path):
                 x = step[0]
                 y = step[1]
@@ -191,10 +188,10 @@ def plotclocks(clocks_matrix):
     ax.set_yticklabels(['anchor 1', 'anchor 2','anchor 3', 'anchor 4', 'anchor 5', 'anchor 6', 'anchor 7', 'anchor 8', 'anchor 9'])
     #return fig
     
-def plotlocation(clocks_matrix, walked_path, step_number):
+def plotlocation(location_matrix):
     # import pdb; pdb.set_trace()
     fig, ax = plt.subplots()
-    plt.imshow(clocks_matrix, aspect = 'auto')
+    plt.imshow(location_matrix, aspect = 'auto')
     ax.set_xticks([0,1,2,3,4,5,6,7,8,9,10,11])
     ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back @ r1'])
     plt.xticks(rotation = 45)
@@ -202,4 +199,47 @@ def plotlocation(clocks_matrix, walked_path, step_number):
     ax.set_yticklabels(['field 1', 'field 2','field 3', 'field 4', 'field 5', 'field 6', 'field 7', 'field 8', 'feld 9'])
     #plt.plot([0, total_steps+1],[] )
  
-  
+
+# create polar plots that visualize neuron firing per phase
+def plot_neurons(data):  
+    data.index = data['bearing'] * 2*pi / 360
+    
+    fig = plt.figure(figsize=(8, 3))
+    gs = GridSpec(nrows=1, ncols=2, width_ratios=[1, 1])
+    
+    ax1 = fig.add_subplot(gs[0, 0])
+    ax1.bar(x=data['phases'], height=data['value'], width=1)
+    plt.xticks(rotation = 45)
+    
+    ax2 = fig.add_subplot(gs[0, 1], projection='polar')
+    ax2.set_theta_zero_location('N')
+    ax2.set_theta_direction(-1)
+    ax2.bar(x=data.index, height=data['value'], width=pi/4)
+    ax2.set_xticklabels(data.phases)
+    ax2.set_rgrids([10, 20, 30])
+    
+
+
+# loop function to create an average prediction.
+def manf_configs_loop(loop_no, which_matrix):
+    import pdb; pdb.set_trace()
+    if which_matrix != 'clocks' and which_matrix != 'location':
+        raise TypeError("Please enter 'location' or 'clocks' to create the correct matrix")   
+    for loop in range(loop_no):
+        reward_coords = mc.simulation.grid.create_grid()
+        reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords)
+        if which_matrix == 'location':
+            temp_matrix, total_steps = mc.simulation.predictions.set_location_matrix(reshaped_visited_fields, all_stepnums, 3, 0) 
+        elif which_matrix == 'clocks':
+            temp_matrix, total_steps  = mc.simulation.predictions.set_clocks(reshaped_visited_fields, all_stepnums, 3)
+        if loop < 1:
+            average_matrix = temp_matrix[:,:]
+        else:
+            average_matrix = average_matrix + temp_matrix[:,:]
+    average_matrix/loop_no
+    return average_matrix
+
+
+
+
+
