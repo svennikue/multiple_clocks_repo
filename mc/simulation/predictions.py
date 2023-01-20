@@ -187,7 +187,30 @@ def plotclocks(clocks_matrix):
     ax.set_yticks([0,36,72,108,144,180,216,252,288])
     ax.set_yticklabels(['anchor 1', 'anchor 2','anchor 3', 'anchor 4', 'anchor 5', 'anchor 6', 'anchor 7', 'anchor 8', 'anchor 9'])
     #return fig
+
+def plot_one_clock(one_clock_matrix):
+    # import pdb; pdb.set_trace()
+    fig, ax = plt.subplots()
+    plt.imshow(one_clock_matrix, aspect = 'auto')
+    ax.set_xticks([0,1,2,3,4,5,6,7,8,9,10,11])
+    ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back @ r1'])
+    plt.xticks(rotation = 45)
+    ax.set_yticks([0,1,2,3,4,5,6,7,8,9,10,11])
+    ax.set_yticklabels(['neuron 1', 'neuron2','neuron 3', 'neuron 4', 'neuron 5', 'neuron 6', 'neuron 7', 'neuron 8', 'neuron 9', 'neuron 10', 'neuron 11', 'neuron 12'])
+
+
+def plot_one_anchor_all_clocks(one_anchor_matrix):
+    # import pdb; pdb.set_trace()
+    fig, ax = plt.subplots()
+    plt.imshow(one_clock_matrix, aspect = 'auto')
+    ax.set_xticks([0,1,2,3,4,5,6,7,8,9,10,11])
+    ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back @ r1'])
+    plt.xticks(rotation = 45)
+    ax.set_yticks([0,12,24])
+    ax.set_yticklabels(['early_phase', 'mid_phase','late_phase'])
     
+    
+
 def plotlocation(location_matrix):
     # import pdb; pdb.set_trace()
     fig, ax = plt.subplots()
@@ -217,7 +240,7 @@ def plot_neurons(data):
     ax2.set_theta_direction(-1)
     ax2.bar(x=data.index, height=data['value'], width=pi/4)
     ax2.set_xticklabels(data.phases)
-    #ax2.set_rgrids([0, , 30])
+    ax2.set_xticks([2*pi*i/12 for i in range(12)])
     
 
 

@@ -73,6 +73,14 @@ def find_paths(startcoords, stopcoords):
             path.append([x for x in currcoord])        
     return path, num_steps
 
+# create a function that identifies all possible paths
+# if the path length is 4, then there will be 6 possible paths 
+# if path length is 3, then there will be 3 possible paths
+# if path length is 2, there will be 2 paths if one reward is at position 5
+# if path length is 2, there will be 1 path if no reward is at position 5
+# if path lenght is 1, there will be only 1 path
+
+
 
 
 def walk_paths(points, size_grid = 3):
