@@ -7,6 +7,7 @@ Documents all modules within sub-package simulation
 #import mc.simulation.set_location_matrix
 import mc.simulation.grid
 import mc.simulation.predictions
+import mc.simulation.RDMs
 
 
 #import mc.set_clocks

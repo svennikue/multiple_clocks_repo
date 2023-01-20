@@ -202,7 +202,7 @@ def plot_one_clock(one_clock_matrix):
 def plot_one_anchor_all_clocks(one_anchor_matrix):
     # import pdb; pdb.set_trace()
     fig, ax = plt.subplots()
-    plt.imshow(one_clock_matrix, aspect = 'auto')
+    plt.imshow(one_anchor_matrix, aspect = 'auto')
     ax.set_xticks([0,1,2,3,4,5,6,7,8,9,10,11])
     ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back @ r1'])
     plt.xticks(rotation = 45)

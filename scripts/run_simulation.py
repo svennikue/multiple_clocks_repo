@@ -15,6 +15,9 @@ distinct from phase clock neuron activation patterns.
 
 import mc
 import pandas as pd
+import numpy as np
+import hoggorm as ho
+
 
 ## Section 1.
 ## Create the task
@@ -39,6 +42,9 @@ print(location_matrix)
 mc.simulation.predictions.plotlocation(location_matrix)
 mc.simulation.predictions.plotclocks(first_clocks_matrix)
 
+one_clock = first_clocks_matrix[144:156,:]
+mc.simulation.predictions.plot_one_clock(one_clock)
+
 #########################
 
 
@@ -46,79 +52,95 @@ mc.simulation.predictions.plotclocks(first_clocks_matrix)
 ## Create 'neuron plots'
 ##
 
-
-# check if the neurons fulfill the same predictions as they do in Mohammadys case.
-# write a function that plots the firing patterns of a certain neuron in the clock
-# as a polar plot.
-# this is from the matplotlib example.
-
-# first step is to plot the firing pattern in a simple histogram
-# this will be phases times firing, across different patterns.
-# thus, recreate and store 100 matrices. 
-# then, plot the 'firing' of every phase-neuron in the clock. 
-# (or maybe not EVERY neuron...)
-
-# 12.01.: CONTINUE BY LOOPING THROUGH THE PATH GENERATOR + CREATING SEVERAL MATRICES.
-# for each neuron (= each row), I need to sum the values per phase ('timepoint')
-# this will then be plotted in the polarplots.
-
-# the simple solution will in the end be filling each row in a pd.DataFrame the way
-# it is done below. But right now I first need to solve why the function doesnt work
-# for multiple clocks, since this is the crucial one!! It just creates an empty matrix.
-
 # this is the activity of one neuron based on a single run.
 plt_neurontwo = first_clocks_matrix[146,:]
 randomneuronsin = pd.DataFrame({'value': plt_neurontwo, #these will be averages
                      'bearing': range(0, 360, 30),
                      'phases': ['4. reward', '1. early', '1. late', '1. reward', '2. early', '2. late', '2. reward', '3. early', '3. late', '3. reward', '4. early', '4. late']})   
-
 mc.simulation.predictions.plot_neurons(randomneuronsin)
  
 # to plot the average activity of neuron across many runs, create data of many runs
-loops = 500
+loops = 5
 matrixtype = 'location'
 first_average_loc = mc.simulation.predictions.many_configs_loop(loops, matrixtype)
 matrixtypetwo = 'clocks'
 first_average_clock = mc.simulation.predictions.many_configs_loop(loops, matrixtypetwo)
 # 0,36,72,108,144,180,216,252,288 are respective field-anchors. 144 might be most interesting
- 
 
+# PLOT MATRICES
+# Location
 mc.simulation.predictions.plotlocation(first_average_loc)
+# Clocks
 mc.simulation.predictions.plotclocks(first_average_clock)
+# Clocks, one anchor = 3 clocks
+anchor_five = first_clocks_matrix[144:179,:]
+# Clocks, one clock = 12 neurons
+mc.simulation.predictions.plot_one_anchor_all_clocks(anchor_five)
 
-# ALIGN BY PHASE
+one_clock = first_clocks_matrix[144:156,:]
+mc.simulation.predictions.plot_one_clock(one_clock)
+
+# ALIGN BY PHASE - PLOT NEURONS (Polar plots)
+# plot two CLOCK neuron examples, based on average.
+# example 1
 plt_neuron = first_average_clock[145,:]
 randomneuron = pd.DataFrame({'value': plt_neuron, #these will be averages
                      'bearing': range(0, 360, 30),
                      'phases': ['4. reward', '1. early', '1. late', '1. reward', '2. early', '2. late', '2. reward', '3. early', '3. late', '3. reward', '4. early', '4. late']})   
 mc.simulation.predictions.plot_neurons(randomneuron)
 
-
+#example 2
 plt_neurontwo = first_average_clock[146,:]
 randomneurontwo = pd.DataFrame({'value': plt_neurontwo, #these will be averages
                      'bearing': range(0, 360, 30),
                      'phases': ['4. reward', '1. early', '1. late', '1. reward', '2. early', '2. late', '2. reward', '3. early', '3. late', '3. reward', '4. early', '4. late']})   
 mc.simulation.predictions.plot_neurons(randomneurontwo)
 
-
-# plot location neuron average like this
+# plot LOCATION neuron average like this
 loc_neuron = first_average_loc[2,:]
 plt_loc_neuron = pd.DataFrame({'value': loc_neuron, #these will be averages
                      'bearing': range(0, 360, 30),
                      'phases': ['4. reward', '1. early', '1. late', '1. reward', '2. early', '2. late', '2. reward', '3. early', '3. late', '3. reward', '4. early', '4. late']})   
-
 mc.simulation.predictions.plot_neurons(plt_loc_neuron)
 
 
+
 # ALIGN BY LOCATION
-
-
-
+# ?????????
 
 
 
 #########################
+
 # Section 4. Create RDMs.
+phases = ['first_early', 'first_late', 'first_reward', 'scnd_early', 'scnd_late', 'scnd_reward', 'third_early', 'third_late', 'third_reward', 'fourth_early', 'fourth_late', 'fourth_reward']
+
+loc_RSM = mc.simulation.RDMs.within_task_RDM(location_matrix, phases)
+clock_RSM = mc.simulation.RDMs.within_task_RDM(first_clocks_matrix, phases)
+
+
+similarity = ho.RVcoeff([loc_RSM, clock_RSM])
+# probably should mask the diagonal. Look at Jacobs project!!
+# also look up difference RSM vs RDMs!!
+
+# read up on matrix correlations!!
+# https://academic.oup.com/bioinformatics/article/25/3/401/244239?login=true 
+
+print (similarity)
+
+# next steps: create RSMs across tasks: e.g. 3 different task configurations.
+
+
+# this will be phase-vectors corr with phase vectors. 
+# do the same with location and clock neurons.
+# first RDM: within a task.
+# 
+
+
+
+
+
+
 
 ###########################
 # Section 5. Correlate RDMs.

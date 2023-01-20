@@ -41,6 +41,7 @@ def create_grid(size_grid = 3, num_rewards = 4):
 
     
 def find_paths(startcoords, stopcoords):
+    # import pdb; pdb.set_trace()
     # now create the path connecting the points.
     # I define a shortest path as: 
         # first, compare the x coordinates - start(x) minus stop(x)
@@ -79,7 +80,33 @@ def find_paths(startcoords, stopcoords):
 # if path length is 2, there will be 2 paths if one reward is at position 5
 # if path length is 2, there will be 1 path if no reward is at position 5
 # if path lenght is 1, there will be only 1 path
+# def find_all_paths(startcoords, stopcoords):
+#     # firstly, get absolut distance in both directions.
+#     stepsxdir = stopcoords[0]-startcoords[0]
+#     stepsydir = stopcoords[1]-startcoords[1]
+#     # secondly, create 'step lists'
+#     x_step_list = [1]* abs(stepsxdir)
+#     y_step_list = [1]* abs(stepsydir)
+#     if stepsxdir < 0:
+#         x_step_list = [ -x for x in x_step_list]
+#     if stepsydir < 0: 
+#         y_step_list = [ -y for y in y_step_list]  
+    
+#     # this needs to be a bit adjusted. I want all possible combinations of steps,
+#     # but
+#     [[x_, y_] for x_ in x_step_list for y_ in y_step_list]
 
+# #  alternatively, to loop through all possible combinations:    
+#     for x_ in x:
+#         for y_ in y:
+#             print(x_,y_)
+    
+#     num_steps = abs(stepsxdir) + abs(stepsydir) 
+#     currcoord = list(startcoords)
+#     path = list()
+#     path.append(startcoords)
+    
+    
 
 
 
