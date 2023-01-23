@@ -9,21 +9,27 @@ this script calls on several simulation functions to eventually create RDMs
 and check if predictions of location neuron activations are sufficiently 
 distinct from phase clock neuron activation patterns.
 
+It is mainly thought to check if the simulations are correct. It therefore 
+creates loads of figures for task configuration, paths, resulting matrices,
+and neuron activations.
+
+This script only creates the similarity between clocks and locations for one task
+configuration. 
+
 """
 
 # %reset -f
 
 import mc
 import pandas as pd
-import numpy as np
-import hoggorm as ho
+
 
 
 ## Section 1.
 ## Create the task
 ##
-reward_coords = mc.simulation.grid.create_grid()
-reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords)
+reward_coords = mc.simulation.grid.create_grid(plot = True)
+reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords, plotting = True)
 
 ############## 
 
@@ -117,16 +123,14 @@ phases = ['first_early', 'first_late', 'first_reward', 'scnd_early', 'scnd_late'
 
 loc_RSM = mc.simulation.RDMs.within_task_RDM(location_matrix, phases)
 clock_RSM = mc.simulation.RDMs.within_task_RDM(first_clocks_matrix, phases)
+similarity = mc.simulation.RDMs.corr_matrices(loc_RSM, clock_RSM)
+
+print(similarity)
 
 
-similarity = ho.RVcoeff([loc_RSM, clock_RSM])
-# probably should mask the diagonal. Look at Jacobs project!!
-# also look up difference RSM vs RDMs!!
 
-# read up on matrix correlations!!
-# https://academic.oup.com/bioinformatics/article/25/3/401/244239?login=true 
 
-print (similarity)
+
 
 # next steps: create RSMs across tasks: e.g. 3 different task configurations.
 

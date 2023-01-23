@@ -210,7 +210,6 @@ def plot_one_anchor_all_clocks(one_anchor_matrix):
     ax.set_yticklabels(['early_phase', 'mid_phase','late_phase'])
     
     
-
 def plotlocation(location_matrix):
     # import pdb; pdb.set_trace()
     fig, ax = plt.subplots()
