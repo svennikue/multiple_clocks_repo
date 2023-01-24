@@ -14,6 +14,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 import mc
 
+
 def within_task_RDM(activation_matrix, column_names,ax=None, plotting = False):
     # import pdb; pdb.set_trace()
     dataframe = pd.DataFrame(activation_matrix)
@@ -30,7 +31,7 @@ def within_task_RDM(activation_matrix, column_names,ax=None, plotting = False):
     return RSM
 
 def between_task_RDM(no_tasks, column_names, ax=None, plotting = False):
-    pathlengths = []
+    #import pdb; pdb.set_trace()
     for i in range(0, no_tasks):
         ## Create the task and paths
         reward_coords = mc.simulation.grid.create_grid()
@@ -38,16 +39,25 @@ def between_task_RDM(no_tasks, column_names, ax=None, plotting = False):
         ## Setting the Clocks and Location Matrix. 
         clocks_matrix, total_steps  = mc.simulation.predictions.set_clocks(reshaped_visited_fields, all_stepnums, 3)           
         loc_matrix, total_steps = mc.simulation.predictions.set_location_matrix(reshaped_visited_fields, all_stepnums, 3, 0)
+        df_rewards = pd.DataFrame(reward_coords)
         if i == 0:
             df_clocks = pd.DataFrame(clocks_matrix)
             df_locs = pd.DataFrame(loc_matrix)
+            df_clocks.columns = column_names
+            df_locs.columns = column_names
+            df_task_configs = pd.DataFrame(reshaped_visited_fields)
+            df_task_configs = pd.concat([df_rewards, df_task_configs], axis = 1)
         else:
             temp_clocks = pd.DataFrame(clocks_matrix)
             temp_locs = pd.DataFrame(loc_matrix)
+            temp_clocks.columns = column_names
+            temp_locs.columns = column_names
+            temp_path = pd.DataFrame(reshaped_visited_fields)
             df_clocks = pd.concat([df_clocks, temp_clocks], axis = 1)               
             df_locs = pd.concat([df_locs, temp_locs], axis = 1)
-    df_clocks.fillna(0)  
-    df_locs.fillna(0)
+            df_task_configs = pd.concat([df_task_configs, df_rewards, temp_path], axis = 1)
+    df_clocks.fillna(0, inplace = True)  
+    df_locs.fillna(0, inplace = True)
     corr_clocks = df_clocks.corr()
     corr_locs = df_locs.corr()
     clocks_RSM = corr_clocks.to_numpy()
@@ -62,10 +72,11 @@ def between_task_RDM(no_tasks, column_names, ax=None, plotting = False):
         sn.heatmap(corr_locs, annot = False, ax=ax[1])
         ax[1].set_title('Location')
         print(corr_locs)  
-    return clocks_RSM, locs_RSM
+    return clocks_RSM, locs_RSM, df_clocks, df_locs, df_task_configs
             
 
-# def find_best_tasks(loop_no):
+def find_best_tasks(loop_no, no_columns, column_names): 
+#    import pdb; pdb.set_trace()
 #     # this needs to be something like:
 #         # 1. create 10 random tasks and the between-task corr maps.
 #         # 2. compute similarity between those 2 big matrices (this needs to be exclude_diag = False!! bc thats the within task one)
@@ -73,9 +84,66 @@ def between_task_RDM(no_tasks, column_names, ax=None, plotting = False):
 #         #      a new one reduces the similarity value
 #         # do this a number of loops
 #         # always store the current configurations/ toss the one I am replacing
+    # first, create one 10 tasks x 10 tasks matrix for clocks and locations
+    clock_RSM_matrix, loc_RSM_matrix, df_clock, df_loc, task_configs = mc.simulation.RDMs.between_task_RDM(10, column_names, plotting = False)
+    # and get the similarity between those. 
+    similarity_between = mc.simulation.RDMs.corr_matrices(loc_RSM_matrix, clock_RSM_matrix)
+    # based on this, try to optimize the correlation coefficient (similarity_between)
+    for i in range(0, loop_no):        
+        # then first take the first 10 columns of df_clock and df_loc and replace it with a new config
+        # create new configuration
+        reward_coords = mc.simulation.grid.create_grid()
+        reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords) 
+        df_rewards = pd.DataFrame(reward_coords)
+        df_task_configs = pd.DataFrame(reshaped_visited_fields)
+        df_temp_task_configs = pd.concat([df_rewards, df_task_configs], axis = 1)
+        # create new neural predictions for this task config
+        clocks_matrix, total_steps  = mc.simulation.predictions.set_clocks(reshaped_visited_fields, all_stepnums, 3)           
+        loc_matrix, total_steps = mc.simulation.predictions.set_location_matrix(reshaped_visited_fields, all_stepnums, 3, 0)
+        # turn those into dataframe
+        temp_clocks = pd.DataFrame(clocks_matrix)
+        temp_locs = pd.DataFrame(loc_matrix)
+        temp_clocks.columns = column_names
+        temp_locs.columns = column_names
+        # prepare loop here       
+        temp_similarity = np.ones((2,2))
+        count = 10
+        # then, replace each of the 10 tasks with the new config and text if similarity is now less (= better)
+        # step out of the loop either way once looped through all columns, or when temp_similarity is lower
+        while (temp_similarity[0,1] > similarity_between[0,1]) or (count<no_columns):
+            # have a counter for all columns   
+            temp_df_loc = df_loc[:]
+            # replace the first (count) 12 columns with the new configuration
+            temp_df_loc.iloc[:, (count*no_columns):((count*no_columns)+no_columns)] = temp_locs
+            temp_df_loc.fillna(0, inplace = True)
+            temp_df_clock = df_clock[:]
+            temp_df_clock.iloc[:, (count*no_columns):((count*no_columns)+no_columns)] = temp_clocks
+            temp_df_clock.fillna(0, inplace = True)
+            # create new correlation matrices for the new clocks and location matrix
+            temp_corr_clocks = temp_df_clock.corr()
+            temp_corr_locs = temp_df_loc.corr()
+            temp_clocks_RSM = temp_corr_clocks.to_numpy()
+            temp_locs_RSM = temp_corr_locs.to_numpy() 
+            # test the new similarity between the new RSMs
+            temp_similarity = mc.simulation.RDMs.corr_matrices(temp_locs_RSM, temp_clocks_RSM)
+            if temp_similarity[0,1] < similarity_between[0,1]:
+                # task_configs is structured a little different, its always x,y of paths and then x,y of rewards.
+                # -> 4 columns per task config              
+                task_configs.iloc[:,(count*4):((count*4)+3)] = df_temp_task_configs
+                # if the new RSMs correlate less, replace the current configuration and RSM with the new
+                # and continue to optimize further.
+                df_clock = temp_df_clock[:]
+                df_loc = temp_df_loc[:]
+                similarity_between = temp_similarity[:]
+            count += 1 
+            del temp_df_loc
+            del temp_df_clock
+            del temp_corr_clocks
+            del temp_corr_locs
+            del temp_similarity
+            temp_similarity = np.ones((2,2))
         
-   
-#     return best_tasks 
+    return df_clock, df_loc, task_configs, temp_similarity
 
     
     
@@ -87,7 +155,7 @@ def corr_matrices(matrix_one, matrix_two, exclude_diag = True):
     if exclude_diag == True:
         diag_array_one = list(matrix_one[np.tril_indices(dimension)])
         diag_array_two = list(matrix_two[np.tril_indices(dimension)])
-    else:
+    else: # this is diagonal plus upper triangle
         diag_array_one = list(matrix_one[np.triu_indices(dimension)])
         diag_array_two = list(matrix_two[np.triu_indices(dimension)])
     coef = np.corrcoef(diag_array_one, diag_array_two)

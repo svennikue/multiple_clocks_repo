@@ -51,7 +51,7 @@ mc.simulation.predictions.plotclocks(first_clocks_matrix)
 one_clock = first_clocks_matrix[144:156,:]
 mc.simulation.predictions.plot_one_clock(one_clock)
 
-#########################
+# #########################
 
 
 ## Section 3. 
@@ -61,12 +61,12 @@ mc.simulation.predictions.plot_one_clock(one_clock)
 # this is the activity of one neuron based on a single run.
 plt_neurontwo = first_clocks_matrix[146,:]
 randomneuronsin = pd.DataFrame({'value': plt_neurontwo, #these will be averages
-                     'bearing': range(0, 360, 30),
-                     'phases': ['4. reward', '1. early', '1. late', '1. reward', '2. early', '2. late', '2. reward', '3. early', '3. late', '3. reward', '4. early', '4. late']})   
+                      'bearing': range(0, 360, 30),
+                      'phases': ['4. reward', '1. early', '1. late', '1. reward', '2. early', '2. late', '2. reward', '3. early', '3. late', '3. reward', '4. early', '4. late']})   
 mc.simulation.predictions.plot_neurons(randomneuronsin)
  
 # to plot the average activity of neuron across many runs, create data of many runs
-loops = 5
+loops = 1000
 matrixtype = 'location'
 first_average_loc = mc.simulation.predictions.many_configs_loop(loops, matrixtype)
 matrixtypetwo = 'clocks'
@@ -91,22 +91,22 @@ mc.simulation.predictions.plot_one_clock(one_clock)
 # example 1
 plt_neuron = first_average_clock[145,:]
 randomneuron = pd.DataFrame({'value': plt_neuron, #these will be averages
-                     'bearing': range(0, 360, 30),
-                     'phases': ['4. reward', '1. early', '1. late', '1. reward', '2. early', '2. late', '2. reward', '3. early', '3. late', '3. reward', '4. early', '4. late']})   
+                      'bearing': range(0, 360, 30),
+                      'phases': ['4. reward', '1. early', '1. late', '1. reward', '2. early', '2. late', '2. reward', '3. early', '3. late', '3. reward', '4. early', '4. late']})   
 mc.simulation.predictions.plot_neurons(randomneuron)
 
 #example 2
 plt_neurontwo = first_average_clock[146,:]
 randomneurontwo = pd.DataFrame({'value': plt_neurontwo, #these will be averages
-                     'bearing': range(0, 360, 30),
-                     'phases': ['4. reward', '1. early', '1. late', '1. reward', '2. early', '2. late', '2. reward', '3. early', '3. late', '3. reward', '4. early', '4. late']})   
+                      'bearing': range(0, 360, 30),
+                      'phases': ['4. reward', '1. early', '1. late', '1. reward', '2. early', '2. late', '2. reward', '3. early', '3. late', '3. reward', '4. early', '4. late']})   
 mc.simulation.predictions.plot_neurons(randomneurontwo)
 
 # plot LOCATION neuron average like this
 loc_neuron = first_average_loc[2,:]
 plt_loc_neuron = pd.DataFrame({'value': loc_neuron, #these will be averages
-                     'bearing': range(0, 360, 30),
-                     'phases': ['4. reward', '1. early', '1. late', '1. reward', '2. early', '2. late', '2. reward', '3. early', '3. late', '3. reward', '4. early', '4. late']})   
+                      'bearing': range(0, 360, 30),
+                      'phases': ['4. reward', '1. early', '1. late', '1. reward', '2. early', '2. late', '2. reward', '3. early', '3. late', '3. reward', '4. early', '4. late']})   
 mc.simulation.predictions.plot_neurons(plt_loc_neuron)
 
 
@@ -132,31 +132,31 @@ print(similarity)
 
 
 
-# next steps: create RSMs across tasks: e.g. 3 different task configurations.
+# # next steps: create RSMs across tasks: e.g. 3 different task configurations.
 
 
-# this will be phase-vectors corr with phase vectors. 
-# do the same with location and clock neurons.
-# first RDM: within a task.
-# 
-
-
-
+# # this will be phase-vectors corr with phase vectors. 
+# # do the same with location and clock neurons.
+# # first RDM: within a task.
+# # 
 
 
 
 
-###########################
-# Section 5. Correlate RDMs.
-
-# later: create a loop and try out many combinations.  
-# only save those combinations with a correlation lower than a certain value 
-# or: first create a distribuion of corr values
-# then define cut-off 
 
 
-# x is defined by number of neurons and number of steps
 
-# create distribution with scipy.stats.norm.pdf(x, mean, sigma)
+# ###########################
+# # Section 5. Correlate RDMs.
+
+# # later: create a loop and try out many combinations.  
+# # only save those combinations with a correlation lower than a certain value 
+# # or: first create a distribuion of corr values
+# # then define cut-off 
+
+
+# # x is defined by number of neurons and number of steps
+
+# # create distribution with scipy.stats.norm.pdf(x, mean, sigma)
     
         
