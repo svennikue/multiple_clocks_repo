@@ -77,8 +77,12 @@ mc.simulation.predictions.plot_one_clock(one_clock)
 ## Section 2.2
 ## Setting the Clocks but in 'real time'
 ##
+reward_coords = mc.simulation.grid.create_grid(plot = True)
+reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords, plotting = True)
 
-# mc.simulation.predictions.set_clocks_bytime(reshaped_visited_fields, all_stepnums, 3, 2)
+clocksm, dummy_m = mc.simulation.predictions.set_clocks_bytime_one_neurone(reshaped_visited_fields, all_stepnums, 3, 2)
+dummy_m
+clocksm
 
 
 
