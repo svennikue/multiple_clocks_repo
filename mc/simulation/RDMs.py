@@ -76,7 +76,7 @@ def between_task_RDM(no_tasks, column_names, ax=None, plotting = False):
             
 
 def find_best_tasks(loop_no, no_columns, column_names): 
-#    import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
 #     # this needs to be something like:
 #         # 1. create 10 random tasks and the between-task corr maps.
 #         # 2. compute similarity between those 2 big matrices (this needs to be exclude_diag = False!! bc thats the within task one)

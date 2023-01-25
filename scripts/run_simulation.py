@@ -22,10 +22,12 @@ configuration.
 
 import mc
 import pandas as pd
+from matplotlib import pyplot as plt
+import statistics as stats
 
 
 
-## Section 1.
+## Section 1.1
 ## Create the task
 ##
 reward_coords = mc.simulation.grid.create_grid(plot = True)
@@ -33,8 +35,26 @@ reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coo
 
 ############## 
 
+## Section 1.2
+## Create a distribution of most common pathlengths
+##
+pathlenghts = list()
+
+for i in range(1,10000):
+    reward_coords = mc.simulation.grid.create_grid(plot = False)
+    reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords, plotting = False)
+    pathlenghts.append(len(reshaped_visited_fields))
+plt.figure()    
+plt.hist(pathlenghts) 
+print(stats.mean(pathlenghts))
+print(stats.mode(pathlenghts))
+print(stats.median(pathlenghts))
+print(max(pathlenghts))
+############## 
+
+
  
-## Section 2. 
+## Section 2.1
 ## Setting the Clocks and Location Matrix. 
 ##
 
@@ -52,6 +72,15 @@ one_clock = first_clocks_matrix[144:156,:]
 mc.simulation.predictions.plot_one_clock(one_clock)
 
 # #########################
+
+
+## Section 2.2
+## Setting the Clocks but in 'real time'
+##
+
+# mc.simulation.predictions.set_clocks_bytime(reshaped_visited_fields, all_stepnums, 3, 2)
+
+
 
 
 ## Section 3. 
@@ -108,12 +137,6 @@ plt_loc_neuron = pd.DataFrame({'value': loc_neuron, #these will be averages
                       'bearing': range(0, 360, 30),
                       'phases': ['4. reward', '1. early', '1. late', '1. reward', '2. early', '2. late', '2. reward', '3. early', '3. late', '3. reward', '4. early', '4. late']})   
 mc.simulation.predictions.plot_neurons(plt_loc_neuron)
-
-
-
-# ALIGN BY LOCATION
-# ?????????
-
 
 
 #########################

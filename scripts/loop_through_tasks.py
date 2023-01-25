@@ -29,6 +29,9 @@ similarity_between = mc.simulation.RDMs.corr_matrices(loc_RSM_matrix, clock_RSM_
 
 
 ## Optimize between and within task RSM
+# SOMETHING DOESNT WORK HERE! Continue in 'RDMS.py', find_best_tasks.
+# should be nearly there but something is going wrong with the temp.variables and 
+# the looping.
 # df_clock_opt, df_loc_opt, task_configs_opt, similarity_opt = mc.simulation.RDMs.find_best_tasks(20, 12, phases)
 
 
@@ -71,7 +74,7 @@ for i in range(0, 1000):
             save_task = pd.concat([save_task, coef, path, rewards], axis = 1)
         count += 1 
         
-        
+
 # folder = '/Users/xpsy1114/Documents/projects/multiple_clocks/results/good_configs'
 # time = datetime.now().strftime("%Y%m%d-%H%M%S")
 # file = '.csv'
