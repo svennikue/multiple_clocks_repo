@@ -37,7 +37,7 @@ similarity_between = mc.simulation.RDMs.corr_matrices(loc_RSM_matrix, clock_RSM_
 
 
 # start the loop.
-cut_off = 0.44
+cut_off = 0.45
 count = 0
 for i in range(0, 1000):
     ## Section 1.
