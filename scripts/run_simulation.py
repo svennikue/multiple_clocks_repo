@@ -24,12 +24,15 @@ import mc
 import pandas as pd
 from matplotlib import pyplot as plt
 import statistics as stats
+import numpy as np
+import seaborn as sns
 
 ## SETTINGS
 section_oneone = 1 # Create the task
 section_onetwo = 0 # Create a distribution of most common pathlengths
 section_twoone = 1 # Setting the Clocks and Location Matrix. 
-section_twotwo = 1 # Setting the Clocks but in 'real time'
+section_twotwo = 0 # Setting the Clocks but in 'real time' + HRF convolve
+section_twothree = 0 # concatenate 400 HRF convolved clocks and PCA
 section_three = 0 # Create 'neuron plots'
 section_four = 0 # Create RDMs.
 
@@ -87,20 +90,84 @@ if section_twoone == 1:
 ## Section 2.2
 ## Setting the Clocks but in 'real time'
 ##
-if section_twotwo == 1:    
-    reward_coords = mc.simulation.grid.create_grid(plot = True)
-    reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords, plotting = True)
-    
-    clocksm, neuroncl, clocks_over_time = mc.simulation.predictions.set_clocks_bytime_one_neurone(reshaped_visited_fields, all_stepnums, 3, 2)
-    clocksm
-    neuroncl
-    clocks_over_time
-    
-# see if I can plot the clocks_over_time
- # plotclock_pertime(clocks_matrix, step_time, all_stepnums):
-    mc.simulation.predictions.plotclock_pertime(clocks_over_time, 2, all_stepnums)
+if section_twotwo == 1:   
+    secs_per_step = 2
+    # needs section 1.1
 
-#clocks_matrix, dummy_matrix, clock_neurons, clocks_per_step
+    clocksm, neuroncl, clocks_over_time = mc.simulation.predictions.set_clocks_bytime_one_neurone(reshaped_visited_fields, all_stepnums, 3, secs_per_step)
+    
+    # plotting the whole matrix
+    mc.simulation.predictions.plotclock_pertime(clocks_over_time, secs_per_step, all_stepnums)
+    # plotting only one anchor 
+    one_anch_clocks_over_time = clocks_over_time[0:35,:]
+    mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(one_anch_clocks_over_time, secs_per_step, all_stepnums)
+    scnd_anch_clocks_over_time = clocks_over_time[288:324,:]
+    mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(scnd_anch_clocks_over_time, secs_per_step, all_stepnums)
+
+
+    # now do the convolution
+    clocks_over_time_hrf = mc.simulation.predictions.convolve_with_hrf(clocks_over_time, all_stepnums, secs_per_step, plotting = True)
+    # plotting the convolved matrix
+    # plotting the whole matrix
+    mc.simulation.predictions.plotclock_pertime(clocks_over_time_hrf, secs_per_step, all_stepnums)
+    # plotting only one anchor 
+    one_anch_clocks_over_time_hrf = clocks_over_time_hrf[0:35,:]
+    mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(one_anch_clocks_over_time_hrf, secs_per_step, all_stepnums)
+    one_anch_clocks_over_time_hrf = clocks_over_time_hrf[288:324,:]
+    mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(one_anch_clocks_over_time_hrf, secs_per_step, all_stepnums)
+
+    
+## Section 2.3
+## Creating a concatenated version of 400 different tasks using hte hrf convolved by time matrix,
+## then running a PCA and extracting the components.
+##
+
+if section_twothree == 1:
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.decomposition import PCA
+    for i in range(0,400):
+        secs_per_step = 2
+        reward_coords = mc.simulation.grid.create_grid(plot = False)
+        reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords, plotting = False)
+        clocksm, neuroncl, clocks_over_time = mc.simulation.predictions.set_clocks_bytime_one_neurone(reshaped_visited_fields, all_stepnums, 3, secs_per_step)
+        clocks_over_time_hrf = mc.simulation.predictions.convolve_with_hrf(clocks_over_time, all_stepnums, secs_per_step, plotting = False)
+        if i == 0:
+            concatenated_clocks = clocks_over_time_hrf.copy()
+        else:
+            concatenated_clocks = np.append(concatenated_clocks,clocks_over_time_hrf, axis = 1)
+    concatenated_clocks = np.nan_to_num(concatenated_clocks, nan=0)
+    concatenated_clocks_long = np.ndarray.transpose(concatenated_clocks)
+    # some pandas playaround
+    feat_cols = ['neuron'+str(i) for i in range(0, len(concatenated_clocks))]
+    neuron_dataset = pd.DataFrame(concatenated_clocks_long, columns=feat_cols)
+    x = neuron_dataset.loc[:, feat_cols].values
+    x = StandardScaler().fit_transform(x) # normalizing features / neuron values
+    normalised_neurons_df = pd.DataFrame(x, columns= feat_cols)
+    normalised_neurons_df.tail()
+    
+    # now run the PCA.
+    pca_neurons = PCA()
+    principal_components_neurons = pca_neurons.fit_transform(x)
+    principal_components_neurons_df = pd.DataFrame(data = principal_components_neurons)
+    
+    print('Explained variation per principal component: {}'.format(pca_neurons.explained_variance_ratio_))
+    
+    # scree plot of variance explained
+    plt.figure()
+    sns.set()  
+    plt.plot(
+        range(1,len(pca_neurons.explained_variance_ratio_ )+1),
+        np.cumsum(pca_neurons.explained_variance_ratio_),
+        c='red',
+        label='Cumulative Explained Variance')
+     
+    plt.legend(loc='upper left')
+    plt.xlabel('Number of components')
+    plt.ylabel('Explained variance (eignenvalues)')
+    plt.title('Scree plot')
+     
+    plt.show()
+
 # #########################
 
 
@@ -108,6 +175,7 @@ if section_twotwo == 1:
 ## Create 'neuron plots'
 ##
 
+# needs section 1.1 and 2.1
 if section_three == 1:
     # this is the activity of one neuron based on a single run.
     plt_neurontwo = first_clocks_matrix[146,:]
@@ -166,6 +234,7 @@ if section_three == 1:
 ## Create RDMs.
 ##
 
+# needs section 1.1 and 2.1
 if section_four == 1:
     phases = ['first_early', 'first_late', 'first_reward', 'scnd_early', 'scnd_late', 'scnd_reward', 'third_early', 'third_late', 'third_reward', 'fourth_early', 'fourth_late', 'fourth_reward']
     

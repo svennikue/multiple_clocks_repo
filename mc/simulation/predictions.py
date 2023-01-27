@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 from numpy import pi
 from matplotlib.gridspec import GridSpec
 import mc
+import scipy.signal
 
 # If you successfully ran mc.simulation.grid.create_grid() and mc.simulation.grid.walk_paths(reward_coords),
 # you now have 4 locations, 4 states, and paths between the locations/states,
@@ -225,82 +226,41 @@ def set_clocks_bytime_one_neurone(walked_path, step_number, phases, step_time):
                 for col in range(0, len(fill_clock_neurons[0])):
                     for rw in range(0, len(fill_clock_neurons)):
                         if fill_clock_neurons[rw, col] == 1:
-                            clocks_per_step[row+rw, col] = fill_clock_neurons[rw, col]
+                            clocks_per_step[row+rw, col] = 1
             
         # at the end: multiply by how ever many seconds a step should take.
     clocks_per_sec = np.repeat(clocks_per_step, repeats= step_time, axis=1)
     return clocks_matrix, clock_neurons_prep, clocks_per_sec
                 
 
-    #  # in the end go through all rows and activate the clock 'rows'
-    # dummy_matrix = clocks_matrix.copy()
-    # for column in range(0, len(clocks_matrix[0])):
-    #         for row in range(0, len(clocks_matrix)):
-    #             if clocks_matrix[row, column] == 1:
-    #                 # set all other fields to 0
-    #                 dummy_matrix[row, column:None] = 0
-    #                 dummy_matrix[row,column] = 1
-    # for row in range(0, len(clocks_matrix)):
-    #     for column in range(0, len(clocks_matrix[0])):
-    #         if clocks_matrix[row, column] == 1:
-    #             # set all fields before to 0
-    #             dummy_matrix[row, (column-1)::-1] = 0
-    #             break 
-     
-
-
-    # # NOT SURE IF I WILL NEED THE FOLLOWING STEPS
-    # # MAYBE DELETE LATER
-    # phase_loop = list(range(0,phases))
-    # cumsumsteps = np.cumsum(step_number)
-    # total_steps = cumsumsteps[-1]
-    # all_phases = list(range(n_columns))  
+def convolve_with_hrf(clocks_per_sec, step_number, step_time, plotting = True):
+    # now do the convolution
+    # take the arrays around the activity bumbps. the 1s need to be the peak of the HRF.
+    # take the HRF. Convolve both arrays using np.convolve()
+    # to do more efficient convolution and big arrays, use scipy.signal.fftconvolve(arr1, arr2)
+    # (although this isnt reaaaally necessary in my case)
+    # also be careful to get same sized output!
+    # one example:
+    cumsumsteps = np.cumsum(step_number)
+    total_steps = cumsumsteps[-1]
+    def hrf(t):
+        "A hemodynamic response function"
+        return t ** 8.6 * np.exp(-t / 0.547)
+    hrf_times = np.arange(0, step_time*total_steps, 1)
+    hrf_signal = hrf(hrf_times)
+    clocks_per_sec_hrf = clocks_per_sec.copy()
+    for row in range(0, len(clocks_per_sec)):
+        if np.isnan(clocks_per_sec[row,0])== False:
+            neuron = clocks_per_sec[row,:]
+            clocks_per_sec_hrf[row,:] = scipy.signal.fftconvolve(neuron, hrf_signal, mode ='same')   
+    if plotting == True:
+        plt.figure()
+        plt.plot(hrf_times, hrf_signal)
+        plt.xlabel('time (seconds)')
+        plt.ylabel('BOLD signal')
+        plt.title('Estimated BOLD signal for event at time 0')
     
-    
-    # # set up neurons of a clock.
-    # # I made a mistake. What I need to do is to identify in which phase one is 
-    # # for each step. 
-    # # depending on this, the different clocks need to be initiated. 
-    # # this will then again solve the question about the individual neurons of 
-    # # the clocks (always activate 3 per phase, irrespective of sub-steps)
-    
-    
-    
-    # # here I now need to interpolate.
-    # # propagation of neurons is 12/ steplength
-    # # !! this function only works for steplength smaller than 24
-    # # otherwise it will round down to 0
-    # # I cant really have non-integers, thus: use rounding, and make the last 
-    # # neuron longer if round up, and activate two neurons if round down.
-    
-    # clock_neurons = np.zeros([phases*n_states, n_columns])
-    # no_activated_neurons = round((phases*n_states) / len(walked_path))
-
-    # neurons_activated = 0
-    # for i in range(0,len(clock_neurons)):  
-    #     # import pdb; pdb.set_trace()
-    #     neurons_activated = i*no_activated_neurons
-    #     if (neurons_activated >= len(clock_neurons)) or (i >= (len(clock_neurons[0]))):
-    #         break
-    #     # check if rounded up or down in the end
-    #     clock_neurons[neurons_activated:(i+1)*no_activated_neurons, i]= 1  
-    # if n_columns == 8: 
-    #     clock_neurons[-2:None, -2:None] = 1 # this isnt ideal bc the last neuron is now super long (x3)
-    # if (n_columns == 5) or (n_columns == 10):
-    #     clock_neurons[-2:None, -1:None] = 1 # also not ideal, the last 4 steps don't propagate
-    # if (n_columns == 9):
-    #     clock_neurons[-3:None, -1:None] = 1 # also not ideal, the last 4 steps don't propagate
-    # if (n_columns == 10):
-    #     clock_neurons[-3:None, -1:None] = 1 # also not ideal, the last 4 steps don't propagate
-    
-    # # now, start the loop where I stick in the neural activation pattern into the big matrix.
-    # for step in range(0,total_steps):
-    #     field = walked_path[step]
-    #     x = field[0]
-    #     y = field[1]
-    #     fieldnumber = x + y*3
-    #     # set location-vector to 1 if we are currently on this field.
-    #     location_matrix[fieldnumber, step]= 1
+    return clocks_per_sec_hrf
 
 
 
@@ -366,11 +326,12 @@ def set_location_matrix(walked_path, step_number, phases, neighbour_activation =
 
 def plotclocks(clocks_matrix):
     # import pdb; pdb.set_trace()
+    plt.figure()
     fig, ax = plt.subplots()
     plt.imshow(clocks_matrix, aspect = 'auto') 
     ax.set_xticks([2,5,8,11])
     ax.set_xticks([0,1,2,3,4,5,6,7,8,9,10,11])
-    ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back @ r1'])
+    ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back to r1'])
     plt.xticks(rotation = 45)
     ax.set_yticks([0,36,72,108,144,180,216,252,288])
     ax.set_yticklabels(['anchor 1', 'anchor 2','anchor 3', 'anchor 4', 'anchor 5', 'anchor 6', 'anchor 7', 'anchor 8', 'anchor 9'])
@@ -378,16 +339,32 @@ def plotclocks(clocks_matrix):
 
 def plot_one_clock(one_clock_matrix):
     # import pdb; pdb.set_trace()
+    plt.figure()
     fig, ax = plt.subplots()
     plt.imshow(one_clock_matrix, aspect = 'auto')
     ax.set_xticks([0,1,2,3,4,5,6,7,8,9,10,11])
-    ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back @ r1'])
+    ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back to r1'])
     plt.xticks(rotation = 45)
+    plt.xlabel('phases')
     ax.set_yticks([0,1,2,3,4,5,6,7,8,9,10,11])
     ax.set_yticklabels(['neuron 1', 'neuron2','neuron 3', 'neuron 4', 'neuron 5', 'neuron 6', 'neuron 7', 'neuron 8', 'neuron 9', 'neuron 10', 'neuron 11', 'neuron 12'])
 
+def plot_one_anchor_all_clocks(one_anchor_matrix):
+    # import pdb; pdb.set_trace()
+    plt.figure()
+    fig, ax = plt.subplots()
+    plt.imshow(one_anchor_matrix, aspect = 'auto')
+    ax.set_xticks([0,1,2,3,4,5,6,7,8,9,10,11])
+    ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back to r1'])
+    plt.xticks(rotation = 45)
+    plt.xlabel('phases')
+    ax.set_yticks([0,12,24])
+    ax.set_yticklabels(['early_phase', 'mid_phase','late_phase'])
+    
+    
 def plotclock_pertime(clocks_matrix, step_time, all_stepnums):
     # import pdb; pdb.set_trace()
+    plt.figure()
     fig, ax = plt.subplots()
     plt.imshow(clocks_matrix, aspect = 'auto') 
     ax.set_xticks([2,5,8,11])
@@ -395,31 +372,40 @@ def plotclock_pertime(clocks_matrix, step_time, all_stepnums):
     total_steps = cumsumsteps[-1]    
     xticks_no = np.array(range(0,step_time*total_steps))
     ax.set_xticks(xticks_no)
-    # ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back @ r1'])
+    plt.xlabel('seconds')
+    # ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back to r1'])
     plt.xticks(rotation = 45)
     ax.set_yticks([0,36,72,108,144,180,216,252,288])
     ax.set_yticklabels(['anchor 1', 'anchor 2','anchor 3', 'anchor 4', 'anchor 5', 'anchor 6', 'anchor 7', 'anchor 8', 'anchor 9'])
     #return fig
     
-
-def plot_one_anchor_all_clocks(one_anchor_matrix):
+def plot_one_anchor_all_clocks_pertime(one_anchor_matrix, step_time, all_stepnums):
     # import pdb; pdb.set_trace()
+    plt.figure()
     fig, ax = plt.subplots()
     plt.imshow(one_anchor_matrix, aspect = 'auto')
-    ax.set_xticks([0,1,2,3,4,5,6,7,8,9,10,11])
-    ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back @ r1'])
+    cumsumsteps = np.cumsum(all_stepnums)
+    total_steps = cumsumsteps[-1] 
+    xticks_no = np.array(range(0,step_time*total_steps))
+    ax.set_xticks(xticks_no)
+    plt.xlabel('seconds')
+    # ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back to r1'])
     plt.xticks(rotation = 45)
     ax.set_yticks([0,12,24])
     ax.set_yticklabels(['early_phase', 'mid_phase','late_phase'])
     
+
+
     
 def plotlocation(location_matrix):
     # import pdb; pdb.set_trace()
+    plt.figure()
     fig, ax = plt.subplots()
     plt.imshow(location_matrix, aspect = 'auto')
     ax.set_xticks([0,1,2,3,4,5,6,7,8,9,10,11])
-    ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back @ r1'])
+    ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back to r1'])
     plt.xticks(rotation = 45)
+    plt.xlabel('phases')
     ax.set_yticks([0,1,2,3,4,5,6,7,8])
     ax.set_yticklabels(['field 1', 'field 2','field 3', 'field 4', 'field 5', 'field 6', 'field 7', 'field 8', 'feld 9'])
     #plt.plot([0, total_steps+1],[] )
@@ -428,6 +414,7 @@ def plotlocation(location_matrix):
 # create polar plots that visualize neuron firing per phase
 def plot_neurons(data):  
     #import pdb; pdb.set_trace()
+    plt.figure()
     data.index = data['bearing'] * 2*pi / 360
     
     fig = plt.figure(figsize=(8, 3))
