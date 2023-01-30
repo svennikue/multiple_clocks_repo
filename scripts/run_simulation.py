@@ -31,7 +31,7 @@ import seaborn as sns
 section_oneone = 1 # Create the task
 section_onetwo = 0 # Create a distribution of most common pathlengths
 section_twoone = 1 # Setting the Clocks and Location Matrix. 
-section_twotwo = 0 # Setting the Clocks but in 'real time' + HRF convolve
+section_twotwo = 1 # Setting the Clocks but in 'real time' + HRF convolve
 section_twothree = 0 # concatenate 400 HRF convolved clocks and PCA
 section_three = 0 # Create 'neuron plots'
 section_four = 0 # Create RDMs.
@@ -41,8 +41,8 @@ section_four = 0 # Create RDMs.
 ## Create the task
 ##
 if section_oneone == 1:
-    reward_coords = mc.simulation.grid.create_grid(plot = True)
-    reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords, plotting = True)
+    reward_coords = mc.simulation.grid.create_grid(plot = False)
+    reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords, plotting = False)
 
 ############## 
 
@@ -106,17 +106,27 @@ if section_twotwo == 1:
 
 
     # now do the convolution
-    clocks_over_time_hrf = mc.simulation.predictions.convolve_with_hrf(clocks_over_time, all_stepnums, secs_per_step, plotting = True)
+    clocks_over_time_hrf, clocks_over_time_hrf_fft  = mc.simulation.predictions.convolve_with_hrf(clocks_over_time, all_stepnums, secs_per_step, plotting = False)
     # plotting the convolved matrix
     # plotting the whole matrix
     mc.simulation.predictions.plotclock_pertime(clocks_over_time_hrf, secs_per_step, all_stepnums)
     # plotting only one anchor 
     one_anch_clocks_over_time_hrf = clocks_over_time_hrf[0:35,:]
     mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(one_anch_clocks_over_time_hrf, secs_per_step, all_stepnums)
-    one_anch_clocks_over_time_hrf = clocks_over_time_hrf[288:324,:]
-    mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(one_anch_clocks_over_time_hrf, secs_per_step, all_stepnums)
+    
+    scnd_anch_clocks_over_time_hrf = clocks_over_time_hrf[288:324,:]
+    mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(scnd_anch_clocks_over_time_hrf, secs_per_step, all_stepnums)
 
     
+    # as comparison plot fft.convolve output
+    one_anch_clocks_over_time_hrf_fft = clocks_over_time_hrf_fft[0:35,:]
+    mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(one_anch_clocks_over_time_hrf_fft, secs_per_step, all_stepnums)
+        
+    scnd_anch_clocks_over_time_hrf_fft = clocks_over_time_hrf_fft[288:324,:]
+    mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(scnd_anch_clocks_over_time_hrf_fft, secs_per_step, all_stepnums)
+
+    
+
 ## Section 2.3
 ## Creating a concatenated version of 400 different tasks using hte hrf convolved by time matrix,
 ## then running a PCA and extracting the components.
@@ -125,7 +135,7 @@ if section_twotwo == 1:
 if section_twothree == 1:
     from sklearn.preprocessing import StandardScaler
     from sklearn.decomposition import PCA
-    for i in range(0,400):
+    for i in range(0,4000):
         secs_per_step = 2
         reward_coords = mc.simulation.grid.create_grid(plot = False)
         reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords, plotting = False)

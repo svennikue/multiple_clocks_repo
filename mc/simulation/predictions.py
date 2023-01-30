@@ -234,6 +234,7 @@ def set_clocks_bytime_one_neurone(walked_path, step_number, phases, step_time):
                 
 
 def convolve_with_hrf(clocks_per_sec, step_number, step_time, plotting = True):
+    import pdb; pdb.set_trace()
     # now do the convolution
     # take the arrays around the activity bumbps. the 1s need to be the peak of the HRF.
     # take the HRF. Convolve both arrays using np.convolve()
@@ -243,25 +244,41 @@ def convolve_with_hrf(clocks_per_sec, step_number, step_time, plotting = True):
     # one example:
     cumsumsteps = np.cumsum(step_number)
     total_steps = cumsumsteps[-1]
+    n_columns = len(clocks_per_sec[0])
     def hrf(t):
         "A hemodynamic response function"
         return t ** 8.6 * np.exp(-t / 0.547)
     hrf_times = np.arange(0, step_time*total_steps, 1)
     hrf_signal = hrf(hrf_times)
     clocks_per_sec_hrf = clocks_per_sec.copy()
+    clocks_per_sec_hrf_fft = clocks_per_sec.copy()
     for row in range(0, len(clocks_per_sec)):
-        if np.isnan(clocks_per_sec[row,0])== False:
-            neuron = clocks_per_sec[row,:]
-            clocks_per_sec_hrf[row,:] = scipy.signal.fftconvolve(neuron, hrf_signal, mode ='same')   
+        if np.isnan(clocks_per_sec[row,0])== False:    
+            for col in range(0, len(clocks_per_sec[0])):
+                if clocks_per_sec[row,col] == 1: 
+                    first_split = hrf_signal[0:(n_columns-col)]
+                    second_split = hrf_signal[(n_columns-col):None]
+                    hrf_input = np.concatenate((second_split, first_split))
+                    neuron = clocks_per_sec[row,:]
+                    
+                    
+                    convolve = scipy.signal.convolve(neuron, hrf_input, mode ='same') 
+                    convolve_fft = scipy.signal.fftconvolve(neuron, hrf_input, mode ='same')   
+                    clocks_per_sec_hrf[row,:] = convolve[0:n_columns]
+                    clocks_per_sec_hrf_fft[row,:] = convolve_fft[0:n_columns]                                   
     if plotting == True:
         plt.figure()
         plt.plot(hrf_times, hrf_signal)
         plt.xlabel('time (seconds)')
         plt.ylabel('BOLD signal')
-        plt.title('Estimated BOLD signal for event at time 0')
-    
-    return clocks_per_sec_hrf
+        plt.title('Estimated BOLD signal for event at time 0') 
+    return clocks_per_sec_hrf, clocks_per_sec_hrf_fft
 
+# for i, j in enumerate([0, 10, 40, 45]):
+#     plt.subplot(8,1,i*2+1)
+#     plt.plot(np.eye(50)[j])
+#     plt.subplot(8,1,i*2+2)
+#     plt.plot(np.convolve(np.concatenate([np.eye(50)[j] for _ in range(2)]), hrf_signal)[50:100])
 
 
 # next, set location matrix.
@@ -388,7 +405,9 @@ def plot_one_anchor_all_clocks_pertime(one_anchor_matrix, step_time, all_stepnum
     total_steps = cumsumsteps[-1] 
     xticks_no = np.array(range(0,step_time*total_steps))
     ax.set_xticks(xticks_no)
+    ax.grid(visible = True)
     plt.xlabel('seconds')
+    plt.grid(visible= True)
     # ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back to r1'])
     plt.xticks(rotation = 45)
     ax.set_yticks([0,12,24])
