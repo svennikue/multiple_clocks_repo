@@ -32,7 +32,7 @@ section_oneone = 1 # Create the task
 section_onetwo = 0 # Create a distribution of most common pathlengths
 section_twoone = 1 # Setting the Clocks and Location Matrix. 
 section_twotwo = 1 # Setting the Clocks but in 'real time' + HRF convolve
-section_twothree = 0 # concatenate 400 HRF convolved clocks and PCA
+section_twothree = 1 # concatenate 400 HRF convolved clocks and PCA
 section_three = 0 # Create 'neuron plots'
 section_four = 0 # Create RDMs.
 
@@ -106,7 +106,7 @@ if section_twotwo == 1:
 
 
     # now do the convolution
-    clocks_over_time_hrf, clocks_over_time_hrf_fft  = mc.simulation.predictions.convolve_with_hrf(clocks_over_time, all_stepnums, secs_per_step, plotting = False)
+    clocks_over_time_hrf = mc.simulation.predictions.convolve_with_hrf(clocks_over_time, all_stepnums, secs_per_step, plotting = True)
     # plotting the convolved matrix
     # plotting the whole matrix
     mc.simulation.predictions.plotclock_pertime(clocks_over_time_hrf, secs_per_step, all_stepnums)
@@ -117,15 +117,7 @@ if section_twotwo == 1:
     scnd_anch_clocks_over_time_hrf = clocks_over_time_hrf[288:324,:]
     mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(scnd_anch_clocks_over_time_hrf, secs_per_step, all_stepnums)
 
-    
-    # as comparison plot fft.convolve output
-    one_anch_clocks_over_time_hrf_fft = clocks_over_time_hrf_fft[0:35,:]
-    mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(one_anch_clocks_over_time_hrf_fft, secs_per_step, all_stepnums)
-        
-    scnd_anch_clocks_over_time_hrf_fft = clocks_over_time_hrf_fft[288:324,:]
-    mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(scnd_anch_clocks_over_time_hrf_fft, secs_per_step, all_stepnums)
 
-    
 
 ## Section 2.3
 ## Creating a concatenated version of 400 different tasks using hte hrf convolved by time matrix,
@@ -160,14 +152,14 @@ if section_twothree == 1:
     principal_components_neurons = pca_neurons.fit_transform(x)
     principal_components_neurons_df = pd.DataFrame(data = principal_components_neurons)
     
-    print('Explained variation per principal component: {}'.format(pca_neurons.explained_variance_ratio_))
+    print('Explained variation per principal component: {}'.format(pca_neurons.explained_variance_))
     
     # scree plot of variance explained
     plt.figure()
     sns.set()  
     plt.plot(
-        range(1,len(pca_neurons.explained_variance_ratio_ )+1),
-        np.cumsum(pca_neurons.explained_variance_ratio_),
+        range(1,len(pca_neurons.explained_variance_)+1),
+        np.cumsum(pca_neurons.explained_variance_),
         c='red',
         label='Cumulative Explained Variance')
      
@@ -178,6 +170,23 @@ if section_twothree == 1:
      
     plt.show()
 
+
+    # scree plot of variance explained
+    plt.figure()
+    sns.set()  
+    plt.plot(
+        range(1,len(pca_neurons.explained_variance_)+1),
+        pca_neurons.explained_variance_,
+        c='red',
+        label='Eigenvalues')
+     
+    plt.legend(loc='upper left')
+    plt.xlabel('Number of components')
+    plt.ylabel('Explained variance (eignenvalues)')
+    plt.title('Scree plot')
+     
+    plt.show()
+    
 # #########################
 
 

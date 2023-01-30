@@ -234,7 +234,7 @@ def set_clocks_bytime_one_neurone(walked_path, step_number, phases, step_time):
                 
 
 def convolve_with_hrf(clocks_per_sec, step_number, step_time, plotting = True):
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     # now do the convolution
     # take the arrays around the activity bumbps. the 1s need to be the peak of the HRF.
     # take the HRF. Convolve both arrays using np.convolve()
@@ -250,29 +250,33 @@ def convolve_with_hrf(clocks_per_sec, step_number, step_time, plotting = True):
         return t ** 8.6 * np.exp(-t / 0.547)
     hrf_times = np.arange(0, step_time*total_steps, 1)
     hrf_signal = hrf(hrf_times)
+    clocks_per_sec_hrf_double = np.concatenate([clocks_per_sec, clocks_per_sec], axis = 1)   
     clocks_per_sec_hrf = clocks_per_sec.copy()
-    clocks_per_sec_hrf_fft = clocks_per_sec.copy()
     for row in range(0, len(clocks_per_sec)):
-        if np.isnan(clocks_per_sec[row,0])== False:    
-            for col in range(0, len(clocks_per_sec[0])):
-                if clocks_per_sec[row,col] == 1: 
-                    first_split = hrf_signal[0:(n_columns-col)]
-                    second_split = hrf_signal[(n_columns-col):None]
-                    hrf_input = np.concatenate((second_split, first_split))
-                    neuron = clocks_per_sec[row,:]
+        if np.isnan(clocks_per_sec[row,0])== False:
+            neuron = clocks_per_sec_hrf_double[row,:]
+            convolve = scipy.signal.convolve(neuron, hrf_signal) 
+            clocks_per_sec_hrf[row,:] = convolve[len(clocks_per_sec[0]):(len(clocks_per_sec[0])*2)]
+              
+                # if clocks_per_sec[row,col] == 1: 
+                #     first_split = hrf_signal[0:(n_columns-col)]
+                #     second_split = hrf_signal[(n_columns-col):None]
+                #     hrf_input = np.concatenate((second_split, first_split))
+                #     neuron = clocks_per_sec[row,:]
                     
                     
-                    convolve = scipy.signal.convolve(neuron, hrf_input, mode ='same') 
-                    convolve_fft = scipy.signal.fftconvolve(neuron, hrf_input, mode ='same')   
-                    clocks_per_sec_hrf[row,:] = convolve[0:n_columns]
-                    clocks_per_sec_hrf_fft[row,:] = convolve_fft[0:n_columns]                                   
+                #     convolve = scipy.signal.convolve(neuron, hrf_input, mode ='same') 
+                #     convolve_fft = scipy.signal.fftconvolve(neuron, hrf_input, mode ='same')   
+                #     clocks_per_sec_hrf[row,:] = convolve[0:n_columns]
+                #     clocks_per_sec_hrf_fft[row,:] = convolve_fft[0:n_columns]                                   
     if plotting == True:
         plt.figure()
         plt.plot(hrf_times, hrf_signal)
         plt.xlabel('time (seconds)')
         plt.ylabel('BOLD signal')
         plt.title('Estimated BOLD signal for event at time 0') 
-    return clocks_per_sec_hrf, clocks_per_sec_hrf_fft
+    return clocks_per_sec_hrf
+
 
 # for i, j in enumerate([0, 10, 40, 45]):
 #     plt.subplot(8,1,i*2+1)
