@@ -28,10 +28,10 @@ import numpy as np
 import seaborn as sns
 
 ## SETTINGS
-section_oneone = 1 # Create the task
+section_oneone = 0 # Create the task
 section_onetwo = 0 # Create a distribution of most common pathlengths
-section_twoone = 1 # Setting the Clocks and Location Matrix. 
-section_twotwo = 1 # Setting the Clocks but in 'real time' + HRF convolve
+section_twoone = 0 # Setting the Clocks and Location Matrix. 
+section_twotwo = 0 # Setting the Clocks but in 'real time' + HRF convolve
 section_twothree = 1 # concatenate 400 HRF convolved clocks and PCA
 section_three = 0 # Create 'neuron plots'
 section_four = 0 # Create RDMs.
@@ -127,7 +127,7 @@ if section_twotwo == 1:
 if section_twothree == 1:
     from sklearn.preprocessing import StandardScaler
     from sklearn.decomposition import PCA
-    for i in range(0,4000):
+    for i in range(0,400):
         secs_per_step = 2
         reward_coords = mc.simulation.grid.create_grid(plot = False)
         reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords, plotting = False)

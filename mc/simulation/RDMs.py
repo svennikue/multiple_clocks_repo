@@ -76,7 +76,7 @@ def between_task_RDM(no_tasks, column_names, ax=None, plotting = False):
             
 
 def find_best_tasks(loop_no, no_columns, column_names): 
-    import pdb; pdb.set_trace()
+#    import pdb; pdb.set_trace()
 #     # this needs to be something like:
 #         # 1. create 10 random tasks and the between-task corr maps.
 #         # 2. compute similarity between those 2 big matrices (this needs to be exclude_diag = False!! bc thats the within task one)
@@ -85,7 +85,8 @@ def find_best_tasks(loop_no, no_columns, column_names):
 #         # do this a number of loops
 #         # always store the current configurations/ toss the one I am replacing
     # first, create one 10 tasks x 10 tasks matrix for clocks and locations
-    clock_RSM_matrix, loc_RSM_matrix, df_clock, df_loc, task_configs = mc.simulation.RDMs.between_task_RDM(10, column_names, plotting = False)
+    task_config_no = 10
+    clock_RSM_matrix, loc_RSM_matrix, df_clock, df_loc, task_configs = mc.simulation.RDMs.between_task_RDM(task_config_no, column_names, plotting = False)
     # and get the similarity between those. 
     similarity_between = mc.simulation.RDMs.corr_matrices(loc_RSM_matrix, clock_RSM_matrix)
     # based on this, try to optimize the correlation coefficient (similarity_between)
@@ -107,17 +108,19 @@ def find_best_tasks(loop_no, no_columns, column_names):
         temp_locs.columns = column_names
         # prepare loop here       
         temp_similarity = np.ones((2,2))
-        count = 10
+        
+        count = 1 # change back to 1 once debugging is done
         # then, replace each of the 10 tasks with the new config and text if similarity is now less (= better)
         # step out of the loop either way once looped through all columns, or when temp_similarity is lower
-        while (temp_similarity[0,1] > similarity_between[0,1]) or (count<no_columns):
+        while (temp_similarity[0,1] > similarity_between[0,1]) and (count < task_config_no):
             # have a counter for all columns   
-            temp_df_loc = df_loc[:]
+            temp_df_loc = df_loc.copy()
             # replace the first (count) 12 columns with the new configuration
-            temp_df_loc.iloc[:, (count*no_columns):((count*no_columns)+no_columns)] = temp_locs
+            temp_df_loc.iloc[:, ((count-1)*no_columns):(count*no_columns)] = temp_locs
+            # temp_df_loc.iloc[:, (count*no_columns):((count*no_columns)+no_columns)] = temp_locs
             temp_df_loc.fillna(0, inplace = True)
-            temp_df_clock = df_clock[:]
-            temp_df_clock.iloc[:, (count*no_columns):((count*no_columns)+no_columns)] = temp_clocks
+            temp_df_clock = df_clock.copy()
+            temp_df_clock.iloc[:, ((count-1)*no_columns):(count*no_columns)] = temp_clocks
             temp_df_clock.fillna(0, inplace = True)
             # create new correlation matrices for the new clocks and location matrix
             temp_corr_clocks = temp_df_clock.corr()
@@ -129,12 +132,12 @@ def find_best_tasks(loop_no, no_columns, column_names):
             if temp_similarity[0,1] < similarity_between[0,1]:
                 # task_configs is structured a little different, its always x,y of paths and then x,y of rewards.
                 # -> 4 columns per task config              
-                task_configs.iloc[:,(count*4):((count*4)+3)] = df_temp_task_configs
+                task_configs.iloc[:,((count-1)*4):(count*4)] = df_temp_task_configs
                 # if the new RSMs correlate less, replace the current configuration and RSM with the new
                 # and continue to optimize further.
-                df_clock = temp_df_clock[:]
-                df_loc = temp_df_loc[:]
-                similarity_between = temp_similarity[:]
+                df_clock = temp_df_clock.copy()
+                df_loc = temp_df_loc.copy()
+                similarity_between = temp_similarity.copy()
             count += 1 
             del temp_df_loc
             del temp_df_clock
@@ -143,7 +146,7 @@ def find_best_tasks(loop_no, no_columns, column_names):
             del temp_similarity
             temp_similarity = np.ones((2,2))
         
-    return df_clock, df_loc, task_configs, temp_similarity
+    return df_clock, df_loc, task_configs, similarity_between
 
     
     
