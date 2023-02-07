@@ -22,7 +22,10 @@ import seaborn as sns
 # settings for the rest of the script
 find_low_similarity_within = 0
 find_low_similarity_between = 0
-plot_optimal_paths = 1
+find_low_sim_zerophase_clocks = 0
+distr_zero_phase_clocks_optimal = 1
+plot_optimal_paths = 0
+run_PCA_on_repetitions = 0
 
 
 # prep the scrip input
@@ -37,7 +40,7 @@ if find_low_similarity_between == 1:
     loc_RSM_matrix, clock_RSM_matrix, df_clock, df_loc, df_task_configs = mc.simulation.RDMs.between_task_RDM(20, phases, plotting = False)
     similarity_between = mc.simulation.RDMs.corr_matrices(loc_RSM_matrix, clock_RSM_matrix) 
 
-    df_clock_opt, df_loc_opt, task_configs_opt, similarity_opt = mc.simulation.RDMs.find_best_tasks(100000, 12, phases)
+    df_clock_opt, df_loc_opt, task_configs_opt, similarity_opt = mc.simulation.RDMs.find_best_tasks(50000, 12, phases)
     folder = '/Users/xpsy1114/Documents/projects/multiple_clocks/results/good_configs_between_tasks'
     sim = str(similarity_opt[0,1])
     time = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -95,7 +98,73 @@ if find_low_similarity_within == 1:
         save_task.to_csv(filename)
         
         
+
+## plot distribution of random configs for 0phase clocks and clocks
+if find_low_sim_zerophase_clocks == 1:
+    similarity_values = []
+    for count in range(0,10000):
+        # section 1.1
+        reward_coords = mc.simulation.grid.create_grid(plot = False)
+        reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords, plotting = False)
         
+        # section 2.2
+        secs_per_step = 2
+        clocksm, neuroncl, clocks_over_time = mc.simulation.predictions.set_clocks_bytime_one_neurone(reshaped_visited_fields, all_stepnums, 3, secs_per_step)
+        # now do the convolution
+        clocks_over_time_hrf = mc.simulation.predictions.convolve_with_hrf(clocks_over_time, all_stepnums, secs_per_step, plotting = False)
+    
+        # section 2.3
+        zero_phase_clocks_m = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_over_time_hrf, all_stepnums, 3)
+        
+        # section 4.2
+        counter = list(range(0,len(clocks_over_time[0])))
+        seconds = counter.copy()
+        for i in counter:
+            seconds[i] = str(i)  
+        zero_clock_RSM = mc.simulation.RDMs.within_task_RDM(zero_phase_clocks_m, seconds)
+        clock_RSM = mc.simulation.RDMs.within_task_RDM(clocks_over_time_hrf, seconds)   
+        similiarty = mc.simulation.RDMs.corr_matrices(zero_clock_RSM, clock_RSM)  
+        similarity_values.append(1 - similiarty[0,1])
+    
+    plt.figure()
+    plt.hist(similarity_values)
+    plt.gca().set(title='Variance clocks beyond 0-phase-clocks (10.000 perms)', ylabel = ('frequency'), xlabel='1 - Similarity');
+    
+
+## plot distribution of correlation between RDM for 0phase clocks and clocks
+## and use the configurations that work well in terms of space
+if distr_zero_phase_clocks_optimal == 1:
+    similarity_values = []
+    filename = '/Users/xpsy1114/Documents/projects/multiple_clocks/results/good_configs_between_tasks20230131-1032590.244.csv'
+    optimal_data_df = pd.read_csv(filename)
+    optimal_data = optimal_data_df.to_numpy() 
+    optimal_data = optimal_data[:,1:None]
+    secs_per_step = 2
+    total_configs = int(len(optimal_data[0])/4)
+    for task_no in range(0, total_configs):
+        reward_coords = optimal_data[0:4, (task_no*4):((task_no*4)+2)]
+        reward_coords = reward_coords.tolist()
+        reward_list = [[int(x) for x in lst] for lst in reward_coords]       
+        reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_list, plotting = False)
+        clocksm, neuroncl, clocks_over_time = mc.simulation.predictions.set_clocks_bytime_one_neurone(reshaped_visited_fields, all_stepnums, 3, secs_per_step)
+        clocks_over_time_hrf = mc.simulation.predictions.convolve_with_hrf(clocks_over_time, all_stepnums, secs_per_step, plotting = False)
+        zero_phase_clocks_m = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_over_time_hrf, all_stepnums, 3)
+        counter = list(range(0,len(clocks_over_time[0])))
+        seconds = counter.copy()
+        for i in counter:
+            seconds[i] = str(i)  
+        zero_clock_RSM = mc.simulation.RDMs.within_task_RDM(zero_phase_clocks_m, seconds)
+        clock_RSM = mc.simulation.RDMs.within_task_RDM(clocks_over_time_hrf, seconds)   
+        similiarty = mc.simulation.RDMs.corr_matrices(zero_clock_RSM, clock_RSM)  
+        similarity_values.append(1 - similiarty[0,1])
+   
+    plt.figure()
+    plt.hist(similarity_values)
+    plt.gca().set(title='Dissimilarity 0phase clocks vs clocks, for 10 configs (decorrelated by space)', ylabel = ('frequency'), xlabel='1 - Similarity');
+    
+    
+    
+       
         
 # plot the optimal between-task configurations
 # run a PCA for these configurations
@@ -147,7 +216,7 @@ if plot_optimal_paths == 1:
     plt.legend(loc='upper left')
     plt.xlabel('Number of components')
     plt.ylabel('Explained variance (eignenvalues)')
-    plt.title('Scree plot')
+    plt.title('10 decorrelated tasks, r = .244 between location and clocks')
      
     plt.show()
 
@@ -164,14 +233,63 @@ if plot_optimal_paths == 1:
     plt.legend(loc='upper left')
     plt.xlabel('Number of components')
     plt.ylabel('Explained variance (eignenvalues)')
-    plt.title('Scree plot')
+    plt.title('10 decorrelated tasks, r = .244 between location and clocks')
      
     plt.show()
 
 
 
+if run_PCA_on_repetitions == 1:
+    no_path_repeats = 40
+    concatenated_clocks = np.tile(concatenated_clocks, (1, no_path_repeats))
+    concatenated_clocks_long = np.ndarray.transpose(concatenated_clocks)
+    # some pandas playaround
+    feat_cols = ['neuron'+str(i) for i in range(0, len(concatenated_clocks))]
+    neuron_dataset = pd.DataFrame(concatenated_clocks_long, columns=feat_cols)
+    x = neuron_dataset.loc[:, feat_cols].values
+    x = StandardScaler().fit_transform(x) # normalizing features / neuron values
+    normalised_neurons_df = pd.DataFrame(x, columns= feat_cols)
+    normalised_neurons_df.tail()
+    
+    # now run the PCA.
+    pca_neurons = PCA()
+    principal_components_neurons = pca_neurons.fit_transform(x)
+    principal_components_neurons_df = pd.DataFrame(data = principal_components_neurons)
+    
+    print('Explained variation per principal component: {}'.format(pca_neurons.explained_variance_))
+    
+    # scree plot of variance explained
+    plt.figure()
+    sns.set()  
+    plt.plot(
+        range(1,len(pca_neurons.explained_variance_)+1),
+        np.cumsum(pca_neurons.explained_variance_),
+        c='red',
+        label='Cumulative Explained Variance')
+     
+    plt.legend(loc='upper left')
+    plt.xlabel('Number of components')
+    plt.ylabel('Explained variance (eignenvalues)')
+    plt.title('10 decorrelated tasks, 40 repeats')
+     
+    plt.show()
 
 
+    # scree plot of variance explained
+    plt.figure()
+    sns.set()  
+    plt.plot(
+        range(1,len(pca_neurons.explained_variance_)+1),
+        pca_neurons.explained_variance_,
+        c='red',
+        label='Eigenvalues')
+     
+    plt.legend(loc='upper left')
+    plt.xlabel('Number of components')
+    plt.ylabel('Explained variance (eignenvalues)')
+    plt.title('10 decorrelated tasks, 40 repeats')
+     
+    plt.show()
 
 
 

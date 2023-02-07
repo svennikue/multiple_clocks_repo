@@ -28,13 +28,15 @@ import numpy as np
 import seaborn as sns
 
 ## SETTINGS
-section_oneone = 0 # Create the task
+section_oneone = 1 # Create the task
 section_onetwo = 0 # Create a distribution of most common pathlengths
 section_twoone = 0 # Setting the Clocks and Location Matrix. 
-section_twotwo = 0 # Setting the Clocks but in 'real time' + HRF convolve
-section_twothree = 1 # concatenate 400 HRF convolved clocks and PCA
+section_twotwo = 1 # Setting the Clocks + locs but in 'real time' + HRF convolve
+section_twothree = 0 # Setting 0-phase clocks in 'real time'
+section_twofour = 0 # concatenate 400 HRF convolved clocks and PCA
 section_three = 0 # Create 'neuron plots'
-section_four = 0 # Create RDMs.
+section_fourone = 0 # Create RDMs.
+section_fourtwo = 0 # create RDMS between 0 phase clock and clocks (HRF + by time)
 
 
 ## Section 1.1
@@ -88,43 +90,66 @@ if section_twoone == 1:
 
 
 ## Section 2.2
-## Setting the Clocks but in 'real time'
+## Setting the Clocks and locations but in 'real time'
 ##
 if section_twotwo == 1:   
-    secs_per_step = 2
+    deci_secs_per_step = 15
     # needs section 1.1
-
-    clocksm, neuroncl, clocks_over_time = mc.simulation.predictions.set_clocks_bytime_one_neurone(reshaped_visited_fields, all_stepnums, 3, secs_per_step)
     
-    # plotting the whole matrix
-    mc.simulation.predictions.plotclock_pertime(clocks_over_time, secs_per_step, all_stepnums)
-    # plotting only one anchor 
-    one_anch_clocks_over_time = clocks_over_time[0:35,:]
-    mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(one_anch_clocks_over_time, secs_per_step, all_stepnums)
-    scnd_anch_clocks_over_time = clocks_over_time[288:324,:]
-    mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(scnd_anch_clocks_over_time, secs_per_step, all_stepnums)
+    location_m, location_over_time = mc.simulation.predictions.set_location_by_time(reshaped_visited_fields, all_stepnums, deci_secs_per_step)
+    clocksm, neuroncl, clocks_over_time = mc.simulation.predictions.set_clocks_bytime_one_neurone(reshaped_visited_fields, all_stepnums, 3, deci_secs_per_step)    
+
+    
+    # PLOTTING PART 
+    # plotting the location matrix
+    mc.simulation.predictions.plotlocation_pertime(location_over_time, deci_secs_per_step, all_stepnums)
+        
+    # plotting the whole matrix: clocks
+    # mc.simulation.predictions.plotclock_pertime(clocks_over_time, deci_secs_per_step, all_stepnums)
+    # # plotting only one anchor 
+    # one_anch_clocks_over_time = clocks_over_time[0:35,:]
+    # mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(one_anch_clocks_over_time, deci_secs_per_step, all_stepnums)
+    # scnd_anch_clocks_over_time = clocks_over_time[288:324,:]
+    # mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(scnd_anch_clocks_over_time, deci_secs_per_step, all_stepnums)
 
 
     # now do the convolution
-    clocks_over_time_hrf = mc.simulation.predictions.convolve_with_hrf(clocks_over_time, all_stepnums, secs_per_step, plotting = True)
-    # plotting the convolved matrix
-    # plotting the whole matrix
-    mc.simulation.predictions.plotclock_pertime(clocks_over_time_hrf, secs_per_step, all_stepnums)
-    # plotting only one anchor 
-    one_anch_clocks_over_time_hrf = clocks_over_time_hrf[0:35,:]
-    mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(one_anch_clocks_over_time_hrf, secs_per_step, all_stepnums)
+    # first of the location matrix
+    location_over_time_hrf = mc.simulation.predictions.convolve_with_hrf(location_over_time, all_stepnums, deci_secs_per_step, plotting = False)
     
-    scnd_anch_clocks_over_time_hrf = clocks_over_time_hrf[288:324,:]
-    mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(scnd_anch_clocks_over_time_hrf, secs_per_step, all_stepnums)
-
+    # then of the clock matrix
+    clocks_over_time_hrf = mc.simulation.predictions.convolve_with_hrf(clocks_over_time, all_stepnums, deci_secs_per_step, plotting = True)
+    
+    # plotting the convolved matrix
+    # plotting the location matrix
+    mc.simulation.predictions.plotlocation_pertime(location_over_time_hrf, deci_secs_per_step, all_stepnums)
+    
+    # plotting the whole clock matrix
+    mc.simulation.predictions.plotclock_pertime(clocks_over_time_hrf, deci_secs_per_step, all_stepnums)
+    # # plotting only one anchor 
+    # one_anch_clocks_over_time_hrf = clocks_over_time_hrf[0:35,:]
+    # mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(one_anch_clocks_over_time_hrf, deci_secs_per_step, all_stepnums)
+    
+    # scnd_anch_clocks_over_time_hrf = clocks_over_time_hrf[288:324,:]
+    # mc.simulation.predictions.plot_one_anchor_all_clocks_pertime(scnd_anch_clocks_over_time_hrf, deci_secs_per_step, all_stepnums)
 
 
 ## Section 2.3
+## Setting 0-phase clocks in 'real time'
+## (run section 2.2 first!)
+##
+if section_twothree == 1:
+    zero_phase_clocks_m = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_over_time_hrf, all_stepnums, 3)
+    print(zero_phase_clocks_m)
+
+    # next step: correlate these matrices with the full clock matrix!!!
+
+## Section 2.4
 ## Creating a concatenated version of 400 different tasks using hte hrf convolved by time matrix,
 ## then running a PCA and extracting the components.
 ##
 
-if section_twothree == 1:
+if section_twofour == 1:
     from sklearn.preprocessing import StandardScaler
     from sklearn.decomposition import PCA
     for i in range(0,400):
@@ -186,7 +211,9 @@ if section_twothree == 1:
     plt.title('Scree plot')
      
     plt.show()
-    
+
+
+
 # #########################
 
 
@@ -249,12 +276,12 @@ if section_three == 1:
     
 
 #########################
-## Section 4. 
+## Section 4.1
 ## Create RDMs.
 ##
 
 # needs section 1.1 and 2.1
-if section_four == 1:
+if section_fourone == 1:
     phases = ['first_early', 'first_late', 'first_reward', 'scnd_early', 'scnd_late', 'scnd_reward', 'third_early', 'third_late', 'third_reward', 'fourth_early', 'fourth_late', 'fourth_reward']
     
     loc_RSM = mc.simulation.RDMs.within_task_RDM(location_matrix, phases)
@@ -264,20 +291,23 @@ if section_four == 1:
     print(similarity)
 
 
+## Section 4.2
+## Create RDMs between 0 phase clocks (HRF convoluted, by time) and 
+## whole clocks matrices (HRF convoluted, by time)
+##
 
-# # next steps: create RSMs across tasks: e.g. 3 different task configurations.
+# needs section 1.1, 2.2 and 2.3
+if section_fourtwo == 1:
+    counter = list(range(0,len(clocks_over_time[0])))
+    seconds = counter.copy()
+    for i in counter:
+        seconds[i] = str(i)  
+    zero_clock_RSM = mc.simulation.RDMs.within_task_RDM(zero_phase_clocks_m, seconds)
+    clock_RSM = mc.simulation.RDMs.within_task_RDM(clocks_over_time_hrf, seconds)   
+    similiarty = mc.simulation.RDMs.corr_matrices(zero_clock_RSM, clock_RSM)    
+    print(1- similiarty)
 
 
-# # this will be phase-vectors corr with phase vectors. 
-# # do the same with location and clock neurons.
-# # first RDM: within a task.
-# # 
-
-
-
-# ###########################
-# # Section 5. Correlate RDMs.
-# I did the rest in another script....
 
 
       
