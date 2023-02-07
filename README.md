@@ -2,6 +2,7 @@
 This repo includes 
 1. the package 'mc' which allows to run task-configuration and solving simulations, create models of different neurons, and do some computations with these models.
 2. scripts that I use to run this package, which 
+
 a) runs the simulation with the following selection of settings:
 section_oneone = 1 # Create the task
 section_onetwo = 0 # Create a distribution of most common pathlengths
