@@ -3,7 +3,7 @@ This repo includes
 1. the package 'mc' which allows to run task-configuration and solving simulations, create models of different neurons, and do some computations with these models.
 2. scripts that I use to run this package, which 
   a) runs the simulation with the following selection of settings:
-    ## SETTINGS
+  SETTINGS
   section_oneone = 1 # Create the task
   section_onetwo = 0 # Create a distribution of most common pathlengths
   section_twoone = 0 # Setting the Clocks and Location Matrix. 
@@ -15,7 +15,7 @@ This repo includes
   section_fourtwo = 0 # create RDMS between 0 phase clock and clocks (HRF + by time)
   
   b) go beyond running the simulation and creating predicitons, but actually prepare the MRI experiment by optimizing for certain things (loop_through_tasks.py), with the following options:
-  # settings for the rest of the script
+  settings for the rest of the script
   find_low_similarity_within = 0
   find_low_similarity_between = 0
   find_low_sim_zerophase_clocks = 0
