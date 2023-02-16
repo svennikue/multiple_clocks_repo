@@ -22,7 +22,7 @@ import seaborn as sns
 # settings for the rest of the script
 find_low_similarity_within = 0
 find_low_similarity_between = 0
-find_low_sim_zerophase_clocks = 0
+find_low_sim_zerophase_clocks = 1
 distr_zero_phase_clocks_optimal = 1
 plot_optimal_paths = 0
 run_PCA_on_repetitions = 0
@@ -100,8 +100,10 @@ if find_low_similarity_within == 1:
         
 
 ## plot distribution of random configs for 0phase clocks and clocks
+# do this for both convoluted predictions and without 
 if find_low_sim_zerophase_clocks == 1:
     similarity_values = []
+    similarity_values_hrf = []
     for count in range(0,10000):
         # section 1.1
         reward_coords = mc.simulation.grid.create_grid(plot = False)
@@ -110,25 +112,40 @@ if find_low_sim_zerophase_clocks == 1:
         # section 2.2
         secs_per_step = 2
         clocksm, neuroncl, clocks_over_time = mc.simulation.predictions.set_clocks_bytime_one_neurone(reshaped_visited_fields, all_stepnums, 3, secs_per_step)
+        
         # now do the convolution
         clocks_over_time_hrf = mc.simulation.predictions.convolve_with_hrf(clocks_over_time, all_stepnums, secs_per_step, plotting = False)
     
         # section 2.3
-        zero_phase_clocks_m = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_over_time_hrf, all_stepnums, 3)
+        zero_phase_clocks_m_hrf = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_over_time_hrf, all_stepnums, 3)
+        zero_phase_clocks_m = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_over_time, all_stepnums, 3)
         
         # section 4.2
         counter = list(range(0,len(clocks_over_time[0])))
         seconds = counter.copy()
         for i in counter:
             seconds[i] = str(i)  
+            
         zero_clock_RSM = mc.simulation.RDMs.within_task_RDM(zero_phase_clocks_m, seconds)
-        clock_RSM = mc.simulation.RDMs.within_task_RDM(clocks_over_time_hrf, seconds)   
+        zero_clock_RSM_hrf = mc.simulation.RDMs.within_task_RDM(zero_phase_clocks_m_hrf, seconds)
+        
+        clock_RSM_hrf = mc.simulation.RDMs.within_task_RDM(clocks_over_time_hrf, seconds)        
+        similiarty_hrf = mc.simulation.RDMs.corr_matrices(zero_clock_RSM_hrf, clock_RSM_hrf)  
+        similarity_values_hrf.append(1 - similiarty_hrf[0,1])
+        
+        clock_RSM = mc.simulation.RDMs.within_task_RDM(clocks_over_time, seconds)  
         similiarty = mc.simulation.RDMs.corr_matrices(zero_clock_RSM, clock_RSM)  
         similarity_values.append(1 - similiarty[0,1])
     
     plt.figure()
+    ax = plt.axes()
     plt.hist(similarity_values)
-    plt.gca().set(title='Variance clocks beyond 0-phase-clocks (10.000 perms)', ylabel = ('frequency'), xlabel='1 - Similarity');
+    plt.gca().set(title='Variance clocks_raw beyond 0-phase-clocks (10.000 perms)', ylabel = ('frequency'), xlabel='1 - Similarity');
+    
+    plt.figure()
+    ax2 = plt.axes()
+    plt.hist(similarity_values_hrf)
+    plt.gca().set(title='Variance clocks_hrf beyond 0-phase-clocks (10.000 perms)', ylabel = ('frequency'), xlabel='1 - Similarity');
     
 
 ## plot distribution of correlation between RDM for 0phase clocks and clocks
