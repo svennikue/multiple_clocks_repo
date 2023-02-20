@@ -18,27 +18,60 @@ import mc
 import numpy as np
 
 
-def create_grid(size_grid = 3, num_rewards = 4, ax = None, plot = False):
+def create_grid(size_grid = 3, num_rewards = 4, ax = None, plot = False, old_rewards = None):
+    # import pdb; pdb.set_trace()
     # first create the 3 x 3 grid and plot.
     coord = [list(p) for p in product(range(size_grid), range(size_grid))]
-    # create 4 reward locations
-    reward_coords = random.sample(coord, num_rewards)
-    if plot == True:
+
+    # If reward coordinates are not provided: set them here, then go on as usual
+    if old_rewards is None:
+        # create 4 reward locations, except if those are given
+        reward_coords = [np.array(random.sample(coord, num_rewards))]
+    else:
+        # read the reward coordinations and the path
+        # careful! Here, every 4th column are the reward locations.
+        #reward_coords_all = old_rewards.iloc[:, 3::5]
+        reward_coords = old_rewards.to_numpy()
+        reward_coords = [reward_coords[:num_rewards,((i+1)*5-2):((i+1)*5)] 
+                         for i in range(int(reward_coords.shape[1]/5))]
+        #reward_coords = [reward_coords_all[0:4, i] for i in range(len(reward_coords_all.columns))]
+        
+        
+    # if old_rewards == 0: 
+    #     # create 4 reward locations, except if those are given
+    #     reward_coords = random.sample(coord, num_rewards)
+    #     if plot == True:
+    #         if ax is None:
+    #             plt.figure()
+    #             ax = plt.axes()
+    #         cmap = cm.get_cmap('tab20b')
+    #         plt.scatter([x[0] for x in coord], [x[1] for x in coord], color =cmap(6), s=250)
+    #         for i, x in enumerate(reward_coords):
+    #             plt.scatter(x[0], x[1], color=cmap(i+11), s=250)
+
+    # else:
+        
+        
+            
+            
+    for curr_coords in reward_coords:    
         if ax is None:
             plt.figure()
-            ax = plt.axes()
+            plt.axes()
         cmap = cm.get_cmap('tab20b')
         plt.scatter([x[0] for x in coord], [x[1] for x in coord], color =cmap(6), s=250)
-        for i, x in enumerate(reward_coords):
-            plt.scatter(x[0], x[1], color=cmap(i+11), s=250)
             # note that points[0:4] are my states: 
                 # reward_coords[1] = A - dark red
                 # reward_coords[2] = B - red
                 # reward_coords[3] = C - medium red
                 # reward_coords[4] = D - bright red           
-        plt.yticks(list(range(size_grid)))
-        plt.xticks(list(range(size_grid)))
-        plt.grid(True)
+        for i, x in enumerate(curr_coords):
+            plt.scatter(x[0], x[1], color=cmap(i+11), s=250)
+            plt.yticks(list(range(size_grid)))
+            plt.xticks(list(range(size_grid)))
+            plt.grid(True)
+            
+    reward_coords = reward_coords[0].tolist()
     return reward_coords
 
     

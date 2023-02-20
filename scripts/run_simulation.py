@@ -31,7 +31,7 @@ import seaborn as sns
 section_oneone = 1 # Create the task
 section_onetwo = 0 # Create a distribution of most common pathlengths
 
-section_twoone = 1 # Setting the Clocks and Location Matrix. 
+section_twoone = 0 # Setting the Clocks and Location Matrix. 
 section_twotwo = 0 # Setting the Clocks + locs but in 'real time' + HRF convolve
 section_twothree = 0 # Setting 0-phase clocks in 'real time'
 section_twofour = 0 # concatenate 400 HRF convolved clocks and PCA

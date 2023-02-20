@@ -148,8 +148,13 @@ def find_best_tasks(loop_no, no_columns, column_names):
         
     return df_clock, df_loc, task_configs, similarity_between
 
+
+
+
+
+# def optimise_0angle_clocks(permutations):
     
-    
+#     return optimal_settings, optimal_tasks, max_dissimilarity
 
     
 def corr_matrices(matrix_one, matrix_two, exclude_diag = True):
@@ -163,3 +168,13 @@ def corr_matrices(matrix_one, matrix_two, exclude_diag = True):
         diag_array_two = list(matrix_two[np.triu_indices(dimension)])
     coef = np.corrcoef(diag_array_one, diag_array_two)
     return coef
+
+
+
+
+
+
+
+
+
+

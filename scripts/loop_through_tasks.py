@@ -23,7 +23,7 @@ import seaborn as sns
 find_low_similarity_within = 0
 find_low_similarity_between = 0
 find_low_sim_zerophase_clocks = 1
-distr_zero_phase_clocks_optimal = 1
+distr_zero_phase_clocks_optimal = 0
 plot_optimal_paths = 0
 run_PCA_on_repetitions = 0
 
@@ -34,6 +34,7 @@ pathlengths = []
 all_pathlengths = []
 indices_test = []
 
+##################################################################
 
 ### Between Task RSMs.
 if find_low_similarity_between == 1:
@@ -48,6 +49,8 @@ if find_low_similarity_between == 1:
     filename = folder + time + sim[0:5] + file
     task_configs_opt.to_csv(filename)
 
+
+##################################################################
 
 ### Within one task config RSMs.
 if find_low_similarity_within == 1:   
@@ -97,20 +100,24 @@ if find_low_similarity_within == 1:
     if count > 0:
         save_task.to_csv(filename)
         
-        
+##################################################################        
 
 ## plot distribution of random configs for 0phase clocks and clocks
 # do this for both convoluted predictions and without 
 if find_low_sim_zerophase_clocks == 1:
     similarity_values = []
     similarity_values_hrf = []
+    # maximally_dissimilar = []
+    # maximally_dissimilar_hrf = []
+    countmax = 0
+    countmax_hrf = 0
     for count in range(0,10000):
         # section 1.1
         reward_coords = mc.simulation.grid.create_grid(plot = False)
         reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords, plotting = False)
         
         # section 2.2
-        secs_per_step = 2
+        secs_per_step = 3.8
         clocksm, neuroncl, clocks_over_time = mc.simulation.predictions.set_clocks_bytime_one_neurone(reshaped_visited_fields, all_stepnums, 3, secs_per_step)
         
         # now do the convolution
@@ -130,23 +137,76 @@ if find_low_sim_zerophase_clocks == 1:
         zero_clock_RSM_hrf = mc.simulation.RDMs.within_task_RDM(zero_phase_clocks_m_hrf, seconds)
         
         clock_RSM_hrf = mc.simulation.RDMs.within_task_RDM(clocks_over_time_hrf, seconds)        
-        similiarty_hrf = mc.simulation.RDMs.corr_matrices(zero_clock_RSM_hrf, clock_RSM_hrf)  
-        similarity_values_hrf.append(1 - similiarty_hrf[0,1])
+        similarity_hrf = mc.simulation.RDMs.corr_matrices(zero_clock_RSM_hrf, clock_RSM_hrf)  
+        similarity_values_hrf.append(1 - similarity_hrf[0,1])
         
         clock_RSM = mc.simulation.RDMs.within_task_RDM(clocks_over_time, seconds)  
-        similiarty = mc.simulation.RDMs.corr_matrices(zero_clock_RSM, clock_RSM)  
-        similarity_values.append(1 - similiarty[0,1])
+        similarity = mc.simulation.RDMs.corr_matrices(zero_clock_RSM, clock_RSM)  
+        similarity_values.append(1 - similarity [0,1])
+        
+        # # save those configurations that have are maximally dissimlar. 
+        # if similarity[0,1] <  0.75:          
+        #     path = pd.DataFrame(reshaped_visited_fields)
+        #     coef = pd.DataFrame(similarity[0])
+        #     rewards = pd.DataFrame(reward_coords)
+        #     if countmax == 0:
+        #         maximally_dissimilar = pd.concat([coef, path, rewards], axis = 1)
+        #     else: 
+        #         maximally_dissimilar = pd.concat([maximally_dissimilar, coef, path, rewards], axis = 1)
+        #     countmax += 1 
+            
+        # same for the HRF convolved ones.
+        if similarity_hrf[0,1] <  0.75:          
+            path_hrf = pd.DataFrame(reshaped_visited_fields)
+            coef_hrf = pd.DataFrame(similarity_hrf[0])
+            rewards_hrf = pd.DataFrame(reward_coords)
+            if countmax_hrf == 0:
+                maximally_dissimilar_hrf = pd.concat([coef_hrf, path_hrf, rewards_hrf], axis = 1)
+            else: 
+                maximally_dissimilar_hrf = pd.concat([maximally_dissimilar_hrf, coef_hrf, path_hrf, rewards_hrf], axis = 1)
+            countmax_hrf += 1 
+            
     
-    plt.figure()
-    ax = plt.axes()
-    plt.hist(similarity_values)
-    plt.gca().set(title='Variance clocks_raw beyond 0-phase-clocks (10.000 perms)', ylabel = ('frequency'), xlabel='1 - Similarity');
+    # # plot distribution.
+    # plt.figure()
+    # ax = plt.axes()
+    # plt.hist(similarity_values)
+    # plt.gca().set(title='Variance clocks_raw beyond 0-phase-clocks 10.000 perms)', ylabel = ('frequency'), xlabel='1 - Similarity');
+    # # and save.
+    # folder = '/Users/xpsy1114/Documents/projects/multiple_clocks/results/good_configs_0phase_with_clocks'
+    time = datetime.now().strftime("%Y%m%d-%H%M%S")
+    file = '.csv'
+    # filename = folder + time + file
+    # if countmax > 0:
+    #     maximally_dissimilar.to_csv(filename)
     
+    # same for the HRF one.  
+    # plot distribution.
     plt.figure()
     ax2 = plt.axes()
     plt.hist(similarity_values_hrf)
     plt.gca().set(title='Variance clocks_hrf beyond 0-phase-clocks (10.000 perms)', ylabel = ('frequency'), xlabel='1 - Similarity');
-    
+    # and save.
+    folder_hrf = '/Users/xpsy1114/Documents/projects/multiple_clocks/results/good_configs_0phase_with_clocks_hrf'
+    seconds = '_' + str(secs_per_step) + '_secs_per_step'
+    filename_hrf = folder_hrf + time + seconds + file 
+    if countmax_hrf > 0:
+        maximally_dissimilar_hrf.to_csv(filename_hrf)
+
+
+###########################################
+# optimise for low correlation between 0-angle-neurons and complete clocks.
+# use: 
+# 1. different grid sizes
+# 2. different times per step
+# 3. different amounts of reward
+
+
+
+
+
+
+
 
 ## plot distribution of correlation between RDM for 0phase clocks and clocks
 ## and use the configurations that work well in terms of space
@@ -181,7 +241,7 @@ if distr_zero_phase_clocks_optimal == 1:
     
     
     
-       
+##################################################################       
         
 # plot the optimal between-task configurations
 # run a PCA for these configurations
@@ -253,6 +313,8 @@ if plot_optimal_paths == 1:
     plt.title('10 decorrelated tasks, r = .244 between location and clocks')
      
     plt.show()
+
+##################################################################
 
 
 

@@ -1,0 +1,19 @@
+1.9341 	WARNING 	We strongly recommend you activate the PTB sound engine in PsychoPy prefs as the preferred audio engine. Its timing is vastly superior. Your prefs are currently set to use ['sounddevice', 'PTB', 'pyo', 'pygame'] (in that order).
+8.5085 	WARNING 	Couldn't measure a consistent frame rate!
+  - Is your graphics card set to sync to vertical blank?
+  - Are you running other processes on your computer?
+
+8.5089 	EXP 	Created window1 = Window(allowGUI=True, allowStencil=False, autoLog=True, backendConf=UNKNOWN, bitsMode=UNKNOWN, blendMode='avg', bpc=(8, 8, 8), color=array([0, 0, 0]), colorSpace='rgb', depthBits=8, fullscr=<method-wrapper '__getattribute__' of attributeSetter object at 0x7fd358b883a0>, gamma=None, gammaErrorPolicy='raise', lms=UNKNOWN, monitor=<psychopy.monitors.calibTools.Monitor object at 0x7fd31455ba00>, multiSample=False, name='window1', numSamples=2, pos=[432.0, 279.25], screen=0, size=array([3456, 2234]), stencilBits=0, stereo=False, units='height', useFBO=True, useRetina=True, viewOri=0.0, viewPos=None, viewScale=None, waitBlanking=True, winType='pyglet')
+8.5090 	EXP 	window1: mouseVisible = True
+8.5090 	EXP 	window1: mouseVisible = True
+8.5091 	EXP 	window1: Attempting to measure frame rate of screen (0) ...
+8.5091 	EXP 	window1: recordFrameIntervals = False
+8.5990 	EXP 	window1: recordFrameIntervals = True
+9.4253 	WARNING 	Couldn't measure a consistent frame rate!
+  - Is your graphics card set to sync to vertical blank?
+  - Are you running other processes on your computer?
+
+12.8266 	EXP 	Created grid_lines = ImageStim(__class__=<class 'psychopy.visual.image.ImageStim'>, anchor=('center', 'center'), autoLog=True, color=array([1, 1, 1]), colorSpace='rgb', contrast=1.0, depth=0.0, flipHoriz=False, flipVert=False, image='grid.png', interpolate=True, mask=None, maskParams=None, name='grid_lines', opacity=1.0, ori=0.0, pos=array([0., 0.]), size=array([0.6, 0.6]), texRes=128.0, units='height', win=Window(...))
+13.0935 	EXP 	Created target_reward = ImageStim(__class__=<class 'psychopy.visual.image.ImageStim'>, anchor=('center', 'center'), autoLog=True, color=array([1, 1, 1]), colorSpace='rgb', contrast=1.0, depth=-1.0, flipHoriz=False, flipVert=False, image='coffee.png', interpolate=True, mask=None, maskParams=None, name='target_reward', opacity=1.0, ori=0.0, pos=array([0., 0.]), size=array([0.12, 0.12]), texRes=128.0, units='height', win=Window(...))
+13.1703 	EXP 	Created image = ImageStim(__class__=<class 'psychopy.visual.image.ImageStim'>, anchor=('center', 'center'), autoLog=True, color=array([1, 1, 1]), colorSpace='rgb', contrast=1.0, depth=0.0, flipHoriz=False, flipVert=False, image='grid.png', interpolate=True, mask=None, maskParams=None, name='image', opacity=1.0, ori=0.0, pos=array([0., 0.]), size=array([0.5, 0.5]), texRes=128.0, units='height', win=Window(...))
+13.1858 	EXP 	window1: mouseVisible = True

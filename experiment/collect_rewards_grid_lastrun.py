@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 This experiment was created using PsychoPy3 Experiment Builder (v2022.2.5),
-    on Thu Feb 16 16:42:33 2023
+    on Fri Feb 17 15:05:31 2023
 If you publish work using this script the most relevant publication is:
 
     Peirce J, Gray JR, Simpson S, MacAskill M, Höchenberger R, Sogo H, Kastman E, Lindeløv JK. (2019) 
@@ -113,6 +113,25 @@ target_reward = visual.ImageStim(
     flipHoriz=False, flipVert=False,
     texRes=128.0, interpolate=True, depth=-1.0)
 key_next = keyboard.Keyboard()
+
+# --- Initialize components for Routine "walk_to_reward" ---
+grid_walk = visual.ImageStim(
+    win=win,
+    name='grid_walk', 
+    image='grid.png', mask=None, anchor='center',
+    ori=0.0, pos=(0, 0), size=(0.5, 0.5),
+    color=[1,1,1], colorSpace='rgb', opacity=None,
+    flipHoriz=False, flipVert=False,
+    texRes=128.0, interpolate=True, depth=0.0)
+curr_pos = visual.ImageStim(
+    win=win,
+    name='curr_pos', 
+    image='footprints.png', mask=None, anchor='center',
+    ori=0.0, pos=location, size=(0.12, 0.12),
+    color=[1,1,1], colorSpace='rgb', opacity=None,
+    flipHoriz=False, flipVert=False,
+    texRes=128.0, interpolate=True, depth=-1.0)
+next_step = keyboard.Keyboard()
 
 # Create some handy timers
 globalClock = core.Clock()  # to track the time since experiment started
@@ -256,6 +275,136 @@ for thisTrial in trials:
     thisExp.nextEntry()
     
 # completed 1.0 repeats of 'trials'
+
+
+# set up handler to look after randomisation of conditions etc
+trials_2 = data.TrialHandler(nReps=1.0, method='sequential', 
+    extraInfo=expInfo, originPath=-1,
+    trialList=data.importConditions('conditions.xlsx'),
+    seed=None, name='trials_2')
+thisExp.addLoop(trials_2)  # add the loop to the experiment
+thisTrial_2 = trials_2.trialList[0]  # so we can initialise stimuli with some values
+# abbreviate parameter names if possible (e.g. rgb = thisTrial_2.rgb)
+if thisTrial_2 != None:
+    for paramName in thisTrial_2:
+        exec('{} = thisTrial_2[paramName]'.format(paramName))
+
+for thisTrial_2 in trials_2:
+    currentLoop = trials_2
+    # abbreviate parameter names if possible (e.g. rgb = thisTrial_2.rgb)
+    if thisTrial_2 != None:
+        for paramName in thisTrial_2:
+            exec('{} = thisTrial_2[paramName]'.format(paramName))
+    
+    # --- Prepare to start Routine "walk_to_reward" ---
+    continueRoutine = True
+    routineForceEnded = False
+    # update component parameters for each repeat
+    next_step.keys = []
+    next_step.rt = []
+    _next_step_allKeys = []
+    # keep track of which components have finished
+    walk_to_rewardComponents = [grid_walk, curr_pos, next_step]
+    for thisComponent in walk_to_rewardComponents:
+        thisComponent.tStart = None
+        thisComponent.tStop = None
+        thisComponent.tStartRefresh = None
+        thisComponent.tStopRefresh = None
+        if hasattr(thisComponent, 'status'):
+            thisComponent.status = NOT_STARTED
+    # reset timers
+    t = 0
+    _timeToFirstFrame = win.getFutureFlipTime(clock="now")
+    frameN = -1
+    
+    # --- Run Routine "walk_to_reward" ---
+    while continueRoutine:
+        # get current time
+        t = routineTimer.getTime()
+        tThisFlip = win.getFutureFlipTime(clock=routineTimer)
+        tThisFlipGlobal = win.getFutureFlipTime(clock=None)
+        frameN = frameN + 1  # number of completed frames (so 0 is the first frame)
+        # update/draw components on each frame
+        
+        # *grid_walk* updates
+        if grid_walk.status == NOT_STARTED and tThisFlip >= 0.0-frameTolerance:
+            # keep track of start time/frame for later
+            grid_walk.frameNStart = frameN  # exact frame index
+            grid_walk.tStart = t  # local t and not account for scr refresh
+            grid_walk.tStartRefresh = tThisFlipGlobal  # on global time
+            win.timeOnFlip(grid_walk, 'tStartRefresh')  # time at next scr refresh
+            # add timestamp to datafile
+            thisExp.timestampOnFlip(win, 'grid_walk.started')
+            grid_walk.setAutoDraw(True)
+        
+        # *curr_pos* updates
+        if curr_pos.status == NOT_STARTED and tThisFlip >= 0.0-frameTolerance:
+            # keep track of start time/frame for later
+            curr_pos.frameNStart = frameN  # exact frame index
+            curr_pos.tStart = t  # local t and not account for scr refresh
+            curr_pos.tStartRefresh = tThisFlipGlobal  # on global time
+            win.timeOnFlip(curr_pos, 'tStartRefresh')  # time at next scr refresh
+            # add timestamp to datafile
+            thisExp.timestampOnFlip(win, 'curr_pos.started')
+            curr_pos.setAutoDraw(True)
+        
+        # *next_step* updates
+        waitOnFlip = False
+        if next_step.status == NOT_STARTED and tThisFlip >= 0.0-frameTolerance:
+            # keep track of start time/frame for later
+            next_step.frameNStart = frameN  # exact frame index
+            next_step.tStart = t  # local t and not account for scr refresh
+            next_step.tStartRefresh = tThisFlipGlobal  # on global time
+            win.timeOnFlip(next_step, 'tStartRefresh')  # time at next scr refresh
+            # add timestamp to datafile
+            thisExp.timestampOnFlip(win, 'next_step.started')
+            next_step.status = STARTED
+            # keyboard checking is just starting
+            waitOnFlip = True
+            win.callOnFlip(next_step.clock.reset)  # t=0 on next screen flip
+            win.callOnFlip(next_step.clearEvents, eventType='keyboard')  # clear events on next screen flip
+        if next_step.status == STARTED and not waitOnFlip:
+            theseKeys = next_step.getKeys(keyList=['y','n','left','right','space'], waitRelease=False)
+            _next_step_allKeys.extend(theseKeys)
+            if len(_next_step_allKeys):
+                next_step.keys = _next_step_allKeys[-1].name  # just the last key pressed
+                next_step.rt = _next_step_allKeys[-1].rt
+                # a response ends the routine
+                continueRoutine = False
+        
+        # check for quit (typically the Esc key)
+        if endExpNow or defaultKeyboard.getKeys(keyList=["escape"]):
+            core.quit()
+        
+        # check if all components have finished
+        if not continueRoutine:  # a component has requested a forced-end of Routine
+            routineForceEnded = True
+            break
+        continueRoutine = False  # will revert to True if at least one component still running
+        for thisComponent in walk_to_rewardComponents:
+            if hasattr(thisComponent, "status") and thisComponent.status != FINISHED:
+                continueRoutine = True
+                break  # at least one component has not yet finished
+        
+        # refresh the screen
+        if continueRoutine:  # don't flip if this routine is over or we'll get a blank screen
+            win.flip()
+    
+    # --- Ending Routine "walk_to_reward" ---
+    for thisComponent in walk_to_rewardComponents:
+        if hasattr(thisComponent, "setAutoDraw"):
+            thisComponent.setAutoDraw(False)
+    # check responses
+    if next_step.keys in ['', [], None]:  # No response was made
+        next_step.keys = None
+    trials_2.addData('next_step.keys',next_step.keys)
+    if next_step.keys != None:  # we had a response
+        trials_2.addData('next_step.rt', next_step.rt)
+    # the Routine "walk_to_reward" was not non-slip safe, so reset the non-slip timer
+    routineTimer.reset()
+    thisExp.nextEntry()
+    
+# completed 1.0 repeats of 'trials_2'
 
 
 # --- End experiment ---
