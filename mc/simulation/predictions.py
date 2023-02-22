@@ -38,7 +38,7 @@ import scipy.signal
 
 # input is: reshaped_visited_fields and all_stepnums from mc.simulation.grid.walk_paths(reward_coords)
 
-def set_clocks(walked_path, step_number, phases, peak_activity = 1, neighbour_activation = 0.5):
+def set_clocks(walked_path, step_number, phases = 3, peak_activity = 1, neighbour_activation = 0.5, size_grid = 3):
     # import pdb; pdb.set_trace()
     n_states = len(step_number)
     n_columns = phases*n_states
@@ -46,7 +46,8 @@ def set_clocks(walked_path, step_number, phases, peak_activity = 1, neighbour_ac
     # every field (9 fields) -> can be the anchor of 3 phase clocks
     # -> of 12 neurons each. 9 x 3 x 12 
     # to make it easy, the number of neurons = number of one complete loop (12)
-    n_rows = 9*phases*(phases*n_states)    
+    no_fields = size_grid*size_grid
+    n_rows = no_fields*phases*(phases*n_states)    
     clocks_matrix = np.empty([n_rows,n_columns]) # fields times phases.
     clocks_matrix[:] = np.nan
     phase_loop = list(range(0,phases))
@@ -88,8 +89,8 @@ def set_clocks(walked_path, step_number, phases, peak_activity = 1, neighbour_ac
             for phase, step in zip(phase_loop, curr_path):
                 x = step[0]
                 y = step[1]
-                anchor_field = x + y*3
-                anchor_phase_start = (anchor_field * n_columns * 3) + (phase * n_columns)
+                anchor_field = x + y*size_grid
+                anchor_phase_start = (anchor_field * n_columns * phases) + (phase * n_columns)
                 initiate_at_phase = all_phases[phase+(count_paths*phases)]
                 # check if clock has been initiated already
                 is_initiated = clocks_matrix[anchor_phase_start, 0]
@@ -122,7 +123,9 @@ def set_clocks(walked_path, step_number, phases, peak_activity = 1, neighbour_ac
 
 
 # input is: reshaped_visited_fields and all_stepnums from mc.simulation.grid.walk_paths(reward_coords)
-def set_clocks_bytime_one_neurone(walked_path, step_number, phases, step_time):
+def set_clocks_bytime_one_neurone(walked_path, step_number, step_time, grid_size = 3, phases=3):
+    # CAREFUL! step_time needs to be in 100ms scale. 1.5 secs eg would be 15
+    
     # for simplicity, I will just use the same number of neurons as before.
     # this is a bit annoying though because now I can't propagate the signal
     # by 1 neuron per step, because the step lengths will be different.
@@ -136,7 +139,8 @@ def set_clocks_bytime_one_neurone(walked_path, step_number, phases, step_time):
     n_states = len(step_number)
     n_columns = total_steps    
     # and number of rows is locations*phase*neurons per clock
-    n_rows = 9*phases  
+    no_fields = grid_size*grid_size
+    n_rows = no_fields*phases  
     clocks_matrix = np.empty([n_rows,n_columns]) # fields times phases.
     clocks_matrix[:] = np.nan # 324 x stepnum (e.g. 7)  
     clock_neurons_prep = np.zeros([phases*n_states,n_columns])
@@ -176,18 +180,18 @@ def set_clocks_bytime_one_neurone(walked_path, step_number, phases, step_time):
             for currstep, (phase, step) in enumerate(zip(phase_loop, curr_path)):
                 x = step[0]
                 y = step[1]
-                fieldnumber = x + y*3
+                fieldnumber = x + y*grid_size
                 # fieldnumber tells me the current anchor.
                 # first fill in a dummy-matrix where each clock only has one neuron. 
                 if currstep >= step_number[count_paths]:
-                    clocks_matrix[(fieldnumber * 3) + phase ,(cumsumsteps[count_paths]-1)] = 1  
-                    clock_neurons_prep[phase+(count_paths*3),(cumsumsteps[count_paths]-1)] = 1
+                    clocks_matrix[(fieldnumber * phases) + phase ,(cumsumsteps[count_paths]-1)] = 1  
+                    clock_neurons_prep[phase+(count_paths*phases),(cumsumsteps[count_paths]-1)] = 1
                 elif count_paths > 0: 
-                    clocks_matrix[(fieldnumber * 3) + phase ,currstep+cumsumsteps[count_paths-1]] = 1
-                    clock_neurons_prep[phase+(count_paths*3),currstep+cumsumsteps[count_paths-1]] = 1
+                    clocks_matrix[(fieldnumber * phases) + phase ,currstep+cumsumsteps[count_paths-1]] = 1
+                    clock_neurons_prep[phase+(count_paths*phases),currstep+cumsumsteps[count_paths-1]] = 1
                 elif count_paths == 0:
-                    clocks_matrix[(fieldnumber * 3) + phase ,currstep] = 1  
-                    clock_neurons_prep[phase+(count_paths*3),currstep] = 1
+                    clocks_matrix[(fieldnumber * phases) + phase ,currstep] = 1  
+                    clock_neurons_prep[phase+(count_paths*phases),currstep] = 1
                 #location_matrix[fieldnumber, ((phases*count_paths)+phase)] = 1 # currstep = phases
             phase_loop = list(range(0,phases)) 
             
@@ -216,7 +220,7 @@ def set_clocks_bytime_one_neurone(walked_path, step_number, phases, step_time):
                 second_split = clock_neurons[:, (n_columns-column):None]
                 fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
                 # DOUBLE CHECK IF THE SLICING WORKS ALRIGHT!!               
-                clocks_per_step[row:(row+12), :] = fill_clock_neurons
+                clocks_per_step[row:(row+(len(clock_neurons_prep))), :] = fill_clock_neurons
             elif (clocks_per_step_dummy[row,column] == 1):
                 # loop through the clocks neurons and only copy the ones
                 first_split = clock_neurons[:, 0:(n_columns-column)]
@@ -233,11 +237,11 @@ def set_clocks_bytime_one_neurone(walked_path, step_number, phases, step_time):
     return clocks_matrix, clock_neurons_prep, clocks_per_sec
                 
 
-def zero_phase_clocks_by_time(clocks_per_sec, step_number, phases):
+def zero_phase_clocks_by_time(clocks_per_sec, step_number, grid_size = 3, phases = 3):
     #import pdb; pdb.set_trace()
     n_states = len(step_number)
     neuron_number = n_states*phases
-    field_number = 9
+    field_number = grid_size*grid_size
     clock_number = phases*field_number
     n_columns = len(clocks_per_sec[0])
     zero_phase_clocks_matrix = np.zeros([clock_number,n_columns])
@@ -296,11 +300,12 @@ def convolve_with_hrf(clocks_per_sec, step_number, step_time, plotting = True):
 # 4 steps = 5 fields → leave current field as is, 2nd is early, 3rd is early, 4th is late, 5th is reward
 
 # input is: reshaped_visited_fields and all_stepnums from mc.simulation.grid.walk_paths(reward_coords)
-def set_location_matrix(walked_path, step_number, phases, neighbour_activation = 0):
+def set_location_matrix(walked_path, step_number, phases, size_grid = 3):
     #import pdb; pdb.set_trace()
     n_states = len(step_number)
     n_columns = phases*n_states
-    location_matrix = np.zeros([9,n_columns]) # fields times phases.
+    no_fields = size_grid*size_grid
+    location_matrix = np.zeros([no_fields,n_columns]) # fields times phases.
     phase_loop = list(range(0,phases))
     cumsumsteps = np.cumsum(step_number)
     total_steps = cumsumsteps[-1] # DOUBLE CHECK IF THIS IS TRUE
@@ -338,44 +343,46 @@ def set_location_matrix(walked_path, step_number, phases, neighbour_activation =
             for phase, step in zip(phase_loop, curr_path):
                 x = step[0]
                 y = step[1]
-                fieldnumber = x + y*3
+                fieldnumber = x + y* size_grid
                 location_matrix[fieldnumber, ((phases*count_paths)+phase)] = 1 # currstep = phases
             phase_loop = list(range(0,phases))
     return location_matrix, total_steps  
 
 
 
-## BAUSTELLE!!! ACHTUNG!!!
-##
-##
-
-def set_location_by_time(walked_path, step_number, step_time):
+def set_location_by_time(walked_path, step_number, step_time, grid_size = 3):
     # import pdb; pdb.set_trace()   
     cumsumsteps = np.cumsum(step_number)
     total_steps = cumsumsteps[-1]    
-    n_columns = total_steps    
-    n_rows = 9
+    n_columns = total_steps   
+    n_rows = grid_size*grid_size
     loc_matrix = np.empty([n_rows,n_columns]) # fields times steps
     loc_matrix[:] = np.nan
     for i in range(0, total_steps):
         curr_field = walked_path[i+1] # cut the first field because this is the reward field
         x = curr_field[0]
         y = curr_field[1]
-        fieldnumber = x + y*3
+        fieldnumber = x + y* grid_size
         loc_matrix[fieldnumber, :] = 0
         loc_matrix[fieldnumber, i] = 1
     loc_per_sec = np.repeat(loc_matrix, repeats = step_time, axis=1)    
     return loc_matrix, loc_per_sec
 
-##
-##
-## BAUSTELLEN ENDE!!!
 
     
-    
-
+#
+#
 # PART 2: PLOTTING
 # create functions to plot the matrices
+
+def plot_without_legends(any_matrix):
+    # import pdb; pdb.set_trace()
+    plt.figure()
+    fig, ax = plt.subplots()
+    plt.imshow(any_matrix, aspect = 'auto') 
+    ax.xlabel = 'neural activity over some timescale'
+    ax.ylabel = 'neurons'
+    
 
 def plotclocks(clocks_matrix):
     # import pdb; pdb.set_trace()
@@ -420,7 +427,6 @@ def plotclock_pertime(clocks_matrix, step_time, all_stepnums):
     plt.figure()
     fig, ax = plt.subplots()
     plt.imshow(clocks_matrix, aspect = 'auto') 
-    ax.set_xticks([2,5,8,11])
     cumsumsteps = np.cumsum(all_stepnums)
     total_steps = cumsumsteps[-1]    
     xticks_no = np.arange(0,step_time*total_steps,10) #100 ms steps
@@ -431,6 +437,26 @@ def plotclock_pertime(clocks_matrix, step_time, all_stepnums):
     ax.set_yticks([0,36,72,108,144,180,216,252,288])
     ax.set_yticklabels(['anchor 1', 'anchor 2','anchor 3', 'anchor 4', 'anchor 5', 'anchor 6', 'anchor 7', 'anchor 8', 'anchor 9'])
     #return fig
+    
+    
+def plot_phaseloc_pertime(phase_loc_matrix, step_time, all_stepnums):
+    # import pdb; pdb.set_trace()
+    plt.figure()
+    fig, ax = plt.subplots()
+    plt.imshow(phase_loc_matrix, aspect = 'auto') 
+    cumsumsteps = np.cumsum(all_stepnums)
+    total_steps = cumsumsteps[-1]    
+    xticks_no = np.arange(0,step_time*total_steps,10) #100 ms steps
+    ax.set_xticks(xticks_no)
+    plt.xlabel('scale is in 100 ms (10 = 1 sec)')
+    # ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back to r1'])
+    plt.xticks(rotation = 45)
+    ax.set_yticks([0,3,6,9,12,15,18,21,24])
+    ax.set_yticklabels(['anchor 1', 'anchor 2','anchor 3', 'anchor 4', 'anchor 5', 'anchor 6', 'anchor 7', 'anchor 8', 'anchor 9'])
+    #return fig
+    
+    
+    
     
 def plot_one_anchor_all_clocks_pertime(one_anchor_matrix, step_time, all_stepnums):
     # import pdb; pdb.set_trace()

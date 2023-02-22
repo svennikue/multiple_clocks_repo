@@ -15,7 +15,7 @@ import numpy as np
 import mc
 
 
-def within_task_RDM(activation_matrix, column_names,ax=None, plotting = False):
+def within_task_RDM(activation_matrix, column_names, ax=None, plotting = False):
     # import pdb; pdb.set_trace()
     dataframe = pd.DataFrame(activation_matrix)
     dataframe.fillna(0)

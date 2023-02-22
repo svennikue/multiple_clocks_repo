@@ -32,7 +32,7 @@ section_oneone = 1 # Create the task
 section_onetwo = 0 # Create a distribution of most common pathlengths
 
 section_twoone = 0 # Setting the Clocks and Location Matrix. 
-section_twotwo = 0 # Setting the Clocks + locs but in 'real time' + HRF convolve
+section_twotwo = 1 # Setting the Clocks + locs but in 'real time' + HRF convolve
 section_twothree = 0 # Setting 0-phase clocks in 'real time'
 section_twofour = 0 # concatenate 400 HRF convolved clocks and PCA
 
@@ -143,7 +143,7 @@ if section_twotwo == 1:
 ##
 if section_twothree == 1:
     zero_phase_clocks_m = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_over_time_hrf, all_stepnums, 3)
-    print(zero_phase_clocks_m)
+    mc.simulation.predictions.plot_phaseloc_pertime(zero_phase_clocks_m, deci_secs_per_step, all_stepnums)
 
     # next step: correlate these matrices with the full clock matrix!!!
 
@@ -301,6 +301,7 @@ if section_fourone == 1:
 
 # needs section 1.1, 2.2 and 2.3
 if section_fourtwo == 1:
+    # create a list for the column names
     counter = list(range(0,len(clocks_over_time[0])))
     seconds = counter.copy()
     for i in counter:
