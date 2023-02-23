@@ -206,13 +206,14 @@ def set_clocks_bytime_one_neurone(walked_path, step_number, step_time, grid_size
         clocks_per_step_dummy[row*phases*n_states,:]= clocks_matrix[row,:]
         
     # copy the neuron per clock firing pattern
+    # I will manipulate clocks_per_step, and use clocks_per_step.dummy as control to check for overwritten stuff.
     clocks_per_step = clocks_per_step_dummy.copy()
     
     # now loop through all columns and rows and input clock-neurons.   
     for column in range(0, len(clocks_per_step[0])):
         for row in range(0, len(clocks_per_step)):
             clock_neurons = clock_neurons_prep.copy()
-            # first test if clocks_per step also has a 1 there -> if not, then it was overwritten!
+            # first test if clocks_per step also has a 1 at the current position -> if not, it will be overwritten!
             if (clocks_per_step_dummy[row,column] == 1) and (clocks_per_step[row,column] == 1):
                 # stick the neuron activation in.
                 # but first slice the neuron matrix correctly
@@ -363,8 +364,13 @@ def set_location_by_time(walked_path, step_number, step_time, grid_size = 3):
         x = curr_field[0]
         y = curr_field[1]
         fieldnumber = x + y* grid_size
-        loc_matrix[fieldnumber, :] = 0
-        loc_matrix[fieldnumber, i] = 1
+        # test if this has already been activated!
+        if loc_matrix[fieldnumber, i] == 0:
+            # if so, then don't overwrite it.
+            loc_matrix[fieldnumber, i] = 1
+        else:   
+            loc_matrix[fieldnumber, :] = 0
+            loc_matrix[fieldnumber, i] = 1
     loc_per_sec = np.repeat(loc_matrix, repeats = step_time, axis=1)    
     return loc_matrix, loc_per_sec
 
@@ -375,13 +381,25 @@ def set_location_by_time(walked_path, step_number, step_time, grid_size = 3):
 # PART 2: PLOTTING
 # create functions to plot the matrices
 
-def plot_without_legends(any_matrix):
+def plot_without_legends(any_matrix, prediction = None,  hrf = None, grid_size = None, step_time = None, reward_no = None, perms = None):
     # import pdb; pdb.set_trace()
     plt.figure()
     fig, ax = plt.subplots()
     plt.imshow(any_matrix, aspect = 'auto') 
     ax.xlabel = 'neural activity over some timescale'
     ax.ylabel = 'neurons'
+    if 'hrf' in locals():
+        hrf_set = '_hrf=' + str(hrf)
+    if 'grid_size' in locals():
+        grid_set = '_gridsize_' + str(grid_size) + 'x' + str(grid_size)
+    if 'step_time' in locals():
+        time_set = '_' + str(step_time) + 'ms_per_step_'
+    if 'reward_no' in locals():
+        rew_set = str(reward_no) + '_rewards_' 
+    if 'perms' in locals():
+        perm_set = '_' + str(perms) + '_perms'
+        plt.title('settings:_' + prediction + hrf_set + grid_set + time_set + rew_set + perm_set)
+        # ax.title = 'settings:_' + prediction + hrf_set + grid_set + time_set + grid_set + perm_set
     
 
 def plotclocks(clocks_matrix):

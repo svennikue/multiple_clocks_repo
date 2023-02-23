@@ -218,26 +218,33 @@ if section_one_four == 1:
 if section_two_one == 1:
     clock_prediction = 'clocks'
     phase_loc_prediction = 'phase_loc'
-    # similarity, walk_coords, reward_coords = mc.simulation.optimise.optimise_task_for(clock_prediction, phase_loc_prediction, perms = 100, plot = False)
-    # plot that shit
-    grid_size = 4
-    step_time = 15
-    reward_no = 4
+    similarity, walk_coords, reward_coords = mc.simulation.optimise.optimise_task_for(clock_prediction, phase_loc_prediction, hrf = True, grid_size = 4, reward_no= 4, perms = 10000, plot = True)
+    # walk, steps_per_walk = mc.simulation.grid.walk_paths(reward_coords, size_grid= 4, plotting = True)
+
+    # just in case I want to test the individual functions, use:
+    # grid_size = 4
+    # step_time = 15
+    # reward_no = 4
+    # perms = 10
+    # hrf = True
     
-    rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = True)
-    walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid_size, plotting = True)
     
-    # check if my location model works with these settings
-    locm, location_model = mc.simulation.predictions.set_location_by_time(walk, steps_per_walk, step_time, grid_size)
-    mc.simulation.predictions.plot_without_legends(location_model)
     
-    # check if my clock model works with these settings
-    clocksm, neuroncl, clocks_model = mc.simulation.predictions.set_clocks_bytime_one_neurone(walk, steps_per_walk, step_time, grid_size)
-    mc.simulation.predictions.plot_without_legends(clocks_model)
+    # rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False)
+    #walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid_size, plotting = False)
     
-    # check if my phaseloc model work with these settings
-    phase_loc_model = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_model, steps_per_walk, grid_size)
-    mc.simulation.predictions.plot_without_legends(phase_loc_model)
+    # # ok location works.
+    # locm, location_model = mc.simulation.predictions.set_location_by_time(walk, steps_per_walk, step_time, grid_size)
+    # mc.simulation.predictions.plot_without_legends(location_model)
+    
+    # # ok I believe it works.
+    # clocksm, neuroncl, clocks_model = mc.simulation.predictions.set_clocks_bytime_one_neurone(walk, steps_per_walk, step_time, grid_size)
+    # mc.simulation.predictions.plot_without_legends(clocks_model, 'clocks_model', hrf, grid_size, step_time, reward_no, perms)
+    # mc.simulation.predictions.plot_without_legends(clocks_model)
+    
+    # # ok I believe it works.
+    # phase_loc_model = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_model, steps_per_walk, grid_size)
+    # mc.simulation.predictions.plot_without_legends(phase_loc_model)
     
     
 
