@@ -17,6 +17,8 @@ This script includes optimisation function for different means and with differen
 
 import mc
 from matplotlib import pyplot as plt
+import pandas as pd
+import numpy as np
 
 
 def optimise_task_for(prediction_one, prediction_two, hrf = True, grid_size = 3, step_time = 15, reward_no = 4, perms = 1, plot = False):
@@ -38,6 +40,9 @@ def optimise_task_for(prediction_one, prediction_two, hrf = True, grid_size = 3,
     # 4. change the task configuration, do steps 2-3 and compare 
     # prep plot
     similarity_values = []
+    countgood_corr = 0
+    best_reward_coords = np.zeros(reward_no)
+    maximally_dissimilar = []
     
     for perm_no in range(perms):
         # 1. create a task configuration
@@ -115,13 +120,35 @@ def optimise_task_for(prediction_one, prediction_two, hrf = True, grid_size = 3,
                 best_rewards = rew_coords[:]
                 best_model_one = model_one[:]
                 best_model_two = model_two[:]
+        
+        # save the configurations if the similarity is really good.
+        # save those configurations that have are maximally dissimlar. 
+        if similarity[0,1] <  0.70:   
+            path = pd.DataFrame(walk)
+            coef = pd.DataFrame(similarity[0]) 
+            rewards = pd.DataFrame(rew_coords)
+            if countgood_corr == 0:
+                # to save as .csv file
+                maximally_dissimilar = pd.concat([coef, path, rewards], axis = 1)
+                # this is to have the coords in a np file in py
+                temp_best_reward_coords = np.array(rew_coords)
+                best_reward_coords = np.expand_dims(temp_best_reward_coords, axis = 0)
+            else:
+                maximally_dissimilar = pd.concat([maximally_dissimilar, coef, path, rewards], axis = 1)
+                # best_reward_coords = np.stack([best_reward_coords, np.array(rew_coords)])     
+                # this is to have the coords in a np file in py
+                curr_coords = np.array(rew_coords)
+                best_reward_coords = np.concatenate([curr_coords.reshape([1, curr_coords.shape[0], curr_coords.shape[1]]), best_reward_coords], axis=0)
+                #best_reward_coords = np.stack([best_reward_coords, np.array(reward_coords)])
+            countgood_corr += 1 
+            
     
     if plot == True:
         # include the settings on the graps
-        mc.simulation.predictions.plot_without_legends(model_one, 'clocks_model', hrf, grid_size, step_time, reward_no, perms)
-        mc.simulation.predictions.plot_without_legends(model_two, 'phase_loc_model', hrf, grid_size, step_time, reward_no, perms)
+        mc.simulation.predictions.plot_without_legends(best_model_one, 'clocks_model', hrf, grid_size, step_time, reward_no, perms)
+        mc.simulation.predictions.plot_without_legends(best_model_two, 'phase_loc_model', hrf, grid_size, step_time, reward_no, perms)
         
-        walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid_size, plotting = True)
+        walk, steps_per_walk = mc.simulation.grid.walk_paths(best_rewards, grid_size, plotting = True)
         # might also be nice to plot the distribution of correlation values for these settings...
         plt.figure()
         ax2 = plt.axes()
@@ -134,7 +161,7 @@ def optimise_task_for(prediction_one, prediction_two, hrf = True, grid_size = 3,
         
         
 
-    return best_sim_value, best_walk, best_rewards
+    return best_sim_value, best_walk, best_rewards, best_reward_coords, maximally_dissimilar
 
         
         

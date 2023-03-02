@@ -28,8 +28,11 @@ section_one_two = 0 # plotting 0-angle and clocks
 section_one_three = 0 # 0-angle and clocks, convolved with HRF
 section_one_four = 0 # plotting 0-angle and clocks, convolved with HRF
 
-## now section 2: optimise more flexibly.
-section_two_one = 1 # playing around with different task parameters (steptime, gridsize, reward amount)
+## now section 2: optimise with more flexibly.
+# playing around with different task parameters (steptime, gridsize, reward amount)
+section_two_one = 0 # optimise similarities between different models over many permutations.
+section_two_two = 1 # find out if parameters work, but only one run.
+
 
 ##############################
 ##### SECTION 1 ##############
@@ -213,41 +216,63 @@ if section_one_four == 1:
 # 2. different times per step
 # 3. different amounts of reward
 
-# use HRF always, because that's the one that I am ultimately interested in.
 
+# optimise similarities between different models over many permutations.
 if section_two_one == 1:
     clock_prediction = 'clocks'
     phase_loc_prediction = 'phase_loc'
-    similarity, walk_coords, reward_coords = mc.simulation.optimise.optimise_task_for(clock_prediction, phase_loc_prediction, hrf = True, grid_size = 4, reward_no= 4, perms = 10000, plot = True)
-    # walk, steps_per_walk = mc.simulation.grid.walk_paths(reward_coords, size_grid= 4, plotting = True)
+    
+    similarity, walk_coords, reward_coords, best_rew_collection, overview_dissimilar_confs = mc.simulation.optimise.optimise_task_for(clock_prediction, phase_loc_prediction, hrf = True, grid_size = 4, step_time= 10, reward_no= 4, perms = 5000, plot = True)
+    
+ 
+    
+# OK ALSO TRY IF SHORT PATHS ARE SOMEHOW SPECIAL??? USE THE TABLE I JUST SAVED! 
+    
+# find out if parameters work, but only one run.
+if section_two_two == 1:
 
     # just in case I want to test the individual functions, use:
-    # grid_size = 4
-    # step_time = 15
-    # reward_no = 4
-    # perms = 10
-    # hrf = True
-    
-    
+    grid_size = 4
+    step_time = 10
+    reward_no = 5
+    perms = 10
+    hrf = True
     
     # rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False)
-    #walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid_size, plotting = False)
     
-    # # ok location works.
-    # locm, location_model = mc.simulation.predictions.set_location_by_time(walk, steps_per_walk, step_time, grid_size)
-    # mc.simulation.predictions.plot_without_legends(location_model)
+    # alternativelty, create a reward vector yourself:
+    rew_coords = [[0,0], [0,1], [0,3], [1,1], [3,3]] #this was weirdely only .83 or so
     
-    # # ok I believe it works.
-    # clocksm, neuroncl, clocks_model = mc.simulation.predictions.set_clocks_bytime_one_neurone(walk, steps_per_walk, step_time, grid_size)
-    # mc.simulation.predictions.plot_without_legends(clocks_model, 'clocks_model', hrf, grid_size, step_time, reward_no, perms)
-    # mc.simulation.predictions.plot_without_legends(clocks_model)
+    walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid_size, plotting = True)
     
-    # # ok I believe it works.
-    # phase_loc_model = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_model, steps_per_walk, grid_size)
-    # mc.simulation.predictions.plot_without_legends(phase_loc_model)
+    # ok location works.
+    locm, location_model = mc.simulation.predictions.set_location_by_time(walk, steps_per_walk, step_time, grid_size)
+    mc.simulation.predictions.plot_without_legends(location_model, 'location_model', hrf, grid_size, step_time, reward_no, perms)
     
-    
+    # ok I believe it works.
+    clocksm, neuroncl, clocks_model = mc.simulation.predictions.set_clocks_bytime_one_neurone(walk, steps_per_walk, step_time, grid_size)
+    mc.simulation.predictions.plot_without_legends(clocks_model, 'clocks_model', hrf, grid_size, step_time, reward_no, perms)
 
+    # ok I believe it works.
+    phase_loc_model = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_model, steps_per_walk, grid_size)
+    mc.simulation.predictions.plot_without_legends(phase_loc_model, 'phase_loc_model', hrf, grid_size, step_time, reward_no, perms)
+    
+    
+    # and what's the similarity?
+    # create a string for the columns
+    model_one = clocks_model
+    model_two = phase_loc_model
+    count_columns = list(range(0,len(model_one[0])))
+    col_names = count_columns.copy()
+    for i in count_columns:
+        col_names[i] = str(i) 
+    RSM_one = mc.simulation.RDMs.within_task_RDM(model_one, col_names, plotting = True)
+    RSM_two = mc.simulation.RDMs.within_task_RDM(model_two, col_names, plotting = True)
+    similarity = mc.simulation.RDMs.corr_matrices(RSM_one, RSM_two)
+
+# Write one script which identifies the top 10 task configurations for certain settings.
+# Then write a script which computes the between-task similarity over those 10 good tasks (and maybe continues to optimise them)
+# Then check if we can do both: optimise for space + 
 
 
 
