@@ -16,11 +16,11 @@ import mc
 
 
 def within_task_RDM(activation_matrix, column_names, ax=None, plotting = False):
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     dataframe = pd.DataFrame(activation_matrix)
     dataframe.fillna(0)
     dataframe.columns = column_names
-    corr_matrix = dataframe.corr()
+    corr_matrix = dataframe.corr() # pairwise pearson corr of columns, excluding NA/nulls
     if plotting == True:       
         if ax is None:
             plt.figure()
@@ -161,12 +161,12 @@ def corr_matrices(matrix_one, matrix_two, exclude_diag = True):
     # import pdb; pdb.set_trace()
     dimension = len(matrix_one) 
     if exclude_diag == True:
-        diag_array_one = list(matrix_one[np.tril_indices(dimension)])
-        diag_array_two = list(matrix_two[np.tril_indices(dimension)])
+        diag_array_one = list(matrix_one[np.tril_indices(dimension, -1)])
+        diag_array_two = list(matrix_two[np.tril_indices(dimension, -1)])
     else: # this is diagonal plus upper triangle
         diag_array_one = list(matrix_one[np.triu_indices(dimension)])
         diag_array_two = list(matrix_two[np.triu_indices(dimension)])
-    coef = np.corrcoef(diag_array_one, diag_array_two)
+    coef = np.corrcoef(diag_array_one, diag_array_two) #pearson's R
     return coef
 
 

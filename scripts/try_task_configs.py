@@ -31,7 +31,11 @@ section_one_four = 0 # plotting 0-angle and clocks, convolved with HRF
 ## now section 2: optimise with more flexibly.
 # playing around with different task parameters (steptime, gridsize, reward amount)
 section_two_one = 0 # optimise similarities between different models over many permutations.
-section_two_two = 1 # find out if parameters work, but only one run.
+section_two_two = 0 #
+section_two_three = 0 # find out if parameters work, but only one run.
+
+## section 3: identify task configurations that correlate low between several configs.
+section_three_one = 1
 
 
 ##############################
@@ -218,30 +222,60 @@ if section_one_four == 1:
 
 
 # optimise similarities between different models over many permutations.
+# THERE SEEM TO BE ERRORS HAPPENING SOMEWHERE. I CANT REPRODUCE THE GOOD PATHS!!
+
 if section_two_one == 1:
+    
     clock_prediction = 'clocks'
     phase_loc_prediction = 'phase_loc'
     
-    similarity, walk_coords, reward_coords, best_rew_collection, overview_dissimilar_confs = mc.simulation.optimise.optimise_task_for(clock_prediction, phase_loc_prediction, hrf = True, grid_size = 4, step_time= 10, reward_no= 4, perms = 5000, plot = True)
+    similarity, walk_coords, reward_coords, best_rew_collection, overview_dissimilar_confs, all_dissim_vals = mc.simulation.optimise.optimise_task_for(clock_prediction, phase_loc_prediction, hrf = True, grid_size = 4, step_time= 15, reward_no= 4, perms = 5000, plot = True)
     
- 
+    save = 1
+    if save == 1:
+        steps_in_ms = 15
+        perms = 5000
+        time = datetime.now().strftime("%Y%m%d-%H%M%S")
+        file = '.csv'
+        folder_hrf = '/Users/xpsy1114/Documents/projects/multiple_clocks/results/good_configs_0phase_with_clocks_hrf'
+        steptime = '_' + str(steps_in_ms) + '_ms_per_step' 
+        filename = folder_hrf + time + '_perms' + str(perms) + steptime + file 
+        file_to_save = pd.DataFrame(overview_dissimilar_confs)
+        file_to_save.to_csv(filename)
+        # also save the np rewards file if you want to reuse it below!
+        # e.g. 
+        # name = '/Users/xpsy1114/Documents/projects/multiple_clocks/results/good_configs_4_grid_4_rew'
+        # np.save(name, best_rew_collection)
+        
+# to look at the successful reward patterns from section 2.1:
+if section_two_two == 1:
+    grid_size = 4
+    for i in range(len(best_rew_collection)):
+        rew_coords = best_rew_collection[i]
+        walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid_size, plotting = True)
+        
     
 # OK ALSO TRY IF SHORT PATHS ARE SOMEHOW SPECIAL??? USE THE TABLE I JUST SAVED! 
     
 # find out if parameters work, but only one run.
-if section_two_two == 1:
+if section_two_three == 1:
 
     # just in case I want to test the individual functions, use:
     grid_size = 4
-    step_time = 10
-    reward_no = 5
+    step_time = 15
+    reward_no = 4
     perms = 10
     hrf = True
     
     # rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False)
     
     # alternativelty, create a reward vector yourself:
-    rew_coords = [[0,0], [0,1], [0,3], [1,1], [3,3]] #this was weirdely only .83 or so
+    # rew_coords = [[0,0], [0,1], [0,3], [1,1], [3,3]] #this is super high, .93 ...
+    # rew_coords = [[1,3], [1,2], [2,3], [2,2]] #this is .79
+    # rew_coords = [[2,1], [0,1], [1,1],[2,2]] # should be .69 yep!
+    # rew_coords = [[0,1], [1,0], [1,1], [0,0]] # should be .69 for 3x3 grid -yep!
+    #rew_coords = [[1,0], [2,1], [2,0], [1,1]] # should be .69 for 3x3 grid -yep!
+    # rew_coords = [[0,2], [0,1], [3,2], [3,1]] # this is .63
     
     walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid_size, plotting = True)
     
@@ -257,6 +291,10 @@ if section_two_two == 1:
     phase_loc_model = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_model, steps_per_walk, grid_size)
     mc.simulation.predictions.plot_without_legends(phase_loc_model, 'phase_loc_model', hrf, grid_size, step_time, reward_no, perms)
     
+    # HRF add-on
+    clocks_model = mc.simulation.predictions.convolve_with_hrf(clocks_model, steps_per_walk, step_time, plotting = False)
+    clocks_model_dummy = mc.simulation.predictions.convolve_with_hrf(clocks_model, steps_per_walk, step_time, plotting = False)
+    phase_loc_model = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_model_dummy, steps_per_walk, grid_size)
     
     # and what's the similarity?
     # create a string for the columns
@@ -270,6 +308,27 @@ if section_two_two == 1:
     RSM_two = mc.simulation.RDMs.within_task_RDM(model_two, col_names, plotting = True)
     similarity = mc.simulation.RDMs.corr_matrices(RSM_one, RSM_two)
 
+##
+##
+## SECTION 3 ##
+##
+##
+# this selects reward configurations that have low correlations over the course of 10 different tasks.
+if section_three_one == 1:
+    name = '/Users/xpsy1114/Documents/projects/multiple_clocks/results/good_configs_4_grid_4_rew.npy'
+    good_rew_configs = np.load(name)
+    model_one = 'clocks'
+    model_two = 'phase_loc'
+    task_repeats = 10
+    grid = 4
+    hrf_stg = True 
+    time_per_step = 15
+    rewards = 4
+    permutations = 10
+    
+    mc.simulation.optimise.optimise_several_task_configs(model_one, model_two, task_repeats, grid, hrf_stg, time_per_step, rewards, permutations)
+    # CONTINUE IN THE FUNCTION!
+
 # Write one script which identifies the top 10 task configurations for certain settings.
 # Then write a script which computes the between-task similarity over those 10 good tasks (and maybe continues to optimise them)
 # Then check if we can do both: optimise for space + 
@@ -282,7 +341,8 @@ if section_two_two == 1:
 
 
 
-
+# it seems as if the most successful paths are those that overlap spatially a lot.
+# this means there are a lot of clocks reactivated at different timepoints/phases??
 
 
 
