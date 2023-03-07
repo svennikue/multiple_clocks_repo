@@ -120,8 +120,100 @@ def set_clocks(walked_path, step_number, phases = 3, peak_activity = 1, neighbou
     return clocks_matrix, total_steps  
 
 
+def set_clocks_bytime(walked_path, step_number, step_time, grid_size = 3, phases=3):
+    # try one more time, slight adjustments.
+    # based on Mohammadys comment: "In the simulation, the agent will progress one phase" 
+    # "for every spatial step and then wait n time steps till all 5 phases have passed"
+    # every phase -clock will always be activated between 2 rewards, but after each other.
+    # this is possible because I have 100ms time-steps. This means I first have to 
+    # multiply the session by the timestep, then divide the timesteps by the 3 phases.
+    # then activate the phase-anchored clocks on the respective fields, and deactivate
+    # them once the next phase is activated. 
+    
+    import pdb; pdb.set_trace()
+    cumsumsteps = np.cumsum(step_number)
+    total_steps = cumsumsteps[-1] 
+    n_states = len(step_number)
+    # and number of rows is locations*phase*neurons per clock
+    no_fields = grid_size*grid_size
+    n_rows = no_fields*phases  
+    clocks_matrix = np.empty([n_rows,total_steps]) # fields times phases.
+    clocks_matrix[:] = np.nan # 324 x stepnum (e.g. 7)  
+    
+    # multiply by how ever many seconds a step should take.
+    clocks_per_ms = np.repeat(clocks_matrix, repeats= step_time, axis=1)
+    
+    # I will first fill the clock matrices, then stick those in the bigger matrix.
+    clock_neurons_prep = np.zeros([phases*n_states,total_steps])
+    clock_neurons_per_ms = np.repeat(clock_neurons_prep, repeats = step_time, axis = 1)
+    # now, for every sub-path, divide the timesteps by the number of phases.
+    # e.g. 1 step, 1sec > 3 cols, 3cols, 4 cols per phase.
+    # e.g. 2 step, 1 sec > 7 cols, 7 cols, 6 cols per phase.
+    # define step length:
+    cols_to_fill_prev = 0
+    for count_paths, (pathlength) in enumerate(step_number):
+        cols_to_fill = pathlength*step_time
+        # create a string that tells me how many columns are one phase clock
+        time_per_phase_in_clock = ([cols_to_fill // phases + (1 if x < cols_to_fill % phases else 0) for x in range (phases)])
+        time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
+        # so now, I can use the elements of cols_per_clock to fill the single-clock matrix.
+        for phase in range(0, phases):
+            count_fields = 0
+            if phase == 0:
+                clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_prev+ 0: cols_to_fill_prev+ time_per_phase_in_clock_cum[phase]] = 1
+            elif phase > 0:
+                clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_prev + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_prev + time_per_phase_in_clock_cum[phase]] = 1
+        cols_to_fill_prev = cols_to_fill_prev + cols_to_fill
+        
+    
+    # ICH KOMME HIER NICHT WEITER. WIE SPRECHE ICH DIR RICHTIGEN REIHEN AN???
+    # try first separate from the single-clock matrix.
+    for count_paths, (pathlength) in enumerate(step_number):
+        which_field = 0
+        # also identify on which anchor/ field you are currently on.
+        if count_paths > 0:
+            curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
+        elif count_paths == 0:
+            curr_path = walked_path[1:cumsumsteps[count_paths]+1]
+        cols_to_fill = pathlength*step_time
+        time_per_phase_in_clock = ([cols_to_fill // phases + (1 if x < cols_to_fill % phases else 0) for x in range (phases)])
+        time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
+        for phase in range(0, phases):
+            if time_per_phase_in_clock_cum[phase] <= step_time:
+                curr_field = curr_path[which_field]
+                x = curr_field[0]
+                y = curr_field[1]
+                fieldnumber = x + y * grid_size
+                clocks_per_ms[fieldnumber*phases + phase, time_per_phase_in_clock_cum[phase-1] + cols_to_fill_prev] = 1
+            elif time_per_phase_in_clock_cum[phase] > step_time:
+                 if phase == 0:
+                     curr_field = curr_path[which_field]
+                     x = curr_field[0]
+                     y = curr_field[1]
+                     fieldnumber = x + y * grid_size
+                     clocks_per_ms[fieldnumber*phases + phase, time_per_phase_in_clock_cum[phase-1] + cols_to_fill_prev] = 1
 
+     
 
+            # ok this is a bit more difficult. Sometimes, I will need to activate
+            # several clocks per field. I can identify how many by knowing how much 
+            # time is passed on the field: step_time, and compare it against the 
+            # time spent in each phase: time_per_phase_in_clock_cum[phase]
+            # keep activating clocks of the same field until step_time is reached with 
+            # time_per_phase_in_clock_cum
+            clocks_per_ms[(fieldnumber*phases)]
+            
+
+    return clock_neurons_per_ms, clocks_per_ms
+    
+    
+    
+    
+    
+    
+# CURRENTLY USED MODEL    
+# Creates a neurons x time matrix. Neurons are gridsize (anchors) x phases (phase-clocks per anchor) x reward*phases (neurons per clock)
+# BUT: if there are less steps than phases, then the clocks will be activated at the same time, which is probably wrong.
 # input is: reshaped_visited_fields and all_stepnums from mc.simulation.grid.walk_paths(reward_coords)
 def set_clocks_bytime_one_neurone(walked_path, step_number, step_time, grid_size = 3, phases=3):
     # CAREFUL! step_time needs to be in 100ms scale. 1.5 secs eg would be 15
@@ -301,6 +393,7 @@ def convolve_with_hrf(clocks_per_sec, step_number, step_time, plotting = True):
 # 4 steps = 5 fields → leave current field as is, 2nd is early, 3rd is early, 4th is late, 5th is reward
 
 # input is: reshaped_visited_fields and all_stepnums from mc.simulation.grid.walk_paths(reward_coords)
+# THIS IS AN OLD MODEL!
 def set_location_matrix(walked_path, step_number, phases, size_grid = 3):
     #import pdb; pdb.set_trace()
     n_states = len(step_number)
@@ -350,7 +443,7 @@ def set_location_matrix(walked_path, step_number, phases, size_grid = 3):
     return location_matrix, total_steps  
 
 
-
+# CURRENT MODEL
 def set_location_by_time(walked_path, step_number, step_time, grid_size = 3):
     # import pdb; pdb.set_trace()   
     cumsumsteps = np.cumsum(step_number)

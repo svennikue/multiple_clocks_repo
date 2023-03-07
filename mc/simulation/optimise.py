@@ -211,30 +211,52 @@ def optimise_several_task_configs(prediction_one, prediction_two, no_tasks, hrf 
             if 'phase_loc_model' in locals():
                 clocks_model_dummy = mc.simulation.predictions.convolve_with_hrf(clocks_model, steps_per_walk, step_time, plotting = False)
                 phase_loc_model = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_model_dummy, steps_per_walk, grid_size)
+    
         
         # make the names the same again
         if 'location_model' in locals():
-            model_one = location_model
+            model_one_df = pd.DataFrame(location_model)
             if 'clocks_model' in locals():
-                model_two = clocks_model
+                model_two_df = pd.DataFrame(clocks_model)
             elif 'phase_loc_model' in locals():
-                model_two = phase_loc_model
+                model_two_df = pd.DataFrame(phase_loc_model)
         # if this statement isnt true, then there is no location model, thus:
         else:
-            model_one = clocks_model[:]
-            model_two = phase_loc_model[:]
+            model_one_df = pd.DataFrame(clocks_model)
+            # 2.0 prepare the column names
+            # create a string for the columns
+            count_columns = list(range(0,len(model_one_df.columns)))
+            col_names = count_columns.copy()
+            for i in count_columns:
+                col_names[i] = str(i) 
+            model_one_df.fillna(0)
+            model_one_df.columns = col_names
+            model_two_df = pd.DataFrame(phase_loc_model)
+            model_two_df.fillna(0)
+            model_two_df.columns = col_names
+            # Additionally, save how long each matrix was
+            length_of_task = len(model_one_df.columns)
+            
         
-        #now, concatenate these X matrices
-        # CONTINUE HERE!! FIND OUT HOW TO CONCAT THESE MATRICES.
+        #now, concatenate these matrices
+        if i < 1:
+            model_one_X_tasks_df = model_one_df.copy()
+            model_two_X_tasks_df = model_two_df.copy()
+            length_per_task = length_of_task[:]
+        if i > 1:
+            model_one_X_tasks_df = pd.concat([model_one_df, model_one_X_tasks_df], axis = 1)
+            model_two_X_tasks_df = pd.concat([model_two_df, model_two_X_tasks_df], axis = 1)
+            length_per_task = length_per_task[:], length_of_task[:]
         
+    # create RDMs and establish a similarity value
+    # CONTINUE HERE !!!
+    
         
-        
-        
-#     # create a string for the columns
-#     count_columns = list(range(0,len(model_one[0])))
-#     col_names = count_columns.copy()
-#     for i in count_columns:
-#         col_names[i] = str(i) 
+    # After this loop, I will have 2 dataframes model1 and model2 with the same length,
+    # that I will no correlate and test for their similarity. I will then continue
+    # by systematically looping through the sub-models, exchanging single predictions
+    # and testing if this will decrease the similarity.
+
  
 #     RSM_one = mc.simulation.RDMs.within_task_RDM(model_one, col_names)
 #     RSM_two = mc.simulation.RDMs.within_task_RDM(model_two, col_names)

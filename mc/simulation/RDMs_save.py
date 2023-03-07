@@ -13,7 +13,6 @@ import seaborn as sn
 from matplotlib import pyplot as plt
 import numpy as np
 import mc
-import scipy
 
 
 def within_task_RDM(activation_matrix, column_names, ax=None, plotting = False):
@@ -22,11 +21,6 @@ def within_task_RDM(activation_matrix, column_names, ax=None, plotting = False):
     dataframe.fillna(0)
     dataframe.columns = column_names
     corr_matrix = dataframe.corr() # pairwise pearson corr of columns, excluding NA/nulls
-    # from Nili et al., 2014: 
-        # "Popular distance measures are the correlation distance (1 minus the Pearson correlation, 
-        # "computed across voxels or sites of the two activity patterns), the Euclidean distance 
-        # "(the square root of the sum of squared differences between the two patterns), and the Mahalanobis 
-        # "distance (which is the Euclidean distance measured after linearly recoding the space so as to whiten the noise)."
     if plotting == True:       
         if ax is None:
             plt.figure()
@@ -172,18 +166,10 @@ def corr_matrices(matrix_one, matrix_two, exclude_diag = True):
     else: # this is diagonal plus upper triangle
         diag_array_one = list(matrix_one[np.triu_indices(dimension)])
         diag_array_two = list(matrix_two[np.triu_indices(dimension)])
-    coef = scipy.stats.kendalltau(diag_array_one, diag_array_two) # kandalls tau, because:
-    # from Nili et al., 2014:
-        # "We do not in general want to assume a linear relationship between the dissimilarities.
-        # "Unless we are confident that our model captures not only the neuronal representational 
-        # "geometry but also its possibly nonlinear reflection in our response channels (e.g. fMRI patterns), 
-        # "assuming a linear relationship between model and brain RDMs appears questionable. We therefore 
-        # "prefer to assume that a model RDM predicts merely the rank order of the dissimilarities. 
-        # "For this reason we recommend the use of rank-correlations for comparing RDMs.
-        # " We recommend Kendall's τA
+    coef = np.corrcoef(diag_array_one, diag_array_two) #pearson's R change this to kandalls tau!!
     return coef
 
-
+lon
 
 
 
