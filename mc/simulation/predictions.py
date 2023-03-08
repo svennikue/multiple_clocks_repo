@@ -157,12 +157,15 @@ def set_clocks_bytime(walked_path, step_number, step_time, grid_size = 3, phases
     # e.g. 2 step, 1 sec > 7 cols, 7 cols, 6 cols per phase.
     # define step length:
     cols_to_fill_previous = 0
+    whole_path_matrix = np.empty((grid_size*grid_size*phases,0))
     for count_paths, (pathlength) in enumerate(step_number):
         cols_to_fill = pathlength*step_time
         # create a string that tells me how many columns are one phase clock
         time_per_phase_in_clock = ([cols_to_fill // phases + (1 if x < cols_to_fill % phases else 0) for x in range (phases)])
         time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
-        # so now, I can use the elements of cols_per_clock to fill the single-clock matrix.
+        
+        # part 1: 
+        # use the elements of cols_per_clock to fill the single-clock matrix.
         for phase in range(0, phases):
             count_fields = 0
             if phase == 0:
@@ -171,50 +174,13 @@ def set_clocks_bytime(walked_path, step_number, step_time, grid_size = 3, phases
                 clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 1
         cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
         
-    
-
-    # try first separate from the single-clock matrix.
-    for count_paths, (pathlength) in enumerate(step_number):
-        which_field = 0
-        # to identify on which anchor/ field you are currently on, first select sub-paths.
+        # part 2:
+        # to identify which phase*anchor clocks to activate, check current fields 
         if count_paths > 0:
             curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
         elif count_paths == 0:
             curr_path = walked_path[1:cumsumsteps[count_paths]+1]
-        # now depending on how long the subpaths are and how long one stays on the field,
-        # I will stretch or sequeeze the time the clocks are activated. 
-        # 1 step -> field A is all 3 phases
-        # 2 steps -> field A is phase 1 and 2, field B is phase 2 and 3
-        # 3 steps -> field A is phase 1, field B is phase 2, field C is phase 3
-        # 4 steps -> field A is phase 1, field B is phase 1 and 2, field C is phase 2 and 3, field D is phase 3
-        # 5 steps -> field A is p1, field B is p1 and p2, field C is p2, field D is p2 and p3, field E is p3
-        # 6 steps -> field A and B is p1, field C and D is p2, field E and F is p3
-        # ...
-        # I know how many columns to activate per phase, and I know how long they stay on a field.
-        # example: 20 cols, 20 cols, 20 cols. They stay 15 cols in one field.
-        # -> activate the first 15, then check if there is a remainder
-        # if there is, stay in the same phase, but go to the next field
-        # -> fill the remainder of the columns, then check if 15 cols of the field have been filled
-        # if not, go to the next phase phase but same field and start filling the next 20
-        # again, check if there is a remainder or if the 15 cols have been filled... etc 
-        
-        # amount of columns to fill for all 3 phases
-        cols_to_fill = pathlength*step_time
-        # create a string that tells me how many columns to fill per phase
-        time_per_phase_in_clock = ([cols_to_fill // phases + (1 if x < cols_to_fill % phases else 0) for x in range (phases)])
-        time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
-        
-        #for col in range(0, cols_to_fill):
-            # phase = 0
-            # filled columns = 0
-            # test what is bigger: step_time or time_per_phase_in_clock[phase]
-            # if step_time is bigger: 
-                # fill columns 0-time_per_phase_in_clock[phase]
-                # filled columns = 0 + time_per_phase_in_clock[phase]
-                # test again what is bigger: updated filled_columns or time_per_phase_in_clock[phase]
-                # if step_time is bigger, repeat the loop
-            # if time_per_phase_in_clock[phase] is bigger:
-    
+
         # Jacobs way:
         # 1. create a phase matrix
                 # create a matrix based on the time_per_phase_in_clock list
@@ -237,22 +203,85 @@ def set_clocks_bytime(walked_path, step_number, step_time, grid_size = 3, phases
             fields_to_activate[fieldnumber, currfield] = 1
         # kroneker product
         field_matrix_subpath = np.kron(fields_to_activate, steps)
-        # test this by plotting!!
-        plt.figure(); plt.subplot(1,3,1); plt.imshow(steps); plt.subplot(1,3,2); plt.imshow(fields_to_activate); plt.subplot(1,3,3); plt.imshow(field_matrix_subpath)
-            # then multiply both matrices with each other
-            # something like field_matrix*phase_matrix
-            
+        # test this by plotting!! (not needed in normal function so commenting out here)
+        # plt.figure(); plt.subplot(1,3,1); plt.imshow(steps); plt.subplot(1,3,2); plt.imshow(fields_to_activate); plt.subplot(1,3,3); plt.imshow(field_matrix_subpath)
+     
         # 3. multiply the two matrices
         repeated_fields = np.kron(field_matrix_subpath,np.ones((phases,1)))
         repeated_phases = np.kron(np.ones((grid_size*grid_size,1)), phase_matrix_subpath)
         subpath_matrix = repeated_fields * repeated_phases
-        
-        
-        plt.figure(); plt.subplot(1,5,1); plt.imshow(field_matrix_subpath); plt.title('Fields (4 steps)'); plt.subplot(1,5,2); plt.imshow(phase_matrix_subpath); plt.title('Phases (E,M,L)'); plt.subplot(1,5,3); plt.imshow(repeated_fields); plt.title('Repeated fields (4 steps x 3 phases)'); plt.subplot(1,5,4); plt.imshow(repeated_phases); plt.title('Repeated phases (3 phases x 4 steps)'); plt.subplot(1,5,5); plt.imshow(repeated_fields * repeated_phases); plt.title('Fields * phases result')
-        
+        # to plot, but not really needed
+        # plt.figure(); plt.subplot(1,5,1); plt.imshow(field_matrix_subpath); plt.title('Fields (4 steps)'); plt.subplot(1,5,2); plt.imshow(phase_matrix_subpath); plt.title('Phases (E,M,L)'); plt.subplot(1,5,3); plt.imshow(repeated_fields); plt.title('Repeated fields (4 steps x 3 phases)'); plt.subplot(1,5,4); plt.imshow(repeated_phases); plt.title('Repeated phases (3 phases x 4 steps)'); plt.subplot(1,5,5); plt.imshow(repeated_fields * repeated_phases); plt.title('Fields * phases result')
+            
         # 4. repeat this for every subpath, and stick the subpaths behind each other
-        # 5. stick the neuron-clock matrices in 
+        whole_path_matrix = np.concatenate((whole_path_matrix, subpath_matrix), axis = 1)
         
+    
+    # 5. stick the neuron-clock matrices in 
+    
+    # I hopefully can just recycle this:
+        
+        # CONTINUE HERE!!!
+        
+        
+    # now that I have the 0 degree neurons activated, as well as the neuron
+    # pattern matrix, construct the whole matrix out both
+    # stick the matrix in whenever a clock is activated ('1'), and split it at that column.
+    # 1., create matrix with the right dimensions.
+    whole_path_matrix_dummy = np.empty([n_rows*phases*n_states,n_columns]) # fields times phases.
+    whole_path_matrix_dummy[:] = np.nan # 324 x stepnum (e.g. 7)  
+    # for ever 12th row, stick a row of the small matrix in
+    for row in range(0, len(clocks_matrix)):
+        whole_path_matrix_dummy[row*phases*n_states,:]= clocks_matrix[row,:]
+        
+    # copy the neuron per clock firing pattern
+    # I will manipulate clocks_per_step, and use clocks_per_step.dummy as control to check for overwritten stuff.
+    clocks_per_step = whole_path_matrix_dummy.copy()
+    
+    # now loop through all columns and rows and input clock-neurons.   
+    for column in range(0, len(clocks_per_step[0])):
+        for row in range(0, len(clocks_per_step)):
+            clock_neurons = clock_neurons_prep.copy()
+            # first test if clocks_per step also has a 1 at the current position -> if not, it will be overwritten!
+            if (whole_path_matrix_dummy[row,column] == 1) and (clocks_per_step[row,column] == 1):
+                # stick the neuron activation in.
+                # but first slice the neuron matrix correctly
+                first_split = clock_neurons[:, 0:(n_columns-column)]
+                second_split = clock_neurons[:, (n_columns-column):None]
+                fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
+                # DOUBLE CHECK IF THE SLICING WORKS ALRIGHT!!               
+                clocks_per_step[row:(row+(len(clock_neurons_prep))), :] = fill_clock_neurons
+            elif (whole_path_matrix_dummy[row,column] == 1):
+                # loop through the clocks neurons and only copy the ones
+                first_split = clock_neurons[:, 0:(n_columns-column)]
+                second_split = clock_neurons[:, (n_columns-column):None]
+                fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
+                # DOUBLE CHECK IF THE SLICING WORKS ALRIGHT!!
+                for col in range(0, len(fill_clock_neurons[0])):
+                    for rw in range(0, len(fill_clock_neurons)):
+                        if fill_clock_neurons[rw, col] == 1:
+                            clocks_per_step[row+rw, col] = 1
+        
+        
+        
+        
+        
+        # now depending on how long the subpaths are and how long one stays on the field,
+        # I will stretch or sequeeze the time the clocks are activated. 
+        # 1 step -> field A is all 3 phases
+        # 2 steps -> field A is phase 1 and 2, field B is phase 2 and 3
+        # 3 steps -> field A is phase 1, field B is phase 2, field C is phase 3
+        # 4 steps -> field A is phase 1, field B is phase 1 and 2, field C is phase 2 and 3, field D is phase 3
+        # 5 steps -> field A is p1, field B is p1 and p2, field C is p2, field D is p2 and p3, field E is p3
+        # 6 steps -> field A and B is p1, field C and D is p2, field E and F is p3
+        # ...
+        # I know how many columns to activate per phase, and I know how long they stay on a field.
+        # example: 20 cols, 20 cols, 20 cols. They stay 15 cols in one field.
+        # -> activate the first 15, then check if there is a remainder
+        # if there is, stay in the same phase, but go to the next field
+        # -> fill the remainder of the columns, then check if 15 cols of the field have been filled
+        # if not, go to the next phase phase but same field and start filling the next 20
+        # again, check if there is a remainder or if the 15 cols have been filled... etc 
         
         # cols_to_fill = pathlength*step_time
         # time_per_phase_in_clock = ([cols_to_fill // phases + (1 if x < cols_to_fill % phases else 0) for x in range (phases)])
@@ -271,7 +300,17 @@ def set_clocks_bytime(walked_path, step_number, step_time, grid_size = 3, phases
         #              y = curr_field[1]
         #              fieldnumber = x + y * grid_size
         #              clocks_per_ms[fieldnumber*phases + phase, time_per_phase_in_clock_cum[phase-1] + cols_to_fill_prev] = 1
-
+        
+        #for col in range(0, cols_to_fill):
+            # phase = 0
+            # filled columns = 0
+            # test what is bigger: step_time or time_per_phase_in_clock[phase]
+            # if step_time is bigger: 
+                # fill columns 0-time_per_phase_in_clock[phase]
+                # filled columns = 0 + time_per_phase_in_clock[phase]
+                # test again what is bigger: updated filled_columns or time_per_phase_in_clock[phase]
+                # if step_time is bigger, repeat the loop
+            # if time_per_phase_in_clock[phase] is bigger:
      
 
             # ok this is a bit more difficult. Sometimes, I will need to activate
