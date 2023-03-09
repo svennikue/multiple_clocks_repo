@@ -279,8 +279,11 @@ if section_two_three == 1:
     walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid_size, plotting = True)
     
     
-    # try the new clock function.
-    single_clock, whole_matrix = mc.simulation.predictions.set_clocks_bytime(walk, steps_per_walk, step_time, grid_size)
+    # try the new clock function. 
+    single_clock, midnight_matrix, clock_matrix = mc.simulation.predictions.set_clocks_bytime(walk, steps_per_walk, step_time, grid_size)
+    mc.simulation.predictions.plot_without_legends(single_clock)
+    mc.simulation.predictions.plot_without_legends(midnight_matrix)
+    mc.simulation.predictions.plot_without_legends(clock_matrix)
     
     # # ok location works.
     # locm, location_model = mc.simulation.predictions.set_location_by_time(walk, steps_per_walk, step_time, grid_size)
