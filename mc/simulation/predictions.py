@@ -136,46 +136,25 @@ def set_clocks_bytime(walked_path, step_number, step_time, grid_size = 3, phases
     # then activate the phase-anchored clocks on the respective fields, and deactivate
     # them once the next phase is activated. 
     
-    # import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
     cumsumsteps = np.cumsum(step_number)
     total_steps = cumsumsteps[-1] 
     n_states = len(step_number)
     # and number of rows is locations*phase*neurons per clock
     no_fields = grid_size*grid_size
     n_rows = no_fields*phases  
-    
-    # clocks_matrix = np.empty([n_rows,total_steps]) # fields times phases.
-    # clocks_matrix[:] = np.nan # 324 x stepnum (e.g. 7)  
-    
-    # # multiply by how ever many seconds a step should take.
-    # clocks_per_ms = np.repeat(clocks_matrix, repeats= step_time, axis=1)
-    
-    # I will first fill the clock matrices, then stick those in the bigger matrix.
-    clock_neurons_prep = np.zeros([phases*n_states,total_steps])
-    clock_neurons_per_ms = np.repeat(clock_neurons_prep, repeats = step_time, axis = 1)
-    # now, for every sub-path, divide the timesteps by the number of phases.
-    # e.g. 1 step, 1sec > 3 cols, 3cols, 4 cols per phase.
-    # e.g. 2 step, 1 sec > 7 cols, 7 cols, 6 cols per phase.
-    # define step length:
     cols_to_fill_previous = 0
     whole_path_matrix = np.empty((grid_size*grid_size*phases,0))
+    
     for count_paths, (pathlength) in enumerate(step_number):
         cols_to_fill = pathlength*step_time
         # create a string that tells me how many columns are one phase clock
         time_per_phase_in_clock = ([cols_to_fill // phases + (1 if x < cols_to_fill % phases else 0) for x in range (phases)])
         time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
-        
-        # part 1: 
-        # use the elements of cols_per_clock to fill the single-clock matrix.
-        for phase in range(0, phases):
-            if phase == 0:
-                clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_previous+ 0: cols_to_fill_previous+ time_per_phase_in_clock_cum[phase]] = 1
-            elif phase > 0:
-                clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 1
         cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
-        
+
         # part 2:
-        # to identify which phase*anchor clocks to activate, check current fields 
+        # to identify which phase*anchor clocks to activate, identify subpaths
         if count_paths > 0:
             curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
         elif count_paths == 0:
@@ -217,24 +196,39 @@ def set_clocks_bytime(walked_path, step_number, step_time, grid_size = 3, phases
         whole_path_matrix = np.concatenate((whole_path_matrix, subpath_matrix), axis = 1)
     
         
-    
     # 5. stick the neuron-clock matrices in 
+    # use the elements of cols_per_clock to fill the single-clock matrix.
+    clock_neurons_per_ms, phase_vector = mc.simulation.predictions.set_single_clock(walked_path, step_number, step_time, grid_size)
+    
+    
     
     # OK I AM NOT SURE IF THIS WORKS. DOUBLE CHECK HOW THE CLOCKS NEED TO LOOK LIKE ON THE INSIDE!
     # GOAL: EVERY 3RD NEURON IS ALIGNED IN PHASE. 
     # USE THE NEURON-PLOTS AGAIN FROM THE BEGINNIGN!!
+    # using the neuron plots is hard because this is aligned by time and not by phase...
+    # would be great to know how I can easily achieve a conversion
+    # idea: 'code' with categorical variables when I fill the clocks -> I do know here
+    # when each phase changes. 
+    
+    # anyway, for the clock neurons I think in stead of splitting and joining by
+    # column, what I have to do is to 'shift the matrix up': e.g. if I activate
+    # the clock at the 2nd step, the second step needs to be the first row, and the 
+    # first step needs to be glued to the last row. 
+    
+    
+    
     
     # I am not sure if this will be correct since I need to cut the clocks by 
     # timesteps now. I am not doing this currently.
     
     # now that I have the 0 degree neurons activated, as well as the neuron
     # pattern matrix, construct the whole matrix out of both
-    # stick the matrix in whenever a clock is activated ('1'), and split it at that column.
+    # stick the matrix in whenever a clock is activated ('1'), and split it in this row.
     # 1., create matrix with the right dimensions.
     full_clock_matrix_dummy = np.empty([n_rows*phases*n_states,total_steps*step_time]) # fields times phases.
     n_columns = total_steps*step_time
     full_clock_matrix_dummy[:] = np.nan # if field 3x3, 3 phases and 12 neurons per clock > 324 x stepnum (e.g. 7)  
-    # for ever 12th row, stick a row of the small matrix in
+    # for ever 12th row, stick a row of the midnight matrix in (corresponds to the respective first neuron of the clock)
     for row in range(0, len(whole_path_matrix)):
          full_clock_matrix_dummy[row*phases*n_states,:]= whole_path_matrix[row,:]
         
@@ -242,30 +236,89 @@ def set_clocks_bytime(walked_path, step_number, step_time, grid_size = 3, phases
     # I will manipulate clocks_per_step, and use clocks_per_step.dummy as control to check for overwritten stuff.
     full_clock_matrix =  full_clock_matrix_dummy.copy()
     
+
+    
+    # np.where for every row -> first index is how far to np.roll vertically?cols np.where(a>2)[0][0]
+    # np.where for the first column f the shifted thing -> shift upwards
+    
+    
     # now loop through all columns and rows and input clock-neurons.  
     # this will loop through every step: e.g. 0, 15, 30, 45, ...
-    for column in range(0, len(full_clock_matrix[0]), step_time):
-        for row in range(0, len(full_clock_matrix)):
-            clock_neurons = clock_neurons_per_ms.copy()
+    for row in range(0, len(full_clock_matrix)):
+        # ok this now fucks it up because I don't actually want to loop through the whole thing.
+        # fix this!!!
+        
+        # CONTINUE HERE
+        
+        
+        for column in range(0, len(full_clock_matrix[0]), step_time):
             # first test if clocks_per step also has a 1 at the current position -> if not, it will be overwritten!
             if (full_clock_matrix_dummy[row,column] == 1) and (full_clock_matrix[row,column] == 1):
-                # stick the neuron activation in.
-                # but first slice the neuron matrix correctly
-                first_split = clock_neurons[:, 0:(n_columns-column)]
-                second_split = clock_neurons[:, (n_columns-column):None]
-                fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
-                # DOUBLE CHECK IF THE SLICING WORKS ALRIGHT!!               
-                full_clock_matrix[row:(row+(len(clock_neurons_per_ms))), :] = fill_clock_neurons
+                # this only works if there are no double-activations
+                horizontal_shift_by = np.where(full_clock_matrix[:,column] == 1)[0][0]
+                shifted_clock = np.roll(clock_neurons_per_ms, horizontal_shift_by*-1, axis = 0)
+                full_clock_matrix[row:(row+(len(clock_neurons_per_ms))), :] = shifted_clock
+                # maybe I want it a different way... try 2.
+                # vertical_shift_by = np.where(full_clock_matrix[row,:] == 1)[0][0] # e.g. 168
+                # shifted_clock_prep = np.roll(clock_neurons_per_ms, vertical_shift_by*-1, axis = 1)
+                # horizontal_shift_by = np.where(shifted_clock_prep[:,0] == 1)[0][0]
+                # shifted_clock = np.roll(shifted_clock_prep, horizontal_shift_by*-1, axis = 0)
+                # full_clock_matrix[row:(row+(len(clock_neurons_per_ms))), :] = shifted_clock
             elif (full_clock_matrix_dummy[row,column] == 1):
-                # loop through the clocks neurons and only copy the ones
-                first_split = clock_neurons[:, 0:(n_columns-column)]
-                second_split = clock_neurons[:, (n_columns-column):None]
-                fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
-                # DOUBLE CHECK IF THE SLICING WORKS ALRIGHT!!
-                for col in range(0, len(fill_clock_neurons[0])):
-                    for rw in range(0, len(fill_clock_neurons)):
-                        if fill_clock_neurons[rw, col] == 1:
-                            full_clock_matrix[row+rw, col] = 1
+                # now I have to take the somewhat later index... need to figure out how
+                print('double-activation!')
+            
+        
+    #     for column in range(0, len(full_clock_matrix[0]), step_time):
+    #         clock_neurons = clock_neurons_per_ms.copy()
+    #         # first test if clocks_per step also has a 1 at the current position -> if not, it will be overwritten!
+    #         if (full_clock_matrix_dummy[row,column] == 1) and (full_clock_matrix[row,column] == 1):
+    #             # first check for how many columns it is 1
+                
+    #             # stick the neuron activation in.
+    #             # but first slice the neuron matrix correctly
+    #             first_split = clock_neurons[:, 0:(n_columns-column)]
+    #             second_split = clock_neurons[:, (n_columns-column):None]
+    #             fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
+    #             # DOUBLE CHECK IF THE SLICING WORKS ALRIGHT!!               
+    #             full_clock_matrix[row:(row+(len(clock_neurons_per_ms))), :] = fill_clock_neurons
+    #         elif (full_clock_matrix_dummy[row,column] == 1):
+    #             # loop through the clocks neurons and only copy the ones
+    #             first_split = clock_neurons[:, 0:(n_columns-column)]
+    #             second_split = clock_neurons[:, (n_columns-column):None]
+    #             fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
+    #             # DOUBLE CHECK IF THE SLICING WORKS ALRIGHT!!
+    #             for col in range(0, len(fill_clock_neurons[0])):
+    #                 for rw in range(0, len(fill_clock_neurons)):
+    #                     if fill_clock_neurons[rw, col] == 1:
+    #                         full_clock_matrix[row+rw, col] = 1
+                            
+    
+    
+    
+    # for column in range(0, len(full_clock_matrix[0]), step_time):
+    #     for row in range(0, len(full_clock_matrix)):
+    #         clock_neurons = clock_neurons_per_ms.copy()
+    #         # first test if clocks_per step also has a 1 at the current position -> if not, it will be overwritten!
+    #         if (full_clock_matrix_dummy[row,column] == 1) and (full_clock_matrix[row,column] == 1):
+    #             # first check for how many columns 
+    #             # stick the neuron activation in.
+    #             # but first slice the neuron matrix correctly
+    #             first_split = clock_neurons[:, 0:(n_columns-column)]
+    #             second_split = clock_neurons[:, (n_columns-column):None]
+    #             fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
+    #             # DOUBLE CHECK IF THE SLICING WORKS ALRIGHT!!               
+    #             full_clock_matrix[row:(row+(len(clock_neurons_per_ms))), :] = fill_clock_neurons
+    #         elif (full_clock_matrix_dummy[row,column] == 1):
+    #             # loop through the clocks neurons and only copy the ones
+    #             first_split = clock_neurons[:, 0:(n_columns-column)]
+    #             second_split = clock_neurons[:, (n_columns-column):None]
+    #             fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
+    #             # DOUBLE CHECK IF THE SLICING WORKS ALRIGHT!!
+    #             for col in range(0, len(fill_clock_neurons[0])):
+    #                 for rw in range(0, len(fill_clock_neurons)):
+    #                     if fill_clock_neurons[rw, col] == 1:
+    #                         full_clock_matrix[row+rw, col] = 1
                             
     print(full_clock_matrix)
     return clock_neurons_per_ms, whole_path_matrix, full_clock_matrix
@@ -724,6 +777,52 @@ def many_configs_loop(loop_no, which_matrix):
     return average_matrix
 
 
+# some notes on plotting with pandas.
+# I can take the matrices, transpose them, and add a phase-column. 
+# Thus, every column is a neuron, and one assigns phase-categories.
+# e.g.:
+# df = pd.DataFrame({'phase':['e', 'e', 'l', 'r', 'e', 'l', 'l', 'l', 'l', 'r', 'r', 'r', 'e', 'l', 'r'], 'neuron_1': [1,1,0,0,1,0,0,0,0,0,0,0,1,0,0], 'neuron_2': [0,0,0,1,0,0,0,0,0,1,1,1,0,0,1]})
+# df.groupby(['phase']).mean()
+# df.groupby(['phase']).mean().plot.barh() 
+# now, try this with the within-one-clock matrix.
+# generate 10 different tasks, and generate the clock matrix. Add the phase column. Then plot.
 
 
+
+
+def set_single_clock(walked_path, step_number, step_time, grid_size = 3, phases = 3):
+   # import pdb; pdb.set_trace()
+    cumsumsteps = np.cumsum(step_number)
+    total_steps = cumsumsteps[-1] 
+    n_states = len(step_number)    
+    clock_neurons_per_ms = np.zeros([phases*n_states,total_steps*step_time])
+    phase_array = np.zeros([total_steps*step_time])
+    # clock_neurons_per_ms = np.repeat(clock_neurons_prep, repeats = step_time, axis = 1)
+    # now, for every sub-path, divide the timesteps by the number of phases.
+    # e.g. 1 step, 1sec > 3 cols, 3cols, 4 cols per phase.
+    # e.g. 2 step, 1 sec > 7 cols, 7 cols, 6 cols per phase.
+    # define step length:
+    cols_to_fill_previous = 0
+    # phase_list = [None] * len(clock_neurons_per_ms[0])
+    for count_paths, (pathlength) in enumerate(step_number):
+        cols_to_fill = pathlength*step_time
+        # create a string that tells me how many columns are one phase clock
+        time_per_phase_in_clock = ([cols_to_fill // phases + (1 if x < cols_to_fill % phases else 0) for x in range (phases)])
+        time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
+        # use the elements of cols_per_clock to fill the single-clock matrix.
+        # add a category-vector for the phases
+        for phase in range(0, phases):
+            if phase == 0:
+                clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_previous+ 0: cols_to_fill_previous+ time_per_phase_in_clock_cum[phase]] = 1
+                phase_array[cols_to_fill_previous+ 0: cols_to_fill_previous+ time_per_phase_in_clock_cum[phase]] = 10
+            elif phase == 1:
+                clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 1
+                phase_array[cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]]= 20
+            elif phase == 2:
+                clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 1
+                phase_array[cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 30
+        cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
+    return clock_neurons_per_ms, phase_array
+        
+    
 

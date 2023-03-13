@@ -31,12 +31,12 @@ import seaborn as sns
 section_oneone = 1 # Create the task
 section_onetwo = 0 # Create a distribution of most common pathlengths
 
-section_twoone = 0 # Setting the Clocks and Location Matrix. 
-section_twotwo = 1 # Setting the Clocks + locs but in 'real time' + HRF convolve
+section_twoone = 1 # Setting the Clocks and Location Matrix. 
+section_twotwo = 0 # Setting the Clocks + locs but in 'real time' + HRF convolve
 section_twothree = 0 # Setting 0-phase clocks in 'real time'
 section_twofour = 0 # concatenate 400 HRF convolved clocks and PCA
 
-section_three = 0 # Create 'neuron plots'
+section_three = 1 # Create 'neuron plots'
 section_fourone = 0 # Create RDMs.
 section_fourtwo = 0 # create RDMS between 0 phase clock and clocks (HRF + by time)
 
@@ -78,7 +78,8 @@ if section_onetwo == 1:
 # needs section 1.1
 if section_twoone == 1:
     first_clocks_matrix, total_steps  = mc.simulation.predictions.set_clocks(reshaped_visited_fields, all_stepnums, 3)           
-    location_matrix, total_steps = mc.simulation.predictions.set_location_matrix(reshaped_visited_fields, all_stepnums, 3, 0) 
+    location_matrix, total_steps = mc.simulation.predictions.set_location_matrix(reshaped_visited_fields, all_stepnums, phases = 3, size_grid= 3) 
+
      
     print(first_clocks_matrix)
     print(location_matrix)

@@ -31,11 +31,15 @@ section_one_four = 0 # plotting 0-angle and clocks, convolved with HRF
 ## now section 2: optimise with more flexibly.
 # playing around with different task parameters (steptime, gridsize, reward amount)
 section_two_one = 0 # optimise similarities between different models over many permutations.
-section_two_two = 0 #
+section_two_two = 0 # plot the successful reward patterns from section 2.1
 section_two_three = 1 # find out if parameters work, but only one run.
 
 ## section 3: identify task configurations that correlate low between several configs.
 section_three_one = 0
+
+## section 4: play around with single clocks
+section_four_one = 0
+
 
 
 ##############################
@@ -354,9 +358,31 @@ if section_two_three == 1:
 # it seems as if the most successful paths are those that overlap spatially a lot.
 # this means there are a lot of clocks reactivated at different timepoints/phases??
 
-
-
-
+if section_four_one == 1:
+    from matplotlib import cm
+    repeats = 5
+    grid_size = 4
+    step_time = 15
+    reward_no = 4
+    perms = 10
+    hrf = False
+    
+    for i in range(0, repeats): 
+        rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False)
+        walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid_size, plotting = False)
+        single_clock, phase_vector = mc.simulation.predictions.set_single_clock(walk, steps_per_walk, step_time, grid_size)
+        df = pd.DataFrame(np.transpose(single_clock))
+        df.insert(0,"Phases", phase_vector)
+        if i == 0:
+            df_all_configs = df.copy()
+        if i > 0:
+            df_all_configs = df_all_configs.append(df)
+    
+    # now plot those
+    # yes, the clocks are phase-selective across many different configurations.
+    
+    colormap = cm.get_cmap('Set3', (len(df_all_configs.columns)-1))
+    df_all_configs.groupby(["Phases"]).mean().plot.barh(color = colormap.colors)
 
 
 
