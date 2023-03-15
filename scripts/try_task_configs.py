@@ -37,7 +37,7 @@ section_two_three = 1 # find out if parameters work, but only one run.
 ## section 3: identify task configurations that correlate low between several configs.
 section_three_one = 0
 
-## section 4: play around with single clocks
+## section 4: test if single neurons in the matrices are phase-tuned
 section_four_one = 0
 
 
@@ -265,13 +265,13 @@ if section_two_two == 1:
 if section_two_three == 1:
 
     # just in case I want to test the individual functions, use:
-    grid_size = 4
+    grid_size = 3
     step_time = 15
-    reward_no = 4
+    reward_no = 3
     perms = 10
     hrf = True
     
-    # rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False)
+    rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False)
     
     # alternativelty, create a reward vector yourself:
     # rew_coords = [[0,0], [0,1], [0,3], [1,1], [3,3]] #this is super high, .93 ...
@@ -279,7 +279,7 @@ if section_two_three == 1:
     # rew_coords = [[2,1], [0,1], [1,1],[2,2]] # should be .69 yep!
     # rew_coords = [[0,1], [1,0], [1,1], [0,0]] # should be .69 for 3x3 grid -yep!
     #rew_coords = [[1,0], [2,1], [2,0], [1,1]] # should be .69 for 3x3 grid -yep!
-    rew_coords = [[0,2], [0,1], [3,2], [3,1]] # this is .63
+    # rew_coords = [[0,2], [0,1], [3,2], [3,1]] # this is .63
     walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid_size, plotting = True)
     
     
@@ -360,7 +360,7 @@ if section_two_three == 1:
 
 if section_four_one == 1:
     from matplotlib import cm
-    repeats = 5
+    repeats = 100
     grid_size = 4
     step_time = 15
     reward_no = 4
@@ -371,23 +371,42 @@ if section_four_one == 1:
         rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False)
         walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid_size, plotting = False)
         single_clock, phase_vector = mc.simulation.predictions.set_single_clock(walk, steps_per_walk, step_time, grid_size)
+        single_clock, midnight_matrix, clock_matrix = mc.simulation.predictions.set_clocks_bytime(walk, steps_per_walk, step_time, grid_size)
+        
+        
         df = pd.DataFrame(np.transpose(single_clock))
         df.insert(0,"Phases", phase_vector)
         if i == 0:
             df_all_configs = df.copy()
         if i > 0:
             df_all_configs = df_all_configs.append(df)
-    
+        
+        # do the same for the clock matrix
+        df_clock = pd.DataFrame(np.transpose(clock_matrix))
+        df_clock.insert(0,"Phases", phase_vector)
+        if i == 0:
+            df_clock_all_configs = df_clock.copy()
+        if i > 0:
+            df_clock_all_configs = df_clock_all_configs.append(df_clock)
+        
+        
     # now plot those
-    # yes, the clocks are phase-selective across many different configurations.
+    # take only subsets of the clocks, e.g. 2 clocks
+    df_first_clock = df_clock_all_configs.iloc[:, 0:13]
     
-    colormap = cm.get_cmap('Set3', (len(df_all_configs.columns)-1))
-    df_all_configs.groupby(["Phases"]).mean().plot.barh(color = colormap.colors)
-
-
-
-
-
+    df_second_clock = df_clock_all_configs.iloc[:, 13:25]
+    df_second_clock["Phases"] = df_first_clock.iloc[:,0]
+    
+    df_third_clock = df_clock_all_configs.iloc[:, 25:37]
+    df_third_clock["Phases"]= df_first_clock.iloc[:,0]
+    
+    
+    colormap = cm.get_cmap('Set3', (len(df_first_clock.columns)-1))  
+    df_first_clock.groupby(["Phases"]).mean().plot.barh(color = colormap.colors)
+    df_second_clock.groupby(["Phases"]).mean().plot.barh(color = colormap.colors)
+    df_third_clock.groupby(["Phases"]).mean().plot.barh(color = colormap.colors)
+    # yes, the clocks are phase-selective across many different configurations.
+    # df_all_configs.groupby(["Phases"]).mean().plot.barh(color = colormap.colors)
 
 
 
