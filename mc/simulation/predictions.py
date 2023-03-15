@@ -136,7 +136,7 @@ def set_clocks_bytime(walked_path, step_number, step_time, grid_size = 3, phases
     # then activate the phase-anchored clocks on the respective fields, and deactivate
     # them once the next phase is activated. 
     
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     cumsumsteps = np.cumsum(step_number)
     total_steps = cumsumsteps[-1] 
     n_states = len(step_number)
@@ -242,31 +242,60 @@ def set_clocks_bytime(walked_path, step_number, step_time, grid_size = 3, phases
     # np.where for the first column f the shifted thing -> shift upwards
     
     
-    # now loop through all columns and rows and input clock-neurons.  
-    # this will loop through every step: e.g. 0, 15, 30, 45, ...
-    for row in range(0, len(full_clock_matrix)):
+    # now loop through the already filled columns (every 12th one) and fill the clocks if activated.
+    cols_to_shift = []
+    for row in range(0, len(full_clock_matrix), len(clock_neurons_per_ms)):
+        # for every clock that has been activated, identify the first column where it is '1'
+        if sum(full_clock_matrix_dummy[row,:]) > 0: 
+            column = np.where(full_clock_matrix_dummy[row,:] == 1)[0][0]
+            # check in which row this particular column is '1' in the clock
+            horizontal_shift_by = np.where(clock_neurons_per_ms[:,column] == 1)[0][0]
+            shifted_clock = np.roll(clock_neurons_per_ms, horizontal_shift_by*-1, axis = 0)
+            full_clock_matrix[row:(row+(len(clock_neurons_per_ms))), :] = shifted_clock
+            # additionally test if there was a double-activation in this row.
+            all_activations = np.where(full_clock_matrix_dummy[row,:] == 1)[:][0]
+            for index, activated_ms in enumerate(all_activations):
+                if index > 0:
+                    # if there is a gap (diff between two indices next to each other > 1)
+                    if all_activations[index]-all_activations[index-1] > 1:
+                        # store the element so I can activate it after
+                        cols_to_shift.append(activated_ms)
+            if len(cols_to_shift) > 0:
+                # if there are double activations, do the same horizontal shift but only copy the 1s.
+                for column in cols_to_shift:
+                    horizontal_shift_by = np.where(clock_neurons_per_ms[:,column] == 1)[0][0]
+                    shifted_clock = np.roll(clock_neurons_per_ms, horizontal_shift_by*-1, axis = 0)
+                    for col in range(0, len(shifted_clock[0])):
+                        for rw in range(0, len(shifted_clock)):
+                            if shifted_clock[rw, col] == 1:
+                                full_clock_matrix[row+rw, col] = 1
+                cols_to_shift = []
+                    
+                    
+                
+        
         # ok this now fucks it up because I don't actually want to loop through the whole thing.
         # fix this!!!
         
         # CONTINUE HERE
         
         
-        for column in range(0, len(full_clock_matrix[0]), step_time):
+       # for column in range(0, len(full_clock_matrix[0]), step_time):
             # first test if clocks_per step also has a 1 at the current position -> if not, it will be overwritten!
-            if (full_clock_matrix_dummy[row,column] == 1) and (full_clock_matrix[row,column] == 1):
+           # if (full_clock_matrix_dummy[row,column] == 1) and (full_clock_matrix[row,column] == 1):
                 # this only works if there are no double-activations
-                horizontal_shift_by = np.where(full_clock_matrix[:,column] == 1)[0][0]
-                shifted_clock = np.roll(clock_neurons_per_ms, horizontal_shift_by*-1, axis = 0)
-                full_clock_matrix[row:(row+(len(clock_neurons_per_ms))), :] = shifted_clock
+            # horizontal_shift_by = np.where(full_clock_matrix[:,column] == 1)[0][0]
+            # shifted_clock = np.roll(clock_neurons_per_ms, horizontal_shift_by*-1, axis = 0)
+            # full_clock_matrix[row:(row+(len(clock_neurons_per_ms))), :] = shifted_clock
                 # maybe I want it a different way... try 2.
                 # vertical_shift_by = np.where(full_clock_matrix[row,:] == 1)[0][0] # e.g. 168
                 # shifted_clock_prep = np.roll(clock_neurons_per_ms, vertical_shift_by*-1, axis = 1)
                 # horizontal_shift_by = np.where(shifted_clock_prep[:,0] == 1)[0][0]
                 # shifted_clock = np.roll(shifted_clock_prep, horizontal_shift_by*-1, axis = 0)
                 # full_clock_matrix[row:(row+(len(clock_neurons_per_ms))), :] = shifted_clock
-            elif (full_clock_matrix_dummy[row,column] == 1):
+            #elif (full_clock_matrix_dummy[row,column] == 1):
                 # now I have to take the somewhat later index... need to figure out how
-                print('double-activation!')
+               # print('double-activation!')
             
         
     #     for column in range(0, len(full_clock_matrix[0]), step_time):
