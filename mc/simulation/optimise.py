@@ -26,10 +26,10 @@ def optimise_task_for(prediction_one, prediction_two, hrf = True, grid_size = 3,
     # idea is to vary parameters oneself.
     # output is the optimal similarity after x permutations, with the respective parameters.
     
-    if prediction_one != 'clocks' and prediction_one != 'location' and prediction_one != 'phase_loc':
-        raise TypeError("Please enter 'location', 'phase_loc' or 'clocks'") 
-    if prediction_two != 'clocks' and prediction_two != 'location' and prediction_two != 'phase_loc':
-        raise TypeError("Please enter 'location', 'phase_loc' or 'clocks'")
+    if prediction_one != 'clocks' and prediction_one != 'location' and prediction_one != 'midnight':
+        raise TypeError("Please enter 'location', 'midnight' or 'clocks'") 
+    if prediction_two != 'clocks' and prediction_two != 'location' and prediction_two != 'midnight':
+        raise TypeError("Please enter 'location', 'midnight' or 'clocks'")
     
     # start the optimisation process.
     # steps:
@@ -40,9 +40,10 @@ def optimise_task_for(prediction_one, prediction_two, hrf = True, grid_size = 3,
     # 4. change the task configuration, do steps 2-3 and compare 
     # prep plot
     dissimilarity_values = []
-    countgood_corr = 0
+    # config_nogood_corr = 0
     maximally_dissimilar = []
     best_reward_coords = []
+    countgood_corr = 0
     
     for perm_no in range(perms):
         # 1. create a task configuration
@@ -51,17 +52,19 @@ def optimise_task_for(prediction_one, prediction_two, hrf = True, grid_size = 3,
         
         # 2. create the predictions for both models
         if prediction_one == 'clocks' or prediction_two == 'clocks':
-            clocksm, neuroncl, clocks_model = mc.simulation.predictions.set_clocks_bytime_one_neurone(walk, steps_per_walk, step_time, grid_size)
-            # DELTE THIS AFTER DEBUGGING!!
-            # ALSO CHANGE PLOTTING OPTIONS BACK TO FALSE
-            #mc.simulation.predictions.plot_without_legends(clocks_model)
+            # NEW IS THIS:
+            single_clock, midnight_matrix, clocks_model = mc.simulation.predictions.set_clocks_bytime(walk, steps_per_walk, step_time, grid_size)
+            # THIS ONE IS OLD
+            # clocksm, neuroncl, clocks_model = mc.simulation.predictions.set_clocks_bytime_one_neurone(walk, steps_per_walk, step_time, grid_size)
+            
     
-        if prediction_one == 'phase_loc' or prediction_two == 'phase_loc':
-            clocksm, neuroncl, clocks_model_dummy = mc.simulation.predictions.set_clocks_bytime_one_neurone(walk, steps_per_walk, step_time, grid_size)
-            phase_loc_model = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_model_dummy, steps_per_walk, grid_size)
-            # DELTE THIS AFTER DEBUGGING!!
-            # ALSO CHANGE PLOTTING OPTIONS BACK TO FALSE
-            #mc.simulation.predictions.plot_without_legends(phase_loc_model)
+        if prediction_one == 'midnight' or prediction_two == 'midnight':
+            # NEW:
+            single_clock, midnight_model, clocks_model = mc.simulation.predictions.set_clocks_bytime(walk, steps_per_walk, step_time, grid_size)
+            # OLD
+            # clocksm, neuroncl, clocks_model_dummy = mc.simulation.predictions.set_clocks_bytime_one_neurone(walk, steps_per_walk, step_time, grid_size)
+            # midnight_model = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_model_dummy, steps_per_walk, grid_size)
+
             
         if prediction_one == 'location' or prediction_two == 'location':
             locm, location_model = mc.simulation.predictions.set_location_by_time(walk, steps_per_walk, step_time, grid_size)
@@ -76,22 +79,23 @@ def optimise_task_for(prediction_one, prediction_two, hrf = True, grid_size = 3,
                 location_model = mc.simulation.predictions.convolve_with_hrf(location_model, steps_per_walk, step_time, plotting = False)
             if 'clocks_model' in locals():
                 clocks_model = mc.simulation.predictions.convolve_with_hrf(clocks_model, steps_per_walk, step_time, plotting = False)
-            if 'phase_loc_model' in locals():
-                clocks_model_dummy = mc.simulation.predictions.convolve_with_hrf(clocks_model, steps_per_walk, step_time, plotting = False)
-                phase_loc_model = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_model_dummy, steps_per_walk, grid_size)
+            if 'midnight_model' in locals():
+                midnight_model = mc.simulation.predictions.convolve_with_hrf(midnight_model, steps_per_walk, step_time, plotting = False)
+                # clocks_model_hrf = mc.simulation.predictions.convolve_with_hrf(clocks_model, steps_per_walk, step_time, plotting = False)
+                # midnight_model = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_model_hrf, steps_per_walk, grid_size)
         
         # 3. create the RSM and similarity between the two models
         # make the names the same again
         if 'location_model' in locals():
-            model_one = location_model
+            model_one = location_model[:]
             if 'clocks_model' in locals():
-                model_two = clocks_model
-            elif 'phase_loc_model' in locals():
-                model_two = phase_loc_model
+                model_two = clocks_model[:]
+            elif 'midnight_model' in locals():
+                model_two = midnight_model[:]
         # if this statement isnt true, then there is no location model, thus:
         else:
             model_one = clocks_model[:]
-            model_two = phase_loc_model[:]
+            model_two = midnight_model[:]
     
         # create a string for the columns
         count_columns = list(range(0,len(model_one[0])))
@@ -103,20 +107,24 @@ def optimise_task_for(prediction_one, prediction_two, hrf = True, grid_size = 3,
         RSM_two = mc.simulation.RDMs.within_task_RDM(model_two, col_names)
         
         
-        similarity = mc.simulation.RDMs.corr_matrices(RSM_one, RSM_two)
+        correlation_sim = mc.simulation.RDMs.corr_matrices_pearson(RSM_one, RSM_two)
+        similarity = correlation_sim[0,1]
+        
+        # i kendall
+        # similarity = correlation_sim.correlation
         # store for the histogram
-        dissimilarity_values.append(1 - similarity[0,1])
+        dissimilarity_values.append(1 - similarity)
         
         if perm_no == 0:
-            best_sim_value = similarity[:]
+            best_sim_value = similarity
             best_walk = walk[:]
             best_rewards = rew_coords[:]
             best_model_one = model_one[:]
             best_model_two = model_two[:]
         # 4. change the task configuration, do steps 2-3 and compare > loop
         else:
-            if similarity[1,0] < best_sim_value[1,0]:
-                best_sim_value = similarity[:]
+            if similarity < best_sim_value:
+                best_sim_value = similarity
                 best_walk = walk[:]
                 best_rewards = rew_coords[:]
                 best_model_one = model_one[:]
@@ -124,9 +132,9 @@ def optimise_task_for(prediction_one, prediction_two, hrf = True, grid_size = 3,
         
         # save the configurations if the similarity is really good.
         # save those configurations that have are maximally dissimlar. 
-        if similarity[0,1] <  0.70:   
+        if similarity <  0.70:   
             path = pd.DataFrame(walk)
-            coef = pd.DataFrame(similarity[0]) 
+            coef = pd.DataFrame([similarity]) 
             rewards = pd.DataFrame(rew_coords)
             if countgood_corr == 0:
                 # to save as .csv file
@@ -147,9 +155,9 @@ def optimise_task_for(prediction_one, prediction_two, hrf = True, grid_size = 3,
     if plot == True:
         # include the settings on the graps
         mc.simulation.predictions.plot_without_legends(best_model_one, 'clocks_model', hrf, grid_size, step_time, reward_no, perms)
-        mc.simulation.predictions.plot_without_legends(best_model_two, 'phase_loc_model', hrf, grid_size, step_time, reward_no, perms)
+        mc.simulation.predictions.plot_without_legends(best_model_two, 'midnight_model', hrf, grid_size, step_time, reward_no, perms)
         
-        walk, steps_per_walk = mc.simulation.grid.walk_paths(best_rewards, grid_size, plotting = True)
+        mc.simulation.grid.walk_paths(best_rewards, grid_size, plotting = True)
         # might also be nice to plot the distribution of correlation values for these settings...
         plt.figure()
         ax2 = plt.axes()
@@ -159,195 +167,504 @@ def optimise_task_for(prediction_one, prediction_two, hrf = True, grid_size = 3,
         plt.ylabel = 'frequency'
         plt.xlabel = '1 - Similarity'
         
+        plt.figure()
         
-        
+        best_model_one_df = pd.DataFrame(best_model_one)
+        best_model_two_df = pd.DataFrame(best_model_two)
+        best_RDM_one = mc.simulation.RDMs.df_based_RDM(best_model_one_df, plotting = True)
+        best_RDM_two =mc.simulation.RDMs.df_based_RDM(best_model_two_df, plotting = True)
+    
+    # check the correlation values if you get rid of 20 timepoints in the beginning and in the end
+    
+    c_kendall, c_pearson = mc.simulation.RDMs.corr_matrices_no_autocorr(best_RDM_one, best_RDM_two, timepoints_to_exclude = 20, plotting = False)
+    return best_sim_value, best_walk, best_rewards, best_reward_coords, maximally_dissimilar, dissimilarity_values, c_kendall, c_pearson
 
-    return best_sim_value, best_walk, best_rewards, best_reward_coords, maximally_dissimilar, dissimilarity_values
+
+# FOR BETWEEN TASK OPTIMISATION!
+# this now only works for the latest coding of clocks and midnights.
+# (mc.simulation.predictions.set_clocks_bytime)
 
 
 def optimise_several_task_configs(prediction_one, prediction_two, no_tasks, hrf = True, grid_size = 4, step_time = 15, reward_no = 4, perms = 1):
+    # This is to reduce similarity both within and between tasks. 
+    # You can select the number of task configurations, and all other parameters that are possible for the 
     # import pdb; pdb.set_trace()    
     # output is the optimal X optimal task configurations, with XY as similarity for the given parameters.   
-    if prediction_one != 'clocks' and prediction_one != 'location' and prediction_one != 'phase_loc':
-        raise TypeError("Please enter 'location', 'phase_loc' or 'clocks'") 
-    if prediction_two != 'clocks' and prediction_two != 'location' and prediction_two != 'phase_loc':
-        raise TypeError("Please enter 'location', 'phase_loc' or 'clocks'")
+    if prediction_one != 'clocks' and prediction_one != 'location' and prediction_one != 'midnight':
+        raise TypeError("Please enter 'location', 'midnight' or 'clocks'") 
+    if prediction_two != 'clocks' and prediction_two != 'location' and prediction_two != 'midnight':
+        raise TypeError("Please enter 'location', 'midnight' or 'clocks'")
     dissimilarity_values = []
     countgood_corr = 0
     maximally_dissimilar = []
     best_reward_coords = []
     
     # first, create X random task configurations for model 1 and model 2.
-    for i in range(no_tasks):
+    for task in range(0, no_tasks):
         # 1. create a task configuration
         rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False)
         walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid_size, plotting = False)
+        
+        # store the configurations.
+        if task == 0:
+            df_rewards = pd.DataFrame(rew_coords)
+            df_walk = pd.DataFrame(walk)
+            df_task_configs = pd.concat([df_rewards, df_walk], axis = 1)
+        else:
+            df_rewards = pd.DataFrame(rew_coords)
+            df_walk = pd.DataFrame(walk)
+            df_task_configs = pd.concat([df_task_configs, df_rewards, df_walk], axis = 1)
+            
+        
         # 2. create the predictions for both models
         if prediction_one == 'clocks' or prediction_two == 'clocks':
-            clocksm, neuroncl, clocks_model = mc.simulation.predictions.set_clocks_bytime_one_neurone(walk, steps_per_walk, step_time, grid_size)
-            # DELTE THIS AFTER DEBUGGING!!
-            # ALSO CHANGE PLOTTING OPTIONS BACK TO FALSE
-            #mc.simulation.predictions.plot_without_legends(clocks_model)
-    
-        if prediction_one == 'phase_loc' or prediction_two == 'phase_loc':
-            clocksm, neuroncl, clocks_model_dummy = mc.simulation.predictions.set_clocks_bytime_one_neurone(walk, steps_per_walk, step_time, grid_size)
-            phase_loc_model = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_model_dummy, steps_per_walk, grid_size)
-            # DELTE THIS AFTER DEBUGGING!!
-            # ALSO CHANGE PLOTTING OPTIONS BACK TO FALSE
-            #mc.simulation.predictions.plot_without_legends(phase_loc_model)
+            single_clock, midnight_matrix, clocks_model = mc.simulation.predictions.set_clocks_bytime(walk, steps_per_walk, step_time, grid_size)
+
+        if prediction_one == 'midnight' or prediction_two == 'midnight':
+            single_clock, midnight_model, clocks_model = mc.simulation.predictions.set_clocks_bytime(walk, steps_per_walk, step_time, grid_size)
             
         if prediction_one == 'location' or prediction_two == 'location':
             locm, location_model = mc.simulation.predictions.set_location_by_time(walk, steps_per_walk, step_time, grid_size)
-            # DELTE THIS AFTER DEBUGGING!!
-            # ALSO CHANGE PLOTTING OPTIONS BACK TO FALSE
-            #mc.simulation.predictions.plot_without_legends(location_model)
-        
+
         # 2.1 check if HRF convolution wanted?
         if hrf:
             if 'location_model' in locals():
                 location_model = mc.simulation.predictions.convolve_with_hrf(location_model, steps_per_walk, step_time, plotting = False)
             if 'clocks_model' in locals():
                 clocks_model = mc.simulation.predictions.convolve_with_hrf(clocks_model, steps_per_walk, step_time, plotting = False)
-            if 'phase_loc_model' in locals():
-                clocks_model_dummy = mc.simulation.predictions.convolve_with_hrf(clocks_model, steps_per_walk, step_time, plotting = False)
-                phase_loc_model = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_model_dummy, steps_per_walk, grid_size)
+            if 'midnight_model' in locals():
+                midnight_model = mc.simulation.predictions.convolve_with_hrf(midnight_model, steps_per_walk, step_time, plotting = False)
     
         
-        # make the names the same again
+        # make the names the same
         if 'location_model' in locals():
             model_one_df = pd.DataFrame(location_model)
             if 'clocks_model' in locals():
                 model_two_df = pd.DataFrame(clocks_model)
-            elif 'phase_loc_model' in locals():
-                model_two_df = pd.DataFrame(phase_loc_model)
+            elif 'midnight_model' in locals():
+                model_two_df = pd.DataFrame(midnight_model)
         # if this statement isnt true, then there is no location model, thus:
         else:
             model_one_df = pd.DataFrame(clocks_model)
-            # 2.0 prepare the column names
-            # create a string for the columns
-            count_columns = list(range(0,len(model_one_df.columns)))
-            col_names = count_columns.copy()
-            for i in count_columns:
-                col_names[i] = str(i) 
-            model_one_df.fillna(0)
-            model_one_df.columns = col_names
-            model_two_df = pd.DataFrame(phase_loc_model)
-            model_two_df.fillna(0)
-            model_two_df.columns = col_names
-            # Additionally, save how long each matrix was
-            length_of_task = len(model_one_df.columns)
+            model_two_df = pd.DataFrame(midnight_model)
             
+        # 2.0 prepare the column names
+        # change back if this doesnt work!!!
+        model_one_df.fillna(0)
+        model_two_df.fillna(0)
+        length_of_task = len(model_one_df.columns)
         
+        # # create a string for the columns
+        # count_columns = list(range(0,len(model_one_df.columns)))
+        # col_names = count_columns.copy()
+        # for col_label in count_columns:
+        #     col_names[col_label] = str(col_label) 
+        # model_one_df.fillna(0)
+        # model_one_df.columns = col_names
+        # model_two_df = pd.DataFrame(midnight_model)
+        # model_two_df.fillna(0)
+        # model_two_df.columns = col_names
+        # # NOT SURE IF THIS WILL BE A PROBLEM BC COL NAMES AREN'T UNIQUE
+        
+        # # Additionally, save how long each matrix was
+        # length_of_task = len(model_one_df.columns)
+                  
         #now, concatenate these matrices
-        if i < 1:
+        if task < 1:
             model_one_X_tasks_df = model_one_df.copy()
             model_two_X_tasks_df = model_two_df.copy()
-            length_per_task = length_of_task[:]
-        if i > 1:
+            length_per_task = [length_of_task]
+        if task > 0:
             model_one_X_tasks_df = pd.concat([model_one_df, model_one_X_tasks_df], axis = 1)
             model_two_X_tasks_df = pd.concat([model_two_df, model_two_X_tasks_df], axis = 1)
-            length_per_task = length_per_task[:], length_of_task[:]
-        
-    # create RDMs and establish a similarity value
-    # CONTINUE HERE !!!
+            length_per_task.append(length_of_task)
     
-        
+    # dimensionality check: sum(length_per_task) == len(model_one_X_tasks_df.columns)
+    
+    # change back if this way of naming the columns doesnt work!!        
+    model_one_X_tasks_df.columns = range(model_one_X_tasks_df.columns.size)
+    model_two_X_tasks_df.columns = range(model_two_X_tasks_df.columns.size)
+    
+    
+    # 3. create RDMs and establish a similarity value
+    RSM_one = mc.simulation.RDMs.df_based_RDM(model_one_X_tasks_df)
+    RSM_two = mc.simulation.RDMs.df_based_RDM(model_two_X_tasks_df)
+    
+    # 4. identify current similarity
+    correlation_sim = mc.simulation.RDMs.corr_matrices_pearson(RSM_one, RSM_two)
+    similarity_between = correlation_sim[0,1]
+    corr_kendall = mc.simulation.RDMs.corr_matrices_kendall(RSM_one, RSM_two)
+    
+    cum_length_per_task = np.cumsum(length_per_task)
+    cum_length_per_task = np.append(0, cum_length_per_task)
+    # NOW enter a loop in which I always exchange one task.
+    # based on this, try to optimize the correlation coefficient (similarity_between)
+    
     # After this loop, I will have 2 dataframes model1 and model2 with the same length,
-    # that I will no correlate and test for their similarity. I will then continue
+    # that I will now correlate and test for their similarity. I will then continue
     # by systematically looping through the sub-models, exchanging single predictions
     # and testing if this will decrease the similarity.
+    for perm in range(0, perms):        
+        # create new configuration
+        # 1. create a task configuration
+        temp_rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False)
+        temp_walk, steps_per_walk_temp = mc.simulation.grid.walk_paths(temp_rew_coords, grid_size, plotting = False)
+        
+        # store this configuration in case I want it later
+        temp_df_rewards = pd.DataFrame(temp_rew_coords)
+        temp_df_walk = pd.DataFrame(temp_walk)
+        temp_df_task_configs = pd.concat([temp_df_rewards, temp_df_walk], axis = 1)
+        
+        # create new neural predictions for this task config
+        # 2. create the predictions for both models
+        if prediction_one == 'clocks' or prediction_two == 'clocks':
+            single_clock, temp_midnight_matrix, temp_clocks_model = mc.simulation.predictions.set_clocks_bytime(walk, steps_per_walk, step_time, grid_size)
+        if prediction_one == 'midnight' or prediction_two == 'midnight':
+            single_clock, temp_midnight_model, temp_clocks_model = mc.simulation.predictions.set_clocks_bytime(walk, steps_per_walk, step_time, grid_size)
+        if prediction_one == 'location' or prediction_two == 'location':
+            locm, temp_location_model = mc.simulation.predictions.set_location_by_time(walk, steps_per_walk, step_time, grid_size)
+            
+            
+        # 2.1 check if HRF convolution wanted?
+        if hrf:
+            if 'location_model' in locals():
+                temp_location_model = mc.simulation.predictions.convolve_with_hrf(location_model, steps_per_walk, step_time, plotting = False)
+            if 'clocks_model' in locals():
+                temp_clocks_model = mc.simulation.predictions.convolve_with_hrf(clocks_model, steps_per_walk, step_time, plotting = False)
+            if 'midnight_model' in locals():
+                temp_midnight_model = mc.simulation.predictions.convolve_with_hrf(midnight_model, steps_per_walk, step_time, plotting = False)
+        
+        # 3. create the RSM and similarity between the two models
+        # make the names the same again
+        if 'location_model' in locals():
+            temp_model_one = temp_location_model[:]
+            if 'clocks_model' in locals():
+                temp_model_two = temp_clocks_model[:]
+            elif 'midnight_model' in locals():
+                temp_model_two = temp_midnight_model[:]
+        # if this statement isnt true, then there is no location model, thus:
+        else:
+            temp_model_one = temp_clocks_model[:]
+            temp_model_two = temp_midnight_model[:]
+            
 
+        # turn those into dataframe
+        temp_model_one_df = pd.DataFrame(temp_model_one)
+        temp_model_one_df.fillna(0)
+        temp_model_two_df = pd.DataFrame(temp_model_two)
+        temp_model_two_df.fillna(0)
+        temp_length_of_task = len(temp_model_one_df.columns)
+
+    
+        # prepare loop here 
+        temp_similarity = 1
+        config_no = 0
+    
+        # then, replace each of the 10 tasks with the new config and text if similarity is now less (= better)
+        # step out of the loop either way once looped through all columns, or when temp_similarity is lower
+        while (temp_similarity > similarity_between) and (config_no < (no_tasks)):
+            # identify which columns to cut
+            temp_similarity = 1
+            if config_no == 0:
+                cut_out_cols_min = config_no
+                cut_out_cols_max = cum_length_per_task[config_no] # array that tells me how long each task is
+            else:
+                cut_out_cols_min = cum_length_per_task[config_no-1]
+                cut_out_cols_max = cum_length_per_task[config_no]
+            
+            # remove the respective columns.
+            temp_model_one_X_tasks_df = model_one_X_tasks_df.drop(model_one_X_tasks_df.iloc[:, cut_out_cols_min: cut_out_cols_max], axis = 1)
+            temp_model_two_X_tasks_df = model_two_X_tasks_df.drop(model_two_X_tasks_df.iloc[:, cut_out_cols_min: cut_out_cols_max], axis = 1)
+            # dimensionality check: len(model_one_X_tasks_df.columns) - len(temp_model_one_X_tasks_df.columns) = cum_length_per_task[config_no]
+
+            # append the new model.
+            temp_model_one_X_tasks_df = pd.concat([temp_model_one_X_tasks_df, temp_model_one_df], axis = 1)
+            temp_model_two_X_tasks_df = pd.concat([temp_model_two_X_tasks_df, temp_model_two_df], axis = 1)
+            
+            # delete the respective number, add the new column count 
+            temp_length_per_task = np.delete(length_per_task, config_no)
+            temp_length_per_task = np.append(temp_length_per_task, temp_length_of_task)
+            # update cum_length_per_task
+            temp_cum_length_per_task = np.cumsum(length_per_task)
+            temp_cum_length_per_task = np.append(0, temp_cum_length_per_task)
+            # and update the reward and path info
+            temp_all_task_configs = df_task_configs.copy()
+            if config_no == 0:
+                temp_all_task_configs.iloc[:,config_no:4] = temp_df_task_configs
+            else:
+                temp_all_task_configs.iloc[:,((config_no-1)*4):(config_no*4)] = temp_df_task_configs
+            
+              
+            # reset the column names/ indices so I can use it again when I try the next replacement
+            temp_model_one_X_tasks_df.columns = range(temp_model_one_X_tasks_df.columns.size)
+            temp_model_two_X_tasks_df.columns = range(temp_model_two_X_tasks_df.columns.size)
+            
+            # create new RDMs for the updated task configuration
+            temp_RSM_one = mc.simulation.RDMs.df_based_RDM(temp_model_one_X_tasks_df)
+            temp_RSM_two = mc.simulation.RDMs.df_based_RDM(temp_model_two_X_tasks_df)
+            temp_correlation_sim = mc.simulation.RDMs.corr_matrices_pearson(temp_RSM_one, temp_RSM_two)
+            temp_similarity = temp_correlation_sim[0,1]
+            # now if temp_similariy, we should exit the loop and then take the new task combo instead.
+            # if not, we go back to the original 
+            # CHECK IF ONE ALREADY EXITS THE LOOP HERE!!
+
+            config_no+=1
+            # del temp_model_one_X_tasks_df
+            # del temp_model_two_X_tasks_df
+            # del temp_cum_length_per_task
+            # del temp_length_per_task
+            # del temp_correlation_sim
+            # del temp_RSM_one
+            # del temp_RSM_two
+            # del temp_similarity
+            # del temp_all_task_configs
+    
+            
+        # if out of this loop, test if it was because the similarity was higher.
+        # test if the new task config in this combination makes for a lower similarity
+        # and if so, take this configuration from now on.
+            
+        if temp_similarity < similarity_between:
+            similarity_between = temp_similarity.copy()
+            model_one_X_tasks_df = temp_model_one_X_tasks_df.copy()
+            model_two_X_tasks_df = temp_model_two_X_tasks_df.copy()
+            length_per_task = temp_length_per_task.copy()
+            cum_length_per_task = temp_cum_length_per_task.copy()
+            df_task_configs = temp_all_task_configs.copy()
+            
+    # DOUBLE CHECK IF IT WORKS!!!!
+    # GO BACK TO HERE
+    # IT SEEMS LIKE IT WORKED
+    
+    print('done, yey!')
+    return similarity_between, model_one_X_tasks_df, model_two_X_tasks_df, df_task_configs
+            
+            
+            
+            
  
-#     RSM_one = mc.simulation.RDMs.within_task_RDM(model_one, col_names)
-#     RSM_two = mc.simulation.RDMs.within_task_RDM(model_two, col_names)
+
+# to check if the function above works.
+def testing_several_task_configs(no_tasks, matrix_length, perms = 1):
+    # This is to reduce similarity both within and between tasks. 
+    # You can select the number of task configurations, and all other parameters that are possible for the 
+    # import pdb; pdb.set_trace()    
+    # output is the optimal X optimal task configurations, with XY as similarity for the given parameters.   
     
+    # I will write a testing function, which instead of the models, just generates random numbers in matrices
+    # and then stepwise goes through the columns to improve the correlations.
+    # first: generate a model-ones-matrix and a model-zero-matrix with given dimensions.
+    # second: compute similarity between model one and model zero.
+    # third: generate a 'new task': 2 random number columns. 
+    # fourth: exchange the columns of model-one and model-zero with these random numbers.
+    # five: check if the similarity improved.
+    # six: iterate through the matrices.
+
+
+    dissimilarity_values = []
+    countgood_corr = 0
+    maximally_dissimilar = []
+    best_reward_coords = []
+    
+    # first, create X random task configurations for model 1 and model 2.
+    for task in range(0, no_tasks):
+        # one task i 5*2 
+        model_one = np.random.rand(2,3)*0.01
+        model_two = np.random.rand(2,3)*0.01
         
-    
-    
-    
-#     # start the optimisation process.
-#     # steps:
-#     # 1. create a task configuration
-#     # 2. create the predictions for both models
-#     # 2.1 check if HRF convolution wanted?
-#     # 3. create the RSM and similarity between the two models
-#     # 4. change the task configuration, do steps 2-3 and compare 
-    
-    
-    
-    
-# def find_best_tasks(loop_no, no_columns, column_names): 
-# #    import pdb; pdb.set_trace()
-# #     # this needs to be something like:
-# #         # 1. create 10 random tasks and the between-task corr maps.
-# #         # 2. compute similarity between those 2 big matrices (this needs to be exclude_diag = False!! bc thats the within task one)
-# #         # 3. stepwise go through each task configuration and check if replacing it with 
-# #         #      a new one reduces the similarity value
-# #         # do this a number of loops
-# #         # always store the current configurations/ toss the one I am replacing
-#     # first, create one 10 tasks x 10 tasks matrix for clocks and locations
-#     task_config_no = 10
-#     clock_RSM_matrix, loc_RSM_matrix, df_clock, df_loc, task_configs = mc.simulation.RDMs.between_task_RDM(task_config_no, column_names, plotting = False)
-#     # and get the similarity between those. 
-#     similarity_between = mc.simulation.RDMs.corr_matrices(loc_RSM_matrix, clock_RSM_matrix)
-#     # based on this, try to optimize the correlation coefficient (similarity_between)
-#     for i in range(0, loop_no):        
-#         # then first take the first 10 columns of df_clock and df_loc and replace it with a new config
-#         # create new configuration
-#         reward_coords = mc.simulation.grid.create_grid()
-#         reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords) 
-#         df_rewards = pd.DataFrame(reward_coords)
-#         df_task_configs = pd.DataFrame(reshaped_visited_fields)
-#         df_temp_task_configs = pd.concat([df_rewards, df_task_configs], axis = 1)
-#         # create new neural predictions for this task config
-#         clocks_matrix, total_steps  = mc.simulation.predictions.set_clocks(reshaped_visited_fields, all_stepnums, 3)           
-#         loc_matrix, total_steps = mc.simulation.predictions.set_location_matrix(reshaped_visited_fields, all_stepnums, 3, 0)
-#         # turn those into dataframe
-#         temp_clocks = pd.DataFrame(clocks_matrix)
-#         temp_locs = pd.DataFrame(loc_matrix)
-#         temp_clocks.columns = column_names
-#         temp_locs.columns = column_names
-#         # prepare loop here       
-#         temp_similarity = np.ones((2,2))
+        model_one_df = pd.DataFrame(model_one)
+        model_two_df = pd.DataFrame(model_two)
+           
+        # 2.0 prepare the column names
+        # change back if this doesnt work!!!
+        model_one_df.fillna(0)
+        model_two_df.fillna(0)
+        length_of_task = len(model_one_df.columns)
         
-#         count = 1 # change back to 1 once debugging is done
-#         # then, replace each of the 10 tasks with the new config and text if similarity is now less (= better)
-#         # step out of the loop either way once looped through all columns, or when temp_similarity is lower
-#         while (temp_similarity[0,1] > similarity_between[0,1]) and (count < task_config_no):
-#             # have a counter for all columns   
-#             temp_df_loc = df_loc.copy()
-#             # replace the first (count) 12 columns with the new configuration
-#             temp_df_loc.iloc[:, ((count-1)*no_columns):(count*no_columns)] = temp_locs
-#             # temp_df_loc.iloc[:, (count*no_columns):((count*no_columns)+no_columns)] = temp_locs
-#             temp_df_loc.fillna(0, inplace = True)
-#             temp_df_clock = df_clock.copy()
-#             temp_df_clock.iloc[:, ((count-1)*no_columns):(count*no_columns)] = temp_clocks
-#             temp_df_clock.fillna(0, inplace = True)
-#             # create new correlation matrices for the new clocks and location matrix
-#             temp_corr_clocks = temp_df_clock.corr()
-#             temp_corr_locs = temp_df_loc.corr()
-#             temp_clocks_RSM = temp_corr_clocks.to_numpy()
-#             temp_locs_RSM = temp_corr_locs.to_numpy() 
-#             # test the new similarity between the new RSMs
-#             temp_similarity = mc.simulation.RDMs.corr_matrices(temp_locs_RSM, temp_clocks_RSM)
-#             if temp_similarity[0,1] < similarity_between[0,1]:
-#                 # task_configs is structured a little different, its always x,y of paths and then x,y of rewards.
-#                 # -> 4 columns per task config              
-#                 task_configs.iloc[:,((count-1)*4):(count*4)] = df_temp_task_configs
-#                 # if the new RSMs correlate less, replace the current configuration and RSM with the new
-#                 # and continue to optimize further.
-#                 df_clock = temp_df_clock.copy()
-#                 df_loc = temp_df_loc.copy()
-#                 similarity_between = temp_similarity.copy()
-#             count += 1 
-#             del temp_df_loc
-#             del temp_df_clock
-#             del temp_corr_clocks
-#             del temp_corr_locs
-#             del temp_similarity
-#             temp_similarity = np.ones((2,2))
+        # # create a string for the columns
+        # count_columns = list(range(0,len(model_one_df.columns)))
+        # col_names = count_columns.copy()
+        # for col_label in count_columns:
+        #     col_names[col_label] = str(col_label) 
+        # model_one_df.fillna(0)
+        # model_one_df.columns = col_names
+        # model_two_df = pd.DataFrame(midnight_model)
+        # model_two_df.fillna(0)
+        # model_two_df.columns = col_names
+        # # NOT SURE IF THIS WILL BE A PROBLEM BC COL NAMES AREN'T UNIQUE
         
-#     return df_clock, df_loc, task_configs, similarity_between     
+        # # Additionally, save how long each matrix was
+        # length_of_task = len(model_one_df.columns)
+                  
+        #now, concatenate these matrices
+        if task < 1:
+            model_one_X_tasks_df = model_one_df.copy()
+            model_two_X_tasks_df = model_two_df.copy()
+            length_per_task = [length_of_task]
+        if task > 0:
+            model_one_X_tasks_df = pd.concat([model_one_df, model_one_X_tasks_df], axis = 1)
+            model_two_X_tasks_df = pd.concat([model_two_df, model_two_X_tasks_df], axis = 1)
+            length_per_task.append(length_of_task)
+    
+    # dimensionality check: sum(length_per_task) == len(model_one_X_tasks_df.columns)
+    
+    # change back if this way of naming the columns doesnt work!!        
+    model_one_X_tasks_df.columns = range(model_one_X_tasks_df.columns.size)
+    model_two_X_tasks_df.columns = range(model_two_X_tasks_df.columns.size)
+    
+    
+    # 3. create RDMs and establish a similarity value
+    RSM_one = mc.simulation.RDMs.df_based_RDM(model_one_X_tasks_df)
+    RSM_two = mc.simulation.RDMs.df_based_RDM(model_two_X_tasks_df)
+    
+    # 4. identify current similarity
+    correlation_sim = mc.simulation.RDMs.corr_matrices_pearson(RSM_one, RSM_two)
+    similarity_between = correlation_sim[0,1]
+    corr_kendall = mc.simulation.RDMs.corr_matrices_kendall(RSM_one, RSM_two)
+    
+    cum_length_per_task = np.cumsum(length_per_task)
+    cum_length_per_task = np.append(0, cum_length_per_task)
+    # NOW enter a loop in which I always exchange one task.
+    # based on this, try to optimize the correlation coefficient (similarity_between)
+    
+    # After this loop, I will have 2 dataframes model1 and model2 with the same length,
+    # that I will now correlate and test for their similarity. I will then continue
+    # by systematically looping through the sub-models, exchanging single predictions
+    # and testing if this will decrease the similarity.
+    for perm in range(0, perms):        
+        # create new configuration
+        # 1. create a task configuration
+        temp_rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False)
+        temp_walk, steps_per_walk_temp = mc.simulation.grid.walk_paths(temp_rew_coords, grid_size, plotting = False)
         
+        # store this configuration in case I want it later
+        temp_df_rewards = pd.DataFrame(temp_rew_coords)
+        temp_df_walk = pd.DataFrame(temp_walk)
+        temp_df_task_configs = pd.concat([temp_df_rewards, temp_df_walk], axis = 1)
         
+        # create new neural predictions for this task config
+        # 2. create the predictions for both models
+        if prediction_one == 'clocks' or prediction_two == 'clocks':
+            single_clock, temp_midnight_matrix, temp_clocks_model = mc.simulation.predictions.set_clocks_bytime(walk, steps_per_walk, step_time, grid_size)
+        if prediction_one == 'midnight' or prediction_two == 'midnight':
+            single_clock, temp_midnight_model, temp_clocks_model = mc.simulation.predictions.set_clocks_bytime(walk, steps_per_walk, step_time, grid_size)
+        if prediction_one == 'location' or prediction_two == 'location':
+            locm, temp_location_model = mc.simulation.predictions.set_location_by_time(walk, steps_per_walk, step_time, grid_size)
+            
+            
+        # 2.1 check if HRF convolution wanted?
+        if hrf:
+            if 'location_model' in locals():
+                temp_location_model = mc.simulation.predictions.convolve_with_hrf(location_model, steps_per_walk, step_time, plotting = False)
+            if 'clocks_model' in locals():
+                temp_clocks_model = mc.simulation.predictions.convolve_with_hrf(clocks_model, steps_per_walk, step_time, plotting = False)
+            if 'midnight_model' in locals():
+                temp_midnight_model = mc.simulation.predictions.convolve_with_hrf(midnight_model, steps_per_walk, step_time, plotting = False)
         
+        # 3. create the RSM and similarity between the two models
+        # make the names the same again
+        if 'location_model' in locals():
+            temp_model_one = temp_location_model[:]
+            if 'clocks_model' in locals():
+                temp_model_two = temp_clocks_model[:]
+            elif 'midnight_model' in locals():
+                temp_model_two = temp_midnight_model[:]
+        # if this statement isnt true, then there is no location model, thus:
+        else:
+            temp_model_one = temp_clocks_model[:]
+            temp_model_two = temp_midnight_model[:]
+            
+
+        # turn those into dataframe
+        temp_model_one_df = pd.DataFrame(temp_model_one)
+        temp_model_one_df.fillna(0)
+        temp_model_two_df = pd.DataFrame(temp_model_two)
+        temp_model_two_df.fillna(0)
+        temp_length_of_task = len(temp_model_one_df.columns)
+
+    
+        # prepare loop here 
+        temp_similarity = 1
+        config_no = 0
+    
+        # then, replace each of the 10 tasks with the new config and text if similarity is now less (= better)
+        # step out of the loop either way once looped through all columns, or when temp_similarity is lower
+        while (temp_similarity > similarity_between) and (config_no < (no_tasks)):
+            # identify which columns to cut
+            temp_similarity = 1
+            if config_no == 0:
+                cut_out_cols_min = config_no
+                cut_out_cols_max = cum_length_per_task[config_no] # array that tells me how long each task is
+            else:
+                cut_out_cols_min = cum_length_per_task[config_no-1]
+                cut_out_cols_max = cum_length_per_task[config_no]
+            
+            # remove the respective columns.
+            temp_model_one_X_tasks_df = model_one_X_tasks_df.drop(model_one_X_tasks_df.iloc[:, cut_out_cols_min: cut_out_cols_max], axis = 1)
+            temp_model_two_X_tasks_df = model_two_X_tasks_df.drop(model_two_X_tasks_df.iloc[:, cut_out_cols_min: cut_out_cols_max], axis = 1)
+            # dimensionality check: len(model_one_X_tasks_df.columns) - len(temp_model_one_X_tasks_df.columns) = cum_length_per_task[config_no]
+
+            # append the new model.
+            temp_model_one_X_tasks_df = pd.concat([temp_model_one_X_tasks_df, temp_model_one_df], axis = 1)
+            temp_model_two_X_tasks_df = pd.concat([temp_model_two_X_tasks_df, temp_model_two_df], axis = 1)
+            
+            # delete the respective number, add the new column count 
+            temp_length_per_task = np.delete(length_per_task, config_no)
+            temp_length_per_task = np.append(temp_length_per_task, temp_length_of_task)
+            # update cum_length_per_task
+            temp_cum_length_per_task = np.cumsum(length_per_task)
+            temp_cum_length_per_task = np.append(0, temp_cum_length_per_task)
+            # and update the reward and path info
+            temp_all_task_configs = df_task_configs.copy()
+            if config_no == 0:
+                temp_all_task_configs.iloc[:,config_no:4] = temp_df_task_configs
+            else:
+                temp_all_task_configs.iloc[:,((config_no-1)*4):(config_no*4)] = temp_df_task_configs
+            
+              
+            # reset the column names/ indices so I can use it again when I try the next replacement
+            temp_model_one_X_tasks_df.columns = range(temp_model_one_X_tasks_df.columns.size)
+            temp_model_two_X_tasks_df.columns = range(temp_model_two_X_tasks_df.columns.size)
+            
+            # create new RDMs for the updated task configuration
+            temp_RSM_one = mc.simulation.RDMs.df_based_RDM(temp_model_one_X_tasks_df)
+            temp_RSM_two = mc.simulation.RDMs.df_based_RDM(temp_model_two_X_tasks_df)
+            temp_correlation_sim = mc.simulation.RDMs.corr_matrices_pearson(temp_RSM_one, temp_RSM_two)
+            temp_similarity = temp_correlation_sim[0,1]
+            # now if temp_similariy, we should exit the loop and then take the new task combo instead.
+            # if not, we go back to the original 
+            # CHECK IF ONE ALREADY EXITS THE LOOP HERE!!
+
+            config_no+=1
+            # del temp_model_one_X_tasks_df
+            # del temp_model_two_X_tasks_df
+            # del temp_cum_length_per_task
+            # del temp_length_per_task
+            # del temp_correlation_sim
+            # del temp_RSM_one
+            # del temp_RSM_two
+            # del temp_similarity
+            # del temp_all_task_configs
+    
+            
+        # if out of this loop, test if it was because the similarity was higher.
+        # test if the new task config in this combination makes for a lower similarity
+        # and if so, take this configuration from now on.
+            
+        if temp_similarity < similarity_between:
+            similarity_between = temp_similarity.copy()
+            model_one_X_tasks_df = temp_model_one_X_tasks_df.copy()
+            model_two_X_tasks_df = temp_model_two_X_tasks_df.copy()
+            length_per_task = temp_length_per_task.copy()
+            cum_length_per_task = temp_cum_length_per_task.copy()
+            df_task_configs = temp_all_task_configs.copy()
+            
+    # DOUBLE CHECK IF IT WORKS!!!!
+    # GO BACK TO HERE
+    # IT SEEMS LIKE IT WORKED
+    
+    print('done, yey!')
+    return similarity_between, model_one_X_tasks_df, model_two_X_tasks_df, df_task_configs
+
+
+

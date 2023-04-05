@@ -32,9 +32,30 @@ def within_task_RDM(activation_matrix, column_names, ax=None, plotting = False):
             plt.figure()
             ax = plt.axes()   
         print(corr_matrix)
+        plt.imshow(corr_matrix, interpolation = 'none')
+        # sn.heatmap(corr_matrix, annot = False)
+    RSM = corr_matrix.to_numpy()
+    return RSM
+
+# create RDM based on dataframes, doesn't matter between what
+def df_based_RDM(dataframe, ax=None, plotting = False):
+    # import pdb; pdb.set_trace()
+    dataframe.fillna(0)
+    corr_matrix = dataframe.corr() # pairwise pearson corr of columns, excluding NA/nulls
+    # from Nili et al., 2014: 
+        # "Popular distance measures are the correlation distance (1 minus the Pearson correlation, 
+        # "computed across voxels or sites of the two activity patterns), the Euclidean distance 
+        # "(the square root of the sum of squared differences between the two patterns), and the Mahalanobis 
+        # "distance (which is the Euclidean distance measured after linearly recoding the space so as to whiten the noise)."
+    if plotting == True:       
+        if ax is None:
+            plt.figure()
+            ax = plt.axes()   
+        print(corr_matrix)
         sn.heatmap(corr_matrix, annot = False)
     RSM = corr_matrix.to_numpy()
     return RSM
+
 
 def between_task_RDM(no_tasks, column_names, ax=None, plotting = False):
     #import pdb; pdb.set_trace()
@@ -116,7 +137,7 @@ def find_best_tasks(loop_no, no_columns, column_names):
         temp_similarity = np.ones((2,2))
         
         count = 1 # change back to 1 once debugging is done
-        # then, replace each of the 10 tasks with the new config and text if similarity is now less (= better)
+        # then, replace each of the 10 tasks with the new config and test if similarity is now less (= better)
         # step out of the loop either way once looped through all columns, or when temp_similarity is lower
         while (temp_similarity[0,1] > similarity_between[0,1]) and (count < task_config_no):
             # have a counter for all columns   
@@ -156,13 +177,7 @@ def find_best_tasks(loop_no, no_columns, column_names):
 
 
 
-
-
-# def optimise_0angle_clocks(permutations):
-    
-#     return optimal_settings, optimal_tasks, max_dissimilarity
-
-    
+# delete this one when I have all scripts adjusted!!!
 def corr_matrices(matrix_one, matrix_two, exclude_diag = True):
     # import pdb; pdb.set_trace()
     dimension = len(matrix_one) 
@@ -185,10 +200,65 @@ def corr_matrices(matrix_one, matrix_two, exclude_diag = True):
 
 
 
+def corr_matrices_kendall(matrix_one, matrix_two, exclude_diag = True):
+    # import pdb; pdb.set_trace()
+    dimension = len(matrix_one) 
+    if exclude_diag == True:
+        diag_array_one = list(matrix_one[np.tril_indices(dimension, -1)])
+        diag_array_two = list(matrix_two[np.tril_indices(dimension, -1)])
+    else: # this is diagonal plus upper triangle
+        diag_array_one = list(matrix_one[np.triu_indices(dimension)])
+        diag_array_two = list(matrix_two[np.triu_indices(dimension)])
+    coef = scipy.stats.kendalltau(diag_array_one, diag_array_two) # kandalls tau, because:
+    # from Nili et al., 2014:
+        # "We do not in general want to assume a linear relationship between the dissimilarities.
+        # "Unless we are confident that our model captures not only the neuronal representational 
+        # "geometry but also its possibly nonlinear reflection in our response channels (e.g. fMRI patterns), 
+        # "assuming a linear relationship between model and brain RDMs appears questionable. We therefore 
+        # "prefer to assume that a model RDM predicts merely the rank order of the dissimilarities. 
+        # "For this reason we recommend the use of rank-correlations for comparing RDMs.
+        # " We recommend Kendall's τA
+    return coef
+
+def corr_matrices_pearson(matrix_one, matrix_two, exclude_diag = True):
+    #import pdb; pdb.set_trace()
+    dimension = len(matrix_one) 
+    if exclude_diag == True:
+        diag_array_one = list(matrix_one[np.tril_indices(dimension, -1)])
+        diag_array_two = list(matrix_two[np.tril_indices(dimension, -1)])
+    else: # this is diagonal plus upper triangle
+        diag_array_one = list(matrix_one[np.triu_indices(dimension)])
+        diag_array_two = list(matrix_two[np.triu_indices(dimension)])
+    coef = np.corrcoef(diag_array_one, diag_array_two) # pearson's, because:
+        # I will use a linear regression in the end, so there will be a linear
+        # relationship assumed between the two model matrices. Since pearson's r
+        # seems to be much higher, I should look at that one rather than the rank corr.
+    return coef
 
 
-
-
-
-
+def corr_matrices_no_autocorr(matrix_one, matrix_two, timepoints_to_exclude, plotting = False):
+    # import pdb; pdb.set_trace()
+    
+    dim_mask = len(matrix_one)  
+    mask= np.tril(np.full((180,180),True),-30) * ~np.tril(np.full((180,180),True),-150)
+    mask = np.tril(np.full((dim_mask,dim_mask),True),-timepoints_to_exclude) * ~np.tril(np.full((dim_mask,dim_mask),True),-(dim_mask - timepoints_to_exclude))
+    diag_array_one = matrix_one[mask]
+    diag_array_two = matrix_two[mask]
+    coef_pearson = np.corrcoef(diag_array_one, diag_array_two)
+    coef_kendall = scipy.stats.kendalltau(diag_array_one, diag_array_two) # kandalls tau, because:
+    # from Nili et al., 2014:
+        # "We do not in general want to assume a linear relationship between the dissimilarities.
+        # "Unless we are confident that our model captures not only the neuronal representational 
+        # "geometry but also its possibly nonlinear reflection in our response channels (e.g. fMRI patterns), 
+        # "assuming a linear relationship between model and brain RDMs appears questionable. We therefore 
+        # "prefer to assume that a model RDM predicts merely the rank order of the dissimilarities. 
+        # "For this reason we recommend the use of rank-correlations for comparing RDMs.
+        # " We recommend Kendall's τA
+    if plotting == True:
+        plt.figure(); 
+        plt.subplot(1,2,1); 
+        plt.imshow(matrix_one*mask); 
+        plt.subplot(1,2,2); 
+        plt.imshow(matrix_two*mask)
+    return coef_kendall, coef_pearson
 

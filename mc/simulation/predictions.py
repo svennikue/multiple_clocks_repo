@@ -126,6 +126,9 @@ def set_clocks(walked_path, step_number, phases = 3, peak_activity = 1, neighbou
     return clocks_matrix, total_steps  
 
 
+# CURRENTLY USED MODEL  
+# Fancy matrix multiplication by Jacob inlcuded :)
+# generates clocks and midnight model per milisecond
 def set_clocks_bytime(walked_path, step_number, step_time, grid_size = 3, phases=3):
     # try one more time, slight adjustments.
     # based on Mohammadys comment: "In the simulation, the agent will progress one phase" 
@@ -253,7 +256,9 @@ def set_clocks_bytime(walked_path, step_number, step_time, grid_size = 3, phases
     
     
     
-# CURRENTLY USED MODEL    
+# OLD 
+# problem: sometimes, phases were on at the same time. probably a wrong assumption!
+# this was based on lazy interpolation  
 # Creates a neurons x time matrix. Neurons are gridsize (anchors) x phases (phase-clocks per anchor) x reward*phases (neurons per clock)
 # BUT: if there are less steps than phases, then the clocks will be activated at the same time, which is probably wrong.
 # input is: reshaped_visited_fields and all_stepnums from mc.simulation.grid.walk_paths(reward_coords)
