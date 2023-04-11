@@ -38,10 +38,14 @@ section_two_three = 0 # find out if parameters work, but only one run.
 section_three_one = 0
 section_three_two = 0 # check if the bigger function works.
 section_three_three = 0 # plot the best configurations from section_three_one
-section_three_four = 1 # plot the model matrices and similarity for several pre-definded task configs.
+section_three_four = 0 # plot the model matrices and similarity for several pre-definded task configs.
 
 ## section 4: test if single neurons in the matrices are phase-tuned
 section_four_one = 0
+
+## section 5: create a step x step RDM with HRF convolution by taking a GLM approach
+section_five_one = 1
+
 
 
 
@@ -549,6 +553,88 @@ if section_four_one == 1:
     df_third_clock.groupby(["Phases"]).mean().plot.barh(color = colormap.colors)
     # yes, the clocks are phase-selective across many different configurations.
     # df_all_configs.groupby(["Phases"]).mean().plot.barh(color = colormap.colors)
+
+
+
+#########################
+#### SECTION 5###########
+# cares about step-wise predictions and more realistic fMRI modelling
+# takes a GLM approach to get there 
+"""
+1. create vectors with 1s for each step and 0 for the other steps (in ms res)
+2. convolve these vectors with hrf
+    2.1 optional: subsample both, predictors and current neural models by taking 
+    an average across 13 columns 
+3. find GLM function and run GLM -> output will be b per step and neuron
+4. correlate to create a step x step RDM
+5. check the similarity between different models and check if the task configs that are good now are still good
+
+
+"""  
+
+if section_five_one == 1:
+    from sklearn import linear_model
+    
+    grid = 4
+    hrf_stg = True 
+    time_per_step = 15
+    rewards = 4
+    subsample = True
+    
+    rew_coords = [[0,0], [0,3], [2,2], [3,2]]
+    walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid, plotting = True)
+    
+    # 1. + 2: create regressors, convolve with HRF.
+    regressor_matrix = mc.simulation.predictions.gen_regressors_per_step(walk, steps_per_walk, time_per_step, hrf = True)
+      
+    single_clock, midnight_matrix, clocks_model = mc.simulation.predictions.set_clocks_bytime(walk, steps_per_walk, time_per_step, grid)
+    
+    # 2.1: subsample
+    if subsample == True:
+        clocks_model = mc.simulation.predictions.subsample(clocks_model, subsample_factor = 13)
+        regressor_matrix = mc.simulation.predictions.subsample(regressor_matrix, subsample_factor = 13)
+    
+    # 3: GLM per neuron
+    coefs_per_neuron = np.zeros((len(clocks_model), len(regressor_matrix)))
+    for neuron in range(0, len(clocks_model)):
+        x = regressor_matrix
+        y = clocks_model[neuron]
+        regr = linear_model.LinearRegression()
+        regr.fit(x,y)
+        coefs_per_neuron[neuron] = regr.coef_
+        print('Intercept: \n', regr.intercept_)
+        print('Coefficients: \n', regr.coef_)
+        
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+  
 
 
 

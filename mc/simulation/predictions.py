@@ -7,21 +7,14 @@ Created on Mon Jan 16 16:34:15 2023
 
 This module generates hypothesis matrices of neural activity based on 
 predictions for location and phase-clock neurons.
-It also includes functions to plot those.
 
-"""
-import numpy as np
-import matplotlib.pyplot as plt
-from numpy import pi
-from matplotlib.gridspec import GridSpec
-import mc
-import scipy.signal
 
-def field_to_number(currentfield, size_of_grid):
-    x = currentfield[0]
-    y = currentfield[1]
-    fieldnumber = x + y * size_of_grid
-    return fieldnumber
+First, you will find different versions to model the clock/midnight neurons
+Then, there will be different versions of modelling the location neurons
+Third, there are functions to plot those
+
+Lastly, there are some functions to play around with the matrices.
+
 
 # If you successfully ran mc.simulation.grid.create_grid() and mc.simulation.grid.walk_paths(reward_coords),
 # you now have 4 locations, 4 states, and paths between the locations/states,
@@ -34,6 +27,91 @@ def field_to_number(currentfield, size_of_grid):
 
 # the next step is thus to now create a prediction for neural firing of location neurons,
 # and the same thing for phase neurons based on the multiple clock model.
+
+
+
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+from numpy import pi
+from matplotlib.gridspec import GridSpec
+import mc
+import scipy.signal
+
+
+############ Helpers ################
+#####################################
+
+
+def field_to_number(currentfield, size_of_grid):
+    x = currentfield[0]
+    y = currentfield[1]
+    fieldnumber = x + y * size_of_grid
+    return fieldnumber
+
+
+############ HRF #############
+def convolve_with_hrf(clocks_per_sec, step_number, step_time, plotting = True):
+    # import pdb; pdb.set_trace()
+    # now do the convolution
+    # take the arrays around the activity bumbps. the 1s need to be the peak of the HRF.
+    # take the HRF. Convolve both arrays using np.convolve()
+    # to do more efficient convolution and big arrays, use scipy.signal.fftconvolve(arr1, arr2)
+    # (although this isnt reaaaally necessary in my case)
+    # also be careful to get same sized output!
+    # one example:
+    cumsumsteps = np.cumsum(step_number)
+    total_steps = cumsumsteps[-1]
+    def hrf(t):
+        "A hemodynamic response function"
+        return t ** 8.6 * np.exp(-t / 0.547)
+    hrf_times = np.arange(0, step_time*total_steps, 0.1)
+    hrf_signal = hrf(hrf_times)
+    # to mimic a cyclic function, put double:
+    clocks_per_sec_hrf_double = np.concatenate([clocks_per_sec, clocks_per_sec], axis = 1)   
+    clocks_per_sec_hrf = clocks_per_sec.copy()
+    for row in range(0, len(clocks_per_sec)):
+        if np.isnan(clocks_per_sec[row,0])== False:
+            neuron = clocks_per_sec_hrf_double[row,:]
+            convolve = scipy.signal.convolve(neuron, hrf_signal) 
+            clocks_per_sec_hrf[row,:] = convolve[len(clocks_per_sec[0]):(len(clocks_per_sec[0])*2)]
+    if plotting == True:
+        plt.figure()
+        plt.plot(hrf_times, hrf_signal)
+        plt.xlabel('time (seconds)')
+        plt.ylabel('BOLD signal')
+        plt.title('Estimated BOLD signal for event at time 0') 
+    return clocks_per_sec_hrf
+
+
+def gen_regressors_per_step(walked_path, step_number, step_time, hrf = True):
+    cumsumsteps = np.cumsum(step_number)
+    total_steps = cumsumsteps[-1]   
+    regressors = np.zeros((step_time*total_steps, total_steps))
+    for i in range(0, len(regressors[0])):
+        regressors[i*step_time: i*step_time + step_time , i] = 1
+    
+    regressors = np.transpose(regressors)
+    
+    if hrf == True:
+        regressors = mc.simulation.predictions.convolve_with_hrf(regressors, step_number, step_time)
+        
+    return regressors
+    
+
+def subsample(matrix, subsample_factor):
+    subsampled_matrix = np.zeros((len(matrix), len(matrix[0])//subsample_factor ))
+    for row in range(len(subsampled_matrix)):
+        for col in range(len(subsampled_matrix[0])):
+            subsampled_matrix[row,col] = np.mean((matrix[row, col*subsample_factor: col*subsample_factor + subsample_factor]))
+            
+    return subsampled_matrix
+
+
+################ Midnight and Clock Models ############
+#######################################################
+
+
 
 # for setting clocks
 # there will be a matrix of 9*3*12 (field-anchors * phases * neurons) x 12 (3phase*4rewards)
@@ -389,44 +467,47 @@ def zero_phase_clocks_by_time(clocks_per_sec, step_number, grid_size = 3, phases
         zero_phase_clocks_matrix[i] = clocks_per_sec[i*neuron_number,:]
     return zero_phase_clocks_matrix
 
-def convolve_with_hrf(clocks_per_sec, step_number, step_time, plotting = True):
-    # import pdb; pdb.set_trace()
-    # now do the convolution
-    # take the arrays around the activity bumbps. the 1s need to be the peak of the HRF.
-    # take the HRF. Convolve both arrays using np.convolve()
-    # to do more efficient convolution and big arrays, use scipy.signal.fftconvolve(arr1, arr2)
-    # (although this isnt reaaaally necessary in my case)
-    # also be careful to get same sized output!
-    # one example:
+
+
+def set_single_clock(walked_path, step_number, step_time, grid_size = 3, phases = 3):
+   # import pdb; pdb.set_trace()
     cumsumsteps = np.cumsum(step_number)
-    total_steps = cumsumsteps[-1]
-    def hrf(t):
-        "A hemodynamic response function"
-        return t ** 8.6 * np.exp(-t / 0.547)
-    hrf_times = np.arange(0, step_time*total_steps, 0.1)
-    hrf_signal = hrf(hrf_times)
-    # to mimic a cyclic function, put double:
-    clocks_per_sec_hrf_double = np.concatenate([clocks_per_sec, clocks_per_sec], axis = 1)   
-    clocks_per_sec_hrf = clocks_per_sec.copy()
-    for row in range(0, len(clocks_per_sec)):
-        if np.isnan(clocks_per_sec[row,0])== False:
-            neuron = clocks_per_sec_hrf_double[row,:]
-            convolve = scipy.signal.convolve(neuron, hrf_signal) 
-            clocks_per_sec_hrf[row,:] = convolve[len(clocks_per_sec[0]):(len(clocks_per_sec[0])*2)]
-    if plotting == True:
-        plt.figure()
-        plt.plot(hrf_times, hrf_signal)
-        plt.xlabel('time (seconds)')
-        plt.ylabel('BOLD signal')
-        plt.title('Estimated BOLD signal for event at time 0') 
-    return clocks_per_sec_hrf
+    total_steps = cumsumsteps[-1] 
+    n_states = len(step_number)    
+    clock_neurons_per_ms = np.zeros([phases*n_states,total_steps*step_time])
+    phase_array = np.zeros([total_steps*step_time])
+    # clock_neurons_per_ms = np.repeat(clock_neurons_prep, repeats = step_time, axis = 1)
+    # now, for every sub-path, divide the timesteps by the number of phases.
+    # e.g. 1 step, 1sec > 3 cols, 3cols, 4 cols per phase.
+    # e.g. 2 step, 1 sec > 7 cols, 7 cols, 6 cols per phase.
+    # define step length:
+    cols_to_fill_previous = 0
+    # phase_list = [None] * len(clock_neurons_per_ms[0])
+    for count_paths, (pathlength) in enumerate(step_number):
+        cols_to_fill = pathlength*step_time
+        # create a string that tells me how many columns are one phase clock
+        time_per_phase_in_clock = ([cols_to_fill // phases + (1 if x < cols_to_fill % phases else 0) for x in range (phases)])
+        time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
+        # use the elements of cols_per_clock to fill the single-clock matrix.
+        # add a category-vector for the phases
+        for phase in range(0, phases):
+            if phase == 0:
+                clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_previous+ 0: cols_to_fill_previous+ time_per_phase_in_clock_cum[phase]] = 1
+                phase_array[cols_to_fill_previous+ 0: cols_to_fill_previous+ time_per_phase_in_clock_cum[phase]] = 10
+            elif phase == 1:
+                clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 1
+                phase_array[cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]]= 20
+            elif phase == 2:
+                clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 1
+                phase_array[cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 30
+        cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
+    return clock_neurons_per_ms, phase_array
+   
 
 
-# for i, j in enumerate([0, 10, 40, 45]):
-#     plt.subplot(8,1,i*2+1)
-#     plt.plot(np.eye(50)[j])
-#     plt.subplot(8,1,i*2+2)
-#     plt.plot(np.convolve(np.concatenate([np.eye(50)[j] for _ in range(2)]), hrf_signal)[50:100])
+#############################
+### Location Models #########
+#############################
 
 
 # next, set location matrix.
@@ -615,7 +696,7 @@ def plot_phaseloc_pertime(phase_loc_matrix, step_time, all_stepnums):
     #return fig
     
     
-    
+   
     
 def plot_one_anchor_all_clocks_pertime(one_anchor_matrix, step_time, all_stepnums):
     # import pdb; pdb.set_trace()
@@ -688,6 +769,12 @@ def plot_neurons(data):
     
 
 
+#################### PART 3 ##################
+#############################################
+##### Playing around with the matrices. #####
+##############################################
+
+
 # loop function to create an average prediction.
 def many_configs_loop(loop_no, which_matrix):
     # import pdb; pdb.set_trace()
@@ -707,53 +794,8 @@ def many_configs_loop(loop_no, which_matrix):
     average_matrix = sum_matrix[:]/loop_no
     return average_matrix
 
-
-# some notes on plotting with pandas.
-# I can take the matrices, transpose them, and add a phase-column. 
-# Thus, every column is a neuron, and one assigns phase-categories.
-# e.g.:
-# df = pd.DataFrame({'phase':['e', 'e', 'l', 'r', 'e', 'l', 'l', 'l', 'l', 'r', 'r', 'r', 'e', 'l', 'r'], 'neuron_1': [1,1,0,0,1,0,0,0,0,0,0,0,1,0,0], 'neuron_2': [0,0,0,1,0,0,0,0,0,1,1,1,0,0,1]})
-# df.groupby(['phase']).mean()
-# df.groupby(['phase']).mean().plot.barh() 
-# now, try this with the within-one-clock matrix.
-# generate 10 different tasks, and generate the clock matrix. Add the phase column. Then plot.
+#############
 
 
-
-
-def set_single_clock(walked_path, step_number, step_time, grid_size = 3, phases = 3):
-   # import pdb; pdb.set_trace()
-    cumsumsteps = np.cumsum(step_number)
-    total_steps = cumsumsteps[-1] 
-    n_states = len(step_number)    
-    clock_neurons_per_ms = np.zeros([phases*n_states,total_steps*step_time])
-    phase_array = np.zeros([total_steps*step_time])
-    # clock_neurons_per_ms = np.repeat(clock_neurons_prep, repeats = step_time, axis = 1)
-    # now, for every sub-path, divide the timesteps by the number of phases.
-    # e.g. 1 step, 1sec > 3 cols, 3cols, 4 cols per phase.
-    # e.g. 2 step, 1 sec > 7 cols, 7 cols, 6 cols per phase.
-    # define step length:
-    cols_to_fill_previous = 0
-    # phase_list = [None] * len(clock_neurons_per_ms[0])
-    for count_paths, (pathlength) in enumerate(step_number):
-        cols_to_fill = pathlength*step_time
-        # create a string that tells me how many columns are one phase clock
-        time_per_phase_in_clock = ([cols_to_fill // phases + (1 if x < cols_to_fill % phases else 0) for x in range (phases)])
-        time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
-        # use the elements of cols_per_clock to fill the single-clock matrix.
-        # add a category-vector for the phases
-        for phase in range(0, phases):
-            if phase == 0:
-                clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_previous+ 0: cols_to_fill_previous+ time_per_phase_in_clock_cum[phase]] = 1
-                phase_array[cols_to_fill_previous+ 0: cols_to_fill_previous+ time_per_phase_in_clock_cum[phase]] = 10
-            elif phase == 1:
-                clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 1
-                phase_array[cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]]= 20
-            elif phase == 2:
-                clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 1
-                phase_array[cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 30
-        cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
-    return clock_neurons_per_ms, phase_array
-        
     
 

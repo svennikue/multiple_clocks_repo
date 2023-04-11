@@ -82,7 +82,7 @@ for task_no in range(len(location)):
 
 
 # thirdly, reverse the rewards_configs file into coordinates
-     
+for      
 
 # fourth, count how many steps the mice made between each reward
 
