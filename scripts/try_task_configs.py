@@ -35,7 +35,10 @@ section_two_two = 0 # plot the successful reward patterns from section 2.1
 section_two_three = 0 # find out if parameters work, but only one run.
 
 ## section 3: identify task configurations that correlate low BETWEEN several configs.
-section_three_one = 1
+section_three_one = 0
+section_three_two = 0 # check if the bigger function works.
+section_three_three = 0 # plot the best configurations from section_three_one
+section_three_four = 1 # plot the model matrices and similarity for several pre-definded task configs.
 
 ## section 4: test if single neurons in the matrices are phase-tuned
 section_four_one = 0
@@ -133,7 +136,7 @@ if section_one_two == 1:
 if section_one_three == 1:
     similarity_values_hrf = []
     countmax_hrf = 0
-    perms_hrf = 1000
+    perms_hrf = 5000
     for count in range(perms_hrf):
         reward_coords = mc.simulation.grid.create_grid(plot = False)
         reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords, plotting = False)
@@ -233,12 +236,12 @@ if section_two_one == 1:
     clock_prediction = 'clocks'
     phase_loc_prediction = 'midnight'
     
-    top_sim, top_walk_coords, top_reward_coords, rewards_better_seventy, tasks_better_seventy, all_dissim_vals, no_auto_kendall, no_auto_pearson = mc.simulation.optimise.optimise_task_for(clock_prediction, phase_loc_prediction, hrf = True, grid_size = 3, step_time= 15, reward_no= 4, perms = 500, plot = True)
+    top_sim, top_walk_coords, top_reward_coords, rewards_better_seventy, tasks_better_seventy, all_dissim_vals, no_auto_kendall, no_auto_pearson = mc.simulation.optimise.optimise_task_for(clock_prediction, phase_loc_prediction, hrf = True, grid_size = 3, step_time= 15, reward_no= 4, perms = 5000, plot = True)
     
     save = 1
     if save == 1:
         steps_in_ms = 15
-        perms = 500
+        perms = 5000
         time = datetime.now().strftime("%Y%m%d-%H%M%S")
         file = '.csv'
         folder_hrf = '/Users/xpsy1114/Documents/projects/multiple_clocks/results/good_configs_0phase_with_clocks_hrf'
@@ -286,25 +289,25 @@ if section_two_three == 1:
     
     # NEW CODING [27.03.23]
     # rew_coords = top_reward_coords[:]
+    # rew_coords = [[0,3], [3,3], [0,2], [3,2]] # should be .53
     
-    rew_coords = [[1,2], [3,1], [1,3], [1,0]] # this is .59
-    # rew_coords = [[0,0], [0,3], [2,2], [3,2]] # this is .54
+    # rew_coords = [[1,2], [3,1], [1,3], [1,0]] # this is .55
+    
+    # rew_coords = [[0,0], [0,1], [1,1], [1,0]] # this is .91
+    # rew_coords = [[0,0], [0,1], [3,3], [3,2]] 
+    rew_coords = [[0,0], [0,3], [2,2], [3,2]] # this is .54
     # rew_coords = [[3,3], [1,2], [3,0], [1,0]] # this is .53
     
     # rew_coords = [[0,2], [1,1], [2,1], [0,3]] # this is .67
-    # rew_coords = [[2,3], [0,0], [2,0], [2,1]] # this is .53
-
-
-
 
     walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid_size, plotting = True)
     
     
     # try the new clock function. 
     single_clock, midnight_matrix, clocks_model = mc.simulation.predictions.set_clocks_bytime(walk, steps_per_walk, step_time, grid_size)
-    # mc.simulation.predictions.plot_without_legends(single_clock)
-    # mc.simulation.predictions.plot_without_legends(midnight_matrix)
-    # mc.simulation.predictions.plot_without_legends(clocks_model)
+    mc.simulation.predictions.plot_without_legends(single_clock)
+    mc.simulation.predictions.plot_without_legends(midnight_matrix)
+    mc.simulation.predictions.plot_without_legends(clocks_model)
     
     # # ok location works.
     # locm, location_model = mc.simulation.predictions.set_location_by_time(walk, steps_per_walk, step_time, grid_size)
@@ -319,8 +322,8 @@ if section_two_three == 1:
     # mc.simulation.predictions.plot_without_legends(phase_loc_model, 'phase_loc_model', hrf, grid_size, step_time, reward_no, perms)
     
     # # HRF add-on
-    clocks_model_hrf = mc.simulation.predictions.convolve_with_hrf(clocks_model, steps_per_walk, step_time, plotting = False)
-    midnight_model_hrf = mc.simulation.predictions.convolve_with_hrf(midnight_matrix, steps_per_walk, step_time, plotting = False)
+    clocks_model_hrf = mc.simulation.predictions.convolve_with_hrf(clocks_model, steps_per_walk, step_time, plotting = True)
+    midnight_model_hrf = mc.simulation.predictions.convolve_with_hrf(midnight_matrix, steps_per_walk, step_time, plotting = True)
     # clocks_model_dummy = mc.simulation.predictions.convolve_with_hrf(clocks_model, steps_per_walk, step_time, plotting = True)
     # phase_loc_model = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_model_dummy, steps_per_walk, grid_size)
     # # plot those as well
@@ -353,34 +356,147 @@ if section_two_three == 1:
 ##
 # this selects reward configurations that have low correlations over the course of 10 different tasks.
 if section_three_one == 1:
-    # these are outdated now but nevermind
-    # adjust once I've got the code figured out
-    name = '/Users/xpsy1114/Documents/projects/multiple_clocks/results/good_configs_4_grid_4_rew.npy'
     
-    good_rew_configs = np.load(name)
+    save = 1
+    plot = 1
+    
     model_one = 'clocks'
     model_two = 'midnight'
     task_repeats = 10
     grid = 4
     hrf_stg = True 
-    time_per_step = 15
+    time_per_step = 10
     rewards = 4
-    permutations = 10
+    permutations = 1000
+    
+    # takes a while with 300, but gets to around .56, ans 1800 timepoints for 10 tasks
 
-    pearson_between, model_one_between, model_two_between, optimal_task_configs = mc.simulation.optimise.optimise_several_task_configs(model_one, model_two, task_repeats, hrf_stg, grid, time_per_step, rewards, permutations)
+    pearson_between, model_one_between, model_two_between, optimal_task_configs, betw_rew_coords = mc.simulation.optimise.optimise_several_task_configs(model_one, model_two, task_repeats, hrf_stg, grid, time_per_step, rewards, permutations)
     # Cso this doesnt work yet
-    # lowest corr so far: .58 (pearson)
+    # lowest corr so far: .523 (pearson)
+    
+    
+    
+    if save == 1:
+        time = datetime.now().strftime("%Y%m%d-%H%M%S")
+        file = '.csv'
+        folder_hrf = '/Users/xpsy1114/Documents/projects/multiple_clocks/results/between_configs_midnight_x_clocks_hrf'
+        steptime = '_' + str(time_per_step) + '_ms_per_step' 
+        filename = folder_hrf + time + '_perms' + str(permutations) + steptime + file 
+        file_to_save = pd.DataFrame(optimal_task_configs)
+        file_to_save.to_csv(filename)
+        
+        filename_rew = folder_hrf + time + '_perms' + str(permutations) + steptime
+        np.save(filename_rew, betw_rew_coords)
+        
+    if plot == 1:
+        plt.figure()
+        plt.imshow(model_one_between)
+        plt.title('best_%s' %model_one)
+        
+        plt.figure()
+        plt.imshow(model_two_between)
+        plt.title('best_%s' %model_two)
+        
     
 
 # Write one script which identifies the top 10 task configurations for certain settings.
 # Then write a script which computes the between-task similarity over those 10 good tasks (and maybe continues to optimise them)
 # Then check if we can do both: optimise for space + 
 
+if section_three_two == 1:
+    test_pearson_between, test_model_one_between, test_model_two_between, test_optimal_task_configs = mc.simulation.optimise.testing_several_task_configs(10, perms = 10000)
 
 
+if section_three_three == 1:
+    
+    df = pd.read_csv('/Users/xpsy1114/Documents/projects/multiple_clocks/results/between_configs_midnight_x_clocks_hrf20230407-150212_perms1000_15_ms_per_step.csv')
+    betw_rew_coords = np.load('/Users/xpsy1114/Documents/projects/multiple_clocks/results/between_configs_midnight_x_clocks_hrf20230407-150212_perms1000_15_ms_per_step.npy')
+    
+    grid = 4
+    hrf_stg = True 
+    time_per_step = 15
+    rewards = 4
+    
+    for count, rew_conf in enumerate(betw_rew_coords):
+        if count > 3:
+            break
+            
+        walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_conf, grid, plotting = True)
+        
+        single_clock, midnight_matrix, clocks_model = mc.simulation.predictions.set_clocks_bytime(walk, steps_per_walk, time_per_step, grid)
+        mc.simulation.predictions.plot_without_legends(single_clock, titlestring = 'single_clock')
+        #mc.simulation.predictions.plot_without_legends(midnight_matrix)
+        #mc.simulation.predictions.plot_without_legends(clocks_model)
+        
+        # # HRF add-on
+        clocks_model_hrf = mc.simulation.predictions.convolve_with_hrf(clocks_model, steps_per_walk, time_per_step, plotting = False)
+        midnight_model_hrf = mc.simulation.predictions.convolve_with_hrf(midnight_matrix, steps_per_walk, time_per_step, plotting = False)
+        locm, location_model = mc.simulation.predictions.set_location_by_time(walk, steps_per_walk, time_per_step, grid)
+        location_hrf = mc.simulation.predictions.convolve_with_hrf(location_model, steps_per_walk, time_per_step, plotting = False)
+        
+        # # plot those as well
+        mc.simulation.predictions.plot_without_legends(clocks_model_hrf, titlestring = 'Clock model')
+        mc.simulation.predictions.plot_without_legends(midnight_model_hrf, titlestring = 'Midnight model')
+        mc.simulation.predictions.plot_without_legends(location_hrf, titlestring = 'Location model')
+        
+        # and what's the within-task similarity?
+        
+        # 2.0 prepare the column names 
+        # create a string for the columns
+        model_one = clocks_model_hrf[:]
+        model_two = midnight_model_hrf[:]
+        model_three = location_hrf[:]
+        count_columns = list(range(0,len(model_one[0])))
+        col_names = count_columns.copy()
+        for i in count_columns:
+            col_names[i] = str(i) 
+        RSM_one = mc.simulation.RDMs.within_task_RDM(model_one, col_names, plotting = True, titlestring = 'Clock model RSM')
+        RSM_two = mc.simulation.RDMs.within_task_RDM(model_two, col_names, plotting = True, titlestring = 'Midnight model RSM')
+        RSM_three = mc.simulation.RDMs.within_task_RDM(model_three, col_names, plotting = True, titlestring = 'Location model RSM')
+        
+        # best_model_one_df = pd.DataFrame(model_one)
+        # best_model_two_df = pd.DataFrame(model_two)
+        # mc.simulation.RDMs.df_based_RDM(best_model_one_df, plotting = True)
+        # mc.simulation.RDMs.df_based_RDM(best_model_two_df, plotting = True)
+         
+        sim_clock_midnight = mc.simulation.RDMs.corr_matrices_pearson(RSM_one, RSM_two)
+        print(f'Similarity between clock and mignight for task {count} is {sim_clock_midnight[0,1]}')
+        sim_clock_location = mc.simulation.RDMs.corr_matrices_pearson(RSM_one, RSM_three)
+        print(f'Similarity between clock and location for task {count} is {sim_clock_location[0,1]}')
+        sim_midnight_location = mc.simulation.RDMs.corr_matrices_pearson(RSM_two, RSM_three)
+        print(f'Similarity between mignight and location for task {count} is {sim_midnight_location[0,1]}')
+        
+        
+        
+if section_three_four == 1:
+    # 4x4 grid, 4 rewards, 15 ms per step
+    # betw_rew_coords = np.load('/Users/xpsy1114/Documents/projects/multiple_clocks/results/between_configs_midnight_x_clocks_hrf20230407-150212_perms1000_15_ms_per_step.npy')
+    # similarity_dict = mc.simulation.optimise.show_several_taskconfigs(betw_rew_coords, prediction_one = 'location', gridsize = 4, timeperstep = 15, reward_no = 4, prediction_two= 'clocks', prediction_three='midnight', hrf = True)
 
-
-
+    # 4x4 grid, 4 rewards, 10ms per step
+    betw_rew_coords = np.load('/Users/xpsy1114/Documents/projects/multiple_clocks/results/between_configs_midnight_x_clocks_hrf20230411-152557_perms1000_10_ms_per_step.npy')
+    similarity_dict = mc.simulation.optimise.show_several_taskconfigs(betw_rew_coords, prediction_one = 'location', gridsize = 4, timeperstep = 10, reward_no = 4, prediction_two= 'clocks', prediction_three='midnight', hrf = True)
+    
+        
+    # 4x4 grid, 4 rewards, 20ms per step
+    # betw_rew_coords = np.load('/Users/xpsy1114/Documents/projects/multiple_clocks/results/between_configs_midnight_x_clocks_hrf20230411-150723_perms1000_20_ms_per_step.npy')
+    # similarity_dict = mc.simulation.optimise.show_several_taskconfigs(betw_rew_coords, prediction_one = 'location', gridsize = 4, timeperstep = 20, reward_no = 4, prediction_two= 'clocks', prediction_three='midnight', hrf = True)
+    
+    
+    # 3x3 grid, 4 rewards, 15ms per step
+    #betw_rew_coords = np.load('/Users/xpsy1114/Documents/projects/multiple_clocks/results/between_configs_midnight_x_clocks_hrf20230411-122214_perms1000_15_ms_per_step.npy')
+    #similarity_dict = mc.simulation.optimise.show_several_taskconfigs(betw_rew_coords, prediction_one = 'location', gridsize = 3, timeperstep = 15, reward_no = 4, prediction_two= 'clocks', prediction_three='midnight', hrf = True)
+    
+    # 3x3 grid, 4 rewards, 10ms per step
+    # betw_rew_coords = np.load('/Users/xpsy1114/Documents/projects/multiple_clocks/results/between_configs_midnight_x_clocks_hrf20230411-134215_perms1000_10_ms_per_step.npy')
+    # similarity_dict = mc.simulation.optimise.show_several_taskconfigs(betw_rew_coords, prediction_one = 'location', gridsize = 3, timeperstep = 10, reward_no = 4, prediction_two= 'clocks', prediction_three='midnight', hrf = True)
+    
+    # 3x3 grid, 4 rewards, 20ms per step
+    # betw_rew_coords = np.load('/Users/xpsy1114/Documents/projects/multiple_clocks/results/between_configs_midnight_x_clocks_hrf20230411-141148_perms1000_20_ms_per_step.npy')
+    # similarity_dict = mc.simulation.optimise.show_several_taskconfigs(betw_rew_coords, prediction_one = 'location', gridsize = 3, timeperstep = 20, reward_no = 4, prediction_two= 'clocks', prediction_three='midnight', hrf = True)
+    
+    
 # it seems as if the most successful paths are those that overlap spatially a lot.
 # this means there are a lot of clocks reactivated at different timepoints/phases??
 

@@ -521,13 +521,14 @@ def set_location_by_time(walked_path, step_number, step_time, grid_size = 3):
 # PART 2: PLOTTING
 # create functions to plot the matrices
 
-def plot_without_legends(any_matrix, prediction = None,  hrf = None, grid_size = None, step_time = None, reward_no = None, perms = None):
+def plot_without_legends(any_matrix, titlestring = None, prediction = None,  hrf = None, grid_size = None, step_time = None, reward_no = None, perms = None):
     # import pdb; pdb.set_trace()
     plt.figure()
     fig, ax = plt.subplots()
     plt.imshow(any_matrix, aspect = 'auto') 
     ax.xlabel = 'neural activity over some timescale'
     ax.ylabel = 'neurons'
+    plt.title(f'{titlestring}')
     if 'hrf' in locals():
         hrf_set = '_hrf=' + str(hrf)
     if 'grid_size' in locals():
