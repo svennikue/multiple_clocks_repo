@@ -37,6 +37,7 @@ from numpy import pi
 from matplotlib.gridspec import GridSpec
 import mc
 import scipy.signal
+from matplotlib.patches import Circle
 
 
 ############ Helpers ################
@@ -51,7 +52,7 @@ def field_to_number(currentfield, size_of_grid):
 
 
 ############ HRF #############
-def convolve_with_hrf(clocks_per_sec, step_number, step_time, plotting = True):
+def convolve_with_hrf(clocks_per_sec, step_number, step_time, plotting = False):
     # import pdb; pdb.set_trace()
     # now do the convolution
     # take the arrays around the activity bumbps. the 1s need to be the peak of the HRF.
@@ -100,6 +101,7 @@ def gen_regressors_per_step(walked_path, step_number, step_time, hrf = True):
     
 
 def subsample(matrix, subsample_factor):
+    # import pdb; pdb.set_trace() 
     subsampled_matrix = np.zeros((len(matrix), len(matrix[0])//subsample_factor ))
     for row in range(len(subsampled_matrix)):
         for col in range(len(subsampled_matrix[0])):
@@ -329,6 +331,63 @@ def set_clocks_bytime(walked_path, step_number, step_time, grid_size = 3, phases
     
     return clock_neurons_per_ms, whole_path_matrix, full_clock_matrix
     
+# ephys validation model
+# this is based on 360 timebins > 1 state is 90 bins, 1 phase is 30 bins.
+# the steps are given in numbers, not coordinates.
+# important: fields need to be between 0 and 8!
+def set_clocks_ephys(walked_path, reward_fields, grid_size = 3, phases = 3, plotting = False, ax=None):
+    # import pdb; pdb.set_trace()
+    no_rewards = len(reward_fields)
+    no_fields = grid_size*grid_size
+    no_neurons = phases*no_rewards
+    n_columns = len(walked_path)
+    # and number of rows is fields*phase*neurons per clock 
+    n_rows = no_fields*phases*no_neurons 
+    
+    clocks_matrix = np.empty([n_rows,n_columns]) # fields times phases.
+    clocks_matrix[:] = np.nan
+    
+    bins_per_reward = n_columns/no_rewards
+    curr_rew_vector = np.repeat([0,1,2,3], repeats = bins_per_reward)
+    bins_per_phase = bins_per_reward/phases
+    curr_phase_vector = np.repeat([0,1,2], repeats = bins_per_phase)
+    curr_phase_vector = np.tile(curr_phase_vector, reps = no_rewards)
+    neuron_vector = np.repeat([0,1,2,3,4,5,6,7,8,9,10,11], repeats = bins_per_phase)
+    # set up neurons of a clock.
+    clock_neurons = np.zeros([no_neurons,n_columns])
+    for i in range(0,len(clock_neurons[0])):
+        clock_neurons[neuron_vector[i],i]= 1 
+
+    for i, field in enumerate(walked_path):
+        # now loop!!!
+        # exception for first field.
+        if i == 0:
+            curr_midnight_clock_neuron = field*curr_phase_vector[i]*no_neurons
+            clocks_matrix[curr_midnight_clock_neuron : (curr_midnight_clock_neuron+12), 0:None] = clock_neurons
+        # assumption: after the first field, I only turn on a new clock if the phase or the field changes.
+        elif (field != walked_path[i-1]) and (curr_phase_vector[i] != curr_phase_vector[i-1]):
+            print(field, walked_path[i-1], curr_phase_vector[i], curr_phase_vector[i-1]) # delete later
+            # first identify which row will be the first midnight-clock-neuron
+            curr_midnight_clock_neuron = field*curr_phase_vector[i]*no_neurons
+            # slice the clock neuron filler at the step we are currently at.
+            first_split = clock_neurons[:, 0:(n_columns-i)]
+            second_split = clock_neurons[:, n_columns-i:None]
+            # then add another row of 1s and fill the matrix with it
+            fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
+            # then check if clock has been initiated already
+            is_initiated = clocks_matrix[curr_midnight_clock_neuron, 0]
+            if np.isnan(is_initiated): # if no initiated yet
+                # and only the second part will be filled in.
+                clocks_matrix[curr_midnight_clock_neuron:(curr_midnight_clock_neuron+12), 0:None]= fill_clock_neurons
+            else:
+                # if the clock has already been initiated and thus is NOT nan
+                # only add the 1s
+                for row in range(len(fill_clock_neurons)):
+                    activate_at_col = np.where(fill_clock_neurons[row] == 1)[0][0]
+                    clocks_matrix[curr_midnight_clock_neuron+row, activate_at_col] = 1
+
+    return clocks_matrix
+
     
     
     
@@ -594,6 +653,55 @@ def set_location_by_time(walked_path, step_number, step_time, grid_size = 3):
             loc_matrix[fieldnumber, i] = 1
     loc_per_sec = np.repeat(loc_matrix, repeats = step_time, axis=1)    
     return loc_matrix, loc_per_sec
+
+
+# ephys validation model
+# this is based on 360 timebins > 1 state is 90 bins, 1 phase is 30 bins.
+# the steps are given in numbers, not coordinates.
+
+# important: fields need to be between 0 and 8!
+def set_location_ephys(walked_path, reward_fields, grid_size = 3, plotting = False, ax=None):
+    # import pdb; pdb.set_trace()
+    n_rows = grid_size*grid_size
+    n_columns = len(walked_path)
+    loc_matrix = np.empty([n_rows,n_columns]) # fields times steps
+    loc_matrix[:] = np.nan
+    walked_path = [int(field_no) for field_no in walked_path]
+    for i, field in enumerate(walked_path):
+        # test if this has already been activated!
+        if loc_matrix[field, i] == 0:
+            # if so, then don't overwrite it.
+            loc_matrix[field, i] = 1
+        else:   
+            loc_matrix[field, :] = 0
+            loc_matrix[field, i] = 1
+    if plotting == True:
+        r0x, r0y = reward_fields[0], 1
+        r1x, r1y = reward_fields[1], 90
+        r2x, r2y = reward_fields[2], 180
+        r3x, r3y = reward_fields[3], 270
+        r4x, r4y = reward_fields[0], 359
+        rewards = [Circle((r0y, r0x), radius = 0.4, color = 'black'),
+                   Circle((r1y, r1x), radius = 0.4, color = 'black'),
+                   Circle((r2y, r2x), radius = 0.4, color = 'black'),
+                   Circle((r3y, r3x), radius = 0.4, color = 'black'),
+                   Circle((r4y, r4x), radius = 0.4, color = 'black'),]
+        if ax is None:
+            plt.figure()
+            ax = plt.axes()   
+        plt.imshow(loc_matrix, interpolation = 'none', aspect = 'auto')
+        ax.set_yticks([1,2,3,4,5,6,7,8,9])
+        ax.set_yticklabels(['field 1', 'field 2','field 3', 'field 4', 'field 5', 'field 6', 'field 7', 'field 8', 'field 9'])
+        ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back to r1'])
+        plt.xticks(rotation = 45)
+        ax.set_xticks([30,60,90,120,150,180,210,240,270,300,330,360])
+        plt.title('location model per time bin')
+        plt.xlabel('360 timebins, 90 per state')
+        plt.ylabel('field-neurons')
+        for r in rewards:
+            ax.add_patch(r)
+    return loc_matrix
+
 
 
     

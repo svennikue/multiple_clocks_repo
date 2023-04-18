@@ -16,12 +16,10 @@ import mc
 import scipy
 
 
-def within_task_RDM(activation_matrix, column_names, ax=None, plotting = False, titlestring = None):
+def within_task_RDM(activation_matrix, ax=None, plotting = False, titlestring = None):
     # import pdb; pdb.set_trace()
-    dataframe = pd.DataFrame(activation_matrix)
-    dataframe.fillna(0)
-    dataframe.columns = column_names
-    corr_matrix = dataframe.corr() # pairwise pearson corr of columns, excluding NA/nulls
+    activation_matrix = np.nan_to_num(activation_matrix)
+    RSM = np.corrcoef(activation_matrix.T) # pairwise pearson corr of columns, excluding NA/nulls
     # from Nili et al., 2014: 
         # "Popular distance measures are the correlation distance (1 minus the Pearson correlation, 
         # "computed across voxels or sites of the two activity patterns), the Euclidean distance 
@@ -31,11 +29,9 @@ def within_task_RDM(activation_matrix, column_names, ax=None, plotting = False, 
         if ax is None:
             plt.figure()
             ax = plt.axes()   
-        print(corr_matrix)
-        plt.imshow(corr_matrix, interpolation = 'none')
+        plt.imshow(RSM, interpolation = 'none')
         plt.title(f'{titlestring}')
         # sn.heatmap(corr_matrix, annot = False)
-    RSM = corr_matrix.to_numpy()
     return RSM
 
 # create RDM based on dataframes, doesn't matter between what

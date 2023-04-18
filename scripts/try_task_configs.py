@@ -279,6 +279,7 @@ if section_two_three == 1:
     reward_no = 4
     perms = 10
     hrf = True
+    subsample = True
     
     # rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False)
     
@@ -300,6 +301,7 @@ if section_two_three == 1:
     # rew_coords = [[0,0], [0,1], [1,1], [1,0]] # this is .91
     # rew_coords = [[0,0], [0,1], [3,3], [3,2]] 
     rew_coords = [[0,0], [0,3], [2,2], [3,2]] # this is .54
+
     # rew_coords = [[3,3], [1,2], [3,0], [1,0]] # this is .53
     
     # rew_coords = [[0,2], [1,1], [2,1], [0,3]] # this is .67
@@ -314,8 +316,8 @@ if section_two_three == 1:
     mc.simulation.predictions.plot_without_legends(clocks_model)
     
     # # ok location works.
-    # locm, location_model = mc.simulation.predictions.set_location_by_time(walk, steps_per_walk, step_time, grid_size)
-    # mc.simulation.predictions.plot_without_legends(location_model, 'location_model', hrf, grid_size, step_time, reward_no, perms)
+    locm, location_matrix = mc.simulation.predictions.set_location_by_time(walk, steps_per_walk, step_time, grid_size)
+    # mc.simulation.predictions.plot_without_legends(location_matrix, 'location_model', hrf, grid_size, step_time, reward_no, perms)
     
     # # ok I believe it works.
     # clocksm, neuroncl, clocks_model = mc.simulation.predictions.set_clocks_bytime_one_neurone(walk, steps_per_walk, step_time, grid_size)
@@ -326,33 +328,60 @@ if section_two_three == 1:
     # mc.simulation.predictions.plot_without_legends(phase_loc_model, 'phase_loc_model', hrf, grid_size, step_time, reward_no, perms)
     
     # # HRF add-on
-    clocks_model_hrf = mc.simulation.predictions.convolve_with_hrf(clocks_model, steps_per_walk, step_time, plotting = True)
-    midnight_model_hrf = mc.simulation.predictions.convolve_with_hrf(midnight_matrix, steps_per_walk, step_time, plotting = True)
+    clocks_model_hrf = mc.simulation.predictions.convolve_with_hrf(clocks_model, steps_per_walk, step_time, plotting = False)
+    midnight_model_hrf = mc.simulation.predictions.convolve_with_hrf(midnight_matrix, steps_per_walk, step_time, plotting = False)
+    location_model_hrf = mc.simulation.predictions.convolve_with_hrf(location_matrix, steps_per_walk, step_time, plotting = False)
+    
     # clocks_model_dummy = mc.simulation.predictions.convolve_with_hrf(clocks_model, steps_per_walk, step_time, plotting = True)
     # phase_loc_model = mc.simulation.predictions.zero_phase_clocks_by_time(clocks_model_dummy, steps_per_walk, grid_size)
     # # plot those as well
     mc.simulation.predictions.plot_without_legends(clocks_model_hrf)
     mc.simulation.predictions.plot_without_legends(midnight_model_hrf)
+   
     
     
-    # and what's the similarity?
-    # create a string for the columns
-    model_one = clocks_model_hrf[:]
-    model_two = midnight_model_hrf[:]
-    count_columns = list(range(0,len(model_one[0])))
-    col_names = count_columns.copy()
-    for i in count_columns:
-        col_names[i] = str(i) 
-    RSM_one = mc.simulation.RDMs.within_task_RDM(model_one, col_names, plotting = True)
-    RSM_two = mc.simulation.RDMs.within_task_RDM(model_two, col_names, plotting = True)
-    
-    # best_model_one_df = pd.DataFrame(model_one)
-    # best_model_two_df = pd.DataFrame(model_two)
-    # mc.simulation.RDMs.df_based_RDM(best_model_one_df, plotting = True)
-    # mc.simulation.RDMs.df_based_RDM(best_model_two_df, plotting = True)
+    # 2.1: subsample
+    if subsample == True:
+        # the current MRI sequence takes a sample every 1.256 seconds -> subsample by factor 13
+        clocks_model_hrf = mc.simulation.predictions.subsample(clocks_model_hrf, subsample_factor = 13)
+        location_model_hrf = mc.simulation.predictions.subsample(location_model_hrf, subsample_factor = 13)
+        midnight_model_hrf = mc.simulation.predictions.subsample(midnight_model_hrf, subsample_factor = 13)
         
-    correlation_sim = mc.simulation.RDMs.corr_matrices(RSM_one, RSM_two)
-    similarity = correlation_sim.correlation
+    
+    # similarity
+    RSM_clocks = mc.simulation.RDMs.within_task_RDM(clocks_model_hrf, plotting = True, titlestring= 'clock RSM')
+    RSM_midnight = mc.simulation.RDMs.within_task_RDM(midnight_model_hrf, plotting = True, titlestring= 'midnight RSM')
+    RSM_loc = mc.simulation.RDMs.within_task_RDM(location_model_hrf, plotting = True, titlestring= 'location RSM')
+
+    
+    
+    #5. check the similarity between different models and check if the task configs that are good now are still good
+    result_dict = {}
+
+    correlation_sim_loc_clock = mc.simulation.RDMs.corr_matrices_pearson(RSM_loc, RSM_clocks)
+    pearson_loc_clocks = correlation_sim_loc_clock[0,1]
+    kendall_loc_clocks = mc.simulation.RDMs.corr_matrices_kendall(RSM_loc, RSM_clocks)
+    result_dict['pearson_loc_clocks'] = pearson_loc_clocks
+    result_dict['kendall_loc_clocks'] = kendall_loc_clocks.correlation
+      
+    correlation_sim_loc_midnight = mc.simulation.RDMs.corr_matrices_pearson(RSM_loc, RSM_midnight)
+    pearson_loc_midnight = correlation_sim_loc_midnight[0,1]
+    kendall_loc_midnight = mc.simulation.RDMs.corr_matrices_kendall(RSM_loc, RSM_midnight)
+    result_dict['pearson_loc_midnight'] = pearson_loc_midnight
+    result_dict['kendall_loc_midnight'] = kendall_loc_midnight.correlation
+
+    correlation_sim_clocks_midnight = mc.simulation.RDMs.corr_matrices_pearson(RSM_clocks, RSM_midnight)
+    pearson_clocks_midnight = correlation_sim_clocks_midnight[0,1]
+    kendall_clocks_midnight = mc.simulation.RDMs.corr_matrices_kendall(RSM_clocks, RSM_midnight)
+    result_dict['pearson_clocks_midnight'] = pearson_clocks_midnight
+    result_dict['kendall_clocks_midnight'] = kendall_clocks_midnight.correlation
+    
+    print(result_dict)
+    
+    
+    
+    
+    
 ##
 ##
 ## SECTION 3 ##
@@ -573,43 +602,100 @@ if section_four_one == 1:
 """  
 
 if section_five_one == 1:
-    from sklearn import linear_model
-    
+    from sklearn.linear_model import LinearRegression
+    # import pdb; pdb.set_trace() 
     grid = 4
-    hrf_stg = True 
+    hrf_stg = True
     time_per_step = 15
     rewards = 4
-    subsample = True
+    subsample = False
     
+    # rew_coords = mc.simulation.grid.create_grid(grid, rewards, plot = False)
+        
+        
     rew_coords = [[0,0], [0,3], [2,2], [3,2]]
     walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid, plotting = True)
+    cumsumsteps = np.cumsum(steps_per_walk)
+    total_steps = cumsumsteps[-1] 
+    
     
     # 1. + 2: create regressors, convolve with HRF.
     regressor_matrix = mc.simulation.predictions.gen_regressors_per_step(walk, steps_per_walk, time_per_step, hrf = True)
-      
+    
+    print(f"This walk has {total_steps} steps")
+    locm, location_matrix = mc.simulation.predictions.set_location_by_time(walk, steps_per_walk, time_per_step, grid)
+    # hrf
+    location_model = mc.simulation.predictions.convolve_with_hrf(location_matrix, steps_per_walk, time_per_step, plotting = False)
+    
     single_clock, midnight_matrix, clocks_model = mc.simulation.predictions.set_clocks_bytime(walk, steps_per_walk, time_per_step, grid)
+    # hrf
+    clocks_model = mc.simulation.predictions.convolve_with_hrf(clocks_model, steps_per_walk, time_per_step, plotting = False)
+    midnight_model = mc.simulation.predictions.convolve_with_hrf(midnight_matrix, steps_per_walk, time_per_step, plotting = False)
     
     # 2.1: subsample
     if subsample == True:
+        # the current MRI sequence takes a sample every 1.256 seconds -> subsample by factor 13
         clocks_model = mc.simulation.predictions.subsample(clocks_model, subsample_factor = 13)
+        location_model = mc.simulation.predictions.subsample(location_model, subsample_factor = 13)
+        midnight_model = mc.simulation.predictions.subsample(midnight_model, subsample_factor = 13)
         regressor_matrix = mc.simulation.predictions.subsample(regressor_matrix, subsample_factor = 13)
     
+    clocks_model = np.nan_to_num(clocks_model)
+    location_model = np.nan_to_num(location_model)
+    midnight_model = np.nan_to_num(midnight_model)
+    regressor_matrix = np.nan_to_num(regressor_matrix)
+    
     # 3: GLM per neuron
-    coefs_per_neuron = np.zeros((len(clocks_model), len(regressor_matrix)))
+    coefs_per_neuron_clocks = np.zeros((len(clocks_model), len(regressor_matrix)))
     for neuron in range(0, len(clocks_model)):
-        x = regressor_matrix
+        X = np.transpose(regressor_matrix) # tells me for each step, if neuron is on or off
         y = clocks_model[neuron]
-        regr = linear_model.LinearRegression()
-        regr.fit(x,y)
-        coefs_per_neuron[neuron] = regr.coef_
-        print('Intercept: \n', regr.intercept_)
-        print('Coefficients: \n', regr.coef_)
+        reg_clock = LinearRegression().fit(X, y)
+        coefs_per_neuron_clocks[neuron] = reg_clock.coef_
+    
+    coefs_per_neuron_loc = np.zeros((len(location_model), len(regressor_matrix)))
+    for neuron in range(0, len(location_model)):
+        X = np.transpose(regressor_matrix) # tells me for each step, if neuron is on or off
+        y = location_model[neuron]
+        reg_loc = LinearRegression().fit(X, y)
+        coefs_per_neuron_loc[neuron] = reg_loc.coef_
+    
+    coefs_per_neuron_midnight = np.zeros((len(midnight_model), len(regressor_matrix)))
+    for neuron in range(0, len(midnight_model)):
+        X = np.transpose(regressor_matrix) # tells me for each step, if neuron is on or off
+        y = midnight_model[neuron]
+        reg_midnight = LinearRegression().fit(X, y)
+        coefs_per_neuron_midnight[neuron] = reg_midnight.coef_
+    
+    
+    # 4. correlate the regressor matrix (dim check: neurons x steps) to an RDM
+    RSM_clocks = mc.simulation.RDMs.within_task_RDM(coefs_per_neuron_clocks, plotting = True, titlestring = 'RSM clock model')
+    RSM_midnight = mc.simulation.RDMs.within_task_RDM(coefs_per_neuron_midnight, plotting = True, titlestring = 'RSM midnight model')
+    RSM_location = mc.simulation.RDMs.within_task_RDM(coefs_per_neuron_loc, plotting = True, titlestring = 'RSM location model')
+    
         
+    #5. check the similarity between different models and check if the task configs that are good now are still good
+    result_dict = {}
+
+    correlation_sim_loc_clock = mc.simulation.RDMs.corr_matrices_pearson(RSM_location, RSM_clocks)
+    pearson_loc_clocks = correlation_sim_loc_clock[0,1]
+    kendall_loc_clocks = mc.simulation.RDMs.corr_matrices_kendall(RSM_location, RSM_clocks)
+    result_dict['pearson_loc_clocks'] = pearson_loc_clocks
+    result_dict['kendall_loc_clocks'] = kendall_loc_clocks.correlation
+      
+    correlation_sim_loc_midnight = mc.simulation.RDMs.corr_matrices_pearson(RSM_location, RSM_midnight)
+    pearson_loc_midnight = correlation_sim_loc_midnight[0,1]
+    kendall_loc_midnight = mc.simulation.RDMs.corr_matrices_kendall(RSM_location, RSM_midnight)
+    result_dict['pearson_loc_midnight'] = pearson_loc_midnight
+    result_dict['kendall_loc_midnight'] = kendall_loc_midnight.correlation
+
+    correlation_sim_clocks_midnight = mc.simulation.RDMs.corr_matrices_pearson(RSM_clocks, RSM_midnight)
+    pearson_clocks_midnight = correlation_sim_clocks_midnight[0,1]
+    kendall_clocks_midnight = mc.simulation.RDMs.corr_matrices_kendall(RSM_clocks, RSM_midnight)
+    result_dict['pearson_clocks_midnight'] = pearson_clocks_midnight
+    result_dict['kendall_clocks_midnight'] = kendall_clocks_midnight.correlation
     
-    
-    
-    
-    
+    print(result_dict)
     
     
     
