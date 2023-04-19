@@ -155,32 +155,21 @@ for i, field in enumerate(task_config):
 # every state is 90 bins > every subpath is 90.
 
 # important: fields need to be between 0 and 8!
-curr_task = [(field_no-1) for field_no in curr_task]
-task_config = [(field_no-1) for field_no in task_config]
+curr_task = [int((field_no-1)) for field_no in curr_task]
+task_config = [int((field_no-1)) for field_no in task_config]
 
 location_model = mc.simulation.predictions.set_location_ephys(curr_task, task_config, grid_size = 3, plotting = True)
-# important: fields need to be between 0 and 8!
-clock_model = mc.simulation.predictions.set_clocks_ephys(curr_task, task_config, grid_size = 3, phases = 3)
+clock_model = mc.simulation.predictions.set_clocks_ephys(curr_task, task_config, grid_size = 3, phases = 3, plotting = True)
 
 
-location_model = mc.simulation.predictions.set_location_ephys(curr_task, task_config, grid_size = 3, plotting = True)
-
-steps_per_walk = [90, 90, 90, 90]
-walk = [list(elem) for elem in walk_coords[0]]
 
 
-time_per_step = 1
-grid = 3
-
-
-locm, location_matrix = mc.simulation.predictions.set_location_by_time(walk, steps_per_walk, time_per_step, grid, )
-
-neuron_no = 1
-plt_neuron = [int(elem) for elem in location_matrix[neuron_no]]
-randomneuron = pd.DataFrame({'value': plt_neuron, #these will be averages
-                      'bearing': range(0, 360, 30),
-                      'phases': ['4. reward', '1. early', '1. late', '1. reward', '2. early', '2. late', '2. reward', '3. early', '3. late', '3. reward', '4. early', '4. late']})   
-mc.simulation.predictions.plot_neurons(randomneuron)
+# neuron_no = 1
+# plt_neuron = [int(elem) for elem in location_model[neuron_no]]
+# randomneuron = pd.DataFrame({'value': plt_neuron, #these will be averages
+#                       'bearing': range(0, 360, 30),
+#                       'phases': ['4. reward', '1. early', '1. late', '1. reward', '2. early', '2. late', '2. reward', '3. early', '3. late', '3. reward', '4. early', '4. late']})   
+# mc.simulation.predictions.plot_neurons(randomneuron)
 
 
 

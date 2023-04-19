@@ -211,8 +211,8 @@ def set_clocks(walked_path, step_number, phases = 3, peak_activity = 1, neighbou
 # generates clocks and midnight model per milisecond
 def set_clocks_bytime(walked_path, step_number, step_time, grid_size = 3, phases=3):
     # try one more time, slight adjustments.
-    # based on Mohammadys comment: "In the simulation, the agent will progress one phase" 
-    # "for every spatial step and then wait n time steps till all 5 phases have passed"
+    # based on Mohammadys comment: "In the simulation, the agent will progress one phase 
+    # for every spatial step and then wait n time steps till all 5 phases have passed"
     # every phase -clock will always be activated between 2 rewards, but after each other.
     # this is possible because I have 100ms time-steps. This means I first have to 
     # multiply the session by the timestep, then divide the timesteps by the 3 phases.
@@ -335,8 +335,11 @@ def set_clocks_bytime(walked_path, step_number, step_time, grid_size = 3, phases
 # this is based on 360 timebins > 1 state is 90 bins, 1 phase is 30 bins.
 # the steps are given in numbers, not coordinates.
 # important: fields need to be between 0 and 8!
+# again, problem that steps and phases do not overlap. I will model everything 
+# assuming phases are the more relevant bit -> clocks may start earlier/later than when just stepping on that field,
+# but will always be phase-aligned. 
 def set_clocks_ephys(walked_path, reward_fields, grid_size = 3, phases = 3, plotting = False, ax=None):
-    # import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
     no_rewards = len(reward_fields)
     no_fields = grid_size*grid_size
     no_neurons = phases*no_rewards
@@ -347,16 +350,16 @@ def set_clocks_ephys(walked_path, reward_fields, grid_size = 3, phases = 3, plot
     clocks_matrix = np.empty([n_rows,n_columns]) # fields times phases.
     clocks_matrix[:] = np.nan
     
-    bins_per_reward = n_columns/no_rewards
+    bins_per_reward = int(n_columns/no_rewards)
     curr_rew_vector = np.repeat([0,1,2,3], repeats = bins_per_reward)
-    bins_per_phase = bins_per_reward/phases
-    curr_phase_vector = np.repeat([0,1,2], repeats = bins_per_phase)
+    bins_per_phase = int(bins_per_reward/phases)
+    curr_phase_vector = np.repeat([1,2,3], repeats = bins_per_phase)
     curr_phase_vector = np.tile(curr_phase_vector, reps = no_rewards)
     neuron_vector = np.repeat([0,1,2,3,4,5,6,7,8,9,10,11], repeats = bins_per_phase)
     # set up neurons of a clock.
     clock_neurons = np.zeros([no_neurons,n_columns])
     for i in range(0,len(clock_neurons[0])):
-        clock_neurons[neuron_vector[i],i]= 1 
+        clock_neurons[neuron_vector[i],i]= int(1)
 
     for i, field in enumerate(walked_path):
         # now loop!!!
@@ -365,7 +368,7 @@ def set_clocks_ephys(walked_path, reward_fields, grid_size = 3, phases = 3, plot
             curr_midnight_clock_neuron = field*curr_phase_vector[i]*no_neurons
             clocks_matrix[curr_midnight_clock_neuron : (curr_midnight_clock_neuron+12), 0:None] = clock_neurons
         # assumption: after the first field, I only turn on a new clock if the phase or the field changes.
-        elif (field != walked_path[i-1]) and (curr_phase_vector[i] != curr_phase_vector[i-1]):
+        elif (field != walked_path[i-1]) or (curr_phase_vector[i] != curr_phase_vector[i-1]):
             print(field, walked_path[i-1], curr_phase_vector[i], curr_phase_vector[i-1]) # delete later
             # first identify which row will be the first midnight-clock-neuron
             curr_midnight_clock_neuron = field*curr_phase_vector[i]*no_neurons
@@ -384,8 +387,22 @@ def set_clocks_ephys(walked_path, reward_fields, grid_size = 3, phases = 3, plot
                 # only add the 1s
                 for row in range(len(fill_clock_neurons)):
                     activate_at_col = np.where(fill_clock_neurons[row] == 1)[0][0]
-                    clocks_matrix[curr_midnight_clock_neuron+row, activate_at_col] = 1
-
+                    clocks_matrix[curr_midnight_clock_neuron+row, activate_at_col:activate_at_col+bins_per_phase] = 1
+    
+    if plotting == True:
+        if ax is None:
+            plt.figure()
+            ax = plt.axes()   
+        plt.imshow(clocks_matrix, interpolation = 'none', aspect = 'auto')
+        #ax.set_yticks([1,2,3,4,5,6,7,8,9])
+        #ax.set_yticklabels(['field 1', 'field 2','field 3', 'field 4', 'field 5', 'field 6', 'field 7', 'field 8', 'field 9'])
+        ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back to r1'])
+        plt.xticks(rotation = 45)
+        ax.set_xticks([30,60,90,120,150,180,210,240,270,300,330,360])
+        plt.title('location model per time bin')
+        plt.xlabel('360 timebins, 90 per state')
+        plt.ylabel('clock-neurons')
+            
     return clocks_matrix
 
     
