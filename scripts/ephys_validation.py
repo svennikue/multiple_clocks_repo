@@ -36,82 +36,207 @@ from itertools import product
 import math 
 
 # import pdb; pdb.set_trace()
-
-# first try: just do the analysis across one run, for all neurons of this one task config.
-# later write a loop.
-# settings are:
-run_number = 0
-reward_config_number = 0
-
-## SOME SETTINGS
-plot_paths_of_the_day = 0
-Data_folder='/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_recordings_050423/' 
-
-# start with a single mouse/ recording session first.
-mouse_recday='me11_05122021_06122021'
-session=0
-
-# load all data first.
-locations = np.load(Data_folder+'Location_'+mouse_recday+'_'+str(session)+'.npy')
-rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-all_task_configs = np.load(Data_folder+'Task_data_'+mouse_recday+'.npy')
-data_neurons=np.load(Data_folder+'Neuron_'+mouse_recday+'_'+str(session)+'.npy')
-task_config = all_task_configs[session]
-
-# CHANGE THIS TO A LOOP/ GROUP ANAYSIS LATER
-# group analysis: what happens for
-#   doing the analysis across trials
-#   doing the analysis across runs (base my model on averaged locations)
-#   doing the analysis acorss runs (use more neural data)
-
-curr_task = locations[run_number]
-curr_neurons = data_neurons[:,run_number,:]
+take_raw_data = 1
 
 
-# 1.  Based on a location file (do you have something like that?),  model how the mouse was running: where was it for how long
-# Mohammady codes both for bridges and nodes. I am only considering nodes. 
-# Thus, first try what happend if I approximate the location to nodes.
+if take_raw_data == 0:
+    # first try: just do the analysis across one run, for all neurons of this one task config.
+    # later write a loop.
+    # settings are:
+    run_number = 20
+    reward_config_number = 0
+    
+    ## SOME SETTINGS
+    plot_paths_of_the_day = 0
+    Data_folder='/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_recordings_200423/' 
+    
+    # start with a single mouse/ recording session first.
+    mouse_recday='me11_05122021_06122021'
+    session=0
+    
+    # load all data first.
+    locations = np.load(Data_folder+'Location_'+mouse_recday+'_'+str(session)+'.npy')
+    rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+    all_task_configs = np.load(Data_folder+'Task_data_'+mouse_recday+'.npy')
+    data_neurons=np.load(Data_folder+'Neuron_'+mouse_recday+'_'+str(session)+'.npy')
+    task_config = all_task_configs[session]
+    
+    # CHANGE THIS TO A LOOP/ GROUP ANAYSIS LATER
+    # group analysis: what happens for
+    #   doing the analysis across trials
+    #   doing the analysis across runs (base my model on averaged locations)
+    #   doing the analysis acorss runs (use more neural data)
+    
+    
+    
+    
+    curr_task = locations[run_number]
+    # run 0 *6*-7-4-5-2-1-0-*3*-4-7-8-5-4-1-*2*-5-*4*-7-6-3-4-1-2-5-8-7-6-3-0-1-4-3-6
+    # run 20 seems optimal: *6*-*3*-0-1-*2*-5-*4*-7-*6*
+    # 6-3-2-4
+    curr_neurons = data_neurons[:,run_number,:]
+    
+    
+    # 1.  Based on a location file (do you have something like that?),  model how the mouse was running: where was it for how long
+    # Mohammady codes both for bridges and nodes. I am only considering nodes. 
+    # Thus, first try what happend if I approximate the location to nodes.
+    
+    for i, field in enumerate(curr_task):
+        if field > 9: 
+            curr_task[i] = curr_task[i-1]
+        if math.isnan(field):
+            # keep the location bc of timebins
+            curr_task[i] = curr_task[i-1]
+                
+    
+    # important: fields need to be between 0 and 8, and keep them as integers!
+    curr_task = [int((field_no-1)) for field_no in curr_task]
+    task_config = [int((field_no-1)) for field_no in task_config]
+    
+    # build my models
+    location_model = mc.simulation.predictions.set_location_ephys(curr_task, task_config, grid_size = 3, plotting = True)
+    clock_model, midnight_model = mc.simulation.predictions.set_clocks_ephys(curr_task, task_config, grid_size = 3, phases = 3, plotting = True)
+    
+    # now create the model RDMs
+    RSM_location = mc.simulation.RDMs.within_task_RDM(location_model, plotting = True, titlestring = 'Location RDM')
+    RSM_clock = mc.simulation.RDMs.within_task_RDM(clock_model, plotting = True, titlestring = 'Clock RDM')
+    RSM_midnight = mc.simulation.RDMs.within_task_RDM(location_model, plotting = True, titlestring = 'Midnight RDM')
+    
+    # now create the data RDM
+    # I am wondering if this is correct, though - maybe should I select those neurons where I know fit my predictions?
+    RSM_neurons = mc.simulation.RDMs.within_task_RDM(curr_neurons, plotting = True, titlestring = 'Data RDM')
+    
+    # Lastly, create a linear regression with RSM_loc,clock and midnight as regressors and data to be predicted
+    reg_res = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons, regressor_one_matrix=RSM_location, regressor_two_matrix= RSM_clock, regressor_three_matrix= RSM_midnight)
+    # NEXT
+    # CHECK WY CLOCK RDM LOOKS LIKE IT DOES
+    # CHECK HOW TO INTERPRET THESE RESULTS
 
-for i, field in enumerate(curr_task):
-    if field > 9: 
-        curr_task[i] = curr_task[i-1]
-    if math.isnan(field):
-        # keep the location bc of timebins
-        curr_task[i] = curr_task[i-1]
-            
 
-# important: fields need to be between 0 and 8, and keep them as integers!
-curr_task = [int((field_no-1)) for field_no in curr_task]
-task_config = [int((field_no-1)) for field_no in task_config]
+if take_raw_data == 1:
+    # Take the raw data instead.
+    #####Raw data:
+    
+    """Neuron_raw arrays are matrices of shape neurons X bins
+    each bin is the firing rate in a 25 ms timewindow
+    
+    Location_raw arrays are arrays of length equal to the number of bins for the 
+    Neuron_raw matrix (may be 1 off)
+    
+    trialtimes arrays are times (in ms) of each state: the first four columns are 
+    the start of each state the fifth column is the end of the last state (D)
+    
+    Note that you'll have to convert the trial times from ms to bin number to subset 
+    the neuron and location arrays (i.e. divide by 25)"""
+    
+    # import pdb; pdb.set_trace()
+    
+    # first try: just do the analysis across one run, for all neurons of this one task config.
+    # later write a loop.
+    # settings are:
+    run_number = 20
+    reward_config_number = 0
+    
+    ## SOME SETTINGS
+    plot_paths_of_the_day = 0
+    Data_folder='/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_recordings_200423/' 
+    
+    # start with a single mouse/ recording session first.
+    
+    
+    # load all data first.
+    # start with a single mouse/ recording session first.
+    mouse_recday='me11_05122021_06122021'
+    #mouse_recday='ah04_01122021_02122021'
+    
+    session=1
+    locations_raw = np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy')
+    rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+    all_task_configs = np.load(Data_folder+'Task_data_'+mouse_recday+'.npy')
+    data_neurons_raw = np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy')
+    timings_raw = np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy')
+    task_config = all_task_configs[session]
+    
+    # CHANGE THIS TO A LOOP/ GROUP ANAYSIS LATER
+    # group analysis: what happens for
+    #   doing the analysis across trials
+    #   doing the analysis across runs (base my model on averaged locations)
+    #   doing the analysis acorss runs (use more neural data)
 
-# build my models
-location_model = mc.simulation.predictions.set_location_ephys(curr_task, task_config, grid_size = 3, plotting = True)
-clock_model, midnight_model = mc.simulation.predictions.set_clocks_ephys(curr_task, task_config, grid_size = 3, phases = 3, plotting = True)
 
-# now create the model RDMs
-RSM_location = mc.simulation.RDMs.within_task_RDM(location_model, plotting = True, titlestring = 'Location RDM')
-RSM_clock = mc.simulation.RDMs.within_task_RDM(clock_model, plotting = True, titlestring = 'Clock RDM')
-RSM_midnight = mc.simulation.RDMs.within_task_RDM(location_model, plotting = True, titlestring = 'Midnight RDM')
-
-# now create the data RDM
-# I am wondering if this is correct, though - maybe should I select those neurons where I know fit my predictions?
-RSM_neurons = mc.simulation.RDMs.within_task_RDM(curr_neurons, plotting = True, titlestring = 'Data RDM')
-
-# Lastly, create a linear regression with RSM_loc,clock and midnight as regressors and data to be predicted
-reg_res = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons, regressor_one_matrix=RSM_location, regressor_two_matrix= RSM_clock, regressor_three_matrix= RSM_midnight)
-# NEXT
-# CHECK WY CLOCK RDM LOOKS LIKE IT DOES
-# CHECK HOW TO INTERPRET THESE RESULTS
+    # first convert trial times from ms to bin number to match neuron and location arrays 
+    # (1 bin = 25ms)
+    timings = timings_raw.copy()
+    for r, row in enumerate(timings_raw):
+        for c, element in enumerate(row):
+            timings[r,c] = element/25
 
 
-# neuron_no = 1
-# plt_neuron = [int(elem) for elem in location_model[neuron_no]]
-# randomneuron = pd.DataFrame({'value': plt_neuron, #these will be averages
-#                       'bearing': range(0, 360, 30),
-#                       'phases': ['4. reward', '1. early', '1. late', '1. reward', '2. early', '2. late', '2. reward', '3. early', '3. late', '3. reward', '4. early', '4. late']})   
-# mc.simulation.predictions.plot_neurons(randomneuron)
+    # second, change locations and rewards to 0 and ignoring bridges
+    locations = locations_raw.copy()
+    for i, field in enumerate(locations_raw):
+        if field > 9: 
+            locations[i] = locations[i-1]
+        if math.isnan(field):
+            # keep the location bc of timebins
+            locations[i] = locations[i-1]
+                
+    
+    # important: fields need to be between 0 and 8, and keep them as integers!
+    locations = [int((field_no-1)) for field_no in locations]
+    task_config = [int((field_no-1)) for field_no in task_config]
+    
+    # now put those locations and neural data files in one list that belong to the same reward/state
+    
+    # first, do with the first run.
+    # the timings are basically the indices of the trials where they meet the rewards.
+    # for i, row in enumerate(timings):
+    #     row_run_location = [locations[0:row[0]], locations[row[0]:row[1]], locations[row[1]:row[2]], locations[row[2]:row[3]]]
+    #     if i == 0:
+    #         reshaped_locations = row_run_location.copy()
+    #     elif i > 0:
+    #         reshaped_locations = [reshaped_locations, row_run_location]
+    
+    # I will do this differently. it's annoying to store runs of different lengths.
+    # instead, I will have my subpaths, separately for every path
+    # potentiall, I will want to take a mean across runs... let's start slow.
+    
+    row = timings[20]
+    
+    # THIS IS ONLY TO COUNT THE SUBPATH LENGTHTS
+    subpath_file = [locations[row[0]:row[1]+1], locations[row[1]+1:row[2]+1], locations[row[2]+1:row[3]+1], locations[row[3]+1:row[4]+1]]
+    trajectory = locations[row[0]:row[-1]]
+    
+    
+    neurons_file = np.empty(len(data_neurons_raw))
+    for i, neuron in enumerate(data_neurons_raw):
+        curr_neurons = [neuron[0:row[1]], neuron[row[1]:row[2]], neuron[row[2]:row[3]], neuron[row[3]:row[4]]]
+        if i == 0:
+            neurons_file = curr_neurons.copy()
+        elif i > 0:
+            neurons_file = np.vstack((neurons_file, curr_neurons))
+    
+    
+    # to find out the step number per subpath
+    step_number = [0,0,0,0]
+    for path_no, subpath in enumerate(subpath_file):
+        for i, field in enumerate(subpath):
+            if i == 0:
+                count = 0
+            elif field != subpath[i-1]:
+                count+=1
+        step_number[path_no] = count
+       
+        
+    # and now I should be able to take very similar models to those that I already have
+    
+    # ALL INPUT NEEDS TO BE INTEGER!!
 
-
+    location_matrix = mc.simulation.predictions.set_location_raw_ephys(trajectory, task_config, step_time = 1, grid_size=3, plotting = True, field_no_given= 1)
+    
+    # NEXT ON: REWRITE THE BY TIME MATRIX FOR LOCATION AND MIDNIGHT MODEL!!
+    
+    
 
 #####################
 ## NOTEBOOK #########

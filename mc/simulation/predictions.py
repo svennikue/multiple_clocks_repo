@@ -205,6 +205,8 @@ def set_clocks(walked_path, step_number, phases = 3, peak_activity = 1, neighbou
                     
     return clocks_matrix, total_steps  
 
+# REWRITE THIS MODEL SO THAT IT FITS WITH THE EPHYS DATA!!!
+
 
 # CURRENTLY USED MODEL  
 # Fancy matrix multiplication by Jacob inlcuded :)
@@ -791,8 +793,8 @@ def set_location_matrix(walked_path, step_number, phases, size_grid = 3):
 
 
 # CURRENT MODEL
-def set_location_by_time(walked_path, step_number, step_time, grid_size = 3):
-    # import pdb; pdb.set_trace()   
+def set_location_by_time(walked_path, step_number, step_time, grid_size = 3, field_no_given = None):
+    import pdb; pdb.set_trace()   
     cumsumsteps = np.cumsum(step_number)
     total_steps = cumsumsteps[-1]    
     n_columns = total_steps   
@@ -800,10 +802,13 @@ def set_location_by_time(walked_path, step_number, step_time, grid_size = 3):
     loc_matrix = np.empty([n_rows,n_columns]) # fields times steps
     loc_matrix[:] = np.nan
     for i in range(0, total_steps):
-        curr_field = walked_path[i+1] # cut the first field because this is the reward field
-        x = curr_field[0]
-        y = curr_field[1]
-        fieldnumber = x + y* grid_size
+        if field_no_given is None:
+            curr_field = walked_path[i+1] # cut the first field because this is the reward field
+            x = curr_field[0]
+            y = curr_field[1]
+            fieldnumber = x + y* grid_size
+        else:
+            fieldnumber = walked_path[i+1]
         # test if this has already been activated!
         if loc_matrix[fieldnumber, i] == 0:
             # if so, then don't overwrite it.
@@ -862,7 +867,42 @@ def set_location_ephys(walked_path, reward_fields, grid_size = 3, plotting = Fal
             ax.add_patch(r)
     return loc_matrix
 
+# MODEL EPHYS RAW DATA 
+def set_location_raw_ephys(walked_path, rewards, step_time, grid_size = 3, plotting = False, field_no_given = None, ax = None):
+    # import pdb; pdb.set_trace()  
+    n_rows = grid_size*grid_size
+    n_columns = len(walked_path)
+    loc_matrix = np.empty([n_rows,n_columns]) # fields times steps
+    loc_matrix[:] = np.nan
+    total_steps = len(walked_path)
+    for i in range(0, total_steps):
+        if field_no_given is None:
+            curr_field = walked_path[i+1] # cut the first field because this is the reward field
+            x = curr_field[0]
+            y = curr_field[1]
+            fieldnumber = x + y* grid_size
+        else:
+            fieldnumber = walked_path[i]
+        # test if this has already been activated!
+        if loc_matrix[fieldnumber, i] == 0:
+            # if so, then don't overwrite it.
+            loc_matrix[fieldnumber, i] = 1
+        else:   
+            loc_matrix[fieldnumber, :] = 0
+            loc_matrix[fieldnumber, i] = 1  
+    if plotting == True:
+        if ax is None:
+            plt.figure()
+            ax = plt.axes()   
+        plt.imshow(loc_matrix, interpolation = 'none', aspect = 'auto')
+        ax.set_yticks([0,1,2,3,4,5,6,7,8])
+        ax.set_yticklabels(['field 1', 'field 2','field 3', 'field 4', 'field 5', 'field 6', 'field 7', 'field 8', 'field 9'])
+        plt.title('location model per time bin')
+        plt.xlabel('25ms per time bin')
+        plt.ylabel('field-neurons')
 
+                
+    return loc_matrix 
 
     
 #
