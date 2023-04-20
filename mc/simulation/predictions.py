@@ -339,7 +339,7 @@ def set_clocks_bytime(walked_path, step_number, step_time, grid_size = 3, phases
 # assuming phases are the more relevant bit -> clocks may start earlier/later than when just stepping on that field,
 # but will always be phase-aligned. 
 def set_clocks_ephys(walked_path, reward_fields, grid_size = 3, phases = 3, plotting = False, ax=None):
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     no_rewards = len(reward_fields)
     no_fields = grid_size*grid_size
     no_neurons = phases*no_rewards
@@ -353,7 +353,7 @@ def set_clocks_ephys(walked_path, reward_fields, grid_size = 3, phases = 3, plot
     bins_per_reward = int(n_columns/no_rewards)
     curr_rew_vector = np.repeat([0,1,2,3], repeats = bins_per_reward)
     bins_per_phase = int(bins_per_reward/phases)
-    curr_phase_vector = np.repeat([1,2,3], repeats = bins_per_phase)
+    curr_phase_vector = np.repeat([0,1,2], repeats = bins_per_phase)
     curr_phase_vector = np.tile(curr_phase_vector, reps = no_rewards)
     neuron_vector = np.repeat([0,1,2,3,4,5,6,7,8,9,10,11], repeats = bins_per_phase)
     # set up neurons of a clock.
@@ -365,22 +365,31 @@ def set_clocks_ephys(walked_path, reward_fields, grid_size = 3, phases = 3, plot
         # now loop!!!
         # exception for first field.
         if i == 0:
-            curr_midnight_clock_neuron = field*curr_phase_vector[i]*no_neurons
+            curr_midnight_clock_neuron = field*no_neurons*phases + curr_phase_vector[i]*no_neurons
             clocks_matrix[curr_midnight_clock_neuron : (curr_midnight_clock_neuron+12), 0:None] = clock_neurons
-        # assumption: after the first field, I only turn on a new clock if the phase or the field changes.
-        elif (field != walked_path[i-1]) or (curr_phase_vector[i] != curr_phase_vector[i-1]):
-            print(field, walked_path[i-1], curr_phase_vector[i], curr_phase_vector[i-1]) # delete later
-            # first identify which row will be the first midnight-clock-neuron
-            curr_midnight_clock_neuron = field*curr_phase_vector[i]*no_neurons
+        # assumption: after the first field, I only turn on a new clock if the phase or the field changes. 
+        # first: check if the field changed.
+        elif field != walked_path[i-1]:
+            print(f"mouse went from field {walked_path[i-1]} to field {field}") # delete later
+            # now check the phase vector alignment: if index smaller bins_per_phase > align with this phase,
+            # if bigger, align with next phase.
+            distance_from_phase_locking = i - (i // bins_per_phase)*bins_per_phase
+            if distance_from_phase_locking < int(bins_per_phase/2):
+                activate_at_col = np.where(neuron_vector == (i // bins_per_phase))[0][0]
+            elif distance_from_phase_locking >= int(bins_per_phase/2):
+                if ((i // bins_per_phase)+1) < max(neuron_vector):
+                    activate_at_col = np.where(neuron_vector == (i // bins_per_phase)+1)[0][0]
+                elif ((i // bins_per_phase)+1) == max(neuron_vector):
+                    activate_at_col = neuron_vector[0]         
+            # next, identify which row will be the first midnight-clock-neuron
+            curr_midnight_clock_neuron = field*no_neurons*phases + curr_phase_vector[activate_at_col]*no_neurons
             # slice the clock neuron filler at the step we are currently at.
-            first_split = clock_neurons[:, 0:(n_columns-i)]
-            second_split = clock_neurons[:, n_columns-i:None]
-            # then add another row of 1s and fill the matrix with it
+            first_split = clock_neurons[:, 0:(n_columns-activate_at_col)]
+            second_split = clock_neurons[:, n_columns-activate_at_col:None]
             fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
             # then check if clock has been initiated already
             is_initiated = clocks_matrix[curr_midnight_clock_neuron, 0]
-            if np.isnan(is_initiated): # if no initiated yet
-                # and only the second part will be filled in.
+            if np.isnan(is_initiated): # if not initiated yet
                 clocks_matrix[curr_midnight_clock_neuron:(curr_midnight_clock_neuron+12), 0:None]= fill_clock_neurons
             else:
                 # if the clock has already been initiated and thus is NOT nan
@@ -388,7 +397,144 @@ def set_clocks_ephys(walked_path, reward_fields, grid_size = 3, phases = 3, plot
                 for row in range(len(fill_clock_neurons)):
                     activate_at_col = np.where(fill_clock_neurons[row] == 1)[0][0]
                     clocks_matrix[curr_midnight_clock_neuron+row, activate_at_col:activate_at_col+bins_per_phase] = 1
+        # second: even if the field didn't change, check if the phase changed.
+        elif field == walked_path[i-1]:
+            if curr_phase_vector[i] != curr_phase_vector[i-1]:
+                print(f"phase changed on field {field} from phase {curr_phase_vector[i-1]} to phase {curr_phase_vector[i]}") # delete later
+                # this means i is already phase-aligned and I just need to identify the field.
+                curr_midnight_clock_neuron = field*no_neurons*phases + curr_phase_vector[i]*no_neurons
+                # slice the clock neuron filler at the step we are currently at.
+                first_split = clock_neurons[:, 0:(n_columns-i)]
+                second_split = clock_neurons[:, n_columns-i:None]
+                fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
+                # then check if clock has been initiated already
+                is_initiated = clocks_matrix[curr_midnight_clock_neuron, 0]
+                if np.isnan(is_initiated): # if not initiated yet
+                    clocks_matrix[curr_midnight_clock_neuron:(curr_midnight_clock_neuron+12), 0:None]= fill_clock_neurons
+                else:
+                    # if the clock has already been initiated and thus is NOT nan
+                    # only add the 1s
+                    for row in range(len(fill_clock_neurons)):
+                        activate_at_col = np.where(fill_clock_neurons[row] == 1)[0][0]
+                        clocks_matrix[curr_midnight_clock_neuron+row, activate_at_col:activate_at_col+bins_per_phase] = 1
     
+    # use start:stop:step slicing in np
+    # midnight matrix is always the anchored neuron of the clocks matrix > every 12th row
+    midnight_matrix = clocks_matrix[0::12,:]
+    
+    if plotting == True:
+        fig, axs = plt.subplots(nrows =1, ncols = 2)
+        axs[0].imshow(clocks_matrix, interpolation = 'none', aspect = 'auto')
+        axs[0].set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back to r1'])
+        axs[0].set_xticks([30,60,90,120,150,180,210,240,270,300,330,360])
+        axs[1].imshow(midnight_matrix, interpolation = 'none', aspect = 'auto')
+        axs[1].set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back to r1'])
+        axs[1].set_xticks([30,60,90,120,150,180,210,240,270,300,330,360]) 
+        #plt.xlabel('360 timebins, 90 per state')
+
+        
+        
+        
+        # if ax is None:
+        #     plt.figure()
+        #     ax = plt.axes()   
+        # plt.imshow(clocks_matrix, interpolation = 'none', aspect = 'auto')
+        # #ax.set_yticks([1,2,3,4,5,6,7,8,9])
+        # #ax.set_yticklabels(['field 1', 'field 2','field 3', 'field 4', 'field 5', 'field 6', 'field 7', 'field 8', 'field 9'])
+        # ax.set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back to r1'])
+        # plt.xticks(rotation = 45)
+        # ax.set_xticks([30,60,90,120,150,180,210,240,270,300,330,360])
+        # plt.xlabel('360 timebins, 90 per state')
+        # plt.ylabel('clock-neurons')
+        
+    
+            
+    return clocks_matrix, midnight_matrix 
+
+    
+######### ephys MIDNIGHT model ########
+# ephys validation model
+# this is based on 360 timebins > 1 state is 90 bins, 1 phase is 30 bins.
+# the steps are given in numbers, not coordinates.
+# important: fields need to be between 0 and 8!
+# again, problem that steps and phases do not overlap. I will model everything 
+# assuming phases are the more relevant bit -> clocks may start earlier/later than when just stepping on that field,
+# but will always be phase-aligned. 
+def set_midnight_ephys(walked_path, reward_fields, grid_size = 3, phases = 3, plotting = False, ax=None):
+    # import pdb; pdb.set_trace()
+    no_rewards = len(reward_fields)
+    no_fields = grid_size*grid_size
+    n_columns = len(walked_path)
+    # and number of rows is fields*phase 
+    n_rows = no_fields*phases
+    
+    clocks_matrix = np.empty([n_rows,n_columns]) # fields times phases.
+    clocks_matrix[:] = np.nan
+    
+    bins_per_reward = int(n_columns/no_rewards)
+    curr_rew_vector = np.repeat([0,1,2,3], repeats = bins_per_reward)
+    bins_per_phase = int(bins_per_reward/phases)
+    curr_phase_vector = np.repeat([0,1,2], repeats = bins_per_phase)
+    curr_phase_vector = np.tile(curr_phase_vector, reps = no_rewards)
+    neuron_vector = np.repeat([0,1,2,3,4,5,6,7,8,9,10,11], repeats = bins_per_phase)
+
+    for i, field in enumerate(walked_path):
+        # now loop!!!
+        # exception for first field.
+        if i == 0:
+            curr_midnight_clock_neuron = field*phases + curr_phase_vector[i]
+            clocks_matrix[curr_midnight_clock_neuron : (curr_midnight_clock_neuron+12), 0:None] = clock_neurons
+        # assumption: after the first field, I only turn on a new clock if the phase or the field changes. 
+        # first: check if the field changed.
+        elif field != walked_path[i-1]:
+            print(f"mouse went from field {walked_path[i-1]} to field {field}") # delete later
+            # now check the phase vector alignment: if index smaller bins_per_phase > align with this phase,
+            # if bigger, align with next phase.
+            distance_from_phase_locking = i - (i // bins_per_phase)*bins_per_phase
+            if distance_from_phase_locking < int(bins_per_phase/2):
+                activate_at_col = np.where(neuron_vector == (i // bins_per_phase))[0][0]
+            elif distance_from_phase_locking >= int(bins_per_phase/2):
+                if ((i // bins_per_phase)+1) < max(neuron_vector):
+                    activate_at_col = np.where(neuron_vector == (i // bins_per_phase)+1)[0][0]
+                elif ((i // bins_per_phase)+1) == max(neuron_vector):
+                    activate_at_col = neuron_vector[0]         
+            # next, identify which row will be the first midnight-clock-neuron
+            curr_midnight_clock_neuron = field*no_neurons*phases + curr_phase_vector[activate_at_col]*no_neurons
+            # slice the clock neuron filler at the step we are currently at.
+            first_split = clock_neurons[:, 0:(n_columns-activate_at_col)]
+            second_split = clock_neurons[:, n_columns-activate_at_col:None]
+            fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
+            # then check if clock has been initiated already
+            is_initiated = clocks_matrix[curr_midnight_clock_neuron, 0]
+            if np.isnan(is_initiated): # if not initiated yet
+                clocks_matrix[curr_midnight_clock_neuron:(curr_midnight_clock_neuron+12), 0:None]= fill_clock_neurons
+            else:
+                # if the clock has already been initiated and thus is NOT nan
+                # only add the 1s
+                for row in range(len(fill_clock_neurons)):
+                    activate_at_col = np.where(fill_clock_neurons[row] == 1)[0][0]
+                    clocks_matrix[curr_midnight_clock_neuron+row, activate_at_col:activate_at_col+bins_per_phase] = 1
+        # second: even if the field didn't change, check if the phase changed.
+        elif field == walked_path[i-1]:
+            if curr_phase_vector[i] != curr_phase_vector[i-1]:
+                print(f"phase changed on field {field} from phase {curr_phase_vector[i-1]} to phase {curr_phase_vector[i]}") # delete later
+                # this means i is already phase-aligned and I just need to identify the field.
+                curr_midnight_clock_neuron = field*no_neurons*phases + curr_phase_vector[i]*no_neurons
+                # slice the clock neuron filler at the step we are currently at.
+                first_split = clock_neurons[:, 0:(n_columns-i)]
+                second_split = clock_neurons[:, n_columns-i:None]
+                fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
+                # then check if clock has been initiated already
+                is_initiated = clocks_matrix[curr_midnight_clock_neuron, 0]
+                if np.isnan(is_initiated): # if not initiated yet
+                    clocks_matrix[curr_midnight_clock_neuron:(curr_midnight_clock_neuron+12), 0:None]= fill_clock_neurons
+                else:
+                    # if the clock has already been initiated and thus is NOT nan
+                    # only add the 1s
+                    for row in range(len(fill_clock_neurons)):
+                        activate_at_col = np.where(fill_clock_neurons[row] == 1)[0][0]
+                        clocks_matrix[curr_midnight_clock_neuron+row, activate_at_col:activate_at_col+bins_per_phase] = 1
+
     if plotting == True:
         if ax is None:
             plt.figure()
@@ -403,10 +549,7 @@ def set_clocks_ephys(walked_path, reward_fields, grid_size = 3, phases = 3, plot
         plt.xlabel('360 timebins, 90 per state')
         plt.ylabel('clock-neurons')
             
-    return clocks_matrix
-
-    
-    
+    return clocks_matrix    
     
     
     

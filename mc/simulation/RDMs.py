@@ -14,6 +14,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 import mc
 import scipy
+from sklearn.linear_model import LinearRegression
 
 
 def within_task_RDM(activation_matrix, ax=None, plotting = False, titlestring = None):
@@ -262,3 +263,36 @@ def corr_matrices_no_autocorr(matrix_one, matrix_two, timepoints_to_exclude, plo
         plt.imshow(matrix_two*mask)
     return coef_kendall, coef_pearson
 
+def lin_reg_RDMs(data_matrix, regressor_one_matrix, regressor_two_matrix = None, regressor_three_matrix = None):
+    #import pdb; pdb.set_trace()
+    dimension = len(data_matrix) 
+    diag_array_data = list(data_matrix[np.tril_indices(dimension , -1)])
+    X = list(regressor_one_matrix[np.tril_indices(dimension, -1)])
+    if regressor_two_matrix is not None:
+        diag_array_reg_two = list(regressor_two_matrix[np.tril_indices(dimension, -1)])
+        X = np.vstack((X, diag_array_reg_two))
+    if regressor_three_matrix is not None:
+        diag_array_reg_three = list(regressor_three_matrix[np.tril_indices(dimension, -1)])
+        X = np.vstack((X, diag_array_reg_three))
+    # now do the linear regression
+    x_reshaped = np.transpose(X)
+    regression_results = LinearRegression().fit(x_reshaped, diag_array_data)
+
+    return regression_results
+    
+        
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
