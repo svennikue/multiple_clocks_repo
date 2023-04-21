@@ -100,7 +100,7 @@ if take_raw_data == 0:
     # now create the model RDMs
     RSM_location = mc.simulation.RDMs.within_task_RDM(location_model, plotting = True, titlestring = 'Location RDM')
     RSM_clock = mc.simulation.RDMs.within_task_RDM(clock_model, plotting = True, titlestring = 'Clock RDM')
-    RSM_midnight = mc.simulation.RDMs.within_task_RDM(location_model, plotting = True, titlestring = 'Midnight RDM')
+    RSM_midnight = mc.simulation.RDMs.within_task_RDM(midnight_model, plotting = True, titlestring = 'Midnight RDM')
     
     # now create the data RDM
     # I am wondering if this is correct, though - maybe should I select those neurons where I know fit my predictions?
@@ -186,39 +186,33 @@ if take_raw_data == 1:
     locations = [int((field_no-1)) for field_no in locations]
     task_config = [int((field_no-1)) for field_no in task_config]
     
-    # now put those locations and neural data files in one list that belong to the same reward/state
-    
-    # first, do with the first run.
-    # the timings are basically the indices of the trials where they meet the rewards.
-    # for i, row in enumerate(timings):
-    #     row_run_location = [locations[0:row[0]], locations[row[0]:row[1]], locations[row[1]:row[2]], locations[row[2]:row[3]]]
-    #     if i == 0:
-    #         reshaped_locations = row_run_location.copy()
-    #     elif i > 0:
-    #         reshaped_locations = [reshaped_locations, row_run_location]
-    
+
     # I will do this differently. it's annoying to store runs of different lengths.
     # instead, I will have my subpaths, separately for every path
-    # potentiall, I will want to take a mean across runs... let's start slow.
-    
+    # potentiall, I will want to take a mean across runs... let's start slow. 
     row = timings[20]
     
-    # THIS IS ONLY TO COUNT THE SUBPATH LENGTHTS
-    subpath_file = [locations[row[0]:row[1]+1], locations[row[1]+1:row[2]+1], locations[row[2]+1:row[3]+1], locations[row[3]+1:row[4]+1]]
+    # define current data
+    # > potentially turn into a loop at some point
     trajectory = locations[row[0]:row[-1]]
     
+    # ISSUE 21.04.23:
+    # if there are ONLY 0 for one timestep, the np.corrcoef will output nan for that instance. Maybe better:
+    # replace by super super low value
+    curr_neurons = data_neurons_raw[:,row[0]:row[-1]]
     
-    neurons_file = np.empty(len(data_neurons_raw))
-    for i, neuron in enumerate(data_neurons_raw):
-        curr_neurons = [neuron[0:row[1]], neuron[row[1]:row[2]], neuron[row[2]:row[3]], neuron[row[3]:row[4]]]
-        if i == 0:
-            neurons_file = curr_neurons.copy()
-        elif i > 0:
-            neurons_file = np.vstack((neurons_file, curr_neurons))
+    test_curr_neurons = curr_neurons.copy()
+    for col_no, column in enumerate(test_curr_neurons.T):
+        if np.all(column == 0):
+            test_curr_neurons[:,col_no] = 0.00001
     
-    
+    # some pre-processing to create my models.
+    # to count subpaths
+    subpath_file = [locations[row[0]:row[1]+1], locations[row[1]+1:row[2]+1], locations[row[2]+1:row[3]+1], locations[row[3]+1:row[4]+1]]
+    timings_curr_run = [(elem - row[0]) for elem in row]
+
     # to find out the step number per subpath
-    step_number = [0,0,0,0]
+    step_number = [0,0,0,0] 
     for path_no, subpath in enumerate(subpath_file):
         for i, field in enumerate(subpath):
             if i == 0:
@@ -227,15 +221,31 @@ if take_raw_data == 1:
                 count+=1
         step_number[path_no] = count
        
-        
-    # and now I should be able to take very similar models to those that I already have
-    
-    # ALL INPUT NEEDS TO BE INTEGER!!
+    # mark where steps are made
+    for field_no, field in enumerate(trajectory):
+        if field_no == 0:
+            index_make_step = [0]
+        elif field != trajectory[field_no-1]:
+            index_make_step.append(field_no)
+            
+            
+    location_model = mc.simulation.predictions.set_location_raw_ephys(trajectory, step_time = 1, grid_size=3, plotting = True, field_no_given= 1)
+    midnight_model, clocks_model = mc.simulation.predictions.set_clocks_raw_ephys(trajectory, timings_curr_run, index_make_step, step_number, field_no_given= 1, plotting=True)
 
-    location_matrix = mc.simulation.predictions.set_location_raw_ephys(trajectory, task_config, step_time = 1, grid_size=3, plotting = True, field_no_given= 1)
+
+    # now create the model RDMs
+    RSM_location = mc.simulation.RDMs.within_task_RDM(location_model, plotting = True, titlestring = 'Location RDM')
+    RSM_clock = mc.simulation.RDMs.within_task_RDM(clocks_model, plotting = True, titlestring = 'Clock RDM')
+    RSM_midnight = mc.simulation.RDMs.within_task_RDM(midnight_model, plotting = True, titlestring = 'Midnight RDM')
     
-    # NEXT ON: REWRITE THE BY TIME MATRIX FOR LOCATION AND MIDNIGHT MODEL!!
+    # now create the data RDM
+    # I am wondering if this is correct, though - maybe should I select those neurons where I know fit my predictions?
+    RSM_neurons = mc.simulation.RDMs.within_task_RDM(test_curr_neurons, plotting = True, titlestring = 'Data RDM')
     
+    # Lastly, create a linear regression with RSM_loc,clock and midnight as regressors and data to be predicted
+    reg_res = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons, regressor_one_matrix=RSM_clock, regressor_two_matrix= RSM_midnight, regressor_three_matrix= RSM_location)
+    print(f" The beta for the clocks model is {reg_res.coef_[0]}, for the midnight model is {reg_res.coef_[1]}, and for the location model is {reg_res.coef_[2]}")
+
     
 
 #####################

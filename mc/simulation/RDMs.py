@@ -264,7 +264,7 @@ def corr_matrices_no_autocorr(matrix_one, matrix_two, timepoints_to_exclude, plo
     return coef_kendall, coef_pearson
 
 def lin_reg_RDMs(data_matrix, regressor_one_matrix, regressor_two_matrix = None, regressor_three_matrix = None):
-    #import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     dimension = len(data_matrix) 
     diag_array_data = list(data_matrix[np.tril_indices(dimension , -1)])
     X = list(regressor_one_matrix[np.tril_indices(dimension, -1)])
