@@ -243,9 +243,48 @@ if take_raw_data == 1:
     RSM_neurons = mc.simulation.RDMs.within_task_RDM(test_curr_neurons, plotting = True, titlestring = 'Data RDM')
     
     # Lastly, create a linear regression with RSM_loc,clock and midnight as regressors and data to be predicted
-    reg_res = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons, regressor_one_matrix=RSM_clock, regressor_two_matrix= RSM_midnight, regressor_three_matrix= RSM_location)
+    reg_res, scipy_regression_results = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons, regressor_one_matrix=RSM_clock, regressor_two_matrix= RSM_midnight, regressor_three_matrix= RSM_location, t_val = 'yes')
     print(f" The beta for the clocks model is {reg_res.coef_[0]}, for the midnight model is {reg_res.coef_[1]}, and for the location model is {reg_res.coef_[2]}")
-
+    print(scipy_regression_results.summary())
+    
+    
+    
+    
+    # 1. subject level.
+    # for every mouse and every run, compute a GLM with my 3 regressors.
+    # 2. compute contrasts:
+    # I want to know: [0 0 1], [0 1 0], [1 0 0] and [-1 1 0], [0 -1 1], ....
+    # (every regressor at its own, and the cotnrast between 2 betas (MRI: PEs) which is 
+    # 1 minus the other)
+    # take all of these values and average 
+    #        1. across runs within one task config
+    #       2. across task configs
+    # Finally, you end up with 9 betas (MRI: COPEs) for every mouse (contrasts)
+    # 3. Group level:
+        # compute a random effects GLM for every of the contrasts, using
+        # each mouse-beta as an input
+    
+    
+    
+    # next step: Stats! > group statistics?
+    # > multiple runs? use the regressor model since there are different fields the mouse runs on? 
+    # across tasks?? 
+    # also check the correlation values, independent from the other regressors
+    
+    # before: within a mouse > fixed effects (+averaging betas) to compare runs 
+    
+    
+    # last step: check ou FSL FEAT -> compare betas across mice with random effects if 
+    # thats possible with only 8 mice, otherwise fixed effects 
+    
+    
+    
+    # potentially, also have a look at a second thing:
+        # concatenate all trials across task cofngis
+        # then reduce the size of the data to steps instead of ms
+        # by using the step-regressors from the fMRI model (or the other way around)
+    # afterwards, follow the same group-stats and contrasts
+    # these contrasts are probably even more significant and will be more like my fmRI analyssi
     
 
 #####################

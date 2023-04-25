@@ -15,6 +15,8 @@ import numpy as np
 import mc
 import scipy
 from sklearn.linear_model import LinearRegression
+from scipy import stats
+import statsmodels.api as sm
 
 
 def within_task_RDM(activation_matrix, ax=None, plotting = False, titlestring = None):
@@ -263,7 +265,7 @@ def corr_matrices_no_autocorr(matrix_one, matrix_two, timepoints_to_exclude, plo
         plt.imshow(matrix_two*mask)
     return coef_kendall, coef_pearson
 
-def lin_reg_RDMs(data_matrix, regressor_one_matrix, regressor_two_matrix = None, regressor_three_matrix = None):
+def lin_reg_RDMs(data_matrix, regressor_one_matrix, regressor_two_matrix = None, regressor_three_matrix = None, t_val = None):
     # import pdb; pdb.set_trace()
     dimension = len(data_matrix) 
     diag_array_data = list(data_matrix[np.tril_indices(dimension , -1)])
@@ -277,8 +279,15 @@ def lin_reg_RDMs(data_matrix, regressor_one_matrix, regressor_two_matrix = None,
     # now do the linear regression
     x_reshaped = np.transpose(X)
     regression_results = LinearRegression().fit(x_reshaped, diag_array_data)
-
-    return regression_results
+    
+    scipy_reg_est = None
+    if t_val is not None:
+    # second try
+        X_3 = sm.add_constant(x_reshaped)
+        est = sm.OLS(diag_array_data, X_3)
+        scipy_reg_est = est.fit()
+    
+    return regression_results, scipy_reg_est
     
         
     
