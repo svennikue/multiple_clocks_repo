@@ -28,6 +28,8 @@ def within_task_RDM(activation_matrix, ax=None, plotting = False, titlestring = 
         # "computed across voxels or sites of the two activity patterns), the Euclidean distance 
         # "(the square root of the sum of squared differences between the two patterns), and the Mahalanobis 
         # "distance (which is the Euclidean distance measured after linearly recoding the space so as to whiten the noise)."
+    # RDM = np.ones((len(RSM), len(RSM)))
+    # RDM = RDM - RSM
     if plotting == True:       
         if ax is None:
             plt.figure()
@@ -265,7 +267,7 @@ def corr_matrices_no_autocorr(matrix_one, matrix_two, timepoints_to_exclude, plo
         plt.imshow(matrix_two*mask)
     return coef_kendall, coef_pearson
 
-def lin_reg_RDMs(data_matrix, regressor_one_matrix, regressor_two_matrix = None, regressor_three_matrix = None, t_val = None):
+def lin_reg_RDMs(data_matrix, regressor_one_matrix, regressor_two_matrix = None, regressor_three_matrix = None, regressor_four_matrix = None, t_val = None):
     # import pdb; pdb.set_trace()
     dimension = len(data_matrix) 
     diag_array_data = list(data_matrix[np.tril_indices(dimension , -1)])
@@ -276,7 +278,12 @@ def lin_reg_RDMs(data_matrix, regressor_one_matrix, regressor_two_matrix = None,
     if regressor_three_matrix is not None:
         diag_array_reg_three = list(regressor_three_matrix[np.tril_indices(dimension, -1)])
         X = np.vstack((X, diag_array_reg_three))
+    if regressor_four_matrix is not None:
+        diag_array_reg_four = list(regressor_four_matrix[np.tril_indices(dimension, -1)])
+        X = np.vstack((X, diag_array_reg_four))
     # now do the linear regression
+    # check if there are nans
+    # np.count_nonzero(np.isnan(data))
     x_reshaped = np.transpose(X)
     regression_results = LinearRegression().fit(x_reshaped, diag_array_data)
     
@@ -292,7 +299,7 @@ def lin_reg_RDMs(data_matrix, regressor_one_matrix, regressor_two_matrix = None,
         
     
     
-    
+
     
     
     

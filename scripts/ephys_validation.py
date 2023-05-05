@@ -37,13 +37,58 @@ import math
 
 # import pdb; pdb.set_trace()
 take_raw_data = 1
+take_bin_data = 0
+average_bin = 0
+
+if average_bin == 1:
+
+    Data_folder='/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_recordings_200423/' 
+    # start with a single mouse first.
+    mouse_recday='me11_05122021_06122021'
+    
+    all_task_configs = np.load(Data_folder+'Task_data_'+mouse_recday+'.npy')
+    no_task_configs = len(all_task_configs)
+    locations = list()
+    neurons = list()
+    
+    # load all data first.
+    for session in range(0, no_task_configs):
+        locations.append(np.load(Data_folder+'Location_'+mouse_recday+'_'+str(session)+'.npy'))
+        neurons.append(np.load(Data_folder+'Neuron_'+mouse_recday+'_'+str(session)+'.npy'))
+    
+    for task_no, task_config in enumerate(all_task_configs):
+        curr_neurons = neurons[task_no]
+        # average over runs (2nd dim)
+        mean_neurons_per_task_start = np.mean(curr_neurons[:, 0:4, :], axis = 1)
+        mean_neurons_per_task_learned = np.mean(curr_neurons[:, -5:-1, :], axis = 1)
+        RSM_neurons = mc.simulation.RDMs.within_task_RDM(mean_neurons_per_task_start, plotting = True, titlestring = f"Start data RDM task {task_config}")
+        RSM_neurons_two = mc.simulation.RDMs.within_task_RDM(mean_neurons_per_task_learned, plotting = True, titlestring = f"Learned data RDM task {task_config}")
+        print(task_config)
+    
+    # setting up a single phase-coded model.
+    a = ([1, 0, 0],[0,1,0],[0,0,1])
+    b = np.repeat(a,30, axis = 1)
+    phase_model = np.tile(b, 4)
+    
+    RSM_phase = mc.simulation.RDMs.within_task_RDM(phase_model, plotting = True, titlestring = 'Phase RDM')
+    
+    # phase model with one short and one long phase
+    # setting up a single phase-coded model.
+    a = ([1, 0, 0],[0,1,1])
+    b = np.repeat(a,30, axis = 1)
+    phase_model_two = np.tile(b, 4)
+    
+    RSM_phase_two = mc.simulation.RDMs.within_task_RDM(phase_model_two, plotting = True, titlestring = 'Two phases RDM')
+    
+    
+        
 
 
-if take_raw_data == 0:
+if take_bin_data == 1:
     # first try: just do the analysis across one run, for all neurons of this one task config.
     # later write a loop.
     # settings are:
-    run_number = 20
+    run_number = 18
     reward_config_number = 0
     
     ## SOME SETTINGS
@@ -66,9 +111,6 @@ if take_raw_data == 0:
     #   doing the analysis across trials
     #   doing the analysis across runs (base my model on averaged locations)
     #   doing the analysis acorss runs (use more neural data)
-    
-    
-    
     
     curr_task = locations[run_number]
     # run 0 *6*-7-4-5-2-1-0-*3*-4-7-8-5-4-1-*2*-5-*4*-7-6-3-4-1-2-5-8-7-6-3-0-1-4-3-6
@@ -134,7 +176,7 @@ if take_raw_data == 1:
     # first try: just do the analysis across one run, for all neurons of this one task config.
     # later write a loop.
     # settings are:
-    run_number = 20
+    run_number = 3
     reward_config_number = 0
     
     ## SOME SETTINGS
@@ -190,7 +232,7 @@ if take_raw_data == 1:
     # I will do this differently. it's annoying to store runs of different lengths.
     # instead, I will have my subpaths, separately for every path
     # potentiall, I will want to take a mean across runs... let's start slow. 
-    row = timings[20]
+    row = timings[30]
     
     # define current data
     # > potentially turn into a loop at some point
@@ -205,6 +247,8 @@ if take_raw_data == 1:
     for col_no, column in enumerate(test_curr_neurons.T):
         if np.all(column == 0):
             test_curr_neurons[:,col_no] = 0.00001
+    
+
     
     # some pre-processing to create my models.
     # to count subpaths
@@ -229,25 +273,70 @@ if take_raw_data == 1:
             index_make_step.append(field_no)
             
             
+    # plot an examplary neuron
+    # ##Example Neuron activity
+    # mouse_recday='me11_05122021_06122021'
+    # session=0
+    # neuron=0
+
+    # data_neurons=np.load(Data_folder+'Neuron_'+mouse_recday+'_'+str(session)+'.npy')
+    data_neuron = test_curr_neurons
+
+    plt.matshow(data_neuron)
+    for reward in timings_curr_run:
+        plt.axvline(reward,color='red',ls='dashed')
+    plt.show()
+
+    # print(np.shape(data_neuron0))
+
+    # data_neuron0    
+    
+            
     location_model = mc.simulation.predictions.set_location_raw_ephys(trajectory, step_time = 1, grid_size=3, plotting = True, field_no_given= 1)
     midnight_model, clocks_model = mc.simulation.predictions.set_clocks_raw_ephys(trajectory, timings_curr_run, index_make_step, step_number, field_no_given= 1, plotting=True)
-
-
+    phase_model = mc.simulation.predictions.set_phase_model_ephys(trajectory, timings_curr_run, index_make_step, step_number)
+    
+    
+    # now create the regressors per run
+    regs_phase_state_run = mc.simulation.predictions.create_regressors_per_state_phase_ephys(walked_path=trajectory, subpath_timings=timings_curr_run, step_no=step_number)
+    # then use these regressors to generate a beta per neuron per run
+    neurons_phase_state = mc.simulation.predictions.transform_data_to_betas(data_neuron, regs_phase_state_run)
+    clock_phase_state = mc.simulation.predictions.transform_data_to_betas(clocks_model, regs_phase_state_run)
+    midnight_phase_state= mc.simulation.predictions.transform_data_to_betas(midnight_model, regs_phase_state_run)
+    location_phase_state = mc.simulation.predictions.transform_data_to_betas(location_model, regs_phase_state_run)
+    phase_phase_state = mc.simulation.predictions.transform_data_to_betas(phase_model, regs_phase_state_run)
+    
+    
+    # try how the stat_phase RDMS look like
+    RSM_location_betas = mc.simulation.RDMs.within_task_RDM(location_phase_state, plotting = True, titlestring = 'Location phase*state dim RSM')
+    RSM_clock_betas = mc.simulation.RDMs.within_task_RDM(clock_phase_state, plotting = True, titlestring = 'Clock phase*state dim RSM')
+    RSM_midnight_betas = mc.simulation.RDMs.within_task_RDM(midnight_phase_state, plotting = True, titlestring = 'Midnight phase*state dim RSM')
+    RSM_phase_betas = mc.simulation.RDMs.within_task_RDM(phase_phase_state, plotting = True, titlestring = 'Phase phase*state dim RSM')
+    RSM_neurons_betas = mc.simulation.RDMs.within_task_RDM(neurons_phase_state, plotting = True, titlestring = 'Data phase*state dim RDM')
+    
+    
+    
     # now create the model RDMs
-    RSM_location = mc.simulation.RDMs.within_task_RDM(location_model, plotting = True, titlestring = 'Location RDM')
-    RSM_clock = mc.simulation.RDMs.within_task_RDM(clocks_model, plotting = True, titlestring = 'Clock RDM')
-    RSM_midnight = mc.simulation.RDMs.within_task_RDM(midnight_model, plotting = True, titlestring = 'Midnight RDM')
+    RSM_location = mc.simulation.RDMs.within_task_RDM(location_model, plotting = True, titlestring = 'Location RSM')
+    RSM_clock = mc.simulation.RDMs.within_task_RDM(clocks_model, plotting = True, titlestring = 'Clock RSM')
+    RSM_midnight = mc.simulation.RDMs.within_task_RDM(midnight_model, plotting = True, titlestring = 'Midnight RSM')
+    RSM_phase = mc.simulation.RDMs.within_task_RDM(phase_model, plotting = True, titlestring = 'Phase RSM')
     
     # now create the data RDM
     # I am wondering if this is correct, though - maybe should I select those neurons where I know fit my predictions?
     RSM_neurons = mc.simulation.RDMs.within_task_RDM(test_curr_neurons, plotting = True, titlestring = 'Data RDM')
     
     # Lastly, create a linear regression with RSM_loc,clock and midnight as regressors and data to be predicted
-    reg_res, scipy_regression_results = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons, regressor_one_matrix=RSM_clock, regressor_two_matrix= RSM_midnight, regressor_three_matrix= RSM_location, t_val = 'yes')
-    print(f" The beta for the clocks model is {reg_res.coef_[0]}, for the midnight model is {reg_res.coef_[1]}, and for the location model is {reg_res.coef_[2]}")
+    reg_res, scipy_regression_results = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons, regressor_one_matrix=RSM_clock, regressor_two_matrix= RSM_midnight, regressor_three_matrix= RSM_location, regressor_four_matrix= RSM_phase, t_val = 'yes')
+    print(f" The beta for the clocks model is {reg_res.coef_[0]}, for the midnight model is {reg_res.coef_[1]}, for the location model is {reg_res.coef_[2]}, and for the phase model is {reg_res.coef_[3]}")
     print(scipy_regression_results.summary())
     
-    
+    # plot the variance in the off-diagonal elements of the clock as a histogram
+    dimension = len(RSM_clock)
+    diag_array = list(RSM_clock[np.tril_indices(dimension, -1)])
+    fig, ax = plt.subplots()
+    plt.hist(diag_array, bins = 10)
+    plt.show()
     
     
     # 1. subject level.

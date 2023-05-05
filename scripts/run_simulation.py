@@ -78,9 +78,7 @@ if section_onetwo == 1:
 # needs section 1.1
 if section_twoone == 1:
     first_clocks_matrix, total_steps  = mc.simulation.predictions.set_clocks(reshaped_visited_fields, all_stepnums, 3)           
-    location_matrix, total_steps = mc.simulation.predictions.set_location_matrix(reshaped_visited_fields, all_stepnums, phases = 3, size_grid= 3) 
-
-     
+    location_matrix, total_steps = mc.simulation.predictions.set_location_matrix(reshaped_visited_fields, all_stepnums, phases = 3, size_grid= 3)
     print(first_clocks_matrix)
     print(location_matrix)
      

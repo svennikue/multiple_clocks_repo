@@ -9,6 +9,7 @@ import mc.simulation.grid
 import mc.simulation.predictions
 import mc.simulation.RDMs
 import mc.simulation.optimise
+import mc.simulation.single_sub_ephys
 
 
 #import mc.set_clocks

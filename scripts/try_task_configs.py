@@ -32,7 +32,7 @@ section_one_four = 0 # plotting 0-angle and clocks, convolved with HRF
 # playing around with different task parameters (steptime, gridsize, reward amount)
 section_two_one = 0 # optimise similarities between different models over many permutations.
 section_two_two = 0 # plot the successful reward patterns from section 2.1
-section_two_three = 0 # find out if parameters work, but only one run.
+section_two_three = 1 # find out if parameters work, but only one run.
 
 ## section 3: identify task configurations that correlate low BETWEEN several configs.
 section_three_one = 0
@@ -44,7 +44,7 @@ section_three_four = 0 # plot the model matrices and similarity for several pre-
 section_four_one = 0
 
 ## section 5: create a step x step RDM with HRF convolution by taking a GLM approach
-section_five_one = 1
+section_five_one = 0
 
 
 
@@ -314,6 +314,7 @@ if section_two_three == 1:
     mc.simulation.predictions.plot_without_legends(single_clock)
     mc.simulation.predictions.plot_without_legends(midnight_matrix)
     mc.simulation.predictions.plot_without_legends(clocks_model)
+    phase_modelssss = mc.simulation.predictions.set_phase_model(walk, steps_per_walk, step_time, grid_size)
     
     # # ok location works.
     locm, location_matrix = mc.simulation.predictions.set_location_by_time(walk, steps_per_walk, step_time, grid_size)
@@ -349,10 +350,10 @@ if section_two_three == 1:
         
     
     # similarity
-    RSM_clocks = mc.simulation.RDMs.within_task_RDM(clocks_model_hrf, plotting = True, titlestring= 'clock RSM')
-    RSM_midnight = mc.simulation.RDMs.within_task_RDM(midnight_model_hrf, plotting = True, titlestring= 'midnight RSM')
+    RSM_clocks = mc.simulation.RDMs.within_task_RDM(clocks_model, plotting = True, titlestring= 'clock RSM')
+    RSM_midnight = mc.simulation.RDMs.within_task_RDM(midnight_matrix, plotting = True, titlestring= 'midnight RSM')
     RSM_loc = mc.simulation.RDMs.within_task_RDM(location_model_hrf, plotting = True, titlestring= 'location RSM')
-
+    RSM_phases = mc.simulation.RDMs.within_task_RDM(phase_modelssss, plotting = True, titlestring= 'phase RSM')
     
     
     #5. check the similarity between different models and check if the task configs that are good now are still good
@@ -375,6 +376,14 @@ if section_two_three == 1:
     kendall_clocks_midnight = mc.simulation.RDMs.corr_matrices_kendall(RSM_clocks, RSM_midnight)
     result_dict['pearson_clocks_midnight'] = pearson_clocks_midnight
     result_dict['kendall_clocks_midnight'] = kendall_clocks_midnight.correlation
+    
+    
+    correlation_sim_clocks_phase = mc.simulation.RDMs.corr_matrices_pearson(RSM_clocks, RSM_phases)
+    pearson_clocks_phases = correlation_sim_clocks_phase[0,1]
+    
+    correlation_sim_midnight_phase = mc.simulation.RDMs.corr_matrices_pearson(RSM_midnight, RSM_phases)
+    pearson_midnight_phases = correlation_sim_midnight_phase[0,1]
+    
     
     print(result_dict)
     

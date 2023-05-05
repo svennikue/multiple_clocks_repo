@@ -38,6 +38,11 @@ from matplotlib.gridspec import GridSpec
 import mc
 import scipy.signal
 from matplotlib.patches import Circle
+import scipy
+from sklearn.linear_model import LinearRegression
+import scipy
+from sklearn.linear_model import LinearRegression
+from scipy import stats
 
 
 ############ Helpers ################
@@ -332,6 +337,49 @@ def set_clocks_bytime(walked_path, step_number, step_time, grid_size = 3, phases
                 cols_to_shift = []
     
     return clock_neurons_per_ms, whole_path_matrix, full_clock_matrix
+
+
+def set_phase_model(walked_path, step_number, step_time, grid_size = 3, phases=3):
+    # import pdb; pdb.set_trace()
+    n_rows = phases
+    cumsumsteps = np.cumsum(step_number)
+    total_steps = cumsumsteps[-1]   
+    n_columns = total_steps   
+    loc_matrix = np.empty([n_rows,n_columns]) # fields times steps
+    loc_matrix[:] = np.nan
+    cols_to_fill_previous = 0
+    for count_paths, pathlength in enumerate(step_number):
+        cols_to_fill = pathlength*step_time
+        # create a string that tells me how many columns are one phase clock
+        time_per_phase_in_clock = ([cols_to_fill // phases + (1 if x < cols_to_fill % phases else 0) for x in range (phases)])
+        time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
+        cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
+        
+        # part 2:
+        # to identify which phase*anchor clocks to activate, identify subpaths
+        if count_paths > 0:
+            curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
+        elif count_paths == 0:
+            curr_path = walked_path[1:cumsumsteps[count_paths]+1]
+            
+            
+        phase_matrix_subpath = np.zeros([phases, len(curr_path)*step_time])
+        # activate the matrix
+        for phase in range(0, len(time_per_phase_in_clock)):
+            if phase == 0:
+                phase_matrix_subpath[phase, 0:time_per_phase_in_clock_cum[phase]] = 1
+            else:
+                phase_matrix_subpath[phase, time_per_phase_in_clock_cum[phase-1]:time_per_phase_in_clock_cum[phase]] = 1
+        
+        if count_paths == 0:
+            phase_model = phase_matrix_subpath.copy()
+        elif count_paths > 0:
+            phase_model = np.concatenate((phase_model,phase_matrix_subpath), axis = 1)
+        
+    return phase_model
+    
+
+
     
 # ephys validation model
 # this is based on 360 timebins > 1 state is 90 bins, 1 phase is 30 bins.
@@ -475,6 +523,8 @@ def set_clocks_raw_ephys(walked_path, subpath_timings, step_indices, step_number
         
         # fill the single clock matrix analoguos to the phase-switches.
         # this means that every clock will be phase-matched to the whole matrix.
+        # note: btw this is pretty much the same as below for the phase-matrix_subpath, just for all 12 rows 
+        # instead of only for 3. kind of obsolete
         for phase in range(0, phases):
             if phase == 0:
                 clock_neurons[phase+(count_paths*phases), cols_to_fill_previous+ 0: cols_to_fill_previous+ time_per_phase_in_clock_cum[phase]] = 1
@@ -529,9 +579,9 @@ def set_clocks_raw_ephys(walked_path, subpath_timings, step_indices, step_number
     
     # now loop through the already filled columns (every 12th one) and fill the clocks if activated.
     cols_to_shift = []
-    for row in range(0, len(full_clock_matrix), len(clock_neurons)):
+    for row in range(0, len(full_clock_matrix), len(clock_neurons)): # every 12th row in the clock matrix
         # for every clock that has been activated, identify the first column where it is '1'
-        if sum(full_clock_matrix_dummy[row,:]) > 0: 
+        if sum(full_clock_matrix_dummy[row,:]) > 0: # only more then 0 if activated
             column = np.where(full_clock_matrix_dummy[row,:] == 1)[0][0]
             # check in which row this particular column is '1' in the clock
             horizontal_shift_by = np.where(clock_neurons[:,column] == 1)[0][0]
@@ -539,16 +589,20 @@ def set_clocks_raw_ephys(walked_path, subpath_timings, step_indices, step_number
             full_clock_matrix[row:(row+(len(clock_neurons))), :] = shifted_clock
             # additionally test if there was a double-activation in this row.
             all_activations = np.where(full_clock_matrix_dummy[row,:] == 1)[:][0]
+            # from here, everything is about double-activations.
+            # UNDO THIS LATER!!
+            # check how everything looks like without double activations
             for index, activated_ms in enumerate(all_activations):
                 if index > 0:
                     # if there is a gap (diff between two indices next to each other > 1)
                     if all_activations[index]-all_activations[index-1] > 1:
                         # store the element so I can activate it after
+                        # (this means there was a double activation of the clock)
                         cols_to_shift.append(activated_ms)
-            if len(cols_to_shift) > 0:
+            if len(cols_to_shift) > 0: # cols to shift will only be bigger than 0 if there was a double-activation
                 # if there are double activations, do the same horizontal shift but only copy the 1s.
                 for column in cols_to_shift:
-                    horizontal_shift_by = np.where(clock_neurons[:,column] == 1)[0][0]
+                    horizontal_shift_by = np.where(clock_neurons[:,column] == 1)[0][0] # find the double-activated columns
                     shifted_clock = np.roll(clock_neurons, horizontal_shift_by*-1, axis = 0)
                     for col in range(0, len(shifted_clock[0])):
                         for rw in range(0, len(shifted_clock)):
@@ -563,11 +617,94 @@ def set_clocks_raw_ephys(walked_path, subpath_timings, step_indices, step_number
         fig, axs = plt.subplots(nrows =1, ncols = 2)
         axs[0].imshow(full_clock_matrix, interpolation = 'none', aspect = 'auto')
         axs[1].imshow(midnight_matrix, interpolation = 'none', aspect = 'auto')
-
-    
     return midnight_matrix, full_clock_matrix
 
+
+
+
+def set_phase_model_ephys(walked_path, subpath_timings, step_indices, step_number, grid_size = 3, phases=3, plotting = False, field_no_given = None, ax = None):
+    # import pdb; pdb.set_trace()
+    cols_to_fill_previous = 0
     
+    for count_paths, (pathlength) in enumerate(step_number):
+        # identify subpaths and create single-clock matrices.
+        curr_path = walked_path[subpath_timings[count_paths]:subpath_timings[count_paths+1]]
+        cols_to_fill = len(curr_path)
+        
+        # create a string that tells me how many columns are one phase clock
+        # this is where I make the assumption of how long every phase actually takes, if not splittable evenly.
+        # i.e. > phase is NOT linked to steps taken, but to TIME
+        time_per_phase_in_clock = ([cols_to_fill // phases + (1 if x < cols_to_fill % phases else 0) for x in range (phases)])
+        time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
+        
+        # fill the single clock matrix analoguos to the phase-switches.
+        # this means that every clock will be phase-matched to the whole matrix.
+        cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
+
+        # 1. create a phase matrix
+        # create a matrix based on time_per_phase_in_clock 
+        phase_matrix_subpath = np.zeros([phases, len(curr_path)])
+        # activate the matrix
+        for phase in range(0, len(time_per_phase_in_clock)):
+            if phase == 0:
+                phase_matrix_subpath[phase, 0:time_per_phase_in_clock_cum[phase]] = 1
+            else:
+                phase_matrix_subpath[phase, time_per_phase_in_clock_cum[phase-1]:time_per_phase_in_clock_cum[phase]] = 1
+        
+        if count_paths == 0:
+            phase_model_ephys = phase_matrix_subpath.copy()
+        elif count_paths > 0:
+            phase_model_ephys = np.concatenate((phase_model_ephys,phase_matrix_subpath), axis = 1)
+        
+    return phase_model_ephys
+        
+        
+# def set_phase_model_ephys(walked_path, reward_fields, step_number, step_time, grid_size = 3, phases=3):
+#     import pdb; pdb.set_trace()
+#     no_rewards = len()
+#     n_rows = phases
+#     cumsumsteps = np.cumsum(step_number)
+#     total_steps = cumsumsteps[-1]   
+#     n_columns = total_steps   
+#     loc_matrix = np.empty([n_rows,n_columns]) # fields times steps
+#     loc_matrix[:] = np.nan
+#     cols_to_fill_previous = 0
+    
+#     for i, field in enumerate(walked_path):
+#         if i == 0:
+            
+    
+    
+#     for count_paths, pathlength in enumerate(step_number):
+#         cols_to_fill = pathlength*step_time
+#         # create a string that tells me how many columns are one phase clock
+#         time_per_phase_in_clock = ([cols_to_fill // phases + (1 if x < cols_to_fill % phases else 0) for x in range (phases)])
+#         time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
+#         cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
+        
+#         # part 2:
+#         # to identify which phase*anchor clocks to activate, identify subpaths
+#         if count_paths > 0:
+#             curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
+#         elif count_paths == 0:
+#             curr_path = walked_path[1:cumsumsteps[count_paths]+1]
+            
+            
+#         phase_matrix_subpath = np.zeros([phases, len(curr_path)*step_time])
+#         # activate the matrix
+#         for phase in range(0, len(time_per_phase_in_clock)):
+#             if phase == 0:
+#                 phase_matrix_subpath[phase, 0:time_per_phase_in_clock_cum[phase]] = 1
+#             else:
+#                 phase_matrix_subpath[phase, time_per_phase_in_clock_cum[phase-1]:time_per_phase_in_clock_cum[phase]] = 1
+        
+#         if count_paths == 0:
+#             phase_model = phase_matrix_subpath.copy()
+#         elif count_paths > 0:
+#             phase_model = np.concatenate((phase_model,phase_matrix_subpath), axis = 1)
+        
+#     return phase_model
+   
     
 # OLD 
 # problem: sometimes, phases were on at the same time. probably a wrong assumption!
@@ -758,7 +895,7 @@ def set_single_clock(walked_path, step_number, step_time, grid_size = 3, phases 
 # input is: reshaped_visited_fields and all_stepnums from mc.simulation.grid.walk_paths(reward_coords)
 # THIS IS AN OLD MODEL!
 def set_location_matrix(walked_path, step_number, phases, size_grid = 3):
-    #import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     n_states = len(step_number)
     n_columns = phases*n_states
     no_fields = size_grid*size_grid
@@ -808,7 +945,7 @@ def set_location_matrix(walked_path, step_number, phases, size_grid = 3):
 
 # CURRENT MODEL
 def set_location_by_time(walked_path, step_number, step_time, grid_size = 3, field_no_given = None):
-    import pdb; pdb.set_trace()   
+    # import pdb; pdb.set_trace()   
     cumsumsteps = np.cumsum(step_number)
     total_steps = cumsumsteps[-1]    
     n_columns = total_steps   
@@ -1106,7 +1243,7 @@ def many_configs_loop(loop_no, which_matrix):
         reward_coords = mc.simulation.grid.create_grid()
         reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords)
         if which_matrix == 'location':
-            temp_matrix, total_steps = mc.simulation.predictions.set_location_matrix(reshaped_visited_fields, all_stepnums, 3, 0) 
+            temp_matrix, total_steps = mc.simulation.predictions.set_location_matrix(reshaped_visited_fields, all_stepnums, 3, 3) 
         elif which_matrix == 'clocks':
             temp_matrix, total_steps  = mc.simulation.predictions.set_clocks(reshaped_visited_fields, all_stepnums, 3)
         if loop < 1:
@@ -1115,6 +1252,44 @@ def many_configs_loop(loop_no, which_matrix):
             sum_matrix = np.nansum(np.dstack((sum_matrix[:],temp_matrix[:])),2)
     average_matrix = sum_matrix[:]/loop_no
     return average_matrix
+
+
+
+
+def create_regressors_per_state_phase_ephys(walked_path, subpath_timings, step_no, grid_size = 3, phases=3, plotting = False, field_no_given = None, ax = None):
+    # import pdb; pdb.set_trace()
+    n_states = len(step_no)
+    regressors = np.zeros([phases*n_states,len(walked_path)])
+    cols_to_fill_previous = 0
+    for count_paths, (pathlength) in enumerate(step_no):
+        # identify subpaths and create single-clock matrices.
+        curr_path = walked_path[subpath_timings[count_paths]:subpath_timings[count_paths+1]]
+        cols_to_fill = len(curr_path)
+        # create a string that tells me how many columns are one phase clock
+        # this is where I make the assumption of how long every phase actually takes, if not splittable evenly.
+        # i.e. > phase is NOT linked to steps taken, but to TIME
+        time_per_phase_in_clock = ([cols_to_fill // phases + (1 if x < cols_to_fill % phases else 0) for x in range (phases)])
+        time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
+        for phase in range(0, phases):
+            if phase == 0:
+                regressors[phase+(count_paths*phases), cols_to_fill_previous+ 0: cols_to_fill_previous+ time_per_phase_in_clock_cum[phase]] = 1
+            elif phase == 1:
+                regressors[phase+(count_paths*phases), cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 1
+            elif phase == 2:
+                regressors[phase+(count_paths*phases), cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 1
+                
+        cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
+    return regressors
+
+
+def transform_data_to_betas(data_matrix, regressors):
+    # import pdb; pdb.set_trace()
+    beta_matrix = np.zeros((len(data_matrix), len(regressors)))
+    # first check if there are any nans in the data, and if so, replace with 0
+    data_matrix = np.nan_to_num(data_matrix)
+    for index, row in enumerate(data_matrix): 
+        beta_matrix[index] = LinearRegression().fit(np.transpose(regressors), row).coef_
+    return beta_matrix
 
 #############
 
