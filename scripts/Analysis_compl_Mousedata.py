@@ -129,7 +129,7 @@ for session in range(0, g_no_task_configs):
 #
 
 # try how the regression across tasks looks like
-regression_across_tasks_mouse_a = mc.simulation.single_sub_ephys.reg_across_tasks(a_rewards_configs, a_locations, a_neurons, a_timings)
+results_reg_acro_mouse_a, scipy_reg_acro_mouse_a, coefficients_acro_mouse_a = mc.simulation.single_sub_ephys.reg_across_tasks(a_rewards_configs, a_locations, a_neurons, a_timings)
 # THIS IS THE INTERESTIGN THING RN
 
 contrast_matrix = ((1,0,0,0), (0,1,0,0), (0,0,1,0), (0,0,0,1), (1,-1,0,0), (1, 0,-1,0), (1,0,0,-1), (0,1,-1,0), (0,1,0,-1), (0,0,1,-1))

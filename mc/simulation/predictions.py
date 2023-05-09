@@ -1282,13 +1282,19 @@ def create_regressors_per_state_phase_ephys(walked_path, subpath_timings, step_n
     return regressors
 
 
-def transform_data_to_betas(data_matrix, regressors):
+def transform_data_to_betas(data_matrix, regressors, intercept = False):
     # import pdb; pdb.set_trace()
+    # careful! I now don't include an intercept by default.
+    # this is because the way I use it, the regressors would be a linear combination of the intercept ([11111] vector)
     beta_matrix = np.zeros((len(data_matrix), len(regressors)))
     # first check if there are any nans in the data, and if so, replace with 0
     data_matrix = np.nan_to_num(data_matrix)
-    for index, row in enumerate(data_matrix): 
-        beta_matrix[index] = LinearRegression().fit(np.transpose(regressors), row).coef_
+    if intercept == False:
+        for index, row in enumerate(data_matrix): 
+            beta_matrix[index] = LinearRegression(fit_intercept=False).fit(np.transpose(regressors), row).coef_
+    elif intercept == True:
+        for index, row in enumerate(data_matrix): 
+            beta_matrix[index] = LinearRegression().fit(np.transpose(regressors), row).coef_         
     return beta_matrix
 
 #############
