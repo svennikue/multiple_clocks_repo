@@ -47,52 +47,53 @@ for session in range(0, b_no_task_configs):
 
 
 
-# mouse_recday='me10_09122021_10122021' #mouse c range 0,9
-# c_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-# c_no_task_configs = len(c_rewards_configs)
-# c_locations = list()
-# c_neurons = list()
-# c_timings = list()
-# for session in range(0, c_no_task_configs):
-#     c_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     c_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     c_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
+mouse_recday='me10_09122021_10122021' #mouse c range 0,9
+c_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+c_no_task_configs = len(c_rewards_configs)
+c_locations = list()
+c_neurons = list()
+c_timings = list()
+for session in range(0, c_no_task_configs):
+    c_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    c_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    c_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
     
 
-# mouse_recday='me08_10092021_11092021' #mouse d range 0,6
-# d_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-# # apparently there is one run less for this day...
-# d_no_task_configs = len(d_rewards_configs) - 1
-# d_locations = list()
-# d_neurons = list()
-# d_timings = list()
-# for session in range(0, d_no_task_configs):
-#     d_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     d_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     d_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
+mouse_recday='me08_10092021_11092021' #mouse d range 0,6
+d_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+# apparently there is one run less for this day...
+d_no_task_configs = len(d_rewards_configs) - 1
+d_locations = list()
+d_neurons = list()
+d_timings = list()
+for session in range(0, d_no_task_configs):
+    d_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    d_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    d_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
 
 
-# mouse_recday='ah04_09122021_10122021' #mouse e range 0,8
-# e_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-# e_no_task_configs = len(e_rewards_configs)
-# e_locations = list()
-# e_neurons = list()
-# e_timings = list()
-# for session in range(0, e_no_task_configs):
-#     e_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     e_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     e_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
+
+mouse_recday='ah04_09122021_10122021' #mouse e range 0,8
+e_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+e_no_task_configs = len(e_rewards_configs)
+e_locations = list()
+e_neurons = list()
+e_timings = list()
+for session in range(0, e_no_task_configs):
+    e_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    e_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    e_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
  
-# mouse_recday='ah04_05122021_06122021' #mouse f range 0,8
-# f_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-# f_no_task_configs = len(f_rewards_configs)
-# f_locations = list()
-# f_neurons = list()
-# f_timings = list()
-# for session in range(0, f_no_task_configs):
-#     f_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     f_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     f_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
+mouse_recday='ah04_05122021_06122021' #mouse f range 0,8
+f_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+f_no_task_configs = len(f_rewards_configs)
+f_locations = list()
+f_neurons = list()
+f_timings = list()
+for session in range(0, f_no_task_configs):
+    f_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    f_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    f_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
 
 mouse_recday='ah04_01122021_02122021' #mouse g range 0,8
 g_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
@@ -129,8 +130,21 @@ for session in range(0, g_no_task_configs):
 #
 
 # try how the regression across tasks looks like
-results_reg_acro_mouse_a, scipy_reg_acro_mouse_a, coefficients_acro_mouse_a = mc.simulation.single_sub_ephys.reg_across_tasks(a_rewards_configs, a_locations, a_neurons, a_timings)
+#results_reg_acro_mouse_g, scipy_reg_acro_mouse_g, coefficients_acro_mouse_g = mc.simulation.single_sub_ephys.reg_across_tasks(g_rewards_configs, g_locations, g_neurons, g_timings)
+#results_reg_acro_mouse_a, scipy_reg_acro_mouse_a, coefficients_acro_mouse_a = mc.simulation.single_sub_ephys.reg_across_tasks(a_rewards_configs, a_locations, a_neurons, a_timings)
+#results_reg_acro_mouse_b, scipy_reg_acro_mouse_b, coefficients_acro_mouse_b, averaged_reg_results = mc.simulation.single_sub_ephys.reg_across_tasks(b_rewards_configs, b_locations, b_neurons, b_timings)
+
+# results_reg_acro_mouse_c, scipy_reg_acro_mouse_c, coefficients_acro_mouse_c, averaged_reg_results = mc.simulation.single_sub_ephys.reg_across_tasks(c_rewards_configs, c_locations, c_neurons, c_timings)
+# results_reg_acro_mouse_d, scipy_reg_acro_mouse_d, coefficients_acro_mouse_d, averaged_reg_results = mc.simulation.single_sub_ephys.reg_across_tasks(d_rewards_configs, d_locations, d_neurons, d_timings)
+
+results_reg_acro_mouse_e, scipy_reg_acro_mouse_e, coefficients_acro_mouse_e, averaged_reg_results = mc.simulation.single_sub_ephys.reg_across_tasks(e_rewards_configs, e_locations, e_neurons, e_timings)
+
+
+
 # THIS IS THE INTERESTIGN THING RN
+import pdb; pdb.set_trace()
+
+
 
 contrast_matrix = ((1,0,0,0), (0,1,0,0), (0,0,1,0), (0,0,0,1), (1,-1,0,0), (1, 0,-1,0), (1,0,0,-1), (0,1,-1,0), (0,1,0,-1), (0,0,1,-1))
 regression_mouse_a,  contrasts_mouse_a = mc.simulation.single_sub_ephys.reg_per_task_config(a_rewards_configs, a_locations, a_neurons, a_timings, contrast_matrix)

@@ -19,7 +19,7 @@ from scipy import stats
 import statsmodels.api as sm
 
 
-def within_task_RDM(activation_matrix, ax=None, plotting = False, titlestring = None):
+def within_task_RDM(activation_matrix, ax=None, plotting = False, titlestring = None, intervalline= None):
     # import pdb; pdb.set_trace()
     activation_matrix = np.nan_to_num(activation_matrix)
     RSM = np.corrcoef(activation_matrix.T) # pairwise pearson corr of columns, excluding NA/nulls
@@ -36,6 +36,9 @@ def within_task_RDM(activation_matrix, ax=None, plotting = False, titlestring = 
             ax = plt.axes()   
         plt.imshow(RSM, interpolation = 'none')
         plt.title(f'{titlestring}')
+        if intervalline:
+            for interval in range(0, len(activation_matrix[0]), intervalline):
+                plt.axvline(interval, color='red', ls='dashed')
         # sn.heatmap(corr_matrix, annot = False)
     return RSM
 
@@ -226,7 +229,7 @@ def corr_matrices_kendall(matrix_one, matrix_two, exclude_diag = True):
     return coef
 
 def corr_matrices_pearson(matrix_one, matrix_two, exclude_diag = True):
-    #import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     dimension = len(matrix_one) 
     if exclude_diag == True:
         diag_array_one = list(matrix_one[np.tril_indices(dimension, -1)])
@@ -268,7 +271,7 @@ def corr_matrices_no_autocorr(matrix_one, matrix_two, timepoints_to_exclude, plo
     return coef_kendall, coef_pearson
 
 def lin_reg_RDMs(data_matrix, regressor_one_matrix, regressor_two_matrix = None, regressor_three_matrix = None, regressor_four_matrix = None, t_val = None):
-    # import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
     dimension = len(data_matrix) 
     diag_array_data = list(data_matrix[np.tril_indices(dimension , -1)])
     X = list(regressor_one_matrix[np.tril_indices(dimension, -1)])
@@ -284,6 +287,8 @@ def lin_reg_RDMs(data_matrix, regressor_one_matrix, regressor_two_matrix = None,
     # now do the linear regression
     # check if there are nans
     # np.count_nonzero(np.isnan(data))
+    # check correlation within the desing matrix
+    design_corr = np.corrcoef(X)
     x_reshaped = np.transpose(X)
     regression_results = LinearRegression().fit(x_reshaped, diag_array_data)
     

@@ -1061,22 +1061,25 @@ def set_location_raw_ephys(walked_path, step_time, grid_size = 3, plotting = Fal
 # PART 2: PLOTTING
 # create functions to plot the matrices
 
-def plot_without_legends(any_matrix, titlestring = None, prediction = None,  hrf = None, grid_size = None, step_time = None, reward_no = None, perms = None):
-    # import pdb; pdb.set_trace()
+def plot_without_legends(any_matrix, titlestring = None, prediction = None,  hrf = None, grid_size = None, step_time = None, reward_no = None, perms = None, intervalline = None):
+    #import pdb; pdb.set_trace()
     plt.figure()
     fig, ax = plt.subplots()
     plt.imshow(any_matrix, aspect = 'auto') 
     ax.xlabel = 'neural activity over some timescale'
     ax.ylabel = 'neurons'
     plt.title(f'{titlestring}')
-    if 'hrf' in locals():
+    if hrf:
         hrf_set = '_hrf=' + str(hrf)
-    if 'grid_size' in locals():
+    if grid_size:
         grid_set = '_gridsize_' + str(grid_size) + 'x' + str(grid_size)
-    if 'step_time' in locals():
+    if step_time:
         time_set = '_' + str(step_time) + 'ms_per_step_'
-    if 'reward_no' in locals():
+    if reward_no:
         rew_set = str(reward_no) + '_rewards_' 
+    if intervalline:
+        for interval in range(0, len(any_matrix[0]), intervalline):
+            plt.axvline(interval, color='red', ls='dashed')
     # if 'perms' in locals():
     #     perm_set = '_' + str(perms) + '_perms'
     #     plt.title('settings:_' + prediction + hrf_set + grid_set + time_set + rew_set + perm_set)
