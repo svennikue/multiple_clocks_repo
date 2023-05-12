@@ -11,6 +11,7 @@ this module can be called to prepare raw ephys data and then runs the single-sub
 import math
 import numpy as np
 import mc
+from matplotlib import pyplot as plt
 
 def reg_per_task_config(task_configs, locations_all, neurons, timings_all, contrast_m):
     # import pdb; pdb.set_trace()
@@ -298,6 +299,72 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
     
     
     # DICKING AROUND WITH THE DATA
+    
+    # clean according to recording day.
+    import pdb; pdb.set_trace()
+    # if mouse_recday == 'me11_05122021_06122021': #mouse a
+    # ALL FINE WITH a!
+        # task 5 and 9 are the same, as well as 6 and 7
+        # data of the first 4 tasks look similar, and tasks 5,6,7,8,9 look more similar
+
+    
+    if mouse_recday == 'me11_01122021_02122021':#mouse b
+        # get rid of the last task because it looks somewhat whacky
+        ave_clocks_between = ave_clocks_between[:,0:-12].copy()
+        ave_phase_between = ave_phase_between[:,0:-12].copy()
+        ave_midnight_between = ave_midnight_between[:,0:-12].copy()
+        ave_location_between = ave_location_between[:,0:-12].copy()
+        ave_neurons_between = ave_neurons_between[:, 0:-12].copy()
+    
+        
+    if mouse_recday == 'me10_09122021_10122021': #mouse c 
+        # same tasks are: 1,4; and  5,6,9
+        # 4 and 9 look whacky, so remove those
+        # so then after removal 4 and 5 are the same 
+        ave_clocks_between = np.concatenate((ave_clocks_between[:, 0:36], ave_clocks_between[:, 48:96]), axis = 1)
+        ave_neurons_between = np.concatenate((ave_neurons_between[:, 0:36], ave_neurons_between[:,48:96]), axis = 1)
+        ave_midnight_between = np.concatenate((ave_midnight_between[:, 0:36], ave_midnight_between[:,48:96]), axis = 1)
+        ave_location_between = np.concatenate((ave_location_between[:, 0:36], ave_location_between[:,48:96]), axis = 1)
+        ave_phase_between = np.concatenate((ave_phase_between[:, 0:36], ave_phase_between[:,48:96]), axis = 1)
+        # consider also removing the penultimum one... this was before task 7, now it is 6
+        # so far this is still inside
+        
+        
+    # if mouse_recday == 'me08_10092021_11092021': #mouse d 
+    # same tasks: 1, 4
+    # ALL FINE WITH d ONCE THE LAST BUT THE LAST EPHYS FILE WAS LOST 
+    
+    
+    if mouse_recday == 'ah04_09122021_10122021': #mouse e range 0,8
+    # throw out the 4th 
+    # same tasks: (all tasks are unique, before 1 and 4 were the same but 4 is gone)
+        ave_clocks_between = np.concatenate((ave_clocks_between[:, 0:36], ave_clocks_between[:, 48::]), axis = 1)
+        ave_neurons_between = np.concatenate((ave_neurons_between[:, 0:36], ave_neurons_between[:,48::]), axis = 1)
+        ave_midnight_between = np.concatenate((ave_midnight_between[:, 0:36], ave_midnight_between[:,48::]), axis = 1)
+        ave_location_between = np.concatenate((ave_location_between[:, 0:36], ave_location_between[:,48::]), axis = 1)
+        ave_phase_between = np.concatenate((ave_phase_between[:, 0:36], ave_phase_between[:,48::]), axis = 1)
+
+    if mouse_recday == 'ah04_05122021_06122021': #mouse f range 0,8
+    # throw out number 4
+    # new 4 (previous 5) and last one - 7 (previous 8) are the same
+        ave_clocks_between = np.concatenate((ave_clocks_between[:, 0:36], ave_clocks_between[:, 48::]), axis = 1)
+        ave_neurons_between = np.concatenate((ave_neurons_between[:, 0:36], ave_neurons_between[:,48::]), axis = 1)
+        ave_midnight_between = np.concatenate((ave_midnight_between[:, 0:36], ave_midnight_between[:,48::]), axis = 1)
+        ave_location_between = np.concatenate((ave_location_between[:, 0:36], ave_location_between[:,48::]), axis = 1)
+        ave_phase_between = np.concatenate((ave_phase_between[:, 0:36], ave_phase_between[:,48::]), axis = 1)
+        
+        
+    #if mouse_recday == 'ah04_01122021_02122021': #mouse g range 0,8
+    # same tasks: 1,4 and 5,8
+    # ALL FINE WITH g 
+        
+        
+    if mouse_recday == 'ah03_18082021_19082021': #mouse h range 0,8
+        # hmmmm here I am not sure... maybe it is alright??
+        # the fourth task looks a bit off, but I am leaving it in for now
+        # same tasks: 1,4 and 5,8
+        print('yey')
+    
     # first step: z-scoring!
     # z-score the neuron matrices
     import scipy
@@ -305,22 +372,23 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
     mc.simulation.predictions.plot_without_legends(ave_neurons_between_z, titlestring='z-scored neuron average', intervalline= 12)
     RSM_neurons_betas_ave_z = mc.simulation.RDMs.within_task_RDM(ave_neurons_between_z, plotting = True, titlestring = 'Between tasks Data RSM, 12*12, averaged over runs', intervalline= 12)
     
-    # get rid of the last task because it looks crappy in task b (?)
-    ave_clocks_between_minusonetask = ave_clocks_between[:,0:-12].copy()
-    RSM_clock_betas_ave_minusonetask = mc.simulation.RDMs.within_task_RDM(ave_clocks_between_minusonetask, plotting = True, titlestring = 'Between tasks Clocks RSM, 12*12, averaged over runs, withoutlasttask', intervalline= 12)
-    ave_phase_between_minusonetask = ave_phase_between[:,0:-12].copy()
-    RSM_phase_betas_ave_minusonetask = mc.simulation.RDMs.within_task_RDM(ave_phase_between_minusonetask, plotting = True, titlestring = 'Between tasks Pgase RSM, 12*12, averaged over runs withoutlasttask', intervalline= 12)
-    ave_midnight_between_minusonetask = ave_midnight_between[:,0:-12].copy()
-    RSM_midnight_betas_ave_minusonetask = mc.simulation.RDMs.within_task_RDM(ave_midnight_between_minusonetask, plotting = True, titlestring = 'Between tasks Midnight RSM, 12*12, averaged over runs withoutlasttask', intervalline= 12)
-    ave_location_between_minusonetask = ave_location_between[:,0:-12].copy()
-    RSM_location_betas_ave_minusonetask = mc.simulation.RDMs.within_task_RDM(ave_location_between_minusonetask, plotting = True, titlestring = 'Between tasks Location RSM, 12*12, averaged over runs withoutlasttask', intervalline= 12)
-    # and also for the data 
-    ave_neuron_data_minusonetask = ave_neurons_between_z[:, 0:-12].copy()
-    RSM_neurons_betas_ave_z_minusonetask = mc.simulation.RDMs.within_task_RDM(ave_neuron_data_minusonetask, plotting = True, titlestring = 'Between tasks Data RSM, 12*12, averaged over runs', intervalline= 12)
     
+    # this was based on something for task b. probably remove??
+    # RSM_clock_betas_ave_minusonetask = mc.simulation.RDMs.within_task_RDM(ave_clocks_between_minusonetask, plotting = True, titlestring = 'Between tasks Clocks RSM, 12*12, averaged over runs, withoutlasttask', intervalline= 12)
+    # RSM_phase_betas_ave_minusonetask = mc.simulation.RDMs.within_task_RDM(ave_phase_between_minusonetask, plotting = True, titlestring = 'Between tasks Pgase RSM, 12*12, averaged over runs withoutlasttask', intervalline= 12)
+    # RSM_midnight_betas_ave_minusonetask = mc.simulation.RDMs.within_task_RDM(ave_midnight_between_minusonetask, plotting = True, titlestring = 'Between tasks Midnight RSM, 12*12, averaged over runs withoutlasttask', intervalline= 12)
+    # RSM_location_betas_ave_minusonetask = mc.simulation.RDMs.within_task_RDM(ave_location_between_minusonetask, plotting = True, titlestring = 'Between tasks Location RSM, 12*12, averaged over runs withoutlasttask', intervalline= 12)
+    
+    # # and also for the data 
+    # RSM_neurons_betas_ave_z_minusonetask = mc.simulation.RDMs.within_task_RDM(ave_neuron_data_minusonetask, plotting = True, titlestring = 'Between tasks Data RSM, 12*12, averaged over runs', intervalline= 12)
+    
+        
+         
+    
+
     # get rid of the fourth task because it looks crappy in task e (?)
     # REMOVE AGAIN!!
-    import pdb; pdb.set_trace()
+    
     ave_clocks_between = np.concatenate((ave_clocks_between[:, 0:36], ave_clocks_between[:, 48::]), axis = 1)
     ave_neurons_between_z = np.concatenate((ave_neurons_between_z[:, 0:36], ave_neurons_between_z[:,48::]), axis = 1)
     ave_midnight_between = np.concatenate((ave_midnight_between[:, 0:36], ave_midnight_between[:,48::]), axis = 1)

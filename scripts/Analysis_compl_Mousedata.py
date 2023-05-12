@@ -61,8 +61,10 @@ for session in range(0, c_no_task_configs):
 
 mouse_recday='me08_10092021_11092021' #mouse d range 0,6
 d_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-# apparently there is one run less for this day...
-d_no_task_configs = len(d_rewards_configs) - 1
+# apparently there is one run less for this day..., so exclude that one
+# mohammady says: The ephys file for the last task on that day was lost
+d_rewards_configs = d_rewards_configs[0:-1, :].copy()
+d_no_task_configs = len(d_rewards_configs)
 d_locations = list()
 d_neurons = list()
 d_timings = list()
@@ -107,16 +109,16 @@ for session in range(0, g_no_task_configs):
     g_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
 
 
-# mouse_recday='ah03_18082021_19082021' #mouse h range 0,8
-# h_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-# h_no_task_configs = len(h_rewards_configs)
-# h_locations = list()
-# h_neurons = list()
-# h_timings = list()
-# for session in range(0, h_no_task_configs):
-#     h_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     h_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     h_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
+mouse_recday='ah03_18082021_19082021' #mouse h range 0,8
+h_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+h_no_task_configs = len(h_rewards_configs)
+h_locations = list()
+h_neurons = list()
+h_timings = list()
+for session in range(0, h_no_task_configs):
+    h_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    h_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    h_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
 # # for h, the first timings array is missing
 # # > delete the first task completely!
 # h_timings = h_timings[1::]
@@ -130,15 +132,17 @@ for session in range(0, g_no_task_configs):
 #
 
 # try how the regression across tasks looks like
-#results_reg_acro_mouse_g, scipy_reg_acro_mouse_g, coefficients_acro_mouse_g = mc.simulation.single_sub_ephys.reg_across_tasks(g_rewards_configs, g_locations, g_neurons, g_timings)
-#results_reg_acro_mouse_a, scipy_reg_acro_mouse_a, coefficients_acro_mouse_a = mc.simulation.single_sub_ephys.reg_across_tasks(a_rewards_configs, a_locations, a_neurons, a_timings)
-#results_reg_acro_mouse_b, scipy_reg_acro_mouse_b, coefficients_acro_mouse_b, averaged_reg_results = mc.simulation.single_sub_ephys.reg_across_tasks(b_rewards_configs, b_locations, b_neurons, b_timings)
+# results_reg_acro_mouse_a, scipy_reg_acro_mouse_a, coefficients_acro_mouse_a, averaged_reg_results = mc.simulation.single_sub_ephys.reg_across_tasks(a_rewards_configs, a_locations, a_neurons, a_timings, mouse_recday = 'me11_05122021_06122021')
+# results_reg_acro_mouse_b, scipy_reg_acro_mouse_b, coefficients_acro_mouse_b, averaged_reg_results = mc.simulation.single_sub_ephys.reg_across_tasks(b_rewards_configs, b_locations, b_neurons, b_timings, mouse_recday = 'me11_01122021_02122021')
 
-# results_reg_acro_mouse_c, scipy_reg_acro_mouse_c, coefficients_acro_mouse_c, averaged_reg_results = mc.simulation.single_sub_ephys.reg_across_tasks(c_rewards_configs, c_locations, c_neurons, c_timings)
-# results_reg_acro_mouse_d, scipy_reg_acro_mouse_d, coefficients_acro_mouse_d, averaged_reg_results = mc.simulation.single_sub_ephys.reg_across_tasks(d_rewards_configs, d_locations, d_neurons, d_timings)
+# results_reg_acro_mouse_c, scipy_reg_acro_mouse_c, coefficients_acro_mouse_c, averaged_reg_results = mc.simulation.single_sub_ephys.reg_across_tasks(c_rewards_configs, c_locations, c_neurons, c_timings, mouse_recday = 'me10_09122021_10122021')
+# results_reg_acro_mouse_d, scipy_reg_acro_mouse_d, coefficients_acro_mouse_d, averaged_reg_results = mc.simulation.single_sub_ephys.reg_across_tasks(d_rewards_configs, d_locations, d_neurons, d_timings, mouse_recday = 'me08_10092021_11092021')
 
-results_reg_acro_mouse_e, scipy_reg_acro_mouse_e, coefficients_acro_mouse_e, averaged_reg_results = mc.simulation.single_sub_ephys.reg_across_tasks(e_rewards_configs, e_locations, e_neurons, e_timings)
+results_reg_acro_mouse_e, scipy_reg_acro_mouse_e, coefficients_acro_mouse_e, averaged_reg_results = mc.simulation.single_sub_ephys.reg_across_tasks(e_rewards_configs, e_locations, e_neurons, e_timings, mouse_recday = 'ah04_09122021_10122021')
+# results_reg_acro_mouse_f, scipy_reg_acro_mouse_f, coefficients_acro_mouse_f, averaged_reg_results = mc.simulation.single_sub_ephys.reg_across_tasks(f_rewards_configs, f_locations, f_neurons, f_timings, mouse_recday = 'ah04_05122021_06122021')
 
+#results_reg_acro_mouse_g, scipy_reg_acro_mouse_g, coefficients_acro_mouse_g, averaged_reg_results = mc.simulation.single_sub_ephys.reg_across_tasks(g_rewards_configs, g_locations, g_neurons, g_timings, mouse_recday = 'ah04_01122021_02122021')
+# results_reg_acro_mouse_h, scipy_reg_acro_mouse_h, coefficients_acro_mouse_h, averaged_reg_results = mc.simulation.single_sub_ephys.reg_across_tasks(h_rewards_configs, h_locations, h_neurons, h_timings, mouse_recday = 'ah03_18082021_19082021')
 
 
 # THIS IS THE INTERESTIGN THING RN
