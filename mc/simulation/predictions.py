@@ -43,6 +43,9 @@ from sklearn.linear_model import LinearRegression
 import scipy
 from sklearn.linear_model import LinearRegression
 from scipy import stats
+from scipy.stats import multivariate_normal
+from scipy.stats import norm
+from itertools import product
 
 
 ############ Helpers ################
@@ -50,8 +53,8 @@ from scipy import stats
 
 
 def field_to_number(currentfield, size_of_grid):
-    x = currentfield[0]
-    y = currentfield[1]
+    y = currentfield[0]
+    x = currentfield[1]
     fieldnumber = x + y * size_of_grid
     return fieldnumber
 
@@ -377,11 +380,14 @@ def set_phase_model(walked_path, step_number, step_time, grid_size = 3, phases=3
             phase_model = np.concatenate((phase_model,phase_matrix_subpath), axis = 1)
         
     return phase_model
-    
+
+
+
+
 
 
     
-# ephys validation model
+# EPHYS VALIDATION MODELS
 # this is based on 360 timebins > 1 state is 90 bins, 1 phase is 30 bins.
 # the steps are given in numbers, not coordinates.
 # important: fields need to be between 0 and 8!
@@ -610,6 +616,48 @@ def set_clocks_raw_ephys(walked_path, subpath_timings, step_indices, step_number
                                 full_clock_matrix[row+rw, col] = 1
                 cols_to_shift = []
                 
+                
+    # this is just the first row of the clocks matrix - neurons that are forced to 
+    # fire for the whole phase.
+    alternative_midnight = full_clock_matrix[::12, :].copy()
+    
+    # this is the reverse - replacing the midnight neurons in the clocks matrix with
+    # neurons that are being turned on consequetively, not simultaneously.
+    # for ever 12th row, stick a row of the midnight matrix in (corresponds to the respective first neuron of the clock)
+    alternative_clock = full_clock_matrix.copy()
+    for row in range(0, len(midnight_matrix)):
+         alternative_clock[row*phases*n_states,:]= midnight_matrix[row,:]
+         
+    # now there are gaps in the clocks when the phases aren't completely filled.
+    # actually, do it the other way around. first work with the midnight model.
+    compromise_midnight = np.zeros((len(midnight_matrix), len(midnight_matrix[0])))
+    #for phase_state, phase_state_index in enumerate(clock_neurons):
+    
+    
+    for row_index, neuron in enumerate(compromise_midnight): 
+        double_activation = []
+        if sum(midnight_matrix[row_index,:])>0:
+            start_fire = np.where(midnight_matrix[row_index,:] == 1)[0][0]
+            phase_state = np.where(clock_neurons[:, start_fire] == 1)[0][0]
+            end_fire = np.where(clock_neurons[phase_state, :] == 1)[0][-1]
+            neuron[start_fire:end_fire] = 1
+            # now check for double activations.
+            all_activations = np.where(midnight_matrix[row_index,:] == 1)[:][0]
+            for index, activated_ms in enumerate(all_activations):
+                if index >0:
+                    if all_activations[index]- all_activations[index-1] >1:
+                        # if there was a gap in the activations
+                        double_activation.append(activated_ms)
+            for start_fire in double_activation:
+                phase_state = np.where(clock_neurons[:,  start_fire] == 1)[0][0]
+                end_fire = np.where(clock_neurons[phase_state, :] == 1)[0][-1]
+                neuron[start_fire:end_fire] = 1
+    compromise_clock = full_clock_matrix.copy()
+    
+    for row in range(0, len(midnight_matrix)):
+         compromise_clock[row*phases*n_states,:]= compromise_midnight[row,:]
+                  
+                
     if plotting == True:
         if ax is None:
             plt.figure()
@@ -617,7 +665,14 @@ def set_clocks_raw_ephys(walked_path, subpath_timings, step_indices, step_number
         fig, axs = plt.subplots(nrows =1, ncols = 2)
         axs[0].imshow(full_clock_matrix, interpolation = 'none', aspect = 'auto')
         axs[1].imshow(midnight_matrix, interpolation = 'none', aspect = 'auto')
-    return midnight_matrix, full_clock_matrix
+        
+        # OUTPUT 
+        # midnight_matrix = neurons only on while agent on the respective field
+        # full_clock_matrix = all neurons are activated for the entire phase
+        # alternative_midnight = all neurons are activated for the entire phase
+        # alternative_clock = neurons only on while agent on the respective field > massive gaps!
+        # compromise_midnight and clock = neuron are on as soon as agent steps on field, until the phase ends.
+    return midnight_matrix, full_clock_matrix, alternative_midnight, alternative_clock, compromise_midnight, compromise_clock
 
 
 
@@ -971,6 +1026,318 @@ def set_location_by_time(walked_path, step_number, step_time, grid_size = 3, fie
     return loc_matrix, loc_per_sec
 
 
+####################################
+####### CONTINUOUS MODELS ##########
+####################################
+
+# Make a continous LOCATION model.
+def set_location_contin(walked_path, step_time, grid_size = 3, fire_radius = 0.25):
+    # import pdb; pdb.set_trace()
+    neuron_no = grid_size*grid_size
+    # build all possible coord combinations 
+    all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
+    
+    # code up the 2d location neurons. this is e.g. a 3x3 grid tiled with multivatiate
+    # gaussians that are centred around the grid locations.
+    neuron_functions = []
+    for coord in all_coords:
+        neuron_functions.append(multivariate_normal(coord, cov = fire_radius))
+    
+    # build the 'timecourse', assuming that one timestep is one value.
+    # first make the coords into numbers
+    fields_path = []
+    for elem in walked_path:
+        fields_path.append(mc.simulation.predictions.field_to_number(elem, grid_size))
+    
+    locs_over_time = np.repeat(fields_path, repeats = step_time)
+    # back to list and to coords
+    coords_over_time = list(locs_over_time)
+    for index, elem in enumerate(coords_over_time):
+        coords_over_time[index] = all_coords[elem]
+
+    # make the matrix
+    loc_matrix = np.empty([grid_size*grid_size,len(coords_over_time)])
+    loc_matrix[:] = np.nan
+    # and then simply fill the matrix with the respective functions
+    for timepoint, location in enumerate(coords_over_time):
+        for row in range(0, grid_size*grid_size):
+            loc_matrix[row, timepoint] = neuron_functions[row].pdf(location) # location has to be a coord
+        # don't hardcode the row. how to do that?
+    return loc_matrix
+        
+    
+# make a continuuous PHASE model.
+def set_phase_contin(walked_path, step_number, step_time, grid_size = 3, no_phase_neurons=3):
+    # import pdb; pdb.set_trace()
+    cumsumsteps = np.cumsum(step_number)
+    # total_steps = cumsumsteps[-1] 
+
+    #x = np.linspace(0, 1 ,1000)
+    neuron_functions = []
+    # Q: do I want to have the peaks at 0 and 1 or not?
+    # means_at = np.linspace(0, 1, (no_phase_neurons + 2))
+    # for div in means_at[1:-1]: 
+    means_at = np.linspace(0, 1, (no_phase_neurons))
+    for div in means_at: 
+        neuron_functions.append(norm(loc = div, scale = 1/no_phase_neurons/2)) 
+    # ok forget about the differently spaced phases rn. this is a bit annoying 
+    # with normal distributions > do I maybe prefer x^2 ? 
+    # if phases == 3:
+    #     # make this only the functions!!!
+    #     early = norm(loc = 0.125, scale = 0.05)
+    #     mid = 2*norm(loc = 0.5, scale = 0.1)
+    #     late = 1.5*norm(loc = 0.75, scale = 0.075)
+    #     neuron_functions = [early, mid, late]
+    # elif phases != 3:
+    #     means_at = np.linspace(0, 1, (phases + 2))
+        # for div in means_at[1:-1]:
+        #     neuron_functions.append(norm.pdf(x, loc = div, scale = 0.05))
+   
+    for count_paths, pathlength in enumerate(step_number):
+        # first step: divide into subpaths
+        if count_paths > 0:
+            curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
+        elif count_paths == 0:
+            curr_path = walked_path[1:cumsumsteps[count_paths]+1]
+        # second step: make location-timecourse
+        # build the 'timecourse', assuming that one timestep is one value.
+        # first make the coords into numbers
+        fields_path = []
+        for elem in curr_path:
+            fields_path.append(mc.simulation.predictions.field_to_number(elem, grid_size))
+        locs_over_time = np.repeat(fields_path, repeats = step_time)
+        # third step: fit subpaths into 0:1 trajectory
+        samplepoints = np.linspace(0, 1, len(locs_over_time))
+        # fourth step: make a subpath-matrix
+        phase_matrix_subpath = np.empty([len(neuron_functions), len(samplepoints)])
+        phase_matrix_subpath[:] = np.nan
+        # fifth step: activate the neurons for the respective timepoint
+        # read out the respective phase coding 
+        for timepoint, read_out_point in enumerate(samplepoints):
+            for row in range(0, len(neuron_functions)):
+                phase_matrix_subpath[row, timepoint] = neuron_functions[row].pdf(read_out_point)
+       
+        # sixth step: concatenate subpaths to one bigger matrix.
+        if count_paths == 0:
+            phase_model = phase_matrix_subpath.copy()
+        elif count_paths > 0:
+            phase_model = np.concatenate((phase_model,phase_matrix_subpath), axis = 1)           
+    return phase_model   
+ 
+       
+# make a continuous MIDNIGHT model.      
+# idea:
+    # I will first compute the location matrix, and make 3 location neurons instead of one, but do this for subpaths separately
+    # then I will compute the phase matrix
+    # then I will multiply the respective location with the phase neurons (low will be nearly off, high will be on )  
+def set_midnight_contin(walked_path, step_number, step_time, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25):
+    # import pdb; pdb.set_trace()
+    cumsumsteps = np.cumsum(step_number)
+    # build all possible coord combinations 
+    all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
+    
+    # make the phase continuum
+    neuron_phase_functions = []
+    means_at = np.linspace(0, 1, (no_phase_neurons))
+    for div in means_at: 
+        neuron_phase_functions.append(norm(loc = div, scale = 1/no_phase_neurons/2)) 
+
+    # code up the 2d location neurons. this is e.g. a 3x3 grid tiled with multivatiate
+    # gaussians that are centred around the grid locations.
+    neuron_loc_functions = []
+    for coord in all_coords:
+        neuron_loc_functions.append(multivariate_normal(coord, cov = fire_radius))
+        
+    
+    # this time, do it per subpath.
+    for count_paths, pathlength in enumerate(step_number):
+        # first step: divide into subpaths
+        if count_paths > 0:
+            curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
+        elif count_paths == 0:
+            curr_path = walked_path[1:cumsumsteps[count_paths]+1]
+        
+        # second step: location model.
+        # build the 'timecourse', assuming that one timestep is one value.
+        # first make the coords into numbers
+        fields_path = []
+        for elem in curr_path:
+            fields_path.append(mc.simulation.predictions.field_to_number(elem, grid_size))
+        
+        locs_over_time = np.repeat(fields_path, repeats = step_time)
+        
+        # back to list and to coords for the location model 
+        coords_over_time = list(locs_over_time)
+        for index, elem in enumerate(coords_over_time):
+            coords_over_time[index] = all_coords[elem]
+    
+        # make the matrix
+        loc_matrix = np.empty([grid_size*grid_size,len(coords_over_time)])
+        loc_matrix[:] = np.nan
+        # and then simply fill the matrix with the respective functions
+        for timepoint, location in enumerate(coords_over_time):
+            for row in range(0, grid_size*grid_size):
+                loc_matrix[row, timepoint] = neuron_loc_functions[row].pdf(location) # location has to be a coord
+        
+        # third step: make phase neurons
+        # fit subpaths into 0:1 trajectory
+        samplepoints = np.linspace(0, 1, len(locs_over_time))
+        
+        # fourth step: make a subpath-matrix
+        phase_matrix_subpath = np.empty([len(neuron_phase_functions), len(samplepoints)])
+        phase_matrix_subpath[:] = np.nan
+        
+        # fifth step: activate the neurons for the respective timepoint
+        # read out the respective phase coding 
+        for timepoint, read_out_point in enumerate(samplepoints):
+            for row in range(0, len(neuron_phase_functions)):
+                phase_matrix_subpath[row, timepoint] = neuron_phase_functions[row].pdf(read_out_point)
+        
+        # sixth step: make location neurons phase sensitive.
+        # since the location neurons are also phase sensitive, and 
+        # I am assuming 3 neuron are encoding for phase, make each loc neuron 3
+        midnight_model_subpath = np.repeat(loc_matrix, repeats = no_phase_neurons, axis = 0)
+        # multiply three rows of the location matrix (1 location)
+        # with the phase_matrix_subpath, respectively
+        for location in range(0, len(midnight_model_subpath), no_phase_neurons):
+            midnight_model_subpath[location:location+no_phase_neurons] = midnight_model_subpath[location:location+no_phase_neurons] * phase_matrix_subpath
+        
+        # seventh: put subpaths together and concat into a bigger matrix.
+        if count_paths == 0:
+            midnight_model = midnight_model_subpath.copy()
+        elif count_paths > 0:
+            midnight_model = np.concatenate((midnight_model,midnight_model_subpath), axis = 1)    
+    
+    return midnight_model
+        
+
+# fuck it, I can probably do all continous models in one. LESSSE GOOOOO
+def set_continous_models(walked_path, step_number, step_time, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25):
+    # import pdb; pdb.set_trace()
+    
+    # build all possible coord combinations 
+    all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
+    # code up the 2d location neurons. this is e.g. a 3x3 grid tiled with multivatiate
+    # gaussians that are centred around the grid locations.
+    neuron_loc_functions = []
+    for coord in all_coords:
+        neuron_loc_functions.append(multivariate_normal(coord, cov = fire_radius))
+       
+    # make the phase continuum
+    neuron_phase_functions = []
+    means_at_phase = np.linspace(0, 1, (no_phase_neurons))
+    for div in means_at_phase: 
+        neuron_phase_functions.append(norm(loc = div, scale = 1/no_phase_neurons/2)) 
+
+    # make the state continuum
+    neuron_state_functions = []
+    means_at_state = np.linspace(0,(len(step_number)-1), (len(step_number)))
+    for div in means_at_state:
+        neuron_state_functions.append(norm(loc = div, scale = 1/len(step_number)/2))
+       
+    cumsumsteps = np.cumsum(step_number)
+    # this time, do it per subpath.
+    for count_paths, pathlength in enumerate(step_number):
+        # first step: divide into subpaths
+        if count_paths > 0:
+            curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
+        elif count_paths == 0:
+            curr_path = walked_path[1:cumsumsteps[count_paths]+1]
+        
+        
+        # second step: location model.
+        # build the 'timecourse', assuming that one timestep is one value.
+        # first make the coords into numbers
+        fields_path = []
+        for elem in curr_path:
+            fields_path.append(mc.simulation.predictions.field_to_number(elem, grid_size))
+        locs_over_time = np.repeat(fields_path, repeats = step_time)
+        # back to list and to coords for the location model 
+        coords_over_time = list(locs_over_time)
+        for index, elem in enumerate(coords_over_time):
+            coords_over_time[index] = all_coords[elem]
+        # make the location matrix
+        loc_matrix = np.empty([grid_size*grid_size,len(coords_over_time)])
+        loc_matrix[:] = np.nan
+        # and then simply fill the matrix with the respective functions
+        for timepoint, location in enumerate(coords_over_time):
+            for row in range(0, grid_size*grid_size):
+                loc_matrix[row, timepoint] = neuron_loc_functions[row].pdf(location) # location has to be a coord
+ 
+        # third: create the state matrix.
+        state_matrix = np.empty([len(neuron_state_functions), len(locs_over_time)])
+        state_matrix[:] = np.nan
+        # only consider the 1/no_states*count_paths+1 part of the functions
+        # then sample by timepoint
+        for row in range(0, len(neuron_state_functions)):
+            state_matrix[row] = neuron_state_functions[row].pdf(count_paths)
+        
+        # fourth step: make phase neurons
+        # fit subpaths into 0:1 trajectory
+        samplepoints = np.linspace(0, 1, len(locs_over_time))
+        phase_matrix_subpath = np.empty([len(neuron_phase_functions), len(samplepoints)])
+        phase_matrix_subpath[:] = np.nan
+        # read out the respective phase coding 
+        for timepoint, read_out_point in enumerate(samplepoints):
+            for row in range(0, len(neuron_phase_functions)):
+                phase_matrix_subpath[row, timepoint] = neuron_phase_functions[row].pdf(read_out_point)
+
+        # fifth step: midnight. = make location neurons phase sensitive.
+        midnight_model_subpath = np.repeat(loc_matrix, repeats = no_phase_neurons, axis = 0)
+        # multiply three rows of the location matrix (1 location)
+        # with the phase_matrix_subpath, respectively
+        for location in range(0, len(midnight_model_subpath), no_phase_neurons):
+            midnight_model_subpath[location:location+no_phase_neurons] = midnight_model_subpath[location:location+no_phase_neurons] * phase_matrix_subpath
+        
+        # sixth. make the clock model. 
+        # solving 2 (see below): make the neurons within the clock.
+        # phase state neurons.
+        phase_state_subpath = np.repeat(state_matrix, repeats = len(phase_matrix_subpath), axis = 0)
+        for phase in range(0, len(phase_state_subpath), len(phase_matrix_subpath)):
+            phase_state_subpath[phase: phase+len(phase_matrix_subpath)] = phase_matrix_subpath * phase_state_subpath[phase: phase+len(phase_matrix_subpath)]
+        
+        # last step: put subpaths together and concat into a bigger matrix.
+        if count_paths == 0:
+            midn_model = midnight_model_subpath.copy()
+            phas_model = phase_matrix_subpath.copy()
+            loc_model = loc_matrix.copy()
+            stat_model = state_matrix.copy()
+            phas_stat = phase_state_subpath.copy()
+        elif count_paths > 0:
+            midn_model = np.concatenate((midn_model,midnight_model_subpath), axis = 1)
+            phas_model = np.concatenate((phas_model, phase_matrix_subpath), axis = 1)
+            loc_model = np.concatenate((loc_model, loc_matrix), axis = 1)
+            stat_model = np.concatenate((stat_model, state_matrix), axis = 1)
+            phas_stat = np.concatenate((phas_stat, phase_state_subpath), axis = 1)
+
+    clo_model = 1
+    # I believe that I have to make the clocks model after looping through the subpaths.
+    # but I am not sure yet.
+    # I do have both elements: phase*state sensitive neurons for the ring-attracktors of the clock,
+    # and midnight neurons that tell me when a clock was activated.
+    # with my other clocks model, I always popped the phase*state neurons in the clocks if it was
+    # sufficiently activated.
+    # I am wondering if there isn't a more elegant solution, since I can now sample the 
+    # neurons from anywhere. 
+    # TO BE CONTINUED: how do I allow for the shifting around???
+    
+        #to the continous midnight model, I need to add neurons that keep tracking phase and state.
+        # this comes with a few decisions.
+        # 1. do I activate a clock for a certain threshold or does the activity in which the 
+            # rest of the neurons fire depend on how strong the midnight neuron was activated?
+            # option 1 would be more descrete
+            # option 2 would be a bit like a shooting star, where the clocks are the afterglow
+            # of the initial activation.
+        # 2. I have to make the phase model neurons state-dependent. 
+            # this should be easy. I can probably just create something similar to the locations function
+            # and then multiply the subpaths with this matrix. 
+        # 3. put it all together. I can even take the midnight model, and squeeze the state-dependent neurons
+            # in the middle. this can again be 12 - make it dependent on no_rewards and no_phases. 
+ 
+    return loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat
+
+
+
 # ephys validation model
 # this is based on 360 timebins > 1 state is 90 bins, 1 phase is 30 bins.
 # the steps are given in numbers, not coordinates.
@@ -1304,4 +1671,27 @@ def transform_data_to_betas(data_matrix, regressors, intercept = False):
 
 
     
+################
+
+# CONTINUOUS MODELS
+
+# # I am not using this for now. 
+# # define gaussian distribution of clock-tuning:
+    
+# x = np.linspace(-1,2,100)
+# def early(x):
+#     return scipy.stats.norm.pdf(x, 1/6, 1/12)
+
+# def mid(x):
+#     return scipy.stats.norm.pdf(x, 3/6, 1/12)
+
+# def late(x):
+#     return scipy.stats.norm.pdf(x, 5/6, 1/12)
+# # define x exemplarily as x = np.linspace(-1,2,100)
+# # to plot, do plt.figure(); plt.plot(x, early); plt.plot(x, mid);plt.plot(x, late);  
+# plt.figure(); plt.plot(x, early); plt.plot(x, mid);plt.plot(x, late);  
+
+
+
+
 
