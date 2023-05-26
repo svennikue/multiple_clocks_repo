@@ -239,7 +239,7 @@ plt.imshow(midnight_matrix, aspect='auto')
     # and then multiply the subpaths with this matrix. 
 # 3. put it all together. I can even take the midnight model, and squeeze the state-dependent neurons
     # in the middle. this can again be 12 - make it dependent on no_rewards and no_phases. 
-location_matrix, phase_matrix, state_matrix, midnight_matrix, clocks_matrix, phase_state_matrix = mc.simulation.predictions.set_continous_models(walked_path, step_number, step_time = 10)
+location_matrix, phase_matrix, state_matrix, midnight_matrix, clocks_matrix, phase_state_matrix = mc.simulation.predictions.set_continous_models(walked_path, step_number, step_time = 1)
 plt.figure(); 
 plt.imshow(location_matrix, aspect='auto')
 plt.figure(); 
@@ -250,89 +250,29 @@ plt.figure()
 plt.imshow(midnight_matrix, aspect='auto')
 plt.figure(); 
 plt.imshow(phase_state_matrix, aspect='auto')
-#plt.figure(); 
-#plt.imshow(clocks_matrix, aspect='auto')
+plt.figure(); 
+plt.imshow(clocks_matrix, aspect='auto')
+for row in range(0, len(clocks_matrix), len(phase_state_matrix)):
+    plt.axhline(row, color='white', ls='dashed')
 
 
-# first thing is to cut down into subpaths.
-# for count_paths, (pathlength) in enumerate(step_number):
-#     cols_to_fill = pathlength*step_time
-#     time_per_phase_in_clock = ([cols_to_fill // phases + (1 if x < cols_to_fill % phases else 0) for x in range (phases)])
-#     time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
-#     print(count_paths, pathlength)
-    
-    # so now, I want to sample the previously created function every 100ms to describe
-    # the firing of the clocks
-    
-    
+# I BELIEVE IT WORKS!! :)
+# NEXT STEP:
+    # 1. check how RDMs look like.
+    # 2. write the code for the ephys stuff.
 
+# check and plot RDMs.
+mc.simulation.RDMs.within_task_RDM(clocks_matrix, plotting=True, titlestring='continuous clocks')
+mc.simulation.RDMs.within_task_RDM(phase_state_matrix, plotting=True, titlestring='continuous phase state')
+mc.simulation.RDMs.within_task_RDM(midnight_matrix, plotting=True, titlestring='continuous midnight')
+mc.simulation.RDMs.within_task_RDM(location_matrix, plotting=True, titlestring='continuous location')
+mc.simulation.RDMs.within_task_RDM(phase_matrix, plotting=True, titlestring='continuous phase')
+mc.simulation.RDMs.within_task_RDM(state_matrix, plotting=True, titlestring='continuous state')
 
-
-
-
-
-# CURRENTLY USED PHASE MODEL
-phase_no = 3
-cumsumsteps = np.cumsum(step_number)
-total_steps = cumsumsteps[-1] 
-n_states = len(step_number)
-# and number of rows is locations*phase*neurons per clock
-no_fields = grid_size*grid_size
-n_rows = no_fields*phase_no  
-cols_to_fill_previous = 0
-whole_path_matrix = np.empty((grid_size*grid_size*phase_no,0))
-
-for count_paths, (pathlength) in enumerate(step_number):
-    cols_to_fill = pathlength*step_time
-    # create a string that tells me how many columns are one phase clock
-    time_per_phase_in_clock = ([cols_to_fill // phase_no + (1 if x < cols_to_fill % phase_no else 0) for x in range (phase_no)])
-    time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
-    cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
+# now write the functions for ephys and check how they work!!
 
 
 
 
-
-
-cumsumsteps = np.cumsum(step_number)
-total_steps = cumsumsteps[-1]    
-n_columns = total_steps   
-n_rows = grid_size*grid_size
-loc_matrix = np.empty([n_rows,n_columns]) # fields times steps
-loc_matrix[:] = np.nan
-for i in range(0, total_steps):
-    field_no = field_to_number(walked_path[i+1], grid_size)
-    # test if this has already been activated!
-    if loc_matrix[field_no, i] == 0:
-        # if so, then don't overwrite it.
-        loc_matrix[field_no, i] = 1
-    else:   
-        loc_matrix[field_no, :] = 0
-        loc_matrix[field_no, i] = 1
-loc_per_sec = np.repeat(loc_matrix, repeats = step_time, axis=1)    
-
-
-
-
-
-# now at any given timepoint, I can read out how much of the early, middle and phase
-# neurons are active.
-# I have 1000 sample points.
-# I will 
-
-
-
-# x = np.linspace(-1,2,100)
-# def early(x):
-#     return scipy.stats.norm.pdf(x, 1/6, 1/12)
-
-# def mid(x):
-#     return scipy.stats.norm.pdf(x, 3/6, 1/12)
-
-# def late(x):
-#     return scipy.stats.norm.pdf(x, 5/6, 1/12)
-# # define x exemplarily as x = np.linspace(-1,2,100)
-# # to plot, do plt.figure(); plt.plot(x, early); plt.plot(x, mid);plt.plot(x, late);  
-# plt.figure(); plt.plot(x, early); plt.plot(x, mid);plt.plot(x, late);  
 
 

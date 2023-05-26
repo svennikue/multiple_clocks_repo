@@ -8,6 +8,16 @@ Created on Mon Jan 16 16:34:15 2023
 This module generates hypothesis matrices of neural activity based on 
 predictions for location and phase-clock neurons.
 
+This is getting messy.
+I am trying to follow this order:
+    0. Helper (field to number, convolve HRF, subsample matrix, regressors per phase state)
+    1. simulation models: clocks - midnight - phase - location
+    2. continuous models: all - midnight - phase - location
+    3. ephys models: continuous - clocks - midnight - phase - location
+    4. plotting
+
+Currently in-use models will be first in a section in case there are several versions.
+    
 
 First, you will find different versions to model the clock/midnight neurons
 Then, there will be different versions of modelling the location neurons
@@ -46,10 +56,16 @@ from scipy import stats
 from scipy.stats import multivariate_normal
 from scipy.stats import norm
 from itertools import product
+from scipy.signal import argrelextrema
+from sklearn import preprocessing
 
 
+# PART 1
 ############ Helpers ################
 #####################################
+#############################################
+##### Playing around with the matrices. #####
+##############################################
 
 
 def field_to_number(currentfield, size_of_grid):
@@ -118,103 +134,80 @@ def subsample(matrix, subsample_factor):
     return subsampled_matrix
 
 
-################ Midnight and Clock Models ############
-#######################################################
-
-
-
-# for setting clocks
-# there will be a matrix of 9*3*12 (field-anchors * phases * neurons) x 12 (3phase*4rewards)
-# activate: phase1-field-clock for an early field
-# activate: phase2-field-clock for a -1reward field (just before).
-# activate: phase3-field-clock for a reward-field.
-# advance every activated clock for progressing 'one phase'
-
-# input is: reshaped_visited_fields and all_stepnums from mc.simulation.grid.walk_paths(reward_coords)
-
-def set_clocks(walked_path, step_number, phases = 3, peak_activity = 1, neighbour_activation = 0.5, size_grid = 3):
+# loop function to create an average prediction.
+def many_configs_loop(loop_no, which_matrix):
     # import pdb; pdb.set_trace()
-    n_states = len(step_number)
-    n_columns = phases*n_states
-    # and number of rows is locations*phase*neurons per clock
-    # every field (9 fields) -> can be the anchor of 3 phase clocks
-    # -> of 12 neurons each. 9 x 3 x 12 
-    # to make it easy, the number of neurons = number of one complete loop (12)
-    no_fields = size_grid*size_grid
-    n_rows = no_fields*phases*(phases*n_states)    
-    clocks_matrix = np.empty([n_rows,n_columns]) # fields times phases.
-    clocks_matrix[:] = np.nan
-    phase_loop = list(range(0,phases))
-    cumsumsteps = np.cumsum(step_number)
-    total_steps = cumsumsteps[-1]
-    all_phases = list(range(n_columns))  
-    # set up neurons of a clock.
-    clock_neurons = np.zeros([phases*n_states,phases*n_states])
-    for i in range(0,len(clock_neurons)):
-        clock_neurons[i,i]= 1   
-    # Now the big loop starts. Going through all subpathes, and interpolating
-    # phases and steps.                  
-    # if pathlength < phases:
-    # it can be either pathlength == 1 or == 2. In both cases,
-    # so dublicate the field until it matches length phases
-    # if pathlength > phases:
-    # dublicate the first phase so it matches length of path
-    # so that, if finally, pathlength = phases
-    # zip both lists and loop through them together.
-    for count_paths, (pathlength) in enumerate(step_number):
-        phasecount = len(phase_loop) #this needs to be reset for every subpath.
-        if count_paths > 0:
-            curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
-        elif count_paths == 0:
-            curr_path = walked_path[1:cumsumsteps[count_paths]+1]
-        if pathlength < phasecount: 
-            finished = False
-            while not finished:
-                curr_path.insert(0, curr_path[0]) # dublicate first field 
-                pathlength = len(curr_path)
-                finished = pathlength == phasecount
-        elif pathlength > phasecount:
-            finished = False
-            while not finished:
-                phase_loop.insert(0,phase_loop[0]) #make more early phases
-                phasecount = len(phase_loop)
-                finished = pathlength == phasecount
-        if pathlength == phasecount:    
-            for phase, step in zip(phase_loop, curr_path):
-                x = step[0]
-                y = step[1]
-                anchor_field = x + y*size_grid
-                anchor_phase_start = (anchor_field * n_columns * phases) + (phase * n_columns)
-                initiate_at_phase = all_phases[phase+(count_paths*phases)]
-                # check if clock has been initiated already
-                is_initiated = clocks_matrix[anchor_phase_start, 0]
-                if np.isnan(is_initiated): # if not initiated yet
-                    # slice the clock neuron filler at the phase we are currently at.
-                    first_split = clock_neurons[:, 0:(n_columns-initiate_at_phase)]
-                    second_split = clock_neurons[:, n_columns-initiate_at_phase:None]
-                    # then add another row of 1s and fill the matrix with it
-                    fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
-                    # and only the second part will be filled in.
-                    clocks_matrix[anchor_phase_start:(anchor_phase_start+12), 0:None]= fill_clock_neurons
-                else:
-                    # if the clock has already been initiated and thus is NOT nan
-                    # first take the already split clock from before within the whole matrix
-                    # then identify the initiation point to fill in the new activation pattern
-                    # (this is anchor_phase_start)
-                    # now simply change the activity already in the matrix with a neuron-loop
-                    for neuron in range(0, n_columns-initiate_at_phase):
-                        # now the indices will be slightly more complicated...
-                        # [row, column]
-                        clocks_matrix[(anchor_phase_start + neuron), (neuron + initiate_at_phase)] = 1
-                    if initiate_at_phase > 0:
-                        for neuron in range(0, initiate_at_phase):
-                            clocks_matrix[(anchor_phase_start + n_columns - initiate_at_phase + neuron), neuron] = 0 
-            phase_loop = list(range(0,phases))
-                    
-    return clocks_matrix, total_steps  
+    if which_matrix != 'clocks' and which_matrix != 'location':
+        raise TypeError("Please enter 'location' or 'clocks' to create the correct matrix")   
+    for loop in range(loop_no):
+        reward_coords = mc.simulation.grid.create_grid()
+        reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords)
+        if which_matrix == 'location':
+            temp_matrix, total_steps = mc.simulation.predictions.set_location_matrix(reshaped_visited_fields, all_stepnums, 3, 3) 
+        elif which_matrix == 'clocks':
+            temp_matrix, total_steps  = mc.simulation.predictions.set_clocks(reshaped_visited_fields, all_stepnums, 3)
+        if loop < 1:
+            sum_matrix = temp_matrix[:]
+        else:
+            sum_matrix = np.nansum(np.dstack((sum_matrix[:],temp_matrix[:])),2)
+    average_matrix = sum_matrix[:]/loop_no
+    return average_matrix
 
-# REWRITE THIS MODEL SO THAT IT FITS WITH THE EPHYS DATA!!!
 
+
+
+def create_regressors_per_state_phase_ephys(walked_path, subpath_timings, step_no, grid_size = 3, phases=3, plotting = False, field_no_given = None, ax = None):
+    # import pdb; pdb.set_trace()
+    n_states = len(step_no)
+    regressors = np.zeros([phases*n_states,len(walked_path)])
+    cols_to_fill_previous = 0
+    for count_paths, (pathlength) in enumerate(step_no):
+        # identify subpaths and create single-clock matrices.
+        curr_path = walked_path[subpath_timings[count_paths]:subpath_timings[count_paths+1]]
+        cols_to_fill = len(curr_path)
+        # create a string that tells me how many columns are one phase clock
+        # this is where I make the assumption of how long every phase actually takes, if not splittable evenly.
+        # i.e. > phase is NOT linked to steps taken, but to TIME
+        time_per_phase_in_clock = ([cols_to_fill // phases + (1 if x < cols_to_fill % phases else 0) for x in range (phases)])
+        time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
+        for phase in range(0, phases):
+            if phase == 0:
+                regressors[phase+(count_paths*phases), cols_to_fill_previous+ 0: cols_to_fill_previous+ time_per_phase_in_clock_cum[phase]] = 1
+            elif phase == 1:
+                regressors[phase+(count_paths*phases), cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 1
+            elif phase == 2:
+                regressors[phase+(count_paths*phases), cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 1
+                
+        cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
+    return regressors
+
+
+def transform_data_to_betas(data_matrix, regressors, intercept = False):
+    # import pdb; pdb.set_trace()
+    # careful! I now don't include an intercept by default.
+    # this is because the way I use it, the regressors would be a linear combination of the intercept ([11111] vector)
+    beta_matrix = np.zeros((len(data_matrix), len(regressors)))
+    # first check if there are any nans in the data, and if so, replace with 0
+    data_matrix = np.nan_to_num(data_matrix)
+    if intercept == False:
+        for index, row in enumerate(data_matrix): 
+            beta_matrix[index] = LinearRegression(fit_intercept=False).fit(np.transpose(regressors), row).coef_
+    elif intercept == True:
+        for index, row in enumerate(data_matrix): 
+            beta_matrix[index] = LinearRegression().fit(np.transpose(regressors), row).coef_         
+    return beta_matrix
+
+
+
+
+##############################################
+############### PART 2 #######################
+################ SIMULATION Models ###########
+##############################################
+
+
+# 1.1.: Simulation models - clocks + midnight
+# 1.2.: Simulation models - MIDNIGHT
 
 # CURRENTLY USED MODEL  
 # Fancy matrix multiplication by Jacob inlcuded :)
@@ -341,7 +334,253 @@ def set_clocks_bytime(walked_path, step_number, step_time, grid_size = 3, phases
     
     return clock_neurons_per_ms, whole_path_matrix, full_clock_matrix
 
+# for setting clocks
+# there will be a matrix of 9*3*12 (field-anchors * phases * neurons) x 12 (3phase*4rewards)
+# activate: phase1-field-clock for an early field
+# activate: phase2-field-clock for a -1reward field (just before).
+# activate: phase3-field-clock for a reward-field.
+# advance every activated clock for progressing 'one phase'
 
+# input is: reshaped_visited_fields and all_stepnums from mc.simulation.grid.walk_paths(reward_coords)
+
+def set_clocks(walked_path, step_number, phases = 3, peak_activity = 1, neighbour_activation = 0.5, size_grid = 3):
+    # import pdb; pdb.set_trace()
+    n_states = len(step_number)
+    n_columns = phases*n_states
+    # and number of rows is locations*phase*neurons per clock
+    # every field (9 fields) -> can be the anchor of 3 phase clocks
+    # -> of 12 neurons each. 9 x 3 x 12 
+    # to make it easy, the number of neurons = number of one complete loop (12)
+    no_fields = size_grid*size_grid
+    n_rows = no_fields*phases*(phases*n_states)    
+    clocks_matrix = np.empty([n_rows,n_columns]) # fields times phases.
+    clocks_matrix[:] = np.nan
+    phase_loop = list(range(0,phases))
+    cumsumsteps = np.cumsum(step_number)
+    total_steps = cumsumsteps[-1]
+    all_phases = list(range(n_columns))  
+    # set up neurons of a clock.
+    clock_neurons = np.zeros([phases*n_states,phases*n_states])
+    for i in range(0,len(clock_neurons)):
+        clock_neurons[i,i]= 1   
+    # Now the big loop starts. Going through all subpathes, and interpolating
+    # phases and steps.                  
+    # if pathlength < phases:
+    # it can be either pathlength == 1 or == 2. In both cases,
+    # so dublicate the field until it matches length phases
+    # if pathlength > phases:
+    # dublicate the first phase so it matches length of path
+    # so that, if finally, pathlength = phases
+    # zip both lists and loop through them together.
+    for count_paths, (pathlength) in enumerate(step_number):
+        phasecount = len(phase_loop) #this needs to be reset for every subpath.
+        if count_paths > 0:
+            curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
+        elif count_paths == 0:
+            curr_path = walked_path[1:cumsumsteps[count_paths]+1]
+        if pathlength < phasecount: 
+            finished = False
+            while not finished:
+                curr_path.insert(0, curr_path[0]) # dublicate first field 
+                pathlength = len(curr_path)
+                finished = pathlength == phasecount
+        elif pathlength > phasecount:
+            finished = False
+            while not finished:
+                phase_loop.insert(0,phase_loop[0]) #make more early phases
+                phasecount = len(phase_loop)
+                finished = pathlength == phasecount
+        if pathlength == phasecount:    
+            for phase, step in zip(phase_loop, curr_path):
+                x = step[0]
+                y = step[1]
+                anchor_field = x + y*size_grid
+                anchor_phase_start = (anchor_field * n_columns * phases) + (phase * n_columns)
+                initiate_at_phase = all_phases[phase+(count_paths*phases)]
+                # check if clock has been initiated already
+                is_initiated = clocks_matrix[anchor_phase_start, 0]
+                if np.isnan(is_initiated): # if not initiated yet
+                    # slice the clock neuron filler at the phase we are currently at.
+                    first_split = clock_neurons[:, 0:(n_columns-initiate_at_phase)]
+                    second_split = clock_neurons[:, n_columns-initiate_at_phase:None]
+                    # then add another row of 1s and fill the matrix with it
+                    fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
+                    # and only the second part will be filled in.
+                    clocks_matrix[anchor_phase_start:(anchor_phase_start+12), 0:None]= fill_clock_neurons
+                else:
+                    # if the clock has already been initiated and thus is NOT nan
+                    # first take the already split clock from before within the whole matrix
+                    # then identify the initiation point to fill in the new activation pattern
+                    # (this is anchor_phase_start)
+                    # now simply change the activity already in the matrix with a neuron-loop
+                    for neuron in range(0, n_columns-initiate_at_phase):
+                        # now the indices will be slightly more complicated...
+                        # [row, column]
+                        clocks_matrix[(anchor_phase_start + neuron), (neuron + initiate_at_phase)] = 1
+                    if initiate_at_phase > 0:
+                        for neuron in range(0, initiate_at_phase):
+                            clocks_matrix[(anchor_phase_start + n_columns - initiate_at_phase + neuron), neuron] = 0 
+            phase_loop = list(range(0,phases))
+                    
+    return clocks_matrix, total_steps  
+
+# OLD 
+# problem: sometimes, phases were on at the same time. probably a wrong assumption!
+# this was based on lazy interpolation  
+# Creates a neurons x time matrix. Neurons are gridsize (anchors) x phases (phase-clocks per anchor) x reward*phases (neurons per clock)
+# BUT: if there are less steps than phases, then the clocks will be activated at the same time, which is probably wrong.
+# input is: reshaped_visited_fields and all_stepnums from mc.simulation.grid.walk_paths(reward_coords)
+def set_clocks_bytime_one_neurone(walked_path, step_number, step_time, grid_size = 3, phases=3):
+    # CAREFUL! step_time needs to be in 100ms scale. 1.5 secs eg would be 15
+    
+    # for simplicity, I will just use the same number of neurons as before.
+    # this is a bit annoying though because now I can't propagate the signal
+    # by 1 neuron per step, because the step lengths will be different.
+    # so. I need some sort of interpolation over the clock neurons. At the same
+    # time, the interpolation for phases will be obsolete.
+    # first, set up the same matrix structure as before.
+    # import pdb; pdb.set_trace()
+    phase_loop = list(range(0,phases))
+    cumsumsteps = np.cumsum(step_number)
+    total_steps = cumsumsteps[-1] 
+    n_states = len(step_number)
+    n_columns = total_steps    
+    # and number of rows is locations*phase*neurons per clock
+    no_fields = grid_size*grid_size
+    n_rows = no_fields*phases  
+    clocks_matrix = np.empty([n_rows,n_columns]) # fields times phases.
+    clocks_matrix[:] = np.nan # 324 x stepnum (e.g. 7)  
+    clock_neurons_prep = np.zeros([phases*n_states,n_columns])
+    # I will use the same logic as with the clocks. The first step is to take
+    # each subpath isolated, since the phase-neurons are aligned with the phases (ie. reward)
+    # then, I check if the pathlength is the same as the phase length.
+    # if not, I will adjust either length, and then use the zip function 
+    # to loop through both together and fill the matrix.
+    # I will do the same to identify the neuron-level firing pattern, which 
+    # needs to be interpolated now!
+    for count_paths, (pathlength) in enumerate(step_number):
+        phasecount = len(phase_loop) #this needs to be reset for every subpath.
+        if count_paths > 0:
+            curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
+        elif count_paths == 0:
+            curr_path = walked_path[1:cumsumsteps[count_paths]+1]
+        # if pathlength < phases -> 
+        # it can be either pathlength == 1 or == 2. In both cases,
+        # dublicate the field until it matches length phases
+        # if pathlength > phases
+        # dublicate the first phase so it matches length of path
+        # so that, if finally, pathlength = phases
+        # zip both lists and loop through them together.
+        if pathlength < phasecount: 
+            finished = False
+            while not finished:
+                curr_path.insert(0, curr_path[0]) # dublicate first field 
+                pathlength = len(curr_path)
+                finished = pathlength == phasecount
+        elif pathlength > phasecount:
+            finished = False
+            while not finished:
+                phase_loop.insert(0,phase_loop[0]) #make more early phases
+                phasecount = len(phase_loop)
+                finished = pathlength == phasecount
+        if pathlength == phasecount:
+            for currstep, (phase, step) in enumerate(zip(phase_loop, curr_path)):
+                x = step[0]
+                y = step[1]
+                fieldnumber = x + y*grid_size
+                # fieldnumber tells me the current anchor.
+                # first fill in a dummy-matrix where each clock only has one neuron. 
+                if currstep >= step_number[count_paths]:
+                    clocks_matrix[(fieldnumber * phases) + phase ,(cumsumsteps[count_paths]-1)] = 1  
+                    clock_neurons_prep[phase+(count_paths*phases),(cumsumsteps[count_paths]-1)] = 1
+                elif count_paths > 0: 
+                    clocks_matrix[(fieldnumber * phases) + phase ,currstep+cumsumsteps[count_paths-1]] = 1
+                    clock_neurons_prep[phase+(count_paths*phases),currstep+cumsumsteps[count_paths-1]] = 1
+                elif count_paths == 0:
+                    clocks_matrix[(fieldnumber * phases) + phase ,currstep] = 1  
+                    clock_neurons_prep[phase+(count_paths*phases),currstep] = 1
+                #location_matrix[fieldnumber, ((phases*count_paths)+phase)] = 1 # currstep = phases
+            phase_loop = list(range(0,phases)) 
+            
+    # now that I have the 0 degree neurons activated, as well as the neuron
+    # pattern matrix, construct the whole matrix out both
+    # stick the matrix in whenever a clock is activated ('1'), and split it at that column.
+    # 1., create matrix with the right dimensions.
+    clocks_per_step_dummy = np.empty([n_rows*phases*n_states,n_columns]) # fields times phases.
+    clocks_per_step_dummy[:] = np.nan # 324 x stepnum (e.g. 7)  
+    # for ever 12th row, stick a row of the small matrix in
+    for row in range(0, len(clocks_matrix)):
+        clocks_per_step_dummy[row*phases*n_states,:]= clocks_matrix[row,:]
+        
+    # copy the neuron per clock firing pattern
+    # I will manipulate clocks_per_step, and use clocks_per_step.dummy as control to check for overwritten stuff.
+    clocks_per_step = clocks_per_step_dummy.copy()
+    
+    # now loop through all columns and rows and input clock-neurons.   
+    for column in range(0, len(clocks_per_step[0])):
+        for row in range(0, len(clocks_per_step)):
+            clock_neurons = clock_neurons_prep.copy()
+            # first test if clocks_per step also has a 1 at the current position -> if not, it will be overwritten!
+            if (clocks_per_step_dummy[row,column] == 1) and (clocks_per_step[row,column] == 1):
+                # stick the neuron activation in.
+                # but first slice the neuron matrix correctly
+                first_split = clock_neurons[:, 0:(n_columns-column)]
+                second_split = clock_neurons[:, (n_columns-column):None]
+                fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
+                # DOUBLE CHECK IF THE SLICING WORKS ALRIGHT!!               
+                clocks_per_step[row:(row+(len(clock_neurons_prep))), :] = fill_clock_neurons
+            elif (clocks_per_step_dummy[row,column] == 1):
+                # loop through the clocks neurons and only copy the ones
+                first_split = clock_neurons[:, 0:(n_columns-column)]
+                second_split = clock_neurons[:, (n_columns-column):None]
+                fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
+                # DOUBLE CHECK IF THE SLICING WORKS ALRIGHT!!
+                for col in range(0, len(fill_clock_neurons[0])):
+                    for rw in range(0, len(fill_clock_neurons)):
+                        if fill_clock_neurons[rw, col] == 1:
+                            clocks_per_step[row+rw, col] = 1
+            
+        # at the end: multiply by how ever many seconds a step should take.
+    clocks_per_sec = np.repeat(clocks_per_step, repeats= step_time, axis=1)
+    return clocks_matrix, clock_neurons_prep, clocks_per_sec
+
+
+def set_single_clock(walked_path, step_number, step_time, grid_size = 3, phases = 3):
+   # import pdb; pdb.set_trace()
+    cumsumsteps = np.cumsum(step_number)
+    total_steps = cumsumsteps[-1] 
+    n_states = len(step_number)    
+    clock_neurons_per_ms = np.zeros([phases*n_states,total_steps*step_time])
+    phase_array = np.zeros([total_steps*step_time])
+    # clock_neurons_per_ms = np.repeat(clock_neurons_prep, repeats = step_time, axis = 1)
+    # now, for every sub-path, divide the timesteps by the number of phases.
+    # e.g. 1 step, 1sec > 3 cols, 3cols, 4 cols per phase.
+    # e.g. 2 step, 1 sec > 7 cols, 7 cols, 6 cols per phase.
+    # define step length:
+    cols_to_fill_previous = 0
+    # phase_list = [None] * len(clock_neurons_per_ms[0])
+    for count_paths, (pathlength) in enumerate(step_number):
+        cols_to_fill = pathlength*step_time
+        # create a string that tells me how many columns are one phase clock
+        time_per_phase_in_clock = ([cols_to_fill // phases + (1 if x < cols_to_fill % phases else 0) for x in range (phases)])
+        time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
+        # use the elements of cols_per_clock to fill the single-clock matrix.
+        # add a category-vector for the phases
+        for phase in range(0, phases):
+            if phase == 0:
+                clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_previous+ 0: cols_to_fill_previous+ time_per_phase_in_clock_cum[phase]] = 1
+                phase_array[cols_to_fill_previous+ 0: cols_to_fill_previous+ time_per_phase_in_clock_cum[phase]] = 10
+            elif phase == 1:
+                clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 1
+                phase_array[cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]]= 20
+            elif phase == 2:
+                clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 1
+                phase_array[cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 30
+        cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
+    return clock_neurons_per_ms, phase_array
+
+
+# 1.3.: Simulation models - PHASE
 def set_phase_model(walked_path, step_number, step_time, grid_size = 3, phases=3):
     # import pdb; pdb.set_trace()
     n_rows = phases
@@ -383,120 +622,619 @@ def set_phase_model(walked_path, step_number, step_time, grid_size = 3, phases=3
 
 
 
+def zero_phase_clocks_by_time(clocks_per_sec, step_number, grid_size = 3, phases = 3):
+    #import pdb; pdb.set_trace()
+    n_states = len(step_number)
+    neuron_number = n_states*phases
+    field_number = grid_size*grid_size
+    clock_number = phases*field_number
+    n_columns = len(clocks_per_sec[0])
+    zero_phase_clocks_matrix = np.zeros([clock_number,n_columns])
+    for i in range(clock_number):
+        zero_phase_clocks_matrix[i] = clocks_per_sec[i*neuron_number,:]
+    return zero_phase_clocks_matrix
 
 
+   
 
-    
-# EPHYS VALIDATION MODELS
-# this is based on 360 timebins > 1 state is 90 bins, 1 phase is 30 bins.
-# the steps are given in numbers, not coordinates.
-# important: fields need to be between 0 and 8!
-# again, problem that steps and phases do not overlap. I will model everything 
-# assuming phases are the more relevant bit -> clocks may start earlier/later than when just stepping on that field,
-# but will always be phase-aligned. 
-def set_clocks_ephys(walked_path, reward_fields, grid_size = 3, phases = 3, plotting = False, ax=None):
+# 1.4 Simulation: Location models.
+#############################
+### Location Models #########
+#############################
+
+# CURRENT MODEL
+def set_location_by_time(walked_path, step_number, step_time, grid_size = 3, field_no_given = None):
+    # import pdb; pdb.set_trace()   
+    cumsumsteps = np.cumsum(step_number)
+    total_steps = cumsumsteps[-1]    
+    n_columns = total_steps   
+    n_rows = grid_size*grid_size
+    loc_matrix = np.empty([n_rows,n_columns]) # fields times steps
+    loc_matrix[:] = np.nan
+    for i in range(0, total_steps):
+        if field_no_given is None:
+            curr_field = walked_path[i+1] # cut the first field because this is the reward field
+            x = curr_field[0]
+            y = curr_field[1]
+            fieldnumber = x + y* grid_size
+        else:
+            fieldnumber = walked_path[i+1]
+        # test if this has already been activated!
+        if loc_matrix[fieldnumber, i] == 0:
+            # if so, then don't overwrite it.
+            loc_matrix[fieldnumber, i] = 1
+        else:   
+            loc_matrix[fieldnumber, :] = 0
+            loc_matrix[fieldnumber, i] = 1
+    loc_per_sec = np.repeat(loc_matrix, repeats = step_time, axis=1)    
+    return loc_matrix, loc_per_sec
+
+
+# next, set location matrix.
+# this will be a matrix which is 9 (fields) x  12 (phases).
+# every field visit will activate the respective field. 
+# since there always have to be 3 phases between 2 reward fields, I need to interpolate.
+# my current solution for this:
+# 1 step = 2 fields → both are early, late and reward (reward old and reward new)
+# 2 steps = 3 fields → leave current field as is; 2nd is early and late; 3rd is reward
+# 3 steps = 4 fields → leave current field as is, 2nd is early, 3rd is late, fourth is reward
+# 4 steps = 5 fields → leave current field as is, 2nd is early, 3rd is early, 4th is late, 5th is reward
+
+# input is: reshaped_visited_fields and all_stepnums from mc.simulation.grid.walk_paths(reward_coords)
+# THIS IS AN OLD MODEL!
+def set_location_matrix(walked_path, step_number, phases, size_grid = 3):
     # import pdb; pdb.set_trace()
-    no_rewards = len(reward_fields)
-    no_fields = grid_size*grid_size
-    no_neurons = phases*no_rewards
-    n_columns = len(walked_path)
-    # and number of rows is fields*phase*neurons per clock 
-    n_rows = no_fields*phases*no_neurons 
+    n_states = len(step_number)
+    n_columns = phases*n_states
+    no_fields = size_grid*size_grid
+    location_matrix = np.zeros([no_fields,n_columns]) # fields times phases.
+    phase_loop = list(range(0,phases))
+    cumsumsteps = np.cumsum(step_number)
+    total_steps = cumsumsteps[-1] # DOUBLE CHECK IF THIS IS TRUE
+    # I will use the same logic as with the clocks. The first step is to take
+    # each subpath isolated, since the phase-neurons are aligned with the phases (ie. reward)
+    # then, I check if the pathlength is the same as the phase length.
+    # if not, I will adjust either length, and then use the zip function 
+    # to loop through both together and fill the matrix.
+    for count_paths, (pathlength) in enumerate(step_number):
+        phasecount = len(phase_loop) #this needs to be reset for every subpath.
+        if count_paths > 0:
+            curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
+        elif count_paths == 0:
+            curr_path = walked_path[1:cumsumsteps[count_paths]+1]
+        # if pathlength < phases -> 
+        # it can be either pathlength == 1 or == 2. In both cases,
+        # dublicate the field until it matches length phases
+        # if pathlength > phases
+        # dublicate the first phase so it matches length of path
+        # so that, if finally, pathlength = phases
+        # zip both lists and loop through them together.
+        if pathlength < phasecount: 
+            finished = False
+            while not finished:
+                curr_path.insert(0, curr_path[0]) # dublicate first field 
+                pathlength = len(curr_path)
+                finished = pathlength == phasecount
+        elif pathlength > phasecount:
+            finished = False
+            while not finished:
+                phase_loop.insert(0,phase_loop[0]) #make more early phases
+                phasecount = len(phase_loop)
+                finished = pathlength == phasecount
+        if pathlength == phasecount:
+            for phase, step in zip(phase_loop, curr_path):
+                x = step[0]
+                y = step[1]
+                fieldnumber = x + y* size_grid
+                location_matrix[fieldnumber, ((phases*count_paths)+phase)] = 1 # currstep = phases
+            phase_loop = list(range(0,phases))
+    return location_matrix, total_steps  
+
+
+
+
+##############################################
+############### PART 3 #######################
+####### CONTINUOUS MODELS ###################
+##############################################
+
+# 3. continuous models: all - midnight - phase - location
+
+
+
+# 3.1 continuous models: all
+# fuck it, I can probably do all continous models in one. LESSSE GOOOOO
+def set_continous_models(walked_path, step_number, step_time, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25):
+    # import pdb; pdb.set_trace()
     
-    clocks_matrix = np.empty([n_rows,n_columns]) # fields times phases.
-    clocks_matrix[:] = np.nan
+    # build all possible coord combinations 
+    all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
+    # code up the 2d location neurons. this is e.g. a 3x3 grid tiled with multivatiate
+    # gaussians that are centred around the grid locations.
+    neuron_loc_functions = []
+    for coord in all_coords:
+        neuron_loc_functions.append(multivariate_normal(coord, cov = fire_radius))
+       
+    # make the phase continuum
+    neuron_phase_functions = []
+    means_at_phase = np.linspace(0, 1, (no_phase_neurons))
+    for div in means_at_phase: 
+        neuron_phase_functions.append(norm(loc = div, scale = 1/no_phase_neurons/2)) 
+
+    # make the state continuum
+    neuron_state_functions = []
+    means_at_state = np.linspace(0,(len(step_number)-1), (len(step_number)))
+    for div in means_at_state:
+        neuron_state_functions.append(norm(loc = div, scale = 1/len(step_number)/2))
+       
+    cumsumsteps = np.cumsum(step_number)
+    # this time, do it per subpath.
+    for count_paths, pathlength in enumerate(step_number):
+        # first step: divide into subpaths
+        if count_paths > 0:
+            curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
+        elif count_paths == 0:
+            curr_path = walked_path[1:cumsumsteps[count_paths]+1]
+           
+        # second step: location model.
+        # build the 'timecourse', assuming that one timestep is one value.
+        # first make the coords into numbers
+        fields_path = []
+        for elem in curr_path:
+            fields_path.append(mc.simulation.predictions.field_to_number(elem, grid_size))
+        locs_over_time = np.repeat(fields_path, repeats = step_time)
+        # back to list and to coords for the location model 
+        coords_over_time = list(locs_over_time)
+        for index, elem in enumerate(coords_over_time):
+            coords_over_time[index] = all_coords[elem]
+        # make the location matrix
+        loc_matrix = np.empty([grid_size*grid_size,len(coords_over_time)])
+        loc_matrix[:] = np.nan
+        # and then simply fill the matrix with the respective functions
+        for timepoint, location in enumerate(coords_over_time):
+            for row in range(0, grid_size*grid_size):
+                loc_matrix[row, timepoint] = neuron_loc_functions[row].pdf(location) # location has to be a coord
+ 
+        # third: create the state matrix.
+        state_matrix = np.empty([len(neuron_state_functions), len(locs_over_time)])
+        state_matrix[:] = np.nan
+        # only consider the 1/no_states*count_paths+1 part of the functions
+        # then sample by timepoint
+        for row in range(0, len(neuron_state_functions)):
+            state_matrix[row] = neuron_state_functions[row].pdf(count_paths)
+        
+        # fourth step: make phase neurons
+        # fit subpaths into 0:1 trajectory
+        samplepoints = np.linspace(0, 1, len(locs_over_time))
+        phase_matrix_subpath = np.empty([len(neuron_phase_functions), len(samplepoints)])
+        phase_matrix_subpath[:] = np.nan
+        # read out the respective phase coding 
+        for timepoint, read_out_point in enumerate(samplepoints):
+            for row in range(0, len(neuron_phase_functions)):
+                phase_matrix_subpath[row, timepoint] = neuron_phase_functions[row].pdf(read_out_point)
+
+        # fifth step: midnight. = make location neurons phase sensitive.
+        midnight_model_subpath = np.repeat(loc_matrix, repeats = no_phase_neurons, axis = 0)
+        # multiply three rows of the location matrix (1 location)
+        # with the phase_matrix_subpath, respectively
+        for location in range(0, len(midnight_model_subpath), no_phase_neurons):
+            midnight_model_subpath[location:location+no_phase_neurons] = midnight_model_subpath[location:location+no_phase_neurons] * phase_matrix_subpath
+        
+        # sixth. make the clock model. 
+        # solving 2 (see below): make the neurons within the clock.
+        # phase state neurons.
+        phase_state_subpath = np.repeat(state_matrix, repeats = len(phase_matrix_subpath), axis = 0)
+        for phase in range(0, len(phase_state_subpath), len(phase_matrix_subpath)):
+            phase_state_subpath[phase: phase+len(phase_matrix_subpath)] = phase_matrix_subpath * phase_state_subpath[phase: phase+len(phase_matrix_subpath)]
+        
+        # last step: put subpaths together and concat into a bigger matrix.
+        if count_paths == 0:
+            midn_model = midnight_model_subpath.copy()
+            phas_model = phase_matrix_subpath.copy()
+            loc_model = loc_matrix.copy()
+            stat_model = state_matrix.copy()
+            phas_stat = phase_state_subpath.copy()
+        elif count_paths > 0:
+            midn_model = np.concatenate((midn_model,midnight_model_subpath), axis = 1)
+            phas_model = np.concatenate((phas_model, phase_matrix_subpath), axis = 1)
+            loc_model = np.concatenate((loc_model, loc_matrix), axis = 1)
+            stat_model = np.concatenate((stat_model, state_matrix), axis = 1)
+            phas_stat = np.concatenate((phas_stat, phase_state_subpath), axis = 1)
+                       
+    # ok I'll try something.
+    # this might not be the best way to solve this
+    # anyways, I'l try the same trick that I did before for the clocks model.
     
-    bins_per_reward = int(n_columns/no_rewards)
-    curr_rew_vector = np.repeat([0,1,2,3], repeats = bins_per_reward)
-    bins_per_phase = int(bins_per_reward/phases)
-    curr_phase_vector = np.repeat([0,1,2], repeats = bins_per_phase)
-    curr_phase_vector = np.tile(curr_phase_vector, reps = no_rewards)
-    neuron_vector = np.repeat([0,1,2,3,4,5,6,7,8,9,10,11], repeats = bins_per_phase)
-    # set up neurons of a clock.
-    clock_neurons = np.zeros([no_neurons,n_columns])
-    for i in range(0,len(clock_neurons[0])):
-        clock_neurons[neuron_vector[i],i]= int(1)
-
-    for i, field in enumerate(walked_path):
-        # now loop!!!
-        # exception for first field.
-        if i == 0:
-            curr_midnight_clock_neuron = field*no_neurons*phases + curr_phase_vector[i]*no_neurons
-            clocks_matrix[curr_midnight_clock_neuron : (curr_midnight_clock_neuron+12), 0:None] = clock_neurons
-        # assumption: after the first field, I only turn on a new clock if the phase or the field changes. 
-        # first: check if the field changed.
-        elif field != walked_path[i-1]:
-            print(f"mouse went from field {walked_path[i-1]} to field {field}") # delete later
-            # now check the phase vector alignment: if index smaller bins_per_phase > align with this phase,
-            # if bigger, align with next phase.
-            distance_from_phase_locking = i - (i // bins_per_phase)*bins_per_phase
-            if distance_from_phase_locking < int(bins_per_phase/2):
-                activate_at_col = np.where(neuron_vector == (i // bins_per_phase))[0][0]
-            elif distance_from_phase_locking >= int(bins_per_phase/2):
-                if ((i // bins_per_phase)+1) < max(neuron_vector):
-                    activate_at_col = np.where(neuron_vector == (i // bins_per_phase)+1)[0][0]
-                elif ((i // bins_per_phase)+1) == max(neuron_vector):
-                    activate_at_col = neuron_vector[0]         
-            # next, identify which row will be the first midnight-clock-neuron
-            curr_midnight_clock_neuron = field*no_neurons*phases + curr_phase_vector[activate_at_col]*no_neurons
-            # slice the clock neuron filler at the step we are currently at.
-            first_split = clock_neurons[:, 0:(n_columns-activate_at_col)]
-            second_split = clock_neurons[:, n_columns-activate_at_col:None]
-            fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
-            # then check if clock has been initiated already
-            is_initiated = clocks_matrix[curr_midnight_clock_neuron, 0]
-            if np.isnan(is_initiated): # if not initiated yet
-                clocks_matrix[curr_midnight_clock_neuron:(curr_midnight_clock_neuron+12), 0:None]= fill_clock_neurons
-            else:
-                # if the clock has already been initiated and thus is NOT nan
-                # only add the 1s
-                for row in range(len(fill_clock_neurons)):
-                    activate_at_col = np.where(fill_clock_neurons[row] == 1)[0][0]
-                    clocks_matrix[curr_midnight_clock_neuron+row, activate_at_col:activate_at_col+bins_per_phase] = 1
-        # second: even if the field didn't change, check if the phase changed.
-        elif field == walked_path[i-1]:
-            if curr_phase_vector[i] != curr_phase_vector[i-1]:
-                print(f"phase changed on field {field} from phase {curr_phase_vector[i-1]} to phase {curr_phase_vector[i]}") # delete later
-                # this means i is already phase-aligned and I just need to identify the field.
-                curr_midnight_clock_neuron = field*no_neurons*phases + curr_phase_vector[i]*no_neurons
-                # slice the clock neuron filler at the step we are currently at.
-                first_split = clock_neurons[:, 0:(n_columns-i)]
-                second_split = clock_neurons[:, n_columns-i:None]
-                fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
-                # then check if clock has been initiated already
-                is_initiated = clocks_matrix[curr_midnight_clock_neuron, 0]
-                if np.isnan(is_initiated): # if not initiated yet
-                    clocks_matrix[curr_midnight_clock_neuron:(curr_midnight_clock_neuron+12), 0:None]= fill_clock_neurons
-                else:
-                    # if the clock has already been initiated and thus is NOT nan
-                    # only add the 1s
-                    for row in range(len(fill_clock_neurons)):
-                        activate_at_col = np.where(fill_clock_neurons[row] == 1)[0][0]
-                        clocks_matrix[curr_midnight_clock_neuron+row, activate_at_col:activate_at_col+bins_per_phase] = 1
+    # I am going to fuse the midnight and the phas_stat model. Thus they need to be equally 'strong' > normalise!
+    norm_midn = (midn_model.copy()-np.min(midn_model))/(np.max(midn_model)-np.min(midn_model))
+    norm_phas_stat = (phas_stat.copy()-np.min(phas_stat))/(np.max(phas_stat)-np.min(phas_stat))
     
-    # use start:stop:step slicing in np
-    # midnight matrix is always the anchored neuron of the clocks matrix > every 12th row
-    midnight_matrix = clocks_matrix[0::12,:]
+    # try with normalised model.
+      # just with the adjustment that I will make the firing of the clocks less strong if
+      # they the midnight neurons fire very little
+      # identify the max firing.
+      # If i normalise this I don't need that step; it'll always be 1
+    #max_firing = np.amax(norm_midn)
+      # translate this into a value between 0 and 1 by doing *value* / max_firing
+     
+      # 5. stick the neuron-clock matrices in  
+    full_clock_matrix_dummy = np.zeros([len(norm_midn)*len(norm_phas_stat),len(norm_midn[0])]) # fields times phases.
+    # for ever 12th row, stick a row of the midnight matrix in (corresponds to the respective first neuron of the clock)
+    for row in range(0, len(norm_midn)):
+        full_clock_matrix_dummy[row*len(norm_phas_stat),:]= norm_midn[row,:].copy()
+         
+      # copy the neuron per clock firing pattern
+      # I will manipulate clocks_per_step, and use clocks_per_step.dummy as control to check for overwritten stuff.
+    clo_model =  full_clock_matrix_dummy.copy()
+     
+      # now loop through the already filled columns (every 12th one) and fill the clocks if activated.
+    for row in range(0, len(norm_midn)):
+        local_maxima = argrelextrema(norm_midn[row,:], np.greater_equal, order = 5, mode = 'wrap')
+        for activation_neuron in local_maxima[0]:
+            # shift the clock around so that the activation neuron comes first
+            shifted_clock = np.roll(norm_phas_stat, activation_neuron*-1, axis = 0)
+            # adjust the firing strength according to the local maxima
+            firing_factor = norm_midn[row, activation_neuron].copy()
+            #firing_factor = norm_midn[row,activation_neuron]/ max_firing
+            shifted_adjusted_clock = shifted_clock.copy()*firing_factor
+            # then add the values to the existing clocks.
+            # Q: IS THIS WAY OF DEALING WIHT DOUBLE ACTIVATION OK???
+            clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()
     
-    if plotting == True:
-        fig, axs = plt.subplots(nrows =1, ncols = 2)
-        axs[0].imshow(clocks_matrix, interpolation = 'none', aspect = 'auto')
-        axs[0].set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back to r1'])
-        axs[0].set_xticks([30,60,90,120,150,180,210,240,270,300,330,360])
-        axs[1].imshow(midnight_matrix, interpolation = 'none', aspect = 'auto')
-        axs[1].set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back to r1'])
-        axs[1].set_xticks([30,60,90,120,150,180,210,240,270,300,330,360]) 
-        #plt.xlabel('360 timebins, 90 per state')
-
-    return clocks_matrix, midnight_matrix 
+    return loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat
 
 
 
+# 3.2 continuous models: midnight
+# make a continuous MIDNIGHT model.      
+# idea:
+    # I will first compute the location matrix, and make 3 location neurons instead of one, but do this for subpaths separately
+    # then I will compute the phase matrix
+    # then I will multiply the respective location with the phase neurons (low will be nearly off, high will be on )  
+def set_midnight_contin(walked_path, step_number, step_time, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25):
+    import pdb; pdb.set_trace()
+    cumsumsteps = np.cumsum(step_number)
+    # build all possible coord combinations 
+    all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
+    
+    # make the phase continuum
+    neuron_phase_functions = []
+    means_at = np.linspace(0, 1, (no_phase_neurons))
+    for div in means_at: 
+        neuron_phase_functions.append(norm(loc = div, scale = 1/no_phase_neurons/2)) 
+
+    # code up the 2d location neurons. this is e.g. a 3x3 grid tiled with multivatiate
+    # gaussians that are centred around the grid locations.
+    neuron_loc_functions = []
+    for coord in all_coords:
+        neuron_loc_functions.append(multivariate_normal(coord, cov = fire_radius))
+        
+    
+    # this time, do it per subpath.
+    for count_paths, pathlength in enumerate(step_number):
+        # first step: divide into subpaths
+        if count_paths > 0:
+            curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
+        elif count_paths == 0:
+            curr_path = walked_path[1:cumsumsteps[count_paths]+1]
+        
+        # second step: location model.
+        # build the 'timecourse', assuming that one timestep is one value.
+        # first make the coords into numbers
+        fields_path = []
+        for elem in curr_path:
+            fields_path.append(mc.simulation.predictions.field_to_number(elem, grid_size))
+        
+        locs_over_time = np.repeat(fields_path, repeats = step_time)
+        
+        # back to list and to coords for the location model 
+        coords_over_time = list(locs_over_time)
+        for index, elem in enumerate(coords_over_time):
+            coords_over_time[index] = all_coords[elem]
+    
+        # make the matrix
+        loc_matrix = np.empty([grid_size*grid_size,len(coords_over_time)])
+        loc_matrix[:] = np.nan
+        # and then simply fill the matrix with the respective functions
+        for timepoint, location in enumerate(coords_over_time):
+            for row in range(0, grid_size*grid_size):
+                loc_matrix[row, timepoint] = neuron_loc_functions[row].pdf(location) # location has to be a coord
+        
+        # third step: make phase neurons
+        # fit subpaths into 0:1 trajectory
+        samplepoints = np.linspace(0, 1, len(locs_over_time))
+        
+        # fourth step: make a subpath-matrix
+        phase_matrix_subpath = np.empty([len(neuron_phase_functions), len(samplepoints)])
+        phase_matrix_subpath[:] = np.nan
+        
+        # fifth step: activate the neurons for the respective timepoint
+        # read out the respective phase coding 
+        for timepoint, read_out_point in enumerate(samplepoints):
+            for row in range(0, len(neuron_phase_functions)):
+                phase_matrix_subpath[row, timepoint] = neuron_phase_functions[row].pdf(read_out_point)
+        
+        # sixth step: make location neurons phase sensitive.
+        # since the location neurons are also phase sensitive, and 
+        # I am assuming 3 neuron are encoding for phase, make each loc neuron 3
+        midnight_model_subpath = np.repeat(loc_matrix, repeats = no_phase_neurons, axis = 0)
+        # multiply three rows of the location matrix (1 location)
+        # with the phase_matrix_subpath, respectively
+        for location in range(0, len(midnight_model_subpath), no_phase_neurons):
+            midnight_model_subpath[location:location+no_phase_neurons] = midnight_model_subpath[location:location+no_phase_neurons] * phase_matrix_subpath
+        
+        # seventh: put subpaths together and concat into a bigger matrix.
+        if count_paths == 0:
+            midnight_model = midnight_model_subpath.copy()
+        elif count_paths > 0:
+            midnight_model = np.concatenate((midnight_model,midnight_model_subpath), axis = 1)    
+    
+    return midnight_model
+        
+
+
+
+# 3.3 continuous models: phase
+# make a continuuous PHASE model.
+def set_phase_contin(walked_path, step_number, step_time, grid_size = 3, no_phase_neurons=3):
+    # import pdb; pdb.set_trace()
+    cumsumsteps = np.cumsum(step_number)
+    # total_steps = cumsumsteps[-1] 
+
+    #x = np.linspace(0, 1 ,1000)
+    neuron_functions = []
+    # Q: do I want to have the peaks at 0 and 1 or not?
+    # means_at = np.linspace(0, 1, (no_phase_neurons + 2))
+    # for div in means_at[1:-1]: 
+    means_at = np.linspace(0, 1, (no_phase_neurons))
+    for div in means_at: 
+        neuron_functions.append(norm(loc = div, scale = 1/no_phase_neurons/2)) 
+    # ok forget about the differently spaced phases rn. this is a bit annoying 
+    # with normal distributions > do I maybe prefer x^2 ? 
+    # if phases == 3:
+    #     # make this only the functions!!!
+    #     early = norm(loc = 0.125, scale = 0.05)
+    #     mid = 2*norm(loc = 0.5, scale = 0.1)
+    #     late = 1.5*norm(loc = 0.75, scale = 0.075)
+    #     neuron_functions = [early, mid, late]
+    # elif phases != 3:
+    #     means_at = np.linspace(0, 1, (phases + 2))
+        # for div in means_at[1:-1]:
+        #     neuron_functions.append(norm.pdf(x, loc = div, scale = 0.05))
+   
+    for count_paths, pathlength in enumerate(step_number):
+        # first step: divide into subpaths
+        if count_paths > 0:
+            curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
+        elif count_paths == 0:
+            curr_path = walked_path[1:cumsumsteps[count_paths]+1]
+        # second step: make location-timecourse
+        # build the 'timecourse', assuming that one timestep is one value.
+        # first make the coords into numbers
+        fields_path = []
+        for elem in curr_path:
+            fields_path.append(mc.simulation.predictions.field_to_number(elem, grid_size))
+        locs_over_time = np.repeat(fields_path, repeats = step_time)
+        # third step: fit subpaths into 0:1 trajectory
+        samplepoints = np.linspace(0, 1, len(locs_over_time))
+        # fourth step: make a subpath-matrix
+        phase_matrix_subpath = np.empty([len(neuron_functions), len(samplepoints)])
+        phase_matrix_subpath[:] = np.nan
+        # fifth step: activate the neurons for the respective timepoint
+        # read out the respective phase coding 
+        for timepoint, read_out_point in enumerate(samplepoints):
+            for row in range(0, len(neuron_functions)):
+                phase_matrix_subpath[row, timepoint] = neuron_functions[row].pdf(read_out_point)
+       
+        # sixth step: concatenate subpaths to one bigger matrix.
+        if count_paths == 0:
+            phase_model = phase_matrix_subpath.copy()
+        elif count_paths > 0:
+            phase_model = np.concatenate((phase_model,phase_matrix_subpath), axis = 1)           
+    return phase_model   
+
+
+
+# 3.4 continuous models: location
+
+# Make a continous LOCATION model.
+def set_location_contin(walked_path, step_time, grid_size = 3, fire_radius = 0.25):
+    # import pdb; pdb.set_trace()
+    neuron_no = grid_size*grid_size
+    # build all possible coord combinations 
+    all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
+    
+    # code up the 2d location neurons. this is e.g. a 3x3 grid tiled with multivatiate
+    # gaussians that are centred around the grid locations.
+    neuron_functions = []
+    for coord in all_coords:
+        neuron_functions.append(multivariate_normal(coord, cov = fire_radius))
+    
+    # build the 'timecourse', assuming that one timestep is one value.
+    # first make the coords into numbers
+    fields_path = []
+    for elem in walked_path:
+        fields_path.append(mc.simulation.predictions.field_to_number(elem, grid_size))
+    
+    locs_over_time = np.repeat(fields_path, repeats = step_time)
+    # back to list and to coords
+    coords_over_time = list(locs_over_time)
+    for index, elem in enumerate(coords_over_time):
+        coords_over_time[index] = all_coords[elem]
+
+    # make the matrix
+    loc_matrix = np.empty([grid_size*grid_size,len(coords_over_time)])
+    loc_matrix[:] = np.nan
+    # and then simply fill the matrix with the respective functions
+    for timepoint, location in enumerate(coords_over_time):
+        for row in range(0, grid_size*grid_size):
+            loc_matrix[row, timepoint] = neuron_functions[row].pdf(location) # location has to be a coord
+        # don't hardcode the row. how to do that?
+    return loc_matrix
+        
+    
+ 
+       
+
+
+# 4. ephys models: continuous - clocks - midnight - phase - location
+
+##############################################
+############### PART 4 #######################
+############# EPHYS MODELS ###################
+##############################################
+
+
+#4.1 ephys models: continuous - clocks - midnight - phase - location
+
+# ok now I need the same thing but for my ephys stuff.
+def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_number,  grid_size = 3, no_phase_neurons=3, fire_radius = 0.25):
+    # import pdb; pdb.set_trace()
+    
+    # build all possible coord combinations 
+    all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
+    # code up the 2d location neurons. this is e.g. a 3x3 grid tiled with multivatiate
+    # gaussians that are centred around the grid locations.
+    neuron_loc_functions = []
+    for coord in all_coords:
+        neuron_loc_functions.append(multivariate_normal(coord, cov = fire_radius))
+       
+    # make the phase continuum
+    neuron_phase_functions = []
+    means_at_phase = np.linspace(0, 1, (no_phase_neurons))
+    for div in means_at_phase: 
+        neuron_phase_functions.append(norm(loc = div, scale = 1/no_phase_neurons/2)) 
+
+    # make the state continuum
+    neuron_state_functions = []
+    means_at_state = np.linspace(0,(len(step_number)-1), (len(step_number)))
+    for div in means_at_state:
+        neuron_state_functions.append(norm(loc = div, scale = 1/len(step_number)/2))
+       
+    cumsumsteps = np.cumsum(step_number)
+    # this time, do it per subpath.
+    for count_paths, pathlength in enumerate(step_number):
+        # first step: divide into subpaths
+        if count_paths > 0:
+            curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
+        elif count_paths == 0:
+            curr_path = walked_path[1:cumsumsteps[count_paths]+1]
+           
+        # second step: location model.
+        # build the 'timecourse', assuming that one timestep is one value.
+        # first make the coords into numbers
+        fields_path = []
+        for elem in curr_path:
+            fields_path.append(mc.simulation.predictions.field_to_number(elem, grid_size))
+        locs_over_time = np.repeat(fields_path, repeats = step_time)
+        # back to list and to coords for the location model 
+        coords_over_time = list(locs_over_time)
+        for index, elem in enumerate(coords_over_time):
+            coords_over_time[index] = all_coords[elem]
+        # make the location matrix
+        loc_matrix = np.empty([grid_size*grid_size,len(coords_over_time)])
+        loc_matrix[:] = np.nan
+        # and then simply fill the matrix with the respective functions
+        for timepoint, location in enumerate(coords_over_time):
+            for row in range(0, grid_size*grid_size):
+                loc_matrix[row, timepoint] = neuron_loc_functions[row].pdf(location) # location has to be a coord
+ 
+        # third: create the state matrix.
+        state_matrix = np.empty([len(neuron_state_functions), len(locs_over_time)])
+        state_matrix[:] = np.nan
+        # only consider the 1/no_states*count_paths+1 part of the functions
+        # then sample by timepoint
+        for row in range(0, len(neuron_state_functions)):
+            state_matrix[row] = neuron_state_functions[row].pdf(count_paths)
+        
+        # fourth step: make phase neurons
+        # fit subpaths into 0:1 trajectory
+        samplepoints = np.linspace(0, 1, len(locs_over_time))
+        phase_matrix_subpath = np.empty([len(neuron_phase_functions), len(samplepoints)])
+        phase_matrix_subpath[:] = np.nan
+        # read out the respective phase coding 
+        for timepoint, read_out_point in enumerate(samplepoints):
+            for row in range(0, len(neuron_phase_functions)):
+                phase_matrix_subpath[row, timepoint] = neuron_phase_functions[row].pdf(read_out_point)
+
+        # fifth step: midnight. = make location neurons phase sensitive.
+        midnight_model_subpath = np.repeat(loc_matrix, repeats = no_phase_neurons, axis = 0)
+        # multiply three rows of the location matrix (1 location)
+        # with the phase_matrix_subpath, respectively
+        for location in range(0, len(midnight_model_subpath), no_phase_neurons):
+            midnight_model_subpath[location:location+no_phase_neurons] = midnight_model_subpath[location:location+no_phase_neurons] * phase_matrix_subpath
+        
+        # sixth. make the clock model. 
+        # solving 2 (see below): make the neurons within the clock.
+        # phase state neurons.
+        phase_state_subpath = np.repeat(state_matrix, repeats = len(phase_matrix_subpath), axis = 0)
+        for phase in range(0, len(phase_state_subpath), len(phase_matrix_subpath)):
+            phase_state_subpath[phase: phase+len(phase_matrix_subpath)] = phase_matrix_subpath * phase_state_subpath[phase: phase+len(phase_matrix_subpath)]
+        
+        # last step: put subpaths together and concat into a bigger matrix.
+        if count_paths == 0:
+            midn_model = midnight_model_subpath.copy()
+            phas_model = phase_matrix_subpath.copy()
+            loc_model = loc_matrix.copy()
+            stat_model = state_matrix.copy()
+            phas_stat = phase_state_subpath.copy()
+        elif count_paths > 0:
+            midn_model = np.concatenate((midn_model,midnight_model_subpath), axis = 1)
+            phas_model = np.concatenate((phas_model, phase_matrix_subpath), axis = 1)
+            loc_model = np.concatenate((loc_model, loc_matrix), axis = 1)
+            stat_model = np.concatenate((stat_model, state_matrix), axis = 1)
+            phas_stat = np.concatenate((phas_stat, phase_state_subpath), axis = 1)
+                       
+    # ok I'll try something.
+    # this might not be the best way to solve this
+    # anyways, I'l try the same trick that I did before for the clocks model.
+    
+    # I am going to fuse the midnight and the phas_stat model. Thus they need to be equally 'strong' > normalise!
+    norm_midn = (midn_model.copy()-np.min(midn_model))/(np.max(midn_model)-np.min(midn_model))
+    norm_phas_stat = (phas_stat.copy()-np.min(phas_stat))/(np.max(phas_stat)-np.min(phas_stat))
+    
+    # try with normalised model.
+      # just with the adjustment that I will make the firing of the clocks less strong if
+      # they the midnight neurons fire very little
+      # identify the max firing.
+      # If i normalise this I don't need that step; it'll always be 1
+    #max_firing = np.amax(norm_midn)
+      # translate this into a value between 0 and 1 by doing *value* / max_firing
+     
+      # 5. stick the neuron-clock matrices in  
+    full_clock_matrix_dummy = np.zeros([len(norm_midn)*len(norm_phas_stat),len(norm_midn[0])]) # fields times phases.
+    # for ever 12th row, stick a row of the midnight matrix in (corresponds to the respective first neuron of the clock)
+    for row in range(0, len(norm_midn)):
+        full_clock_matrix_dummy[row*len(norm_phas_stat),:]= norm_midn[row,:].copy()
+         
+      # copy the neuron per clock firing pattern
+      # I will manipulate clocks_per_step, and use clocks_per_step.dummy as control to check for overwritten stuff.
+    clo_model =  full_clock_matrix_dummy.copy()
+     
+      # now loop through the already filled columns (every 12th one) and fill the clocks if activated.
+    for row in range(0, len(norm_midn)):
+        local_maxima = argrelextrema(norm_midn[row,:], np.greater_equal, order = 5, mode = 'wrap')
+        for activation_neuron in local_maxima[0]:
+            # shift the clock around so that the activation neuron comes first
+            shifted_clock = np.roll(norm_phas_stat, activation_neuron*-1, axis = 0)
+            # adjust the firing strength according to the local maxima
+            firing_factor = norm_midn[row, activation_neuron].copy()
+            #firing_factor = norm_midn[row,activation_neuron]/ max_firing
+            shifted_adjusted_clock = shifted_clock.copy()*firing_factor
+            # then add the values to the existing clocks.
+            # Q: IS THIS WAY OF DEALING WIHT DOUBLE ACTIVATION OK???
+            clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()
+    
+    return loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat
+
+
+#4.2 ephys models: clocks & midnight
+
+# EPHYS VALIDATION MODELS
 
 ### IF USING RAW EPHYS DATA: TIMEBINS 
 # based on the fancy matrix multiplication by Jacob inlcuded :)
 # generates clocks and midnight model per milisecond
-
 def set_clocks_raw_ephys(walked_path, subpath_timings, step_indices, step_number, grid_size = 3, phases=3, plotting = False, field_no_given = None, ax = None):
     # try one more time, slight adjustments.
     # based on Mohammadys comment: "In the simulation, the agent will progress one phase 
@@ -675,7 +1413,111 @@ def set_clocks_raw_ephys(walked_path, subpath_timings, step_indices, step_number
     return midnight_matrix, full_clock_matrix, alternative_midnight, alternative_clock, compromise_midnight, compromise_clock
 
 
+# this is based on 360 timebins > 1 state is 90 bins, 1 phase is 30 bins.
+# the steps are given in numbers, not coordinates.
+# important: fields need to be between 0 and 8!
+# again, problem that steps and phases do not overlap. I will model everything 
+# assuming phases are the more relevant bit -> clocks may start earlier/later than when just stepping on that field,
+# but will always be phase-aligned. 
+def set_clocks_ephys(walked_path, reward_fields, grid_size = 3, phases = 3, plotting = False, ax=None):
+    # import pdb; pdb.set_trace()
+    no_rewards = len(reward_fields)
+    no_fields = grid_size*grid_size
+    no_neurons = phases*no_rewards
+    n_columns = len(walked_path)
+    # and number of rows is fields*phase*neurons per clock 
+    n_rows = no_fields*phases*no_neurons 
+    
+    clocks_matrix = np.empty([n_rows,n_columns]) # fields times phases.
+    clocks_matrix[:] = np.nan
+    
+    bins_per_reward = int(n_columns/no_rewards)
+    curr_rew_vector = np.repeat([0,1,2,3], repeats = bins_per_reward)
+    bins_per_phase = int(bins_per_reward/phases)
+    curr_phase_vector = np.repeat([0,1,2], repeats = bins_per_phase)
+    curr_phase_vector = np.tile(curr_phase_vector, reps = no_rewards)
+    neuron_vector = np.repeat([0,1,2,3,4,5,6,7,8,9,10,11], repeats = bins_per_phase)
+    # set up neurons of a clock.
+    clock_neurons = np.zeros([no_neurons,n_columns])
+    for i in range(0,len(clock_neurons[0])):
+        clock_neurons[neuron_vector[i],i]= int(1)
 
+    for i, field in enumerate(walked_path):
+        # now loop!!!
+        # exception for first field.
+        if i == 0:
+            curr_midnight_clock_neuron = field*no_neurons*phases + curr_phase_vector[i]*no_neurons
+            clocks_matrix[curr_midnight_clock_neuron : (curr_midnight_clock_neuron+12), 0:None] = clock_neurons
+        # assumption: after the first field, I only turn on a new clock if the phase or the field changes. 
+        # first: check if the field changed.
+        elif field != walked_path[i-1]:
+            print(f"mouse went from field {walked_path[i-1]} to field {field}") # delete later
+            # now check the phase vector alignment: if index smaller bins_per_phase > align with this phase,
+            # if bigger, align with next phase.
+            distance_from_phase_locking = i - (i // bins_per_phase)*bins_per_phase
+            if distance_from_phase_locking < int(bins_per_phase/2):
+                activate_at_col = np.where(neuron_vector == (i // bins_per_phase))[0][0]
+            elif distance_from_phase_locking >= int(bins_per_phase/2):
+                if ((i // bins_per_phase)+1) < max(neuron_vector):
+                    activate_at_col = np.where(neuron_vector == (i // bins_per_phase)+1)[0][0]
+                elif ((i // bins_per_phase)+1) == max(neuron_vector):
+                    activate_at_col = neuron_vector[0]         
+            # next, identify which row will be the first midnight-clock-neuron
+            curr_midnight_clock_neuron = field*no_neurons*phases + curr_phase_vector[activate_at_col]*no_neurons
+            # slice the clock neuron filler at the step we are currently at.
+            first_split = clock_neurons[:, 0:(n_columns-activate_at_col)]
+            second_split = clock_neurons[:, n_columns-activate_at_col:None]
+            fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
+            # then check if clock has been initiated already
+            is_initiated = clocks_matrix[curr_midnight_clock_neuron, 0]
+            if np.isnan(is_initiated): # if not initiated yet
+                clocks_matrix[curr_midnight_clock_neuron:(curr_midnight_clock_neuron+12), 0:None]= fill_clock_neurons
+            else:
+                # if the clock has already been initiated and thus is NOT nan
+                # only add the 1s
+                for row in range(len(fill_clock_neurons)):
+                    activate_at_col = np.where(fill_clock_neurons[row] == 1)[0][0]
+                    clocks_matrix[curr_midnight_clock_neuron+row, activate_at_col:activate_at_col+bins_per_phase] = 1
+        # second: even if the field didn't change, check if the phase changed.
+        elif field == walked_path[i-1]:
+            if curr_phase_vector[i] != curr_phase_vector[i-1]:
+                print(f"phase changed on field {field} from phase {curr_phase_vector[i-1]} to phase {curr_phase_vector[i]}") # delete later
+                # this means i is already phase-aligned and I just need to identify the field.
+                curr_midnight_clock_neuron = field*no_neurons*phases + curr_phase_vector[i]*no_neurons
+                # slice the clock neuron filler at the step we are currently at.
+                first_split = clock_neurons[:, 0:(n_columns-i)]
+                second_split = clock_neurons[:, n_columns-i:None]
+                fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
+                # then check if clock has been initiated already
+                is_initiated = clocks_matrix[curr_midnight_clock_neuron, 0]
+                if np.isnan(is_initiated): # if not initiated yet
+                    clocks_matrix[curr_midnight_clock_neuron:(curr_midnight_clock_neuron+12), 0:None]= fill_clock_neurons
+                else:
+                    # if the clock has already been initiated and thus is NOT nan
+                    # only add the 1s
+                    for row in range(len(fill_clock_neurons)):
+                        activate_at_col = np.where(fill_clock_neurons[row] == 1)[0][0]
+                        clocks_matrix[curr_midnight_clock_neuron+row, activate_at_col:activate_at_col+bins_per_phase] = 1
+    
+    # use start:stop:step slicing in np
+    # midnight matrix is always the anchored neuron of the clocks matrix > every 12th row
+    midnight_matrix = clocks_matrix[0::12,:]
+    
+    if plotting == True:
+        fig, axs = plt.subplots(nrows =1, ncols = 2)
+        axs[0].imshow(clocks_matrix, interpolation = 'none', aspect = 'auto')
+        axs[0].set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back to r1'])
+        axs[0].set_xticks([30,60,90,120,150,180,210,240,270,300,330,360])
+        axs[1].imshow(midnight_matrix, interpolation = 'none', aspect = 'auto')
+        axs[1].set_xticklabels(['early', 'mid','reward 2','early', 'mid', 'reward 3','early','mid', 'reward 4', 'early','mid', 'back to r1'])
+        axs[1].set_xticks([30,60,90,120,150,180,210,240,270,300,330,360]) 
+        #plt.xlabel('360 timebins, 90 per state')
+
+    return clocks_matrix, midnight_matrix 
+
+
+
+#4.3 ephys models: phase
 
 def set_phase_model_ephys(walked_path, subpath_timings, step_indices, step_number, grid_size = 3, phases=3, plotting = False, field_no_given = None, ax = None):
     # import pdb; pdb.set_trace()
@@ -714,299 +1556,21 @@ def set_phase_model_ephys(walked_path, subpath_timings, step_indices, step_numbe
     return phase_model_ephys
         
         
-# def set_phase_model_ephys(walked_path, reward_fields, step_number, step_time, grid_size = 3, phases=3):
-#     import pdb; pdb.set_trace()
-#     no_rewards = len()
-#     n_rows = phases
-#     cumsumsteps = np.cumsum(step_number)
-#     total_steps = cumsumsteps[-1]   
-#     n_columns = total_steps   
-#     loc_matrix = np.empty([n_rows,n_columns]) # fields times steps
-#     loc_matrix[:] = np.nan
-#     cols_to_fill_previous = 0
-    
-#     for i, field in enumerate(walked_path):
-#         if i == 0:
-            
-    
-    
-#     for count_paths, pathlength in enumerate(step_number):
-#         cols_to_fill = pathlength*step_time
-#         # create a string that tells me how many columns are one phase clock
-#         time_per_phase_in_clock = ([cols_to_fill // phases + (1 if x < cols_to_fill % phases else 0) for x in range (phases)])
-#         time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
-#         cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
-        
-#         # part 2:
-#         # to identify which phase*anchor clocks to activate, identify subpaths
-#         if count_paths > 0:
-#             curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
-#         elif count_paths == 0:
-#             curr_path = walked_path[1:cumsumsteps[count_paths]+1]
-            
-            
-#         phase_matrix_subpath = np.zeros([phases, len(curr_path)*step_time])
-#         # activate the matrix
-#         for phase in range(0, len(time_per_phase_in_clock)):
-#             if phase == 0:
-#                 phase_matrix_subpath[phase, 0:time_per_phase_in_clock_cum[phase]] = 1
-#             else:
-#                 phase_matrix_subpath[phase, time_per_phase_in_clock_cum[phase-1]:time_per_phase_in_clock_cum[phase]] = 1
-        
-#         if count_paths == 0:
-#             phase_model = phase_matrix_subpath.copy()
-#         elif count_paths > 0:
-#             phase_model = np.concatenate((phase_model,phase_matrix_subpath), axis = 1)
-        
-#     return phase_model
-   
-    
-# OLD 
-# problem: sometimes, phases were on at the same time. probably a wrong assumption!
-# this was based on lazy interpolation  
-# Creates a neurons x time matrix. Neurons are gridsize (anchors) x phases (phase-clocks per anchor) x reward*phases (neurons per clock)
-# BUT: if there are less steps than phases, then the clocks will be activated at the same time, which is probably wrong.
-# input is: reshaped_visited_fields and all_stepnums from mc.simulation.grid.walk_paths(reward_coords)
-def set_clocks_bytime_one_neurone(walked_path, step_number, step_time, grid_size = 3, phases=3):
-    # CAREFUL! step_time needs to be in 100ms scale. 1.5 secs eg would be 15
-    
-    # for simplicity, I will just use the same number of neurons as before.
-    # this is a bit annoying though because now I can't propagate the signal
-    # by 1 neuron per step, because the step lengths will be different.
-    # so. I need some sort of interpolation over the clock neurons. At the same
-    # time, the interpolation for phases will be obsolete.
-    # first, set up the same matrix structure as before.
-    # import pdb; pdb.set_trace()
-    phase_loop = list(range(0,phases))
-    cumsumsteps = np.cumsum(step_number)
-    total_steps = cumsumsteps[-1] 
-    n_states = len(step_number)
-    n_columns = total_steps    
-    # and number of rows is locations*phase*neurons per clock
-    no_fields = grid_size*grid_size
-    n_rows = no_fields*phases  
-    clocks_matrix = np.empty([n_rows,n_columns]) # fields times phases.
-    clocks_matrix[:] = np.nan # 324 x stepnum (e.g. 7)  
-    clock_neurons_prep = np.zeros([phases*n_states,n_columns])
-    # I will use the same logic as with the clocks. The first step is to take
-    # each subpath isolated, since the phase-neurons are aligned with the phases (ie. reward)
-    # then, I check if the pathlength is the same as the phase length.
-    # if not, I will adjust either length, and then use the zip function 
-    # to loop through both together and fill the matrix.
-    # I will do the same to identify the neuron-level firing pattern, which 
-    # needs to be interpolated now!
-    for count_paths, (pathlength) in enumerate(step_number):
-        phasecount = len(phase_loop) #this needs to be reset for every subpath.
-        if count_paths > 0:
-            curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
-        elif count_paths == 0:
-            curr_path = walked_path[1:cumsumsteps[count_paths]+1]
-        # if pathlength < phases -> 
-        # it can be either pathlength == 1 or == 2. In both cases,
-        # dublicate the field until it matches length phases
-        # if pathlength > phases
-        # dublicate the first phase so it matches length of path
-        # so that, if finally, pathlength = phases
-        # zip both lists and loop through them together.
-        if pathlength < phasecount: 
-            finished = False
-            while not finished:
-                curr_path.insert(0, curr_path[0]) # dublicate first field 
-                pathlength = len(curr_path)
-                finished = pathlength == phasecount
-        elif pathlength > phasecount:
-            finished = False
-            while not finished:
-                phase_loop.insert(0,phase_loop[0]) #make more early phases
-                phasecount = len(phase_loop)
-                finished = pathlength == phasecount
-        if pathlength == phasecount:
-            for currstep, (phase, step) in enumerate(zip(phase_loop, curr_path)):
-                x = step[0]
-                y = step[1]
-                fieldnumber = x + y*grid_size
-                # fieldnumber tells me the current anchor.
-                # first fill in a dummy-matrix where each clock only has one neuron. 
-                if currstep >= step_number[count_paths]:
-                    clocks_matrix[(fieldnumber * phases) + phase ,(cumsumsteps[count_paths]-1)] = 1  
-                    clock_neurons_prep[phase+(count_paths*phases),(cumsumsteps[count_paths]-1)] = 1
-                elif count_paths > 0: 
-                    clocks_matrix[(fieldnumber * phases) + phase ,currstep+cumsumsteps[count_paths-1]] = 1
-                    clock_neurons_prep[phase+(count_paths*phases),currstep+cumsumsteps[count_paths-1]] = 1
-                elif count_paths == 0:
-                    clocks_matrix[(fieldnumber * phases) + phase ,currstep] = 1  
-                    clock_neurons_prep[phase+(count_paths*phases),currstep] = 1
-                #location_matrix[fieldnumber, ((phases*count_paths)+phase)] = 1 # currstep = phases
-            phase_loop = list(range(0,phases)) 
-            
-    # now that I have the 0 degree neurons activated, as well as the neuron
-    # pattern matrix, construct the whole matrix out both
-    # stick the matrix in whenever a clock is activated ('1'), and split it at that column.
-    # 1., create matrix with the right dimensions.
-    clocks_per_step_dummy = np.empty([n_rows*phases*n_states,n_columns]) # fields times phases.
-    clocks_per_step_dummy[:] = np.nan # 324 x stepnum (e.g. 7)  
-    # for ever 12th row, stick a row of the small matrix in
-    for row in range(0, len(clocks_matrix)):
-        clocks_per_step_dummy[row*phases*n_states,:]= clocks_matrix[row,:]
-        
-    # copy the neuron per clock firing pattern
-    # I will manipulate clocks_per_step, and use clocks_per_step.dummy as control to check for overwritten stuff.
-    clocks_per_step = clocks_per_step_dummy.copy()
-    
-    # now loop through all columns and rows and input clock-neurons.   
-    for column in range(0, len(clocks_per_step[0])):
-        for row in range(0, len(clocks_per_step)):
-            clock_neurons = clock_neurons_prep.copy()
-            # first test if clocks_per step also has a 1 at the current position -> if not, it will be overwritten!
-            if (clocks_per_step_dummy[row,column] == 1) and (clocks_per_step[row,column] == 1):
-                # stick the neuron activation in.
-                # but first slice the neuron matrix correctly
-                first_split = clock_neurons[:, 0:(n_columns-column)]
-                second_split = clock_neurons[:, (n_columns-column):None]
-                fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
-                # DOUBLE CHECK IF THE SLICING WORKS ALRIGHT!!               
-                clocks_per_step[row:(row+(len(clock_neurons_prep))), :] = fill_clock_neurons
-            elif (clocks_per_step_dummy[row,column] == 1):
-                # loop through the clocks neurons and only copy the ones
-                first_split = clock_neurons[:, 0:(n_columns-column)]
-                second_split = clock_neurons[:, (n_columns-column):None]
-                fill_clock_neurons = np.concatenate((second_split, first_split), axis =1)
-                # DOUBLE CHECK IF THE SLICING WORKS ALRIGHT!!
-                for col in range(0, len(fill_clock_neurons[0])):
-                    for rw in range(0, len(fill_clock_neurons)):
-                        if fill_clock_neurons[rw, col] == 1:
-                            clocks_per_step[row+rw, col] = 1
-            
-        # at the end: multiply by how ever many seconds a step should take.
-    clocks_per_sec = np.repeat(clocks_per_step, repeats= step_time, axis=1)
-    return clocks_matrix, clock_neurons_prep, clocks_per_sec
-                
+#4.4 ephys models: location
 
-def zero_phase_clocks_by_time(clocks_per_sec, step_number, grid_size = 3, phases = 3):
-    #import pdb; pdb.set_trace()
-    n_states = len(step_number)
-    neuron_number = n_states*phases
-    field_number = grid_size*grid_size
-    clock_number = phases*field_number
-    n_columns = len(clocks_per_sec[0])
-    zero_phase_clocks_matrix = np.zeros([clock_number,n_columns])
-    for i in range(clock_number):
-        zero_phase_clocks_matrix[i] = clocks_per_sec[i*neuron_number,:]
-    return zero_phase_clocks_matrix
+# ephys validation model
+# this is based on 360 timebins > 1 state is 90 bins, 1 phase is 30 bins.
+# the steps are given in numbers, not coordinates.
 
 
-
-def set_single_clock(walked_path, step_number, step_time, grid_size = 3, phases = 3):
-   # import pdb; pdb.set_trace()
-    cumsumsteps = np.cumsum(step_number)
-    total_steps = cumsumsteps[-1] 
-    n_states = len(step_number)    
-    clock_neurons_per_ms = np.zeros([phases*n_states,total_steps*step_time])
-    phase_array = np.zeros([total_steps*step_time])
-    # clock_neurons_per_ms = np.repeat(clock_neurons_prep, repeats = step_time, axis = 1)
-    # now, for every sub-path, divide the timesteps by the number of phases.
-    # e.g. 1 step, 1sec > 3 cols, 3cols, 4 cols per phase.
-    # e.g. 2 step, 1 sec > 7 cols, 7 cols, 6 cols per phase.
-    # define step length:
-    cols_to_fill_previous = 0
-    # phase_list = [None] * len(clock_neurons_per_ms[0])
-    for count_paths, (pathlength) in enumerate(step_number):
-        cols_to_fill = pathlength*step_time
-        # create a string that tells me how many columns are one phase clock
-        time_per_phase_in_clock = ([cols_to_fill // phases + (1 if x < cols_to_fill % phases else 0) for x in range (phases)])
-        time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
-        # use the elements of cols_per_clock to fill the single-clock matrix.
-        # add a category-vector for the phases
-        for phase in range(0, phases):
-            if phase == 0:
-                clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_previous+ 0: cols_to_fill_previous+ time_per_phase_in_clock_cum[phase]] = 1
-                phase_array[cols_to_fill_previous+ 0: cols_to_fill_previous+ time_per_phase_in_clock_cum[phase]] = 10
-            elif phase == 1:
-                clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 1
-                phase_array[cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]]= 20
-            elif phase == 2:
-                clock_neurons_per_ms[phase+(count_paths*phases), cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 1
-                phase_array[cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 30
-        cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
-    return clock_neurons_per_ms, phase_array
-   
-
-
-#############################
-### Location Models #########
-#############################
-
-
-# next, set location matrix.
-# this will be a matrix which is 9 (fields) x  12 (phases).
-# every field visit will activate the respective field. 
-# since there always have to be 3 phases between 2 reward fields, I need to interpolate.
-# my current solution for this:
-# 1 step = 2 fields → both are early, late and reward (reward old and reward new)
-# 2 steps = 3 fields → leave current field as is; 2nd is early and late; 3rd is reward
-# 3 steps = 4 fields → leave current field as is, 2nd is early, 3rd is late, fourth is reward
-# 4 steps = 5 fields → leave current field as is, 2nd is early, 3rd is early, 4th is late, 5th is reward
-
-# input is: reshaped_visited_fields and all_stepnums from mc.simulation.grid.walk_paths(reward_coords)
-# THIS IS AN OLD MODEL!
-def set_location_matrix(walked_path, step_number, phases, size_grid = 3):
-    # import pdb; pdb.set_trace()
-    n_states = len(step_number)
-    n_columns = phases*n_states
-    no_fields = size_grid*size_grid
-    location_matrix = np.zeros([no_fields,n_columns]) # fields times phases.
-    phase_loop = list(range(0,phases))
-    cumsumsteps = np.cumsum(step_number)
-    total_steps = cumsumsteps[-1] # DOUBLE CHECK IF THIS IS TRUE
-    # I will use the same logic as with the clocks. The first step is to take
-    # each subpath isolated, since the phase-neurons are aligned with the phases (ie. reward)
-    # then, I check if the pathlength is the same as the phase length.
-    # if not, I will adjust either length, and then use the zip function 
-    # to loop through both together and fill the matrix.
-    for count_paths, (pathlength) in enumerate(step_number):
-        phasecount = len(phase_loop) #this needs to be reset for every subpath.
-        if count_paths > 0:
-            curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
-        elif count_paths == 0:
-            curr_path = walked_path[1:cumsumsteps[count_paths]+1]
-        # if pathlength < phases -> 
-        # it can be either pathlength == 1 or == 2. In both cases,
-        # dublicate the field until it matches length phases
-        # if pathlength > phases
-        # dublicate the first phase so it matches length of path
-        # so that, if finally, pathlength = phases
-        # zip both lists and loop through them together.
-        if pathlength < phasecount: 
-            finished = False
-            while not finished:
-                curr_path.insert(0, curr_path[0]) # dublicate first field 
-                pathlength = len(curr_path)
-                finished = pathlength == phasecount
-        elif pathlength > phasecount:
-            finished = False
-            while not finished:
-                phase_loop.insert(0,phase_loop[0]) #make more early phases
-                phasecount = len(phase_loop)
-                finished = pathlength == phasecount
-        if pathlength == phasecount:
-            for phase, step in zip(phase_loop, curr_path):
-                x = step[0]
-                y = step[1]
-                fieldnumber = x + y* size_grid
-                location_matrix[fieldnumber, ((phases*count_paths)+phase)] = 1 # currstep = phases
-            phase_loop = list(range(0,phases))
-    return location_matrix, total_steps  
-
-
-# CURRENT MODEL
-def set_location_by_time(walked_path, step_number, step_time, grid_size = 3, field_no_given = None):
-    # import pdb; pdb.set_trace()   
-    cumsumsteps = np.cumsum(step_number)
-    total_steps = cumsumsteps[-1]    
-    n_columns = total_steps   
+# MODEL EPHYS RAW DATA 
+def set_location_raw_ephys(walked_path, step_time, grid_size = 3, plotting = False, field_no_given = None, ax = None):
+    # import pdb; pdb.set_trace()  
     n_rows = grid_size*grid_size
+    n_columns = len(walked_path)
     loc_matrix = np.empty([n_rows,n_columns]) # fields times steps
     loc_matrix[:] = np.nan
+    total_steps = len(walked_path)
     for i in range(0, total_steps):
         if field_no_given is None:
             curr_field = walked_path[i+1] # cut the first field because this is the reward field
@@ -1014,333 +1578,27 @@ def set_location_by_time(walked_path, step_number, step_time, grid_size = 3, fie
             y = curr_field[1]
             fieldnumber = x + y* grid_size
         else:
-            fieldnumber = walked_path[i+1]
+            fieldnumber = walked_path[i]
         # test if this has already been activated!
         if loc_matrix[fieldnumber, i] == 0:
             # if so, then don't overwrite it.
             loc_matrix[fieldnumber, i] = 1
         else:   
             loc_matrix[fieldnumber, :] = 0
-            loc_matrix[fieldnumber, i] = 1
-    loc_per_sec = np.repeat(loc_matrix, repeats = step_time, axis=1)    
-    return loc_matrix, loc_per_sec
+            loc_matrix[fieldnumber, i] = 1  
+    if plotting == True:
+        if ax is None:
+            plt.figure()
+            ax = plt.axes()   
+        plt.imshow(loc_matrix, interpolation = 'none', aspect = 'auto')
+        ax.set_yticks([0,1,2,3,4,5,6,7,8])
+        ax.set_yticklabels(['field 1', 'field 2','field 3', 'field 4', 'field 5', 'field 6', 'field 7', 'field 8', 'field 9'])
+        plt.title('location model per time bin')
+        plt.xlabel('25ms per time bin')
+        plt.ylabel('field-neurons')
+             
+    return loc_matrix 
 
-
-####################################
-####### CONTINUOUS MODELS ##########
-####################################
-
-# Make a continous LOCATION model.
-def set_location_contin(walked_path, step_time, grid_size = 3, fire_radius = 0.25):
-    # import pdb; pdb.set_trace()
-    neuron_no = grid_size*grid_size
-    # build all possible coord combinations 
-    all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
-    
-    # code up the 2d location neurons. this is e.g. a 3x3 grid tiled with multivatiate
-    # gaussians that are centred around the grid locations.
-    neuron_functions = []
-    for coord in all_coords:
-        neuron_functions.append(multivariate_normal(coord, cov = fire_radius))
-    
-    # build the 'timecourse', assuming that one timestep is one value.
-    # first make the coords into numbers
-    fields_path = []
-    for elem in walked_path:
-        fields_path.append(mc.simulation.predictions.field_to_number(elem, grid_size))
-    
-    locs_over_time = np.repeat(fields_path, repeats = step_time)
-    # back to list and to coords
-    coords_over_time = list(locs_over_time)
-    for index, elem in enumerate(coords_over_time):
-        coords_over_time[index] = all_coords[elem]
-
-    # make the matrix
-    loc_matrix = np.empty([grid_size*grid_size,len(coords_over_time)])
-    loc_matrix[:] = np.nan
-    # and then simply fill the matrix with the respective functions
-    for timepoint, location in enumerate(coords_over_time):
-        for row in range(0, grid_size*grid_size):
-            loc_matrix[row, timepoint] = neuron_functions[row].pdf(location) # location has to be a coord
-        # don't hardcode the row. how to do that?
-    return loc_matrix
-        
-    
-# make a continuuous PHASE model.
-def set_phase_contin(walked_path, step_number, step_time, grid_size = 3, no_phase_neurons=3):
-    # import pdb; pdb.set_trace()
-    cumsumsteps = np.cumsum(step_number)
-    # total_steps = cumsumsteps[-1] 
-
-    #x = np.linspace(0, 1 ,1000)
-    neuron_functions = []
-    # Q: do I want to have the peaks at 0 and 1 or not?
-    # means_at = np.linspace(0, 1, (no_phase_neurons + 2))
-    # for div in means_at[1:-1]: 
-    means_at = np.linspace(0, 1, (no_phase_neurons))
-    for div in means_at: 
-        neuron_functions.append(norm(loc = div, scale = 1/no_phase_neurons/2)) 
-    # ok forget about the differently spaced phases rn. this is a bit annoying 
-    # with normal distributions > do I maybe prefer x^2 ? 
-    # if phases == 3:
-    #     # make this only the functions!!!
-    #     early = norm(loc = 0.125, scale = 0.05)
-    #     mid = 2*norm(loc = 0.5, scale = 0.1)
-    #     late = 1.5*norm(loc = 0.75, scale = 0.075)
-    #     neuron_functions = [early, mid, late]
-    # elif phases != 3:
-    #     means_at = np.linspace(0, 1, (phases + 2))
-        # for div in means_at[1:-1]:
-        #     neuron_functions.append(norm.pdf(x, loc = div, scale = 0.05))
-   
-    for count_paths, pathlength in enumerate(step_number):
-        # first step: divide into subpaths
-        if count_paths > 0:
-            curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
-        elif count_paths == 0:
-            curr_path = walked_path[1:cumsumsteps[count_paths]+1]
-        # second step: make location-timecourse
-        # build the 'timecourse', assuming that one timestep is one value.
-        # first make the coords into numbers
-        fields_path = []
-        for elem in curr_path:
-            fields_path.append(mc.simulation.predictions.field_to_number(elem, grid_size))
-        locs_over_time = np.repeat(fields_path, repeats = step_time)
-        # third step: fit subpaths into 0:1 trajectory
-        samplepoints = np.linspace(0, 1, len(locs_over_time))
-        # fourth step: make a subpath-matrix
-        phase_matrix_subpath = np.empty([len(neuron_functions), len(samplepoints)])
-        phase_matrix_subpath[:] = np.nan
-        # fifth step: activate the neurons for the respective timepoint
-        # read out the respective phase coding 
-        for timepoint, read_out_point in enumerate(samplepoints):
-            for row in range(0, len(neuron_functions)):
-                phase_matrix_subpath[row, timepoint] = neuron_functions[row].pdf(read_out_point)
-       
-        # sixth step: concatenate subpaths to one bigger matrix.
-        if count_paths == 0:
-            phase_model = phase_matrix_subpath.copy()
-        elif count_paths > 0:
-            phase_model = np.concatenate((phase_model,phase_matrix_subpath), axis = 1)           
-    return phase_model   
- 
-       
-# make a continuous MIDNIGHT model.      
-# idea:
-    # I will first compute the location matrix, and make 3 location neurons instead of one, but do this for subpaths separately
-    # then I will compute the phase matrix
-    # then I will multiply the respective location with the phase neurons (low will be nearly off, high will be on )  
-def set_midnight_contin(walked_path, step_number, step_time, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25):
-    # import pdb; pdb.set_trace()
-    cumsumsteps = np.cumsum(step_number)
-    # build all possible coord combinations 
-    all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
-    
-    # make the phase continuum
-    neuron_phase_functions = []
-    means_at = np.linspace(0, 1, (no_phase_neurons))
-    for div in means_at: 
-        neuron_phase_functions.append(norm(loc = div, scale = 1/no_phase_neurons/2)) 
-
-    # code up the 2d location neurons. this is e.g. a 3x3 grid tiled with multivatiate
-    # gaussians that are centred around the grid locations.
-    neuron_loc_functions = []
-    for coord in all_coords:
-        neuron_loc_functions.append(multivariate_normal(coord, cov = fire_radius))
-        
-    
-    # this time, do it per subpath.
-    for count_paths, pathlength in enumerate(step_number):
-        # first step: divide into subpaths
-        if count_paths > 0:
-            curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
-        elif count_paths == 0:
-            curr_path = walked_path[1:cumsumsteps[count_paths]+1]
-        
-        # second step: location model.
-        # build the 'timecourse', assuming that one timestep is one value.
-        # first make the coords into numbers
-        fields_path = []
-        for elem in curr_path:
-            fields_path.append(mc.simulation.predictions.field_to_number(elem, grid_size))
-        
-        locs_over_time = np.repeat(fields_path, repeats = step_time)
-        
-        # back to list and to coords for the location model 
-        coords_over_time = list(locs_over_time)
-        for index, elem in enumerate(coords_over_time):
-            coords_over_time[index] = all_coords[elem]
-    
-        # make the matrix
-        loc_matrix = np.empty([grid_size*grid_size,len(coords_over_time)])
-        loc_matrix[:] = np.nan
-        # and then simply fill the matrix with the respective functions
-        for timepoint, location in enumerate(coords_over_time):
-            for row in range(0, grid_size*grid_size):
-                loc_matrix[row, timepoint] = neuron_loc_functions[row].pdf(location) # location has to be a coord
-        
-        # third step: make phase neurons
-        # fit subpaths into 0:1 trajectory
-        samplepoints = np.linspace(0, 1, len(locs_over_time))
-        
-        # fourth step: make a subpath-matrix
-        phase_matrix_subpath = np.empty([len(neuron_phase_functions), len(samplepoints)])
-        phase_matrix_subpath[:] = np.nan
-        
-        # fifth step: activate the neurons for the respective timepoint
-        # read out the respective phase coding 
-        for timepoint, read_out_point in enumerate(samplepoints):
-            for row in range(0, len(neuron_phase_functions)):
-                phase_matrix_subpath[row, timepoint] = neuron_phase_functions[row].pdf(read_out_point)
-        
-        # sixth step: make location neurons phase sensitive.
-        # since the location neurons are also phase sensitive, and 
-        # I am assuming 3 neuron are encoding for phase, make each loc neuron 3
-        midnight_model_subpath = np.repeat(loc_matrix, repeats = no_phase_neurons, axis = 0)
-        # multiply three rows of the location matrix (1 location)
-        # with the phase_matrix_subpath, respectively
-        for location in range(0, len(midnight_model_subpath), no_phase_neurons):
-            midnight_model_subpath[location:location+no_phase_neurons] = midnight_model_subpath[location:location+no_phase_neurons] * phase_matrix_subpath
-        
-        # seventh: put subpaths together and concat into a bigger matrix.
-        if count_paths == 0:
-            midnight_model = midnight_model_subpath.copy()
-        elif count_paths > 0:
-            midnight_model = np.concatenate((midnight_model,midnight_model_subpath), axis = 1)    
-    
-    return midnight_model
-        
-
-# fuck it, I can probably do all continous models in one. LESSSE GOOOOO
-def set_continous_models(walked_path, step_number, step_time, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25):
-    # import pdb; pdb.set_trace()
-    
-    # build all possible coord combinations 
-    all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
-    # code up the 2d location neurons. this is e.g. a 3x3 grid tiled with multivatiate
-    # gaussians that are centred around the grid locations.
-    neuron_loc_functions = []
-    for coord in all_coords:
-        neuron_loc_functions.append(multivariate_normal(coord, cov = fire_radius))
-       
-    # make the phase continuum
-    neuron_phase_functions = []
-    means_at_phase = np.linspace(0, 1, (no_phase_neurons))
-    for div in means_at_phase: 
-        neuron_phase_functions.append(norm(loc = div, scale = 1/no_phase_neurons/2)) 
-
-    # make the state continuum
-    neuron_state_functions = []
-    means_at_state = np.linspace(0,(len(step_number)-1), (len(step_number)))
-    for div in means_at_state:
-        neuron_state_functions.append(norm(loc = div, scale = 1/len(step_number)/2))
-       
-    cumsumsteps = np.cumsum(step_number)
-    # this time, do it per subpath.
-    for count_paths, pathlength in enumerate(step_number):
-        # first step: divide into subpaths
-        if count_paths > 0:
-            curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
-        elif count_paths == 0:
-            curr_path = walked_path[1:cumsumsteps[count_paths]+1]
-        
-        
-        # second step: location model.
-        # build the 'timecourse', assuming that one timestep is one value.
-        # first make the coords into numbers
-        fields_path = []
-        for elem in curr_path:
-            fields_path.append(mc.simulation.predictions.field_to_number(elem, grid_size))
-        locs_over_time = np.repeat(fields_path, repeats = step_time)
-        # back to list and to coords for the location model 
-        coords_over_time = list(locs_over_time)
-        for index, elem in enumerate(coords_over_time):
-            coords_over_time[index] = all_coords[elem]
-        # make the location matrix
-        loc_matrix = np.empty([grid_size*grid_size,len(coords_over_time)])
-        loc_matrix[:] = np.nan
-        # and then simply fill the matrix with the respective functions
-        for timepoint, location in enumerate(coords_over_time):
-            for row in range(0, grid_size*grid_size):
-                loc_matrix[row, timepoint] = neuron_loc_functions[row].pdf(location) # location has to be a coord
- 
-        # third: create the state matrix.
-        state_matrix = np.empty([len(neuron_state_functions), len(locs_over_time)])
-        state_matrix[:] = np.nan
-        # only consider the 1/no_states*count_paths+1 part of the functions
-        # then sample by timepoint
-        for row in range(0, len(neuron_state_functions)):
-            state_matrix[row] = neuron_state_functions[row].pdf(count_paths)
-        
-        # fourth step: make phase neurons
-        # fit subpaths into 0:1 trajectory
-        samplepoints = np.linspace(0, 1, len(locs_over_time))
-        phase_matrix_subpath = np.empty([len(neuron_phase_functions), len(samplepoints)])
-        phase_matrix_subpath[:] = np.nan
-        # read out the respective phase coding 
-        for timepoint, read_out_point in enumerate(samplepoints):
-            for row in range(0, len(neuron_phase_functions)):
-                phase_matrix_subpath[row, timepoint] = neuron_phase_functions[row].pdf(read_out_point)
-
-        # fifth step: midnight. = make location neurons phase sensitive.
-        midnight_model_subpath = np.repeat(loc_matrix, repeats = no_phase_neurons, axis = 0)
-        # multiply three rows of the location matrix (1 location)
-        # with the phase_matrix_subpath, respectively
-        for location in range(0, len(midnight_model_subpath), no_phase_neurons):
-            midnight_model_subpath[location:location+no_phase_neurons] = midnight_model_subpath[location:location+no_phase_neurons] * phase_matrix_subpath
-        
-        # sixth. make the clock model. 
-        # solving 2 (see below): make the neurons within the clock.
-        # phase state neurons.
-        phase_state_subpath = np.repeat(state_matrix, repeats = len(phase_matrix_subpath), axis = 0)
-        for phase in range(0, len(phase_state_subpath), len(phase_matrix_subpath)):
-            phase_state_subpath[phase: phase+len(phase_matrix_subpath)] = phase_matrix_subpath * phase_state_subpath[phase: phase+len(phase_matrix_subpath)]
-        
-        # last step: put subpaths together and concat into a bigger matrix.
-        if count_paths == 0:
-            midn_model = midnight_model_subpath.copy()
-            phas_model = phase_matrix_subpath.copy()
-            loc_model = loc_matrix.copy()
-            stat_model = state_matrix.copy()
-            phas_stat = phase_state_subpath.copy()
-        elif count_paths > 0:
-            midn_model = np.concatenate((midn_model,midnight_model_subpath), axis = 1)
-            phas_model = np.concatenate((phas_model, phase_matrix_subpath), axis = 1)
-            loc_model = np.concatenate((loc_model, loc_matrix), axis = 1)
-            stat_model = np.concatenate((stat_model, state_matrix), axis = 1)
-            phas_stat = np.concatenate((phas_stat, phase_state_subpath), axis = 1)
-
-    clo_model = 1
-    # I believe that I have to make the clocks model after looping through the subpaths.
-    # but I am not sure yet.
-    # I do have both elements: phase*state sensitive neurons for the ring-attracktors of the clock,
-    # and midnight neurons that tell me when a clock was activated.
-    # with my other clocks model, I always popped the phase*state neurons in the clocks if it was
-    # sufficiently activated.
-    # I am wondering if there isn't a more elegant solution, since I can now sample the 
-    # neurons from anywhere. 
-    # TO BE CONTINUED: how do I allow for the shifting around???
-    
-        #to the continous midnight model, I need to add neurons that keep tracking phase and state.
-        # this comes with a few decisions.
-        # 1. do I activate a clock for a certain threshold or does the activity in which the 
-            # rest of the neurons fire depend on how strong the midnight neuron was activated?
-            # option 1 would be more descrete
-            # option 2 would be a bit like a shooting star, where the clocks are the afterglow
-            # of the initial activation.
-        # 2. I have to make the phase model neurons state-dependent. 
-            # this should be easy. I can probably just create something similar to the locations function
-            # and then multiply the subpaths with this matrix. 
-        # 3. put it all together. I can even take the midnight model, and squeeze the state-dependent neurons
-            # in the middle. this can again be 12 - make it dependent on no_rewards and no_phases. 
- 
-    return loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat
-
-
-
-# ephys validation model
-# this is based on 360 timebins > 1 state is 90 bins, 1 phase is 30 bins.
-# the steps are given in numbers, not coordinates.
 
 # important: fields need to be between 0 and 8!
 def set_location_ephys(walked_path, reward_fields, grid_size = 3, plotting = False, ax=None):
@@ -1385,47 +1643,16 @@ def set_location_ephys(walked_path, reward_fields, grid_size = 3, plotting = Fal
             ax.add_patch(r)
     return loc_matrix
 
-# MODEL EPHYS RAW DATA 
-def set_location_raw_ephys(walked_path, step_time, grid_size = 3, plotting = False, field_no_given = None, ax = None):
-    # import pdb; pdb.set_trace()  
-    n_rows = grid_size*grid_size
-    n_columns = len(walked_path)
-    loc_matrix = np.empty([n_rows,n_columns]) # fields times steps
-    loc_matrix[:] = np.nan
-    total_steps = len(walked_path)
-    for i in range(0, total_steps):
-        if field_no_given is None:
-            curr_field = walked_path[i+1] # cut the first field because this is the reward field
-            x = curr_field[0]
-            y = curr_field[1]
-            fieldnumber = x + y* grid_size
-        else:
-            fieldnumber = walked_path[i]
-        # test if this has already been activated!
-        if loc_matrix[fieldnumber, i] == 0:
-            # if so, then don't overwrite it.
-            loc_matrix[fieldnumber, i] = 1
-        else:   
-            loc_matrix[fieldnumber, :] = 0
-            loc_matrix[fieldnumber, i] = 1  
-    if plotting == True:
-        if ax is None:
-            plt.figure()
-            ax = plt.axes()   
-        plt.imshow(loc_matrix, interpolation = 'none', aspect = 'auto')
-        ax.set_yticks([0,1,2,3,4,5,6,7,8])
-        ax.set_yticklabels(['field 1', 'field 2','field 3', 'field 4', 'field 5', 'field 6', 'field 7', 'field 8', 'field 9'])
-        plt.title('location model per time bin')
-        plt.xlabel('25ms per time bin')
-        plt.ylabel('field-neurons')
 
-                
-    return loc_matrix 
 
+
+################################
+####### PLOTTING ###############
+################################
     
 #
 #
-# PART 2: PLOTTING
+# PART 4: PLOTTING
 # create functions to plot the matrices
 
 def plot_without_legends(any_matrix, titlestring = None, prediction = None,  hrf = None, grid_size = None, step_time = None, reward_no = None, perms = None, intervalline = None):
@@ -1598,100 +1825,9 @@ def plot_neurons(data):
     
 
 
-#################### PART 3 ##################
-#############################################
-##### Playing around with the matrices. #####
-##############################################
 
-
-# loop function to create an average prediction.
-def many_configs_loop(loop_no, which_matrix):
-    # import pdb; pdb.set_trace()
-    if which_matrix != 'clocks' and which_matrix != 'location':
-        raise TypeError("Please enter 'location' or 'clocks' to create the correct matrix")   
-    for loop in range(loop_no):
-        reward_coords = mc.simulation.grid.create_grid()
-        reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords)
-        if which_matrix == 'location':
-            temp_matrix, total_steps = mc.simulation.predictions.set_location_matrix(reshaped_visited_fields, all_stepnums, 3, 3) 
-        elif which_matrix == 'clocks':
-            temp_matrix, total_steps  = mc.simulation.predictions.set_clocks(reshaped_visited_fields, all_stepnums, 3)
-        if loop < 1:
-            sum_matrix = temp_matrix[:]
-        else:
-            sum_matrix = np.nansum(np.dstack((sum_matrix[:],temp_matrix[:])),2)
-    average_matrix = sum_matrix[:]/loop_no
-    return average_matrix
-
-
-
-
-def create_regressors_per_state_phase_ephys(walked_path, subpath_timings, step_no, grid_size = 3, phases=3, plotting = False, field_no_given = None, ax = None):
-    # import pdb; pdb.set_trace()
-    n_states = len(step_no)
-    regressors = np.zeros([phases*n_states,len(walked_path)])
-    cols_to_fill_previous = 0
-    for count_paths, (pathlength) in enumerate(step_no):
-        # identify subpaths and create single-clock matrices.
-        curr_path = walked_path[subpath_timings[count_paths]:subpath_timings[count_paths+1]]
-        cols_to_fill = len(curr_path)
-        # create a string that tells me how many columns are one phase clock
-        # this is where I make the assumption of how long every phase actually takes, if not splittable evenly.
-        # i.e. > phase is NOT linked to steps taken, but to TIME
-        time_per_phase_in_clock = ([cols_to_fill // phases + (1 if x < cols_to_fill % phases else 0) for x in range (phases)])
-        time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
-        for phase in range(0, phases):
-            if phase == 0:
-                regressors[phase+(count_paths*phases), cols_to_fill_previous+ 0: cols_to_fill_previous+ time_per_phase_in_clock_cum[phase]] = 1
-            elif phase == 1:
-                regressors[phase+(count_paths*phases), cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 1
-            elif phase == 2:
-                regressors[phase+(count_paths*phases), cols_to_fill_previous + time_per_phase_in_clock_cum[phase-1]: cols_to_fill_previous + time_per_phase_in_clock_cum[phase]] = 1
-                
-        cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
-    return regressors
-
-
-def transform_data_to_betas(data_matrix, regressors, intercept = False):
-    # import pdb; pdb.set_trace()
-    # careful! I now don't include an intercept by default.
-    # this is because the way I use it, the regressors would be a linear combination of the intercept ([11111] vector)
-    beta_matrix = np.zeros((len(data_matrix), len(regressors)))
-    # first check if there are any nans in the data, and if so, replace with 0
-    data_matrix = np.nan_to_num(data_matrix)
-    if intercept == False:
-        for index, row in enumerate(data_matrix): 
-            beta_matrix[index] = LinearRegression(fit_intercept=False).fit(np.transpose(regressors), row).coef_
-    elif intercept == True:
-        for index, row in enumerate(data_matrix): 
-            beta_matrix[index] = LinearRegression().fit(np.transpose(regressors), row).coef_         
-    return beta_matrix
 
 #############
-
-
-    
-################
-
-# CONTINUOUS MODELS
-
-# # I am not using this for now. 
-# # define gaussian distribution of clock-tuning:
-    
-# x = np.linspace(-1,2,100)
-# def early(x):
-#     return scipy.stats.norm.pdf(x, 1/6, 1/12)
-
-# def mid(x):
-#     return scipy.stats.norm.pdf(x, 3/6, 1/12)
-
-# def late(x):
-#     return scipy.stats.norm.pdf(x, 5/6, 1/12)
-# # define x exemplarily as x = np.linspace(-1,2,100)
-# # to plot, do plt.figure(); plt.plot(x, early); plt.plot(x, mid);plt.plot(x, late);  
-# plt.figure(); plt.plot(x, early); plt.plot(x, mid);plt.plot(x, late);  
-
-
 
 
 

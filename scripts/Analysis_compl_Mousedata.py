@@ -136,6 +136,11 @@ for session in range(0, h_no_task_configs):
 # the _playground version of this is to play around with different possibilities of output and to understand the data.
 #results_reg_acro_mouse_a, scipy_reg_acro_mouse_a, coefficients_acro_mouse_a, = mc.simulation.single_sub_ephys.reg_across_tasks_playground(a_rewards_configs, a_locations, a_neurons, a_timings, mouse_recday = 'me11_05122021_06122021')
 
+contrast_matrix = ((1,0,0,0), (0,1,0,0), (0,0,1,0), (0,0,0,1), (1,-1,0,0), (1, 0,-1,0), (1,0,0,-1), (0,1,-1,0), (0,1,0,-1), (0,0,1,-1))
+regression_mouse_a,  contrasts_mouse_a = mc.simulation.single_sub_ephys.reg_per_task_config(a_rewards_configs, a_locations, a_neurons, a_timings, contrast_matrix)
+
+
+
 
 a_reg_result_dict = mc.simulation.single_sub_ephys.reg_across_tasks(a_rewards_configs, a_locations, a_neurons, a_timings, mouse_recday = 'me11_05122021_06122021', plotting = False)
 b_reg_result_dict = mc.simulation.single_sub_ephys.reg_across_tasks(b_rewards_configs, b_locations, b_neurons, b_timings, mouse_recday = 'me11_01122021_02122021', plotting = False)
@@ -164,8 +169,6 @@ h_reg_result_dict = mc.simulation.single_sub_ephys.reg_across_tasks(h_rewards_co
 
 
 
-# contrast_matrix = ((1,0,0,0), (0,1,0,0), (0,0,1,0), (0,0,0,1), (1,-1,0,0), (1, 0,-1,0), (1,0,0,-1), (0,1,-1,0), (0,1,0,-1), (0,0,1,-1))
-# regression_mouse_a,  contrasts_mouse_a = mc.simulation.single_sub_ephys.reg_per_task_config(a_rewards_configs, a_locations, a_neurons, a_timings, contrast_matrix)
 # # now generate the average beta value for each model
 # mean_beta_clocks_a = list()
 # mean_beta_midnight_a = list()

@@ -3,7 +3,12 @@
 """
 Created on Wed Apr 26 10:10:30 2023
 
-this module can be called to prepare raw ephys data and then runs the single-subject linear regression.
+this module can be called to prepare raw ephys data as well as to do any analysis with the ephzs data.
+Currently, the first function prepares the data and runs a regression of my models onto the data, 
+separetly for one task [reg_per_task_config]
+The second function [reg_across_tasks_playground] does a similar thing, but for all task configs of 
+one mouse recording. It also includes a bit of playing around with stuff.
+
 
 @author: Svenja Küchenhoff
 """
@@ -14,8 +19,8 @@ import mc
 from matplotlib import pyplot as plt
 import scipy
 
-def reg_per_task_config(task_configs, locations_all, neurons, timings_all, contrast_m):
-    # import pdb; pdb.set_trace()
+def reg_per_task_config(task_configs, locations_all, neurons, timings_all, contrast_m, continuous = False):
+    import pdb; pdb.set_trace()
     # mouse a
     contrast_m = np.array(contrast_m)
     coefficient = list()
@@ -82,10 +87,13 @@ def reg_per_task_config(task_configs, locations_all, neurons, timings_all, contr
                 elif field != trajectory[field_no-1]:
                     index_make_step.append(field_no)
                     
-                    
-            location_model = mc.simulation.predictions.set_location_raw_ephys(trajectory, step_time = 1, grid_size=3, plotting = False, field_no_given= 1)
-            midnight_model, clocks_model, midnight_two = mc.simulation.predictions.set_clocks_raw_ephys(trajectory, timings_curr_run, index_make_step, step_number, field_no_given= 1, plotting=False)
-            phase_model = mc.simulation.predictions.set_phase_model_ephys(trajectory, timings_curr_run, index_make_step, step_number)
+            
+            if continuous == True:
+                location_model, phase_model, state_model, midnight_model, clocks_model, phase_state_model = mc.simulation.predictions.set_continous_models_ephys(trajectory, timings_curr_run, index_make_step, step_number)
+            else:
+                location_model = mc.simulation.predictions.set_location_raw_ephys(trajectory, step_time = 1, grid_size=3, plotting = False, field_no_given= 1)
+                midnight_model, clocks_model, midnight_two = mc.simulation.predictions.set_clocks_raw_ephys(trajectory, timings_curr_run, index_make_step, step_number, field_no_given= 1, plotting=False)
+                phase_model = mc.simulation.predictions.set_phase_model_ephys(trajectory, timings_curr_run, index_make_step, step_number)
 
 
             # now create the model RDMs
