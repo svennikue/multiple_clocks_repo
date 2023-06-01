@@ -745,8 +745,8 @@ def set_location_matrix(walked_path, step_number, phases, size_grid = 3):
 # 3.1 continuous models: all
 # fuck it, I can probably do all continous models in one. LESSSE GOOOOO
 def set_continous_models(walked_path, step_number, step_time, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25):
-    # import pdb; pdb.set_trace()
-    
+    #import pdb; pdb.set_trace()
+
     # build all possible coord combinations 
     all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
     # code up the 2d location neurons. this is e.g. a 3x3 grid tiled with multivatiate
@@ -754,19 +754,48 @@ def set_continous_models(walked_path, step_number, step_time, grid_size = 3, no_
     neuron_loc_functions = []
     for coord in all_coords:
         neuron_loc_functions.append(multivariate_normal(coord, cov = fire_radius))
-       
+     
+        
     # make the phase continuum
+    # set the phases such that the mean is between 0 and 1/no_phase_neurons; 1/no_phase_neurons and 2/no_phase_neurons,
+    # and 2/no_phase_neurons and 1.
     neuron_phase_functions = []
-    means_at_phase = np.linspace(0, 1, (no_phase_neurons))
+    #means_at_phase = np.linspace(0, 1, (no_phase_neurons))
+    means_at_phase = np.linspace(0, 1, (no_phase_neurons*2)+1)
+    means_at_phase = means_at_phase[1::2].copy()
     for div in means_at_phase: 
         neuron_phase_functions.append(norm(loc = div, scale = 1/no_phase_neurons/2)) 
 
     # make the state continuum
+    # this has to have a lot more overlap.
+    # neuron_state_functions = []
+    # means_at_state = np.linspace(0,(len(step_number)-1), (len(step_number)))
+    # for div in means_at_state:
+    #     neuron_state_functions.append(norm(loc = div, scale = 1/len(step_number)/2))
+    
     neuron_state_functions = []
+    
+    # NEEE DAS IST AUCH KACKE. HOW DO I GET THE PHASES TO CODE FOR THE ACTUAL PHASE??
+    # make means at 0.5, 1.5, 2.5, 3.5????
     means_at_state = np.linspace(0,(len(step_number)-1), (len(step_number)))
+    #means_at_state = np.linspace(0,(len(step_number)-1)+((len(step_number)-1)*0.2), (len(step_number)))
     for div in means_at_state:
-        neuron_state_functions.append(norm(loc = div, scale = 1/len(step_number)/2))
-       
+        neuron_state_functions.append(norm(loc = div, scale = (1/len(step_number))/2))
+    
+    x = np.linspace(0, max(means_at_state),1000)
+    # # for neuron in neuron_phase_functions:
+    plt.figure(); 
+    for neuron in neuron_state_functions:
+        plt.plot(x, neuron.pdf(x))
+            
+    # to plot the neural functions per model
+    x = np.linspace(0, 3 ,1000)
+    # for neuron in neuron_phase_functions:
+    plt.figure(); 
+    for neuron in neuron_phase_functions:
+        plt.plot(x, neuron.pdf(x))
+    
+    
     cumsumsteps = np.cumsum(step_number)
     # this time, do it per subpath.
     for count_paths, pathlength in enumerate(step_number):
@@ -794,16 +823,9 @@ def set_continous_models(walked_path, step_number, step_time, grid_size = 3, no_
         for timepoint, location in enumerate(coords_over_time):
             for row in range(0, grid_size*grid_size):
                 loc_matrix[row, timepoint] = neuron_loc_functions[row].pdf(location) # location has to be a coord
- 
-        # third: create the state matrix.
-        state_matrix = np.empty([len(neuron_state_functions), len(locs_over_time)])
-        state_matrix[:] = np.nan
-        # only consider the 1/no_states*count_paths+1 part of the functions
-        # then sample by timepoint
-        for row in range(0, len(neuron_state_functions)):
-            state_matrix[row] = neuron_state_functions[row].pdf(count_paths)
+            
         
-        # fourth step: make phase neurons
+        # thrid step: make phase neurons
         # fit subpaths into 0:1 trajectory
         samplepoints = np.linspace(0, 1, len(locs_over_time))
         phase_matrix_subpath = np.empty([len(neuron_phase_functions), len(samplepoints)])
@@ -813,6 +835,28 @@ def set_continous_models(walked_path, step_number, step_time, grid_size = 3, no_
             for row in range(0, len(neuron_phase_functions)):
                 phase_matrix_subpath[row, timepoint] = neuron_phase_functions[row].pdf(read_out_point)
 
+
+        # fourth: create the state matrix.
+        state_subpath = np.empty([len(neuron_state_functions), len(locs_over_time)])
+        state_subpath[:] = np.nan
+        # only consider the 1/no_states*count_paths+1 part of the functions
+        # then sample by timepoint
+        # ADJUST THIS!!! DON'T SAMPLE PER ROW. SAMPLE PER SECOND AS WELL!!
+        for row in range(0, len(neuron_state_functions)):
+            state_subpath[row] = neuron_state_functions[row].pdf(count_paths)
+        
+        # # CAREFUL! ADJUST THAT I ONLY SAMPLE THE SUBPATHS!! THIS DOESNT WORKU YET!
+        # # more precisely sampled state matrix
+        # state_subpath = np.empty([len(neuron_state_functions), len(samplepoints)])
+        # state_subpath[:] = np.nan
+        # # only consider the 1/no_states*count_paths+1 part of the functions
+        # # then sample by timepoint
+        # # ADJUST THIS!!! DON'T SAMPLE PER ROW. SAMPLE PER SECOND AS WELL!!
+        # for timepoint, read_out_point in enumerate(samplepoints):
+        #     for row in range(0, len(neuron_state_functions)):
+        #         state_subpath[row, timepoint]= neuron_state_functions[row].pdf(read_out_point+count_paths)
+        # all of this looks back. go back to what I had at the beginning.       
+                
         # fifth step: midnight. = make location neurons phase sensitive.
         midnight_model_subpath = np.repeat(loc_matrix, repeats = no_phase_neurons, axis = 0)
         # multiply three rows of the location matrix (1 location)
@@ -822,8 +866,9 @@ def set_continous_models(walked_path, step_number, step_time, grid_size = 3, no_
         
         # sixth. make the clock model. 
         # solving 2 (see below): make the neurons within the clock.
+        
         # phase state neurons.
-        phase_state_subpath = np.repeat(state_matrix, repeats = len(phase_matrix_subpath), axis = 0)
+        phase_state_subpath = np.repeat(state_subpath, repeats = len(phase_matrix_subpath), axis = 0)
         for phase in range(0, len(phase_state_subpath), len(phase_matrix_subpath)):
             phase_state_subpath[phase: phase+len(phase_matrix_subpath)] = phase_matrix_subpath * phase_state_subpath[phase: phase+len(phase_matrix_subpath)]
         
@@ -832,14 +877,14 @@ def set_continous_models(walked_path, step_number, step_time, grid_size = 3, no_
             midn_model = midnight_model_subpath.copy()
             phas_model = phase_matrix_subpath.copy()
             loc_model = loc_matrix.copy()
-            stat_model = state_matrix.copy()
             phas_stat = phase_state_subpath.copy()
+            stat_model = state_subpath.copy()
         elif count_paths > 0:
             midn_model = np.concatenate((midn_model,midnight_model_subpath), axis = 1)
             phas_model = np.concatenate((phas_model, phase_matrix_subpath), axis = 1)
             loc_model = np.concatenate((loc_model, loc_matrix), axis = 1)
-            stat_model = np.concatenate((stat_model, state_matrix), axis = 1)
             phas_stat = np.concatenate((phas_stat, phase_state_subpath), axis = 1)
+            stat_model = np.concatenate((stat_model, state_subpath), axis = 1)
                        
     # ok I'll try something.
     # this might not be the best way to solve this
@@ -870,13 +915,24 @@ def set_continous_models(walked_path, step_number, step_time, grid_size = 3, no_
       # now loop through the already filled columns (every 12th one) and fill the clocks if activated.
     for row in range(0, len(norm_midn)):
         local_maxima = argrelextrema(norm_midn[row,:], np.greater_equal, order = 5, mode = 'wrap')
-        for activation_neuron in local_maxima[0]:
+        # delete if the local maxima are neighbouring
+        local_maxima = local_maxima[0].copy()
+        for index, maxima in enumerate(local_maxima):
+            if maxima == local_maxima[index-1]+1:
+                # print(maxima, index)
+                local_maxima = np.delete(local_maxima, index)
+            
+        for activation_neuron in local_maxima:
             # shift the clock around so that the activation neuron comes first
-            shifted_clock = np.roll(norm_phas_stat, activation_neuron*-1, axis = 0)
+            # DOES THIS HAVE TO BE *-1 or just activation neuron???
+            # CHECK!!!
+            shifted_clock = np.roll(norm_phas_stat, activation_neuron, axis = 1)
             # adjust the firing strength according to the local maxima
             firing_factor = norm_midn[row, activation_neuron].copy()
             #firing_factor = norm_midn[row,activation_neuron]/ max_firing
             shifted_adjusted_clock = shifted_clock.copy()*firing_factor
+            # delete row 0 bc I already have it from the midnight ones
+            shifted_adjusted_clock[0] = 0
             # then add the values to the existing clocks.
             # Q: IS THIS WAY OF DEALING WIHT DOUBLE ACTIVATION OK???
             clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()
@@ -892,7 +948,7 @@ def set_continous_models(walked_path, step_number, step_time, grid_size = 3, no_
     # then I will compute the phase matrix
     # then I will multiply the respective location with the phase neurons (low will be nearly off, high will be on )  
 def set_midnight_contin(walked_path, step_number, step_time, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25):
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     cumsumsteps = np.cumsum(step_number)
     # build all possible coord combinations 
     all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
@@ -1090,7 +1146,7 @@ def set_location_contin(walked_path, step_time, grid_size = 3, fire_radius = 0.2
 # ok now I need the same thing but for my ephys stuff.
 def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_number,  grid_size = 3, no_phase_neurons=3, fire_radius = 0.25):
     # import pdb; pdb.set_trace()
-    
+
     # build all possible coord combinations 
     all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
     # code up the 2d location neurons. this is e.g. a 3x3 grid tiled with multivatiate
@@ -1098,12 +1154,23 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
     neuron_loc_functions = []
     for coord in all_coords:
         neuron_loc_functions.append(multivariate_normal(coord, cov = fire_radius))
-       
+    
+        
     # make the phase continuum
+    # set the phases such that the mean is between 0 and 1/no_phase_neurons; 1/no_phase_neurons and 2/no_phase_neurons,
+    # and 2/no_phase_neurons and 1.
     neuron_phase_functions = []
-    means_at_phase = np.linspace(0, 1, (no_phase_neurons))
+    #means_at_phase = np.linspace(0, 1, (no_phase_neurons))
+    means_at_phase = np.linspace(0, 1, (no_phase_neurons*2)+1)
+    means_at_phase = means_at_phase[1::2].copy()
     for div in means_at_phase: 
         neuron_phase_functions.append(norm(loc = div, scale = 1/no_phase_neurons/2)) 
+        
+    # # make the phase continuum
+    # neuron_phase_functions = []
+    # means_at_phase = np.linspace(0, 1, (no_phase_neurons))
+    # for div in means_at_phase: 
+    #     neuron_phase_functions.append(norm(loc = div, scale = 1/no_phase_neurons/2)) 
 
     # make the state continuum
     neuron_state_functions = []
@@ -1111,26 +1178,29 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
     for div in means_at_state:
         neuron_state_functions.append(norm(loc = div, scale = 1/len(step_number)/2))
        
-    cumsumsteps = np.cumsum(step_number)
+    # cumsumsteps = np.cumsum(step_number)
     # this time, do it per subpath.
     for count_paths, pathlength in enumerate(step_number):
         # first step: divide into subpaths
-        if count_paths > 0:
-            curr_path = walked_path[cumsumsteps[count_paths-1]+1:(cumsumsteps[count_paths]+1)]
-        elif count_paths == 0:
-            curr_path = walked_path[1:cumsumsteps[count_paths]+1]
-           
+        curr_path = walked_path[subpath_timings[count_paths]:subpath_timings[count_paths+1]]
+
+
+
         # second step: location model.
         # build the 'timecourse', assuming that one timestep is one value.
         # first make the coords into numbers
-        fields_path = []
-        for elem in curr_path:
-            fields_path.append(mc.simulation.predictions.field_to_number(elem, grid_size))
-        locs_over_time = np.repeat(fields_path, repeats = step_time)
+        # fields_path = []
+        # for elem in curr_path:
+        #     fields_path.append(mc.simulation.predictions.field_to_number(elem, grid_size))
+        # locs_over_time = np.repeat(fields_path, repeats = step_time)
+        
+        # this is curr_path > i have it inly in numbers, not coords
+        
         # back to list and to coords for the location model 
-        coords_over_time = list(locs_over_time)
+        coords_over_time = list(curr_path)
         for index, elem in enumerate(coords_over_time):
             coords_over_time[index] = all_coords[elem]
+     
         # make the location matrix
         loc_matrix = np.empty([grid_size*grid_size,len(coords_over_time)])
         loc_matrix[:] = np.nan
@@ -1140,7 +1210,7 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
                 loc_matrix[row, timepoint] = neuron_loc_functions[row].pdf(location) # location has to be a coord
  
         # third: create the state matrix.
-        state_matrix = np.empty([len(neuron_state_functions), len(locs_over_time)])
+        state_matrix = np.empty([len(neuron_state_functions), len(curr_path)])
         state_matrix[:] = np.nan
         # only consider the 1/no_states*count_paths+1 part of the functions
         # then sample by timepoint
@@ -1149,7 +1219,7 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
         
         # fourth step: make phase neurons
         # fit subpaths into 0:1 trajectory
-        samplepoints = np.linspace(0, 1, len(locs_over_time))
+        samplepoints = np.linspace(0, 1, len(curr_path))
         phase_matrix_subpath = np.empty([len(neuron_phase_functions), len(samplepoints)])
         phase_matrix_subpath[:] = np.nan
         # read out the respective phase coding 
@@ -1214,9 +1284,16 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
       # now loop through the already filled columns (every 12th one) and fill the clocks if activated.
     for row in range(0, len(norm_midn)):
         local_maxima = argrelextrema(norm_midn[row,:], np.greater_equal, order = 5, mode = 'wrap')
-        for activation_neuron in local_maxima[0]:
+        # delete if the local maxima are neighbouring
+        local_maxima = local_maxima[0].copy()
+        for index, maxima in enumerate(local_maxima):
+            if maxima == local_maxima[index-1]+1:
+                # print(maxima, index)
+                local_maxima = np.delete(local_maxima, index)
+                
+        for activation_neuron in local_maxima:
             # shift the clock around so that the activation neuron comes first
-            shifted_clock = np.roll(norm_phas_stat, activation_neuron*-1, axis = 0)
+            shifted_clock = np.roll(norm_phas_stat, activation_neuron, axis = 1)
             # adjust the firing strength according to the local maxima
             firing_factor = norm_midn[row, activation_neuron].copy()
             #firing_factor = norm_midn[row,activation_neuron]/ max_firing

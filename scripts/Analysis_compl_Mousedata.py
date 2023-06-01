@@ -137,19 +137,21 @@ for session in range(0, h_no_task_configs):
 #results_reg_acro_mouse_a, scipy_reg_acro_mouse_a, coefficients_acro_mouse_a, = mc.simulation.single_sub_ephys.reg_across_tasks_playground(a_rewards_configs, a_locations, a_neurons, a_timings, mouse_recday = 'me11_05122021_06122021')
 
 contrast_matrix = ((1,0,0,0), (0,1,0,0), (0,0,1,0), (0,0,0,1), (1,-1,0,0), (1, 0,-1,0), (1,0,0,-1), (0,1,-1,0), (0,1,0,-1), (0,0,1,-1))
-regression_mouse_a,  contrasts_mouse_a = mc.simulation.single_sub_ephys.reg_per_task_config(a_rewards_configs, a_locations, a_neurons, a_timings, contrast_matrix)
+regression_mouse_a,  contrasts_mouse_a = mc.simulation.analyse_ephys.reg_per_task_config(a_rewards_configs, a_locations, a_neurons, a_timings, contrast_matrix, continuous = True)
+regression_mouse_b,  contrasts_mouse_b = mc.simulation.analyse_ephys.reg_per_task_config(b_rewards_configs, b_locations, b_neurons, b_timings, contrast_matrix, continuous = True)
 
 
 
+a_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(a_rewards_configs, a_locations, a_neurons, a_timings, mouse_recday = 'me11_05122021_06122021', plotting = True, continuous = True)
 
-a_reg_result_dict = mc.simulation.single_sub_ephys.reg_across_tasks(a_rewards_configs, a_locations, a_neurons, a_timings, mouse_recday = 'me11_05122021_06122021', plotting = False)
-b_reg_result_dict = mc.simulation.single_sub_ephys.reg_across_tasks(b_rewards_configs, b_locations, b_neurons, b_timings, mouse_recday = 'me11_01122021_02122021', plotting = False)
-c_reg_result_dict = mc.simulation.single_sub_ephys.reg_across_tasks(c_rewards_configs, c_locations, c_neurons, c_timings, mouse_recday = 'me10_09122021_10122021', plotting = False)
-d_reg_result_dict = mc.simulation.single_sub_ephys.reg_across_tasks(d_rewards_configs, d_locations, d_neurons, d_timings, mouse_recday = 'me08_10092021_11092021', plotting = False)
-e_reg_result_dict = mc.simulation.single_sub_ephys.reg_across_tasks(e_rewards_configs, e_locations, e_neurons, e_timings, mouse_recday = 'ah04_09122021_10122021', plotting = False)
-f_reg_result_dict = mc.simulation.single_sub_ephys.reg_across_tasks(f_rewards_configs, f_locations, f_neurons, f_timings, mouse_recday = 'ah04_05122021_06122021', plotting = False)
-g_reg_result_dict = mc.simulation.single_sub_ephys.reg_across_tasks(g_rewards_configs, g_locations, g_neurons, g_timings, mouse_recday = 'ah04_01122021_02122021', plotting = False)
-h_reg_result_dict = mc.simulation.single_sub_ephys.reg_across_tasks(h_rewards_configs, h_locations, h_neurons, h_timings, mouse_recday = 'ah03_18082021_19082021', plotting = False)
+a_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(a_rewards_configs, a_locations, a_neurons, a_timings, mouse_recday = 'me11_05122021_06122021', plotting = False, continuous = True)
+b_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(b_rewards_configs, b_locations, b_neurons, b_timings, mouse_recday = 'me11_01122021_02122021', plotting = True, continuous = True)
+c_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(c_rewards_configs, c_locations, c_neurons, c_timings, mouse_recday = 'me10_09122021_10122021', plotting = False, continuous = True)
+d_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(d_rewards_configs, d_locations, d_neurons, d_timings, mouse_recday = 'me08_10092021_11092021', plotting = False, continuous = True)
+e_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(e_rewards_configs, e_locations, e_neurons, e_timings, mouse_recday = 'ah04_09122021_10122021', plotting = False, continuous = True)
+f_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(f_rewards_configs, f_locations, f_neurons, f_timings, mouse_recday = 'ah04_05122021_06122021', plotting = False, continuous = True)
+g_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(g_rewards_configs, g_locations, g_neurons, g_timings, mouse_recday = 'ah04_01122021_02122021', plotting = False, continuous = True)
+h_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(h_rewards_configs, h_locations, h_neurons, h_timings, mouse_recday = 'ah03_18082021_19082021', plotting = False, continuous = True)
 
 
 # results_reg_acro_mouse_b, scipy_reg_acro_mouse_b, coefficients_acro_mouse_b, averaged_reg_results = mc.simulation.single_sub_ephys.reg_across_tasks(b_rewards_configs, b_locations, b_neurons, b_timings, mouse_recday = 'me11_01122021_02122021')
@@ -169,20 +171,32 @@ h_reg_result_dict = mc.simulation.single_sub_ephys.reg_across_tasks(h_rewards_co
 
 
 
-# # now generate the average beta value for each model
-# mean_beta_clocks_a = list()
-# mean_beta_midnight_a = list()
-# mean_beta_locations_a = list()
-# mean_beta_phase_a = list()
-# mean_contrasts_mouse_a = np.zeros((len(contrast_matrix), len(regression_mouse_a)))
-# for task_no, betas in enumerate(regression_mouse_a):
-#     mean_beta_clocks_a.append(np.mean(betas[:,0]))
-#     mean_beta_midnight_a.append(np.mean(betas[:,1]))
-#     mean_beta_locations_a.append(np.mean(betas[:,2]))
-#     mean_beta_phase_a.append(np.mean(betas[:,3]))
-#     for contr in range(len(contrast_matrix)):
-#         mean_contrasts_mouse_a[contr, task_no] = np.mean(contrasts_mouse_a[task_no][contr])
+# now generate the average beta value for each model
+mean_beta_clocks_a = list()
+mean_beta_midnight_a = list()
+mean_beta_locations_a = list()
+mean_beta_phase_a = list()
+mean_contrasts_mouse_a = np.zeros((len(contrast_matrix), len(regression_mouse_a)))
+for task_no, betas in enumerate(regression_mouse_a):
+    mean_beta_clocks_a.append(np.mean(betas[:,0]))
+    mean_beta_midnight_a.append(np.mean(betas[:,1]))
+    mean_beta_locations_a.append(np.mean(betas[:,2]))
+    mean_beta_phase_a.append(np.mean(betas[:,3]))
+    for contr in range(len(contrast_matrix)):
+        mean_contrasts_mouse_a[contr, task_no] = np.mean(contrasts_mouse_a[task_no][contr])
 
+mean_beta_clocks_b = list()
+mean_beta_midnight_b = list()
+mean_beta_locations_b = list()
+mean_beta_phase_b = list()
+mean_contrasts_mouse_b = np.zeros((len(contrast_matrix), len(regression_mouse_b)))
+for task_no, betas in enumerate(regression_mouse_b):
+    mean_beta_clocks_b.append(np.mean(betas[:,0]))
+    mean_beta_midnight_b.append(np.mean(betas[:,1]))
+    mean_beta_locations_b.append(np.mean(betas[:,2]))
+    mean_beta_phase_b.append(np.mean(betas[:,3]))
+    for contr in range(len(contrast_matrix)):
+        mean_contrasts_mouse_b[contr, task_no] = np.mean(contrasts_mouse_b[task_no][contr])
 
 
     
@@ -380,7 +394,7 @@ ax_mean_phases.boxplot(hist_data_mean_phases)
 ax_mean_phases.scatter(np.ones(len(hist_data_mean_phases[0])), hist_data_mean_phases[0])
 ax_mean_phases.scatter(np.ones(len(hist_data_mean_phases[1]))+1, hist_data_mean_phases[1])    
 
-ax_mean_phases.set_title('GAPS MODEL - Betas separated by phase and averaged, neurons are z-scored, no double tasks')
+ax_mean_phases.set_title('CONTINUOUS - Betas separated by phase and averaged, neurons are z-scored, no double tasks')
 ax_mean_phases.set_xticks([1,2])
 ax_mean_phases.set_xticklabels(["Midnight", "Clocks"])
 
@@ -395,14 +409,38 @@ plt.axhline(0, color='grey', ls='dashed')
 # # plot one violin plot per subject (i.e. 8 violins) where I visualize the variability across tasks per subject
 # # per contrast 
 
-# # mouse a.
-# # mean_contrasts_mouse_a[contr, task_no]
-# # set_of_columns = [mean_contrasts_mouse_a[0,:], mean_contrasts_mouse_a[1,:], mean_contrasts_mouse_a[2,:]]
-# # ylabelstr = ["Only clocks", "Clocks-Midnight", "Clocks-Loc"]
-# # fig = plt.figure()
-# # axes = fig.add_axes([0,0,1,1])
-# # vp = axes.violinplot(set_of_columns)
-# # plt.show()
+# # mouse a, within task predictions for all recorded tasks.
+
+mean_contrasts_mouse_a[contr, task_no]
+set_of_columns = [mean_contrasts_mouse_a[0,:], mean_contrasts_mouse_a[4,:], mean_contrasts_mouse_a[5,:], mean_contrasts_mouse_a[6,:], mean_contrasts_mouse_a[3,:]]
+fig_mouse_a_contrasts, ax_mouse_a_contrasts = plt.subplots()
+ax_mouse_a_contrasts.boxplot(set_of_columns)
+ax_mouse_a_contrasts.scatter(np.ones(len(set_of_columns[0])), set_of_columns[0])
+ax_mouse_a_contrasts.scatter(np.ones(len(set_of_columns[1]))+1, set_of_columns[1])
+ax_mouse_a_contrasts.scatter(np.ones(len(set_of_columns[2]))+2, set_of_columns[2])
+ax_mouse_a_contrasts.scatter(np.ones(len(set_of_columns[3]))+3, set_of_columns[3])
+ax_mouse_a_contrasts.scatter(np.ones(len(set_of_columns[4]))+4, set_of_columns[4])
+ax_mouse_a_contrasts.set_xticklabels(["Only clocks", "Clocks-Midnight", "Clocks-loc", "Clocks-phase" , "only phase" ])
+ax_mouse_a_contrasts.set_xticks([1,2,3,4,5])
+ax_mouse_a_contrasts.set_title('mouse a, within task predictions for all recorded tasks')
+plt.axhline(0, color='grey', ls='dashed')
+
+
+mean_contrasts_mouse_b[contr, task_no]
+set_of_columns = [mean_contrasts_mouse_b[0,:], mean_contrasts_mouse_b[4,:], mean_contrasts_mouse_b[5,:], mean_contrasts_mouse_b[6,:], mean_contrasts_mouse_b[3,:]]
+fig_mouse_b_contrasts, ax_mouse_b_contrasts = plt.subplots()
+ax_mouse_b_contrasts.boxplot(set_of_columns)
+ax_mouse_b_contrasts.scatter(np.ones(len(set_of_columns[0])), set_of_columns[0])
+ax_mouse_b_contrasts.scatter(np.ones(len(set_of_columns[1]))+1, set_of_columns[1])
+ax_mouse_b_contrasts.scatter(np.ones(len(set_of_columns[2]))+2, set_of_columns[2])
+ax_mouse_b_contrasts.scatter(np.ones(len(set_of_columns[3]))+3, set_of_columns[3])
+ax_mouse_b_contrasts.scatter(np.ones(len(set_of_columns[4]))+4, set_of_columns[4])
+ax_mouse_b_contrasts.set_xticklabels(["Only clocks", "Clocks-Midnight", "Clocks-loc", "Clocks-phase", "only phase" ])
+ax_mouse_b_contrasts.set_xticks([1,2,3,4,5])
+ax_mouse_b_contrasts.set_title('mouse b, within task predictions for all recorded tasks')
+plt.axhline(0, color='grey', ls='dashed')
+
+
 
 # # data_contr_1 = [mean_contrasts_mouse_a[0,:], mean_contrasts_mouse_b[0,:], mean_contrasts_mouse_c[0,:], mean_contrasts_mouse_d[0,:], mean_contrasts_mouse_e[0,:], mean_contrasts_mouse_f[0,:], mean_contrasts_mouse_g[0,:], mean_contrasts_mouse_h[0,:]]
 # # data_contr_2 = [mean_contrasts_mouse_a[1,:], mean_contrasts_mouse_b[1,:], mean_contrasts_mouse_c[1,:], mean_contrasts_mouse_d[1,:], mean_contrasts_mouse_e[1,:], mean_contrasts_mouse_f[1,:], mean_contrasts_mouse_g[1,:], mean_contrasts_mouse_h[1,:]]

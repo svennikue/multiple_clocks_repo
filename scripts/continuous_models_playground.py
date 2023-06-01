@@ -239,19 +239,42 @@ plt.imshow(midnight_matrix, aspect='auto')
     # and then multiply the subpaths with this matrix. 
 # 3. put it all together. I can even take the midnight model, and squeeze the state-dependent neurons
     # in the middle. this can again be 12 - make it dependent on no_rewards and no_phases. 
-location_matrix, phase_matrix, state_matrix, midnight_matrix, clocks_matrix, phase_state_matrix = mc.simulation.predictions.set_continous_models(walked_path, step_number, step_time = 1)
+time_per_step = 10
+steps_adjusted = [time_per_step*elem for elem in step_number]
+cumsumsteps = np.cumsum(steps_adjusted)
+
+location_matrix, phase_matrix, state_matrix, midnight_matrix, clocks_matrix, phase_state_matrix = mc.simulation.predictions.set_continous_models(walked_path, step_number, step_time = time_per_step)
 plt.figure(); 
 plt.imshow(location_matrix, aspect='auto')
+for reward in cumsumsteps[:-1]:
+    plt.axvline(reward, color='white', ls='dashed')
+
+
 plt.figure(); 
 plt.imshow(phase_matrix, aspect='auto')
+for reward in cumsumsteps[:-1]:
+    plt.axvline(reward, color='white', ls='dashed')
+
 plt.figure();  
 plt.imshow(state_matrix, aspect='auto')
+for reward in cumsumsteps[:-1]:
+    plt.axvline(reward, color='white', ls='dashed')
+
 plt.figure()
 plt.imshow(midnight_matrix, aspect='auto')
+for reward in cumsumsteps[:-1]:
+    plt.axvline(reward, color='white', ls='dashed')
+
 plt.figure(); 
 plt.imshow(phase_state_matrix, aspect='auto')
+for reward in cumsumsteps[:-1]:
+    plt.axvline(reward, color='white', ls='dashed')
+
 plt.figure(); 
 plt.imshow(clocks_matrix, aspect='auto')
+for reward in cumsumsteps[:-1]:
+    plt.axvline(reward, color='white', ls='dashed')
+
 for row in range(0, len(clocks_matrix), len(phase_state_matrix)):
     plt.axhline(row, color='white', ls='dashed')
 
