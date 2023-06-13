@@ -36,11 +36,13 @@ from itertools import product
 import math 
 
 # import pdb; pdb.set_trace()
-take_raw_data = 0
+take_raw_data = 1
 take_bin_data = 0
-average_bin = 1
-regression_yes = 0
-compare_two_tasks_yes = 0
+average_bin = 0
+regression_yes = 1
+compare_two_tasks_yes = 1
+continuous_model = 1
+
 
 if average_bin == 1:
     import pdb; pdb.set_trace()
@@ -298,10 +300,15 @@ if take_raw_data == 1:
 
     # data_neuron0    
     
-            
-    location_model = mc.simulation.predictions.set_location_raw_ephys(trajectory, step_time = 1, grid_size=3, plotting = True, field_no_given= 1)
-    midnight_model, clocks_model = mc.simulation.predictions.set_clocks_raw_ephys(trajectory, timings_curr_run, index_make_step, step_number, field_no_given= 1, plotting=True)
-    phase_model = mc.simulation.predictions.set_phase_model_ephys(trajectory, timings_curr_run, index_make_step, step_number)
+    if continuous_model == 1:
+        location_model, phase_model, state_model, midnight_model, clocks_model, phase_state_model = mc.simulation.predictions.set_continous_models_ephys(trajectory, timings_curr_run, index_make_step, step_number)
+
+    
+    elif continuous_model == 0:     
+        location_model = mc.simulation.predictions.set_location_raw_ephys(trajectory, step_time = 1, grid_size=3, plotting = True, field_no_given= 1)
+        midnight_model, clocks_model = mc.simulation.predictions.set_clocks_raw_ephys(trajectory, timings_curr_run, index_make_step, step_number, field_no_given= 1, plotting=True)
+        phase_model = mc.simulation.predictions.set_phase_model_ephys(trajectory, timings_curr_run, index_make_step, step_number)
+        
     
     if compare_two_tasks_yes == 1:
         session_two = 3
@@ -393,11 +400,13 @@ if take_raw_data == 1:
         # print(np.shape(data_neuron0))
 
         # data_neuron0    
-        
-                
-        location_model_two = mc.simulation.predictions.set_location_raw_ephys(trajectory_two, step_time = 1, grid_size=3, plotting = True, field_no_given= 1)
-        midnight_model_two, clocks_model_two = mc.simulation.predictions.set_clocks_raw_ephys(trajectory_two, timings_curr_run_two, index_make_step, step_number, field_no_given= 1, plotting=True)
-        phase_model_two = mc.simulation.predictions.set_phase_model_ephys(trajectory_two, timings_curr_run_two, index_make_step, step_number)
+        if continuous_model == 1:
+            location_model_two, phase_model_two, state_model_two, midnight_model_two, clocks_model_two, phase_state_model_two = mc.simulation.predictions.set_continous_models_ephys(trajectory, timings_curr_run, index_make_step, step_number)
+
+        elif continuous_model == 0:        
+            location_model_two = mc.simulation.predictions.set_location_raw_ephys(trajectory_two, step_time = 1, grid_size=3, plotting = True, field_no_given= 1)
+            midnight_model_two, clocks_model_two = mc.simulation.predictions.set_clocks_raw_ephys(trajectory_two, timings_curr_run_two, index_make_step, step_number, field_no_given= 1, plotting=True)
+            phase_model_two = mc.simulation.predictions.set_phase_model_ephys(trajectory_two, timings_curr_run_two, index_make_step, step_number)
         
         # concatenate task 1 and 2 and create RDMs to check similarity
         location_model_combined = np.concatenate((location_model, location_model_two), axis = 1)

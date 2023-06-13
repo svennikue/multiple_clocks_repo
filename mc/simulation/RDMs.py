@@ -300,7 +300,7 @@ def lin_reg_RDMs(data_matrix, regressor_one_matrix, regressor_two_matrix = None,
     # second try
         X_3 = sm.add_constant(x_reshaped)
         est = sm.OLS(diag_array_data, X_3)
-        scipy_reg_est = est.fit()
+        scipy_reg_est = est.fit().tvalues
     
     return regression_results, scipy_reg_est
     

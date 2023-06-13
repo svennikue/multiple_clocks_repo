@@ -154,6 +154,25 @@ def many_configs_loop(loop_no, which_matrix):
     return average_matrix
 
 
+def create_x_regressors_per_state(walked_path, subpath_timings, step_no, no_regs_per_state):
+    # import pdb; pdb.set_trace()
+    n_states = len(step_no)
+    regressors = np.zeros([n_states*no_regs_per_state, len(walked_path)])
+    cols_to_fill_previous = 0
+    for count_paths, (pathlength) in enumerate(step_no):
+        # identify subpaths
+        curr_path = walked_path[subpath_timings[count_paths]:subpath_timings[count_paths+1]]
+        cols_to_fill = len(curr_path)
+        # create a string that tells me how many columns are one nth of a state
+        time_per_state_in_nth_part = ([cols_to_fill // no_regs_per_state + (1 if x < cols_to_fill % no_regs_per_state else 0) for x in range (no_regs_per_state)])
+        time_per_state_in_nth_part_cum = np.cumsum(time_per_state_in_nth_part)
+        for nth_part in range(0, no_regs_per_state):
+            if nth_part == 0:
+                regressors[nth_part+(count_paths*no_regs_per_state), cols_to_fill_previous+ 0: cols_to_fill_previous+ time_per_state_in_nth_part_cum[nth_part]] = 1   
+            else:
+                regressors[nth_part+(count_paths*no_regs_per_state), cols_to_fill_previous + time_per_state_in_nth_part_cum[nth_part-1]: cols_to_fill_previous + time_per_state_in_nth_part_cum[nth_part]] = 1
+        cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
+    return regressors
 
 
 def create_regressors_per_state_phase_ephys(walked_path, subpath_timings, step_no, grid_size = 3, phases=3, plotting = False, field_no_given = None, ax = None):
@@ -162,7 +181,7 @@ def create_regressors_per_state_phase_ephys(walked_path, subpath_timings, step_n
     regressors = np.zeros([phases*n_states,len(walked_path)])
     cols_to_fill_previous = 0
     for count_paths, (pathlength) in enumerate(step_no):
-        # identify subpaths and create single-clock matrices.
+        # identify subpaths
         curr_path = walked_path[subpath_timings[count_paths]:subpath_timings[count_paths+1]]
         cols_to_fill = len(curr_path)
         # create a string that tells me how many columns are one phase clock
@@ -745,7 +764,7 @@ def set_location_matrix(walked_path, step_number, phases, size_grid = 3):
 # 3.1 continuous models: all
 # fuck it, I can probably do all continous models in one. LESSSE GOOOOO
 def set_continous_models(walked_path, step_number, step_time, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25):
-    #import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
 
     # build all possible coord combinations 
     all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
@@ -1144,7 +1163,7 @@ def set_location_contin(walked_path, step_time, grid_size = 3, fire_radius = 0.2
 #4.1 ephys models: continuous - clocks - midnight - phase - location
 
 # ok now I need the same thing but for my ephys stuff.
-def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_number,  grid_size = 3, no_phase_neurons=3, fire_radius = 0.25):
+def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_number,  grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1):
     # import pdb; pdb.set_trace()
 
     # build all possible coord combinations 
@@ -1161,22 +1180,92 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
     # and 2/no_phase_neurons and 1.
     neuron_phase_functions = []
     #means_at_phase = np.linspace(0, 1, (no_phase_neurons))
-    means_at_phase = np.linspace(0, 1, (no_phase_neurons*2)+1)
-    means_at_phase = means_at_phase[1::2].copy()
-    for div in means_at_phase: 
-        neuron_phase_functions.append(norm(loc = div, scale = 1/no_phase_neurons/2)) 
+    if wrap_around == 0:
+        means_at_phase = np.linspace(0, 1, (no_phase_neurons*2)+1)
+        means_at_phase = means_at_phase[1::2].copy()
+        for div in means_at_phase: 
+            neuron_phase_functions.append(norm(loc = div, scale = 1/(no_phase_neurons/2))) 
+    
+        # # to plot the functions.
+        # x = np.linspace(0,1,1000)
+        # plt.figure();
+        # for neuron in range(0, len(neuron_phase_functions)):
+        #     plt.plot(x, neuron_phase_functions[neuron].pdf(x))
         
-    # # make the phase continuum
-    # neuron_phase_functions = []
-    # means_at_phase = np.linspace(0, 1, (no_phase_neurons))
-    # for div in means_at_phase: 
-    #     neuron_phase_functions.append(norm(loc = div, scale = 1/no_phase_neurons/2)) 
+    
+    if wrap_around == 1:
+        means_at_phase = np.linspace(-np.pi, np.pi, (no_phase_neurons*2)+1)
+        means_at_phase = means_at_phase[1::2].copy()
+        
+        for div in means_at_phase:
+            neuron_phase_functions.append(scipy.stats.vonmises(1/(no_phase_neurons/2), loc=div))
+            # careful! this has to be read differently.
+        
+        # # to plot the functions.
+        # plt.figure(); 
+        # for f in neuron_phase_functions:
+        #     plt.plot(np.linspace(0,1,1000), f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)/np.max(f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)))
+            
+            
 
     # make the state continuum
     neuron_state_functions = []
+    
+    #if wrap_around == 0:
+        # actually, there should not be any smoothness in state.
     means_at_state = np.linspace(0,(len(step_number)-1), (len(step_number)))
     for div in means_at_state:
-        neuron_state_functions.append(norm(loc = div, scale = 1/len(step_number)/2))
+        neuron_state_functions.append(norm(loc = div, scale = 1/len(step_number)))
+        
+    # x = np.linspace(0,3,1000)
+    # plt.figure();
+    # for neuron in range(0, len(neuron_state_functions)):
+    #     plt.plot(x, neuron_state_functions[neuron].pdf(x))
+            
+    # no wrap around for state.
+    # if wrap_around == 1:
+    #     means_at_state = np.linspace(-np.pi, np.pi, (len(step_number))+1)
+
+    #     for div in means_at_state[:-1]:
+    #         neuron_state_functions.append(scipy.stats.vonmises(len(step_number)/2, loc=div))
+    #         # careful. Now, the function is correct except it continues for one too many.
+    #         # this means I probably need to sample in the means_at_state[:-1]
+    #     # think about this. will be sampled at 0,1,2,3. 
+    #     # to plot the functions.
+    #     plt.figure(); 
+    #     for f in neuron_state_functions:
+    #         plt.plot(np.linspace(0,1,1000), f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)/np.max(f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)))
+            
+            
+
+        # this has to be -2pi : pi, 4 steps [3,4]
+        # CONTINUE HERE!!!   
+        # THIS IS NOT QUITE RIGHT YET
+        # GET THE MEANS CORRECT BUT AWAY FROM THE BOUNDARIES
+        # means_at_state = np.linspace(-np.pi*(len(step_number)/2), np.pi*(len(step_number)/2), ((len(step_number))*2)+1)
+        # means_at_state = means_at_state[1::2].copy()
+        # for div in means_at_state:
+        #     neuron_state_functions.append(scipy.stats.vonmises(1/(len(step_number)/2), loc=div))
+        
+        # # think about this. will be sampled at 0,1,2,3. 
+        # # to plot the functions.
+        # plt.figure(); 
+        # for f in neuron_state_functions:
+        #     plt.plot(np.linspace(0,1,1000), f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)/np.max(f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)))
+            
+            
+    # ok actually I do think that this needs to be slightly more overlapping. 
+    # this needs some thought. how should I sample state?
+    # best would be a function where there is a tiny bit of activation in
+    # the states before and after, and that there is wrapping around
+    # Q: should this be the same throughout one state, or should the 'side activation'
+    # get stronger the closer we get to the next state?
+        # > one would be sampling a subpath
+        # > the other would be sampling by time, as phase is sampled.
+        
+        
+        
+        
        
     # cumsumsteps = np.cumsum(step_number)
     # this time, do it per subpath.
@@ -1214,12 +1303,16 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
         state_matrix[:] = np.nan
         # only consider the 1/no_states*count_paths+1 part of the functions
         # then sample by timepoint
+        #sample_state = means_at_state[count_paths] if wrap_around == 1 else count_paths
+        sample_state = count_paths
+        
         for row in range(0, len(neuron_state_functions)):
-            state_matrix[row] = neuron_state_functions[row].pdf(count_paths)
+            state_matrix[row] = neuron_state_functions[row].pdf(sample_state)
         
         # fourth step: make phase neurons
         # fit subpaths into 0:1 trajectory
-        samplepoints = np.linspace(0, 1, len(curr_path))
+        samplepoints = np.linspace(-np.pi, np.pi, len(curr_path)) if wrap_around == 1 else np.linspace(0, 1, len(curr_path))
+        
         phase_matrix_subpath = np.empty([len(neuron_phase_functions), len(samplepoints)])
         phase_matrix_subpath[:] = np.nan
         # read out the respective phase coding 
@@ -1301,6 +1394,13 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
             # then add the values to the existing clocks.
             # Q: IS THIS WAY OF DEALING WIHT DOUBLE ACTIVATION OK???
             clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()
+    
+    # # to plot the matrices
+    # plt.figure()
+    # plt.imshow(loc_model, aspect = 'auto', interpolation='none')
+    # for subpath in subpath_timings:
+    #     plt.axvline(subpath, color='white', ls='dashed')
+    
     
     return loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat
 
