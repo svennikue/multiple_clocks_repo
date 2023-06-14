@@ -945,7 +945,7 @@ def set_continous_models(walked_path, step_number, step_time, grid_size = 3, no_
             # shift the clock around so that the activation neuron comes first
             # DOES THIS HAVE TO BE *-1 or just activation neuron???
             # CHECK!!!
-            shifted_clock = np.roll(norm_phas_stat, activation_neuron, axis = 1)
+            shifted_clock = np.roll(norm_phas_stat, activation_neuron, axis = 0)
             # adjust the firing strength according to the local maxima
             firing_factor = norm_midn[row, activation_neuron].copy()
             #firing_factor = norm_midn[row,activation_neuron]/ max_firing
@@ -1163,7 +1163,7 @@ def set_location_contin(walked_path, step_time, grid_size = 3, fire_radius = 0.2
 #4.1 ephys models: continuous - clocks - midnight - phase - location
 
 # ok now I need the same thing but for my ephys stuff.
-def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_number,  grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1):
+def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_number,  grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, plot = False):
     # import pdb; pdb.set_trace()
 
     # build all possible coord combinations 
@@ -1192,7 +1192,6 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
         # for neuron in range(0, len(neuron_phase_functions)):
         #     plt.plot(x, neuron_phase_functions[neuron].pdf(x))
         
-    
     if wrap_around == 1:
         means_at_phase = np.linspace(-np.pi, np.pi, (no_phase_neurons*2)+1)
         means_at_phase = means_at_phase[1::2].copy()
@@ -1205,12 +1204,10 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
         # plt.figure(); 
         # for f in neuron_phase_functions:
         #     plt.plot(np.linspace(0,1,1000), f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)/np.max(f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)))
-            
-            
+                   
 
     # make the state continuum
     neuron_state_functions = []
-    
     #if wrap_around == 0:
         # actually, there should not be any smoothness in state.
     means_at_state = np.linspace(0,(len(step_number)-1), (len(step_number)))
@@ -1221,50 +1218,7 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
     # plt.figure();
     # for neuron in range(0, len(neuron_state_functions)):
     #     plt.plot(x, neuron_state_functions[neuron].pdf(x))
-            
-    # no wrap around for state.
-    # if wrap_around == 1:
-    #     means_at_state = np.linspace(-np.pi, np.pi, (len(step_number))+1)
 
-    #     for div in means_at_state[:-1]:
-    #         neuron_state_functions.append(scipy.stats.vonmises(len(step_number)/2, loc=div))
-    #         # careful. Now, the function is correct except it continues for one too many.
-    #         # this means I probably need to sample in the means_at_state[:-1]
-    #     # think about this. will be sampled at 0,1,2,3. 
-    #     # to plot the functions.
-    #     plt.figure(); 
-    #     for f in neuron_state_functions:
-    #         plt.plot(np.linspace(0,1,1000), f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)/np.max(f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)))
-            
-            
-
-        # this has to be -2pi : pi, 4 steps [3,4]
-        # CONTINUE HERE!!!   
-        # THIS IS NOT QUITE RIGHT YET
-        # GET THE MEANS CORRECT BUT AWAY FROM THE BOUNDARIES
-        # means_at_state = np.linspace(-np.pi*(len(step_number)/2), np.pi*(len(step_number)/2), ((len(step_number))*2)+1)
-        # means_at_state = means_at_state[1::2].copy()
-        # for div in means_at_state:
-        #     neuron_state_functions.append(scipy.stats.vonmises(1/(len(step_number)/2), loc=div))
-        
-        # # think about this. will be sampled at 0,1,2,3. 
-        # # to plot the functions.
-        # plt.figure(); 
-        # for f in neuron_state_functions:
-        #     plt.plot(np.linspace(0,1,1000), f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)/np.max(f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)))
-            
-            
-    # ok actually I do think that this needs to be slightly more overlapping. 
-    # this needs some thought. how should I sample state?
-    # best would be a function where there is a tiny bit of activation in
-    # the states before and after, and that there is wrapping around
-    # Q: should this be the same throughout one state, or should the 'side activation'
-    # get stronger the closer we get to the next state?
-        # > one would be sampling a subpath
-        # > the other would be sampling by time, as phase is sampled.
-        
-        
-        
         
        
     # cumsumsteps = np.cumsum(step_number)
@@ -1273,19 +1227,7 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
         # first step: divide into subpaths
         curr_path = walked_path[subpath_timings[count_paths]:subpath_timings[count_paths+1]]
 
-
-
         # second step: location model.
-        # build the 'timecourse', assuming that one timestep is one value.
-        # first make the coords into numbers
-        # fields_path = []
-        # for elem in curr_path:
-        #     fields_path.append(mc.simulation.predictions.field_to_number(elem, grid_size))
-        # locs_over_time = np.repeat(fields_path, repeats = step_time)
-        
-        # this is curr_path > i have it inly in numbers, not coords
-        
-        # back to list and to coords for the location model 
         coords_over_time = list(curr_path)
         for index, elem in enumerate(coords_over_time):
             coords_over_time[index] = all_coords[elem]
@@ -1327,9 +1269,11 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
         for location in range(0, len(midnight_model_subpath), no_phase_neurons):
             midnight_model_subpath[location:location+no_phase_neurons] = midnight_model_subpath[location:location+no_phase_neurons] * phase_matrix_subpath
         
+        
         # sixth. make the clock model. 
         # solving 2 (see below): make the neurons within the clock.
         # phase state neurons.
+        
         phase_state_subpath = np.repeat(state_matrix, repeats = len(phase_matrix_subpath), axis = 0)
         for phase in range(0, len(phase_state_subpath), len(phase_matrix_subpath)):
             phase_state_subpath[phase: phase+len(phase_matrix_subpath)] = phase_matrix_subpath * phase_state_subpath[phase: phase+len(phase_matrix_subpath)]
@@ -1348,23 +1292,19 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
             stat_model = np.concatenate((stat_model, state_matrix), axis = 1)
             phas_stat = np.concatenate((phas_stat, phase_state_subpath), axis = 1)
                        
-    # ok I'll try something.
-    # this might not be the best way to solve this
-    # anyways, I'l try the same trick that I did before for the clocks model.
     
     # I am going to fuse the midnight and the phas_stat model. Thus they need to be equally 'strong' > normalise!
     norm_midn = (midn_model.copy()-np.min(midn_model))/(np.max(midn_model)-np.min(midn_model))
     norm_phas_stat = (phas_stat.copy()-np.min(phas_stat))/(np.max(phas_stat)-np.min(phas_stat))
     
-    # try with normalised model.
-      # just with the adjustment that I will make the firing of the clocks less strong if
-      # they the midnight neurons fire very little
-      # identify the max firing.
-      # If i normalise this I don't need that step; it'll always be 1
-    #max_firing = np.amax(norm_midn)
-      # translate this into a value between 0 and 1 by doing *value* / max_firing
      
-      # 5. stick the neuron-clock matrices in  
+    # 5. stick the neuron-clock matrices in 
+      
+    # NOOOO I AM DOING SOMETHING WRONG. 
+    # I confused myself.... nooooooo :(((
+    # fix this!!!
+    # NEW TRY CLOCK MODEL
+
     full_clock_matrix_dummy = np.zeros([len(norm_midn)*len(norm_phas_stat),len(norm_midn[0])]) # fields times phases.
     # for ever 12th row, stick a row of the midnight matrix in (corresponds to the respective first neuron of the clock)
     for row in range(0, len(norm_midn)):
@@ -1373,7 +1313,7 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
       # copy the neuron per clock firing pattern
       # I will manipulate clocks_per_step, and use clocks_per_step.dummy as control to check for overwritten stuff.
     clo_model =  full_clock_matrix_dummy.copy()
-     
+    
       # now loop through the already filled columns (every 12th one) and fill the clocks if activated.
     for row in range(0, len(norm_midn)):
         local_maxima = argrelextrema(norm_midn[row,:], np.greater_equal, order = 5, mode = 'wrap')
@@ -1385,8 +1325,20 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
                 local_maxima = np.delete(local_maxima, index)
                 
         for activation_neuron in local_maxima:
+            # import pdb; pdb.set_trace()
+            horizontal_shift_by = np.argmax(norm_phas_stat[:,activation_neuron])
             # shift the clock around so that the activation neuron comes first
-            shifted_clock = np.roll(norm_phas_stat, activation_neuron, axis = 1)
+            shifted_clock = np.roll(norm_phas_stat, horizontal_shift_by*-1, axis = 0)
+            
+            # THIS IS GOIGN WRONG. I HAVE TO DO A HORIZONTAL SHIFT, but
+            # it doesnt make sense to make the shift by the column-neuron. 
+            # the defining one should be rwo...
+            # try a different approach.
+            
+            
+            # can I read the clocks out only here?
+            
+
             # adjust the firing strength according to the local maxima
             firing_factor = norm_midn[row, activation_neuron].copy()
             #firing_factor = norm_midn[row,activation_neuron]/ max_firing
@@ -1400,8 +1352,15 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
     # plt.imshow(loc_model, aspect = 'auto', interpolation='none')
     # for subpath in subpath_timings:
     #     plt.axvline(subpath, color='white', ls='dashed')
-    
-    
+    import pdb; pdb.set_trace()
+    if plot == True:
+        mc.simulation.predictions.plot_without_legends(loc_model, titlestring='Location_model', timings_curr_run = subpath_timings)
+        mc.simulation.predictions.plot_without_legends(phas_model, titlestring='Phase Model', timings_curr_run = subpath_timings)
+        mc.simulation.predictions.plot_without_legends(stat_model, titlestring='State Model',timings_curr_run = subpath_timings)
+        mc.simulation.predictions.plot_without_legends(midn_model, titlestring='Midnight Model', timings_curr_run = subpath_timings)
+        mc.simulation.predictions.plot_without_legends(clo_model, titlestring='Clocks model',timings_curr_run = subpath_timings)
+        mc.simulation.predictions.plot_without_legends(phas_stat, titlestring='Inside of the clock', timings_curr_run = subpath_timings)
+        
     return loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat
 
 
@@ -1832,11 +1791,10 @@ def set_location_ephys(walked_path, reward_fields, grid_size = 3, plotting = Fal
 # PART 4: PLOTTING
 # create functions to plot the matrices
 
-def plot_without_legends(any_matrix, titlestring = None, prediction = None,  hrf = None, grid_size = None, step_time = None, reward_no = None, perms = None, intervalline = None):
+def plot_without_legends(any_matrix, titlestring = None, prediction = None,  hrf = None, grid_size = None, step_time = None, reward_no = None, perms = None, intervalline = None, timings_curr_run = None):
     #import pdb; pdb.set_trace()
-    plt.figure()
     fig, ax = plt.subplots()
-    plt.imshow(any_matrix, aspect = 'auto') 
+    plt.imshow(any_matrix, aspect = 'auto', interpolation= 'none') 
     ax.xlabel = 'neural activity over some timescale'
     ax.ylabel = 'neurons'
     plt.title(f'{titlestring}')
@@ -1848,9 +1806,14 @@ def plot_without_legends(any_matrix, titlestring = None, prediction = None,  hrf
         time_set = '_' + str(step_time) + 'ms_per_step_'
     if reward_no:
         rew_set = str(reward_no) + '_rewards_' 
-    if intervalline:
+    
+    if timings_curr_run:
+        for interval in timings_curr_run:
+            plt.axvline(interval, color = 'white', ls = 'dashed')
+    elif intervalline:
         for interval in range(0, len(any_matrix[0]), intervalline):
-            plt.axvline(interval, color='red', ls='dashed')
+            plt.axvline(interval, color='white', ls='dashed')
+            
     # if 'perms' in locals():
     #     perm_set = '_' + str(perms) + '_perms'
     #     plt.title('settings:_' + prediction + hrf_set + grid_set + time_set + rew_set + perm_set)

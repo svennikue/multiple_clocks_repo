@@ -19,114 +19,21 @@ import scipy.stats
 
 #
 # Part 1: load data
-#
-
 mouse_a, mouse_b, mouse_c, mouse_d, mouse_e, mouse_f, mouse_g, mouse_h = mc.simulation.analyse_ephys.load_ephys_data(Data_folder = '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_recordings_200423/')
 
-# mouse_recday='me11_05122021_06122021' #mouse a
-# a_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-# a_no_task_configs = len(a_rewards_configs)
-# a_cells = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
-# a_locations = list()
-# a_neurons = list()
-# a_timings = list()
-# for session in range(0, a_no_task_configs):
-#     a_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     a_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     a_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
-
-
-# mouse_recday='me11_01122021_02122021' #mouse b 
-# b_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-# b_no_task_configs = len(b_rewards_configs)
-# b_locations = list()
-# b_neurons = list()
-# b_timings = list()
-# for session in range(0, b_no_task_configs):
-#     b_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     b_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     b_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
+# defining contrasts.
+contrast_matrix = ((1,0,0,0), (0,1,0,0), (0,0,1,0), (0,0,0,1), (1,-1,0,0), (1, 0,-1,0), (1,0,0,-1), (0,1,-1,0), (0,1,0,-1), (0,0,1,-1))
 
 
 
-# mouse_recday='me10_09122021_10122021' #mouse c range 0,9
-# c_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-# c_no_task_configs = len(c_rewards_configs)
-# c_locations = list()
-# c_neurons = list()
-# c_timings = list()
-# for session in range(0, c_no_task_configs):
-#     c_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     c_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     c_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
-    
-
-# mouse_recday='me08_10092021_11092021' #mouse d range 0,6
-# d_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-# # apparently there is one run less for this day..., so exclude that one
-# # mohammady says: The ephys file for the last task on that day was lost
-# d_rewards_configs = d_rewards_configs[0:-1, :].copy()
-# d_no_task_configs = len(d_rewards_configs)
-# d_locations = list()
-# d_neurons = list()
-# d_timings = list()
-# for session in range(0, d_no_task_configs):
-#     d_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     d_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     d_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
+# my goal is to show that my model can predict Mohamadys data.
+# 13.06.2023
+# first, figure out which model is good. 
+# compare continous vs normal
+# compare different amount of cells
+# compare different binnings.
 
 
-
-# mouse_recday='ah04_09122021_10122021' #mouse e range 0,8
-# e_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-# e_no_task_configs = len(e_rewards_configs)
-# e_locations = list()
-# e_neurons = list()
-# e_timings = list()
-# for session in range(0, e_no_task_configs):
-#     e_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     e_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     e_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
- 
-# mouse_recday='ah04_05122021_06122021' #mouse f range 0,8
-# f_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-# f_no_task_configs = len(f_rewards_configs)
-# f_locations = list()
-# f_neurons = list()
-# f_timings = list()
-# for session in range(0, f_no_task_configs):
-#     f_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     f_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     f_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
-
-# mouse_recday='ah04_01122021_02122021' #mouse g range 0,8
-# g_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-# g_no_task_configs = len(g_rewards_configs)
-# g_locations = list()
-# g_neurons = list()
-# g_timings = list()
-# for session in range(0, g_no_task_configs):
-#     g_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     g_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     g_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
-
-
-# mouse_recday='ah03_18082021_19082021' #mouse h range 0,8
-# h_rewards_configs = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-# h_no_task_configs = len(h_rewards_configs)
-# h_locations = list()
-# h_neurons = list()
-# h_timings = list()
-# for session in range(0, h_no_task_configs):
-#     h_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     h_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-#     h_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
-# # # for h, the first timings array is missing
-# # # > delete the first task completely!
-# # h_timings = h_timings[1::]
-# # h_neurons = h_neurons[1::]
-# # h_locations = h_locations[1::]
-# # h_rewards_configs = h_rewards_configs[1::, :]
 
 
 #
@@ -138,14 +45,24 @@ mouse_a, mouse_b, mouse_c, mouse_d, mouse_e, mouse_f, mouse_g, mouse_h = mc.simu
 # the _playground version of this is to play around with different possibilities of output and to understand the data.
 #results_reg_acro_mouse_a, scipy_reg_acro_mouse_a, coefficients_acro_mouse_a, = mc.simulation.single_sub_ephys.reg_across_tasks_playground(a_rewards_configs, a_locations, a_neurons, a_timings, mouse_recday = 'me11_05122021_06122021')
 
-contrast_matrix = ((1,0,0,0), (0,1,0,0), (0,0,1,0), (0,0,0,1), (1,-1,0,0), (1, 0,-1,0), (1,0,0,-1), (0,1,-1,0), (0,1,0,-1), (0,0,1,-1))
+
+# THIS IS A FREAKING MESS.
+# CLEAN THIS UP AT SOME POINT....
+# ok I think before I do the big thingy, I first have to go back to only running one single one.
+
+mouse_b_clean =  {}
+mouse_b_clean["recday"] = 'me11_01122021_02122021'
+mouse_b_clean["cells"] = mouse_b["cells"].copy()
+mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], mouse_b_clean["neurons"], mouse_b_clean["timings"] = mc.simulation.analyse_ephys.clean_ephys_data(mouse_b["rewards_configs"], mouse_b["locations"], mouse_b["neurons"], mouse_b["timings"], mouse_b_clean["recday"])
+
+
+b_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], mouse_b_clean["neurons"], mouse_b_clean["timings"], mouse_b_clean["recday"], plotting = True, continuous = True, no_bins_per_state = 3, number_phase_neurons = 3)
 
 
 
 
 
-
-# PART 2 
+# PART 2: 
 
 
 regression_mouse_a,  contrasts_mouse_a = mc.simulation.analyse_ephys.reg_per_task_config(a_rewards_configs, a_locations, a_neurons, a_timings, contrast_matrix, continuous = True, no_bins_per_state = 3, mouse_recday = 'me11_05122021_06122021')
@@ -699,25 +616,32 @@ for i in range(0,4):
     #data.append(contrast_between_mouse_a_3bin_11_late[i,:])
     data.append(contrast_between_mouse_a_10bin_11_late[i,:])
     #data.append(contrast_between_mouse_a_30bin_11_late[i,:])
-    
-fig, ax = plt.subplots()
-ax.boxplot(data)
-for index, contrast in enumerate(data):
-    ax.scatter(np.ones(len(contrast))+index, contrast)
-ax.set_xticks([0,1,2,3,4,5,6,7,8,9,10,11])
-plt.xticks(rotation = 45)
-ax.set_xticklabels([ "clocks early", "midn early", "loc early", "phas early",
+
+label_string_list = [ "clocks early", "midn early", "loc early", "phas early",
                     "clocks mid", "midn mid","loc mid", "phas mid",
-                   "clocks late",  "midn late", "loc late",  "phas late"])
+                   "clocks late",  "midn late", "loc late",  "phas late"]
+label_tick_list = [0,1,2,3,4,5,6,7,8,9,10,11]
+title_string = "Split by phase, 10 bins, all model regs MOUSE A between tasks - 11 PHASE NEURONS"
+mc.simulation.analyse_ephys.plotting_hist_scat(data, label_string_list, label_tick_list, title_string)
 
-# ax.set_xticklabels([ "clocks 10 bins early", "clocks 30 bins early",  "midn 10 bins early", "midn 30 bins early", "loc 10 bins early", "loc 30 bins early", "phas 10 bins early", "phas 30 bins early",
-#                     "clocks 10 bins mid", "clocks 30 bins mid","midn 10 bins mid", "midn 30 bins mid", "loc 10 bins mid", "loc 30 bins mid", "phas 10 bins mid", "phas 30 bins mid",
-#                    "clocks 10 bins late", "clocks 30 bins late", "midn 10 bins late", "midn 30 bins late", "loc 10 bins late", "loc 30 bins late", "phas 10 bins late", "phas 30 bins late"])
+# fig, ax = plt.subplots()
+# ax.boxplot(data)
+# for index, contrast in enumerate(data):
+#     ax.scatter(np.ones(len(contrast))+index, contrast)
+# ax.set_xticks([0,1,2,3,4,5,6,7,8,9,10,11])
+# plt.xticks(rotation = 45)
+# ax.set_xticklabels([ "clocks early", "midn early", "loc early", "phas early",
+#                     "clocks mid", "midn mid","loc mid", "phas mid",
+#                    "clocks late",  "midn late", "loc late",  "phas late"])
 
-# ax.set_xticklabels(["Cl-Mid 3 bins","Cl-Loc 3 bins","Cl-Ph 3 bins",  "Cl-Mid 10 bins","Cl-Loc 10 bins", "Cl-Ph 10 bins",
-#                     "Cl-Mid 30 bins", "Cl-Loc 30 bins","Cl-Ph 30 bins"])
-plt.axhline(0, color='grey', ls='dashed')
-plt.title("Split by phase, 10 bins, all model regs MOUSE A between tasks - 11 PHASE NEURONS")
+# # ax.set_xticklabels([ "clocks 10 bins early", "clocks 30 bins early",  "midn 10 bins early", "midn 30 bins early", "loc 10 bins early", "loc 30 bins early", "phas 10 bins early", "phas 30 bins early",
+# #                     "clocks 10 bins mid", "clocks 30 bins mid","midn 10 bins mid", "midn 30 bins mid", "loc 10 bins mid", "loc 30 bins mid", "phas 10 bins mid", "phas 30 bins mid",
+# #                    "clocks 10 bins late", "clocks 30 bins late", "midn 10 bins late", "midn 30 bins late", "loc 10 bins late", "loc 30 bins late", "phas 10 bins late", "phas 30 bins late"])
+
+# # ax.set_xticklabels(["Cl-Mid 3 bins","Cl-Loc 3 bins","Cl-Ph 3 bins",  "Cl-Mid 10 bins","Cl-Loc 10 bins", "Cl-Ph 10 bins",
+# #                     "Cl-Mid 30 bins", "Cl-Loc 30 bins","Cl-Ph 30 bins"])
+# plt.axhline(0, color='grey', ls='dashed')
+# plt.title("Split by phase, 10 bins, all model regs MOUSE A between tasks - 11 PHASE NEURONS")
  
 
 
