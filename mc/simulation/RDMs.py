@@ -40,6 +40,7 @@ def within_task_RDM(activation_matrix, ax=None, plotting = False, titlestring = 
         plt.imshow(RSM, interpolation = 'none')
         plt.title(f'{titlestring}')
         if intervalline:
+            intervalline = int(intervalline)
             for interval in range(0, len(activation_matrix[0]), intervalline):
                 plt.axvline(interval, color='red', ls='dashed')
         # sn.heatmap(corr_matrix, annot = False)
@@ -308,7 +309,46 @@ def lin_reg_RDMs(data_matrix, regressor_one_matrix, regressor_two_matrix = None,
     
     
 
+def GLM_RDMs(data_matrix, regressor_dict, mask_within = True, no_tasks = None, t_val = True):
+    import pdb; pdb.set_trace()
+    if mask_within == True:
+        within_task_mask = np.kron(np.eye(no_tasks), np.ones((int(len(data_matrix)/no_tasks), int(len(data_matrix)/no_tasks))))
+        data_matrix[within_task_mask == 1] = np.nan
+        for regressor_matrix in regressor_dict:
+            regressor_dict[regressor_matrix][within_task_mask == 1] = np.nan
     
+    dimension = len(data_matrix) 
+    reg_labels = []
+    for i, regressor_matrix in enumerate(regressor_dict):
+        reg_labels.append(regressor_matrix)
+        if i == 0:
+            X = list(regressor_dict[regressor_matrix][np.tril_indices(dimension, -1)])
+        else:
+            diag_reg_array = list(regressor_dict[regressor_matrix][np.tril_indices(dimension, -1)])
+            X = np.vstack((X, diag_reg_array))
+     
+    # get rid of all nans, equally for data and regressors.
+    
+    diag_array_data = data_matrix[np.tril_indices(dimension , -1)]
+    X_cleaned = np.empty((len(X),len(diag_array_data[~np.isnan(diag_array_data)])))
+    for i, row in enumerate(X):
+        X_cleaned[i] = row[~np.isnan(diag_array_data)]
+    diag_array_data = diag_array_data[~np.isnan(diag_array_data)]
+    
+    x_reshaped = np.transpose(X_cleaned)
+    regression_results = LinearRegression().fit(x_reshaped, diag_array_data)
+    results = {}
+    results['coefs'] = regression_results.coef_
+    results['label regs'] = reg_labels
+    
+    if t_val is not None:
+    # second try
+        X_3 = sm.add_constant(x_reshaped)
+        est = sm.OLS(diag_array_data, X_3)
+        scipy_reg_est = est.fit().tvalues
+        results['t_vals'] = scipy_reg_est
+    
+    return results
     
     
     

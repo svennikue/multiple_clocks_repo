@@ -1352,7 +1352,7 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
     # plt.imshow(loc_model, aspect = 'auto', interpolation='none')
     # for subpath in subpath_timings:
     #     plt.axvline(subpath, color='white', ls='dashed')
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     if plot == True:
         mc.simulation.predictions.plot_without_legends(loc_model, titlestring='Location_model', timings_curr_run = subpath_timings)
         mc.simulation.predictions.plot_without_legends(phas_model, titlestring='Phase Model', timings_curr_run = subpath_timings)
@@ -1811,6 +1811,7 @@ def plot_without_legends(any_matrix, titlestring = None, prediction = None,  hrf
         for interval in timings_curr_run:
             plt.axvline(interval, color = 'white', ls = 'dashed')
     elif intervalline:
+        intervalline = int(intervalline)
         for interval in range(0, len(any_matrix[0]), intervalline):
             plt.axvline(interval, color='white', ls='dashed')
             

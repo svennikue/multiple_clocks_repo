@@ -818,10 +818,9 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
 
 # with this one, I want to compare different models and find the optimal output for my analysis.
 def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_recday, plotting = False, continuous = True, no_bins_per_state = 3, number_phase_neurons = 3):
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     # this is now all  based on creating an average across runs first.
-    z_score_all = 1 # 2 means only z-score the data
-
+    
     # find out which is the largest shared trial number between all task configs
     min_trialno = 60
     for task_number in timings_all:
@@ -855,7 +854,7 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
                 phase_model = mc.simulation.predictions.set_phase_model_ephys(trajectory, timings_curr_run, index_make_step, step_number)
             
             if continuous == True:
-                location_model, phase_model, state_model, midnight_model, clocks_model, phase_state_model = mc.simulation.predictions.set_continous_models_ephys(trajectory, timings_curr_run, index_make_step, step_number, no_phase_neurons= number_phase_neurons, plot = True)
+                location_model, phase_model, state_model, midnight_model, clocks_model, phase_state_model = mc.simulation.predictions.set_continous_models_ephys(trajectory, timings_curr_run, index_make_step, step_number, no_phase_neurons= number_phase_neurons, plot = False)
             
             
             # now create the regressors per run
@@ -882,65 +881,21 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
                 location_between = np.concatenate((location_between, location_phase_state), axis = 1)
                 phase_between = np.concatenate((phase_between,phase_phase_state), axis = 1)
         
-        if z_score_all == 1:
-            # now z-score all matrices.
-            neurons_between_z = scipy.stats.zscore(neurons_between, axis=1)
-            clocks_between_z = scipy.stats.zscore(clocks_between, axis=1)
-            midnight_between_z = scipy.stats.zscore(midnight_between, axis=1)
-            location_between_z = scipy.stats.zscore(location_between, axis=1)
-            phase_between_z = scipy.stats.zscore(phase_between, axis=1)
-            # potentially not z-score the models. Now the reasoning is that I want to treat both- actual neurons 
-            # and simulated neurons - the same.
-
-            
-            if no_trial_in_each_task == 0:
-                # create an averaged neuron file and RDM. 
-                # it's possible that the mice take different routes every time. By averaging, 
-                # I should be able to account for these variations.
-                sum_location_between = location_between_z.copy()
-                sum_clocks_between = clocks_between_z.copy()
-                sum_midnight_between = midnight_between_z.copy()
-                sum_phase_between = phase_between_z.copy()
-                sum_neurons_between = neurons_between_z.copy()
-            if no_trial_in_each_task > 0:
-                sum_location_between = sum_location_between.copy() + location_between_z.copy()
-                sum_clocks_between = sum_clocks_between.copy() + clocks_between_z.copy()
-                sum_midnight_between = sum_midnight_between.copy() + midnight_between_z.copy()
-                sum_phase_between = sum_phase_between.copy() + phase_between_z.copy()
-                sum_neurons_between = sum_neurons_between.copy() + neurons_between_z.copy()
         
-        if z_score_all == 0:
-            # create an averaged neuron file and RDM. 
-            if no_trial_in_each_task == 0:
-                sum_location_between = location_between.copy()
-                sum_clocks_between = clocks_between.copy()
-                sum_midnight_between = midnight_between.copy()
-                sum_phase_between = phase_between.copy()
-                sum_neurons_between = neurons_between.copy()
-            if no_trial_in_each_task > 0:
-                sum_location_between = sum_location_between.copy() + location_between.copy()
-                sum_clocks_between = sum_clocks_between.copy() + clocks_between.copy()
-                sum_midnight_between = sum_midnight_between.copy() + midnight_between.copy()
-                sum_phase_between = sum_phase_between.copy() + phase_between.copy()
-                sum_neurons_between = sum_neurons_between.copy() + neurons_between.copy()
+        # create an averaged neuron file and RDM. 
+        if no_trial_in_each_task == 0:
+            sum_location_between = location_between.copy()
+            sum_clocks_between = clocks_between.copy()
+            sum_midnight_between = midnight_between.copy()
+            sum_phase_between = phase_between.copy()
+            sum_neurons_between = neurons_between.copy()
+        if no_trial_in_each_task > 0:
+            sum_location_between = sum_location_between.copy() + location_between.copy()
+            sum_clocks_between = sum_clocks_between.copy() + clocks_between.copy()
+            sum_midnight_between = sum_midnight_between.copy() + midnight_between.copy()
+            sum_phase_between = sum_phase_between.copy() + phase_between.copy()
+            sum_neurons_between = sum_neurons_between.copy() + neurons_between.copy()
         
-        if z_score_all == 2:
-            # z-score the data matrix
-            neurons_between_z = scipy.stats.zscore(neurons_between, axis=1)
-            
-            # then create the average
-            if no_trial_in_each_task == 0:
-                sum_location_between = location_between.copy()
-                sum_clocks_between = clocks_between.copy()
-                sum_midnight_between = midnight_between.copy()
-                sum_phase_between = phase_between.copy()
-                sum_neurons_between = neurons_between_z.copy()
-            if no_trial_in_each_task > 0:
-                sum_location_between = sum_location_between.copy() + location_between.copy()
-                sum_clocks_between = sum_clocks_between.copy() + clocks_between.copy()
-                sum_midnight_between = sum_midnight_between.copy() + midnight_between.copy()
-                sum_phase_between = sum_phase_between.copy() + phase_between.copy()
-                sum_neurons_between = sum_neurons_between.copy() + neurons_between_z.copy()
         
     ave_location_between = sum_location_between/no_trial_in_each_task
     ave_clocks_between = sum_clocks_between/no_trial_in_each_task
@@ -948,134 +903,45 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
     ave_phase_between = sum_phase_between/no_trial_in_each_task
     ave_neurons_between = sum_neurons_between/no_trial_in_each_task
 
-
-    # clean data according to recording day.
-
-    
-    # if mouse_recday == 'me11_05122021_06122021': #mouse a
-    # # ALL FINE WITH a!
-    #     # task 5 and 9 are the same, as well as 6 and 7
-    #     # data of the first 4 tasks look similar, and tasks 5,6,7,8,9 look more similar
-    #     if ignore_double_tasks == 1:
-    #     # task 5 and 9 are the same, as well as 6 and 7
-    #     # throw out 6 and 9
-    #     # 1 and 4 are nearly the same, but have a different last field... so I leave them in.
-    #         ave_clocks_between = np.concatenate((ave_clocks_between[:, 0:60], ave_clocks_between[:, 72:96]), axis = 1)
-    #         ave_neurons_between = np.concatenate((ave_neurons_between[:, 0:60], ave_neurons_between[:,72:96]), axis = 1)
-    #         ave_midnight_between = np.concatenate((ave_midnight_between[:, 0:60], ave_midnight_between[:,72:96]), axis = 1)
-    #         ave_location_between = np.concatenate((ave_location_between[:, 0:60], ave_location_between[:,72:96]), axis = 1)
-    #         ave_phase_between = np.concatenate((ave_phase_between[:, 0:60], ave_phase_between[:,72:96]), axis = 1)
-            
-
-
-    # if mouse_recday == 'me11_01122021_02122021':#mouse b
-    #     # get rid of the last task because it looks somewhat whacky
-    #     ave_clocks_between = ave_clocks_between[:,0:-12].copy()
-    #     ave_phase_between = ave_phase_between[:,0:-12].copy()
-    #     ave_midnight_between = ave_midnight_between[:,0:-12].copy()
-    #     ave_location_between = ave_location_between[:,0:-12].copy()
-    #     ave_neurons_between = ave_neurons_between[:, 0:-12].copy()
-    #     if ignore_double_tasks == 1:
-    #         ave_clocks_between = np.concatenate((ave_clocks_between[:, 0:36], ave_clocks_between[:, 48:-12]), axis = 1)
-    #         ave_neurons_between = np.concatenate((ave_neurons_between[:, 0:36], ave_neurons_between[:,48:-12]), axis = 1)
-    #         ave_midnight_between = np.concatenate((ave_midnight_between[:, 0:36], ave_midnight_between[:,48:-12]), axis = 1)
-    #         ave_location_between = np.concatenate((ave_location_between[:, 0:36], ave_location_between[:,48:-12]), axis = 1)
-    #         ave_phase_between = np.concatenate((ave_phase_between[:, 0:36], ave_phase_between[:,48:-12]), axis = 1)
-
-            
-            
-        
-    # if mouse_recday == 'me10_09122021_10122021': #mouse c 
-    #     # same tasks are: 1,4; and  5,6,9
-    #     # 4 and 9 look whacky, so remove those
-    #     # so then after removal 4 and 5 are the same 
-    #     ave_clocks_between = np.concatenate((ave_clocks_between[:, 0:36], ave_clocks_between[:, 48:96]), axis = 1)
-    #     ave_neurons_between = np.concatenate((ave_neurons_between[:, 0:36], ave_neurons_between[:,48:96]), axis = 1)
-    #     ave_midnight_between = np.concatenate((ave_midnight_between[:, 0:36], ave_midnight_between[:,48:96]), axis = 1)
-    #     ave_location_between = np.concatenate((ave_location_between[:, 0:36], ave_location_between[:,48:96]), axis = 1)
-    #     ave_phase_between = np.concatenate((ave_phase_between[:, 0:36], ave_phase_between[:,48:96]), axis = 1)
-    #     # consider also removing the penultimum one... this was before task 7, now it is 6
-    #     # so far this is still inside
-    #     if ignore_double_tasks == 1:
-    #         ave_clocks_between = np.concatenate((ave_clocks_between[:, 0:36], ave_clocks_between[:, 60:96]), axis = 1)
-    #         ave_neurons_between = np.concatenate((ave_neurons_between[:, 0:36], ave_neurons_between[:,60:96]), axis = 1)
-    #         ave_midnight_between = np.concatenate((ave_midnight_between[:, 0:36], ave_midnight_between[:,60:96]), axis = 1)
-    #         ave_location_between = np.concatenate((ave_location_between[:, 0:36], ave_location_between[:,60:96]), axis = 1)
-    #         ave_phase_between = np.concatenate((ave_phase_between[:, 0:36], ave_phase_between[:,60:96]), axis = 1)
-                
-            
-    # # if mouse_recday == 'me08_10092021_11092021': #mouse d 
-    # # same tasks: 1, 4
-    # # ALL FINE WITH d ONCE THE LAST BUT THE LAST EPHYS FILE WAS LOST 
-    
-    # if mouse_recday == 'ah04_09122021_10122021': #mouse e range 0,8
-    # # throw out the 4th 
-    # # same tasks: (all tasks are unique, before 1 and 4 were the same but 4 is gone)
-    #     ave_clocks_between = np.concatenate((ave_clocks_between[:, 0:36], ave_clocks_between[:, 48::]), axis = 1)
-    #     ave_neurons_between = np.concatenate((ave_neurons_between[:, 0:36], ave_neurons_between[:,48::]), axis = 1)
-    #     ave_midnight_between = np.concatenate((ave_midnight_between[:, 0:36], ave_midnight_between[:,48::]), axis = 1)
-    #     ave_location_between = np.concatenate((ave_location_between[:, 0:36], ave_location_between[:,48::]), axis = 1)
-    #     ave_phase_between = np.concatenate((ave_phase_between[:, 0:36], ave_phase_between[:,48::]), axis = 1)
-
-    # if mouse_recday == 'ah04_05122021_06122021': #mouse f range 0,8
-    # # throw out number 4
-    # # new 4 (previous 5) and last one - 7 (previous 8) are the same
-    #     ave_clocks_between = np.concatenate((ave_clocks_between[:, 0:36], ave_clocks_between[:, 48::]), axis = 1)
-    #     ave_neurons_between = np.concatenate((ave_neurons_between[:, 0:36], ave_neurons_between[:,48::]), axis = 1)
-    #     ave_midnight_between = np.concatenate((ave_midnight_between[:, 0:36], ave_midnight_between[:,48::]), axis = 1)
-    #     ave_location_between = np.concatenate((ave_location_between[:, 0:36], ave_location_between[:,48::]), axis = 1)
-    #     ave_phase_between = np.concatenate((ave_phase_between[:, 0:36], ave_phase_between[:,48::]), axis = 1)
-            
-    # #if mouse_recday == 'ah04_01122021_02122021': #mouse g range 0,8
-    # # same tasks: 1,4 and 5,8
-    # # ALL FINE WITH g 
-    # import pdb; pdb.set_trace()
-    
-       
-    # if mouse_recday == 'ah03_18082021_19082021': #mouse h range 0,8
-    #     # hmmmm here I am not sure... maybe it is alright??
-    #     # the fourth task looks a bit off, but I am leaving it in for now
-    #     # same tasks: 1,4 and 5,8
-    #     print('yey')
-    
+  
     if plotting == True:
         # plot the averaged simulated and cleaned data
-        mc.simulation.predictions.plot_without_legends(ave_location_between, titlestring= 'location average', intervalline= 12)
-        mc.simulation.predictions.plot_without_legends(ave_clocks_between, titlestring= 'clock average', intervalline= 12)
-        mc.simulation.predictions.plot_without_legends(ave_midnight_between, titlestring= 'midnight average', intervalline= 12)
-        mc.simulation.predictions.plot_without_legends(ave_phase_between, titlestring= 'phase average', intervalline= 12)
-        mc.simulation.predictions.plot_without_legends(ave_neurons_between, titlestring= 'neuron average', intervalline= 12)
+        mc.simulation.predictions.plot_without_legends(ave_location_between, titlestring= 'location average', intervalline= 4*no_bins_per_state)
+        mc.simulation.predictions.plot_without_legends(ave_clocks_between, titlestring= 'clock average', intervalline= 4*no_bins_per_state)
+        mc.simulation.predictions.plot_without_legends(ave_midnight_between, titlestring= 'midnight average', intervalline= 4*no_bins_per_state)
+        mc.simulation.predictions.plot_without_legends(ave_phase_between, titlestring= 'phase average', intervalline= 4*no_bins_per_state)
+        mc.simulation.predictions.plot_without_legends(ave_neurons_between, titlestring= 'neuron average', intervalline= 4*no_bins_per_state)
     
-        RSM_location_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_location_between, plotting = True, titlestring = 'Between tasks Location RSM, 12*12, averaged over runs')
-        RSM_clock_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_clocks_between, plotting = True, titlestring = 'Between tasks Clocks RSM, 12*12, averaged over runs', intervalline= 12)
-        RSM_midnight_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_midnight_between, plotting = True, titlestring = 'Between tasks Midnight RSM, 12*12, averaged over runs')
-        RSM_phase_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_phase_between, plotting = True, titlestring = 'Between tasks Pgase RSM, 12*12, averaged over runs')
-        RSM_neurons_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_neurons_between, plotting = True, titlestring = 'Between tasks Data RSM, 12*12, averaged over runs')
+        RSM_location_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_location_between, plotting = True, titlestring = 'Between tasks Location RSM, 12*12, averaged over runs', intervalline= 4*no_bins_per_state)
+        RSM_clock_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_clocks_between, plotting = True, titlestring = 'Between tasks Clocks RSM, 12*12, averaged over runs', intervalline= 4*no_bins_per_state)
+        RSM_midnight_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_midnight_between, plotting = True, titlestring = 'Between tasks Midnight RSM, 12*12, averaged over runs', intervalline= 4*no_bins_per_state)
+        RSM_phase_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_phase_between, plotting = True, titlestring = 'Between tasks Pgase RSM, 12*12, averaged over runs', intervalline= 4*no_bins_per_state)
+        RSM_neurons_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_neurons_between, plotting = True, titlestring = 'Between tasks Data RSM, 12*12, averaged over runs', intervalline= 4*no_bins_per_state)
         
         # separately per phase
-        mc.simulation.predictions.plot_without_legends(ave_clocks_between[:, 0::3], titlestring='early clocks across tasks', intervalline= 4)
-        mc.simulation.predictions.plot_without_legends(ave_neurons_between[:, 0::3], titlestring='early neurons across tasks', intervalline= 4)
-        mc.simulation.predictions.plot_without_legends(ave_midnight_between[:, 0::3], titlestring='early midnight across tasks', intervalline= 4)
+        mc.simulation.predictions.plot_without_legends(ave_clocks_between[:, 0::3], titlestring='early clocks across tasks', intervalline= 4*no_bins_per_state/3)
+        mc.simulation.predictions.plot_without_legends(ave_neurons_between[:, 0::3], titlestring='early neurons across tasks', intervalline= 4*no_bins_per_state/3)
+        mc.simulation.predictions.plot_without_legends(ave_midnight_between[:, 0::3], titlestring='early midnight across tasks', intervalline= 4*no_bins_per_state/3)
         
-        mc.simulation.predictions.plot_without_legends(ave_clocks_between[:, 1::3], titlestring='mid clocks across tasks', intervalline= 4)
-        mc.simulation.predictions.plot_without_legends(ave_neurons_between[:, 1::3], titlestring='mid neurons across tasks', intervalline= 4)
-        mc.simulation.predictions.plot_without_legends(ave_midnight_between[:, 1::3], titlestring='mid midnight across tasks', intervalline= 4)
+        mc.simulation.predictions.plot_without_legends(ave_clocks_between[:, 1::3], titlestring='mid clocks across tasks', intervalline= 4*no_bins_per_state/3)
+        mc.simulation.predictions.plot_without_legends(ave_neurons_between[:, 1::3], titlestring='mid neurons across tasks', intervalline= 4*no_bins_per_state/3)
+        mc.simulation.predictions.plot_without_legends(ave_midnight_between[:, 1::3], titlestring='mid midnight across tasks', intervalline= 4*no_bins_per_state/3)
         
-        mc.simulation.predictions.plot_without_legends(ave_clocks_between[:, 2::3], titlestring='late clocks across tasks', intervalline= 4)
-        mc.simulation.predictions.plot_without_legends(ave_neurons_between[:, 2::3], titlestring='late neurons across tasks', intervalline= 4)
-        mc.simulation.predictions.plot_without_legends(ave_midnight_between[:, 2::3], titlestring='late midnight across tasks', intervalline= 4)
+        mc.simulation.predictions.plot_without_legends(ave_clocks_between[:, 2::3], titlestring='late clocks across tasks', intervalline= 4*no_bins_per_state/3)
+        mc.simulation.predictions.plot_without_legends(ave_neurons_between[:, 2::3], titlestring='late neurons across tasks', intervalline= 4*no_bins_per_state/3)
+        mc.simulation.predictions.plot_without_legends(ave_midnight_between[:, 2::3], titlestring='late midnight across tasks', intervalline= 4*no_bins_per_state/3)
         
-        RSM_early_clocks = mc.simulation.RDMs.within_task_RDM(ave_clocks_between[:, 0::3], plotting=True, titlestring='RSM early clocks, averaged over runs', intervalline= 4)
-        RSM_early_neuron = mc.simulation.RDMs.within_task_RDM(ave_neurons_between[:, 0::3], plotting=True, titlestring='RSM early neurons, averaged over runs', intervalline= 4)
-        RSM_early_midnight = mc.simulation.RDMs.within_task_RDM(ave_midnight_between[:, 0::3], plotting=True, titlestring='RSM early midnight, averaged over runs', intervalline= 4)
+        RSM_early_clocks = mc.simulation.RDMs.within_task_RDM(ave_clocks_between[:, 0::3], plotting=True, titlestring='RSM early clocks, averaged over runs', intervalline= 4*no_bins_per_state/3)
+        RSM_early_neuron = mc.simulation.RDMs.within_task_RDM(ave_neurons_between[:, 0::3], plotting=True, titlestring='RSM early neurons, averaged over runs', intervalline= 4*no_bins_per_state/3)
+        RSM_early_midnight = mc.simulation.RDMs.within_task_RDM(ave_midnight_between[:, 0::3], plotting=True, titlestring='RSM early midnight, averaged over runs', intervalline= 4*no_bins_per_state/3)
         
-        RSM_mid_clocks = mc.simulation.RDMs.within_task_RDM(ave_clocks_between[:, 1::3], plotting=True, titlestring='RSM mid clocks, averaged over runs', intervalline= 4)
-        RSM_mid_neuron = mc.simulation.RDMs.within_task_RDM(ave_neurons_between[:, 1::3], plotting=True, titlestring='RSM mid neurons, averaged over runs', intervalline= 4)
-        RSM_mid_midnight = mc.simulation.RDMs.within_task_RDM(ave_midnight_between[:, 1::3], plotting=True, titlestring='RSM mid midnight, averaged over runs', intervalline= 4)
+        RSM_mid_clocks = mc.simulation.RDMs.within_task_RDM(ave_clocks_between[:, 1::3], plotting=True, titlestring='RSM mid clocks, averaged over runs', intervalline= 4*no_bins_per_state/3)
+        RSM_mid_neuron = mc.simulation.RDMs.within_task_RDM(ave_neurons_between[:, 1::3], plotting=True, titlestring='RSM mid neurons, averaged over runs', intervalline= 4*no_bins_per_state/3)
+        RSM_mid_midnight = mc.simulation.RDMs.within_task_RDM(ave_midnight_between[:, 1::3], plotting=True, titlestring='RSM mid midnight, averaged over runs', intervalline= 4*no_bins_per_state/3)
         
-        RSM_late_clocks = mc.simulation.RDMs.within_task_RDM(ave_clocks_between[:, 2::3], plotting=True, titlestring='RSM late clocks, averaged over runs', intervalline= 4)
-        RSM_late_neuron = mc.simulation.RDMs.within_task_RDM(ave_neurons_between[:, 2::3], plotting=True, titlestring='RSM late neurons, averaged over runs', intervalline= 4)
-        RSM_late_midnight = mc.simulation.RDMs.within_task_RDM(ave_midnight_between[:, 2::3], plotting=True, titlestring='RSM late midnight, averaged over runs', intervalline= 4)
+        RSM_late_clocks = mc.simulation.RDMs.within_task_RDM(ave_clocks_between[:, 2::3], plotting=True, titlestring='RSM late clocks, averaged over runs', intervalline= 4*no_bins_per_state/3)
+        RSM_late_neuron = mc.simulation.RDMs.within_task_RDM(ave_neurons_between[:, 2::3], plotting=True, titlestring='RSM late neurons, averaged over runs', intervalline= 4*no_bins_per_state/3)
+        RSM_late_midnight = mc.simulation.RDMs.within_task_RDM(ave_midnight_between[:, 2::3], plotting=True, titlestring='RSM late midnight, averaged over runs', intervalline= 4*no_bins_per_state/3)
         
     
     elif plotting == False: 
@@ -1101,6 +967,30 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
         
     
     # run regressions separetly for each phase
+    
+    # try the new regression.
+    regressors = {}
+    regressors['clocks']=RSM_clock_betas_ave
+    regressors['midnight']=RSM_midnight_betas_ave
+    regressors['phase']=RSM_phase_betas_ave
+    regressors['location']=RSM_location_betas_ave
+    results_normal = mc.simulation.RDMs.GLM_RDMs(RSM_neurons_betas_ave, regressors, mask_within = True, no_tasks = len(task_configs))
+    
+    regressors_early = {}
+    regressors_early['clocks']=RSM_early_clocks
+    regressors_early['midnight']=RSM_early_midnight
+    regressors_mid = {}
+    regressors_mid['clocks']=RSM_mid_clocks
+    regressors_mid['midnight']=RSM_mid_midnight
+    regressors_late = {}
+    regressors_late['clocks']=RSM_late_clocks
+    regressors_late['midnight']=RSM_late_midnight
+    
+    results_early = mc.simulation.RDMs.GLM_RDMs(RSM_early_neuron, regressors_early, mask_within = True, no_tasks = len(task_configs))
+    results_mid = mc.simulation.RDMs.GLM_RDMs(RSM_mid_neuron, regressors_mid, mask_within = True, no_tasks = len(task_configs))
+    results_late = mc.simulation.RDMs.GLM_RDMs(RSM_late_neuron, regressors_late, mask_within = True, no_tasks = len(task_configs))
+    
+    
     reg_early, scipy_early = mc.simulation.RDMs.lin_reg_RDMs(RSM_early_neuron, regressor_one_matrix = RSM_early_midnight, regressor_two_matrix= RSM_early_clocks)
     print('results for early are [midnight, clocks]', reg_early.coef_)
     reg_mid, scipy_mid = mc.simulation.RDMs.lin_reg_RDMs(RSM_mid_neuron, regressor_one_matrix = RSM_mid_midnight, regressor_two_matrix= RSM_mid_clocks)
@@ -1113,22 +1003,22 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
     # then all mid phases of each tasks, etc; and then do the regression.
     from sklearn.linear_model import LinearRegression
     
-    dimension = len(RSM_early_clocks)
-    Yearly = list(RSM_early_neuron[np.tril_indices(dimension , -1)])
-    Ymid = list(RSM_mid_neuron[np.tril_indices(dimension , -1)])
-    Ylate = list(RSM_late_neuron[np.tril_indices(dimension , -1)])
+
+    Yearly = list(RSM_early_neuron[np.tril_indices(len(RSM_early_neuron) , -1)])
+    Ymid = list(RSM_mid_neuron[np.tril_indices(len(RSM_mid_neuron) , -1)])
+    Ylate = list(RSM_late_neuron[np.tril_indices(len(RSM_late_neuron) , -1)])
     Yall = np.hstack((Yearly, Ymid, Ylate))
     
-    Xearly = list(RSM_early_midnight[np.tril_indices(dimension, -1)])
-    Xclock_early = list(RSM_early_clocks[np.tril_indices(dimension, -1)])
+    Xearly = list(RSM_early_midnight[np.tril_indices(len(RSM_early_neuron), -1)])
+    Xclock_early = list(RSM_early_clocks[np.tril_indices(len(RSM_early_neuron), -1)])
     Xearly = np.vstack((Xearly, Xclock_early))
     
-    Xmid = list(RSM_mid_midnight[np.tril_indices(dimension, -1)])
-    Xclock_mid = list(RSM_mid_clocks[np.tril_indices(dimension, -1)])
+    Xmid = list(RSM_mid_midnight[np.tril_indices(len(RSM_mid_neuron), -1)])
+    Xclock_mid = list(RSM_mid_clocks[np.tril_indices(len(RSM_mid_neuron), -1)])
     Xmid = np.vstack((Xmid, Xclock_mid))
     
-    Xlate = list(RSM_late_midnight[np.tril_indices(dimension, -1)])
-    Xclock_late = list(RSM_late_clocks[np.tril_indices(dimension, -1)])
+    Xlate = list(RSM_late_midnight[np.tril_indices(len(RSM_late_neuron), -1)])
+    Xclock_late = list(RSM_late_clocks[np.tril_indices(len(RSM_late_neuron), -1)])
     Xlate = np.vstack((Xlate, Xclock_late))
     
     Xall = np.hstack((Xearly, Xmid, Xlate))
@@ -1154,7 +1044,7 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
     result_dict['reg_all_midnight-clocks-loc-phase'] = results_average.coef_
     result_dict['reg_all_reversedphase_midnight-clocks'] = reversed_phases_reg_results.coef_
     
-    
+
     return result_dict
 
 
@@ -1187,6 +1077,7 @@ def load_ephys_data(Data_folder):
     mouse_a["locations"] = a_locations
     mouse_a["neurons"] = a_neurons
     mouse_a["timings"] = a_timings
+    mouse_a["recday"] = mouse_recday
     
     
     
@@ -1205,6 +1096,7 @@ def load_ephys_data(Data_folder):
     mouse_b["locations"] = b_locations
     mouse_b["neurons"] = b_neurons
     mouse_b["timings"] = b_timings
+    mouse_b["recday"] = mouse_recday
 
 
     mouse_recday='me10_09122021_10122021' #mouse c range 0,9
@@ -1221,6 +1113,7 @@ def load_ephys_data(Data_folder):
     mouse_c["locations"] = c_locations
     mouse_c["neurons"] = c_neurons
     mouse_c["timings"] = c_timings
+    mouse_c["recday"] = mouse_recday
         
 
     mouse_recday='me08_10092021_11092021' #mouse d range 0,6
@@ -1240,6 +1133,7 @@ def load_ephys_data(Data_folder):
     mouse_d["locations"] = d_locations
     mouse_d["neurons"] = d_neurons
     mouse_d["timings"] = d_timings
+    mouse_d["recday"] = mouse_recday
 
 
     mouse_recday='ah04_09122021_10122021' #mouse e range 0,8
@@ -1256,6 +1150,7 @@ def load_ephys_data(Data_folder):
     mouse_e["locations"] = e_locations
     mouse_e["neurons"] = e_neurons
     mouse_e["timings"] = e_timings 
+    mouse_e["recday"] = mouse_recday
         
      
         
@@ -1273,7 +1168,7 @@ def load_ephys_data(Data_folder):
     mouse_f["locations"] = f_locations
     mouse_f["neurons"] = f_neurons
     mouse_f["timings"] = f_timings
-
+    mouse_f["recday"] = mouse_recday
 
     mouse_recday='ah04_01122021_02122021' #mouse g range 0,8
     mouse_g["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
@@ -1289,7 +1184,7 @@ def load_ephys_data(Data_folder):
     mouse_g["locations"] = g_locations
     mouse_g["neurons"] = g_neurons
     mouse_g["timings"] = g_timings
-
+    mouse_g["recday"] = mouse_recday
 
     mouse_recday='ah03_18082021_19082021' #mouse h range 0,8
     mouse_h["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
@@ -1305,6 +1200,7 @@ def load_ephys_data(Data_folder):
     mouse_h["locations"] = h_locations
     mouse_h["neurons"] = h_neurons
     mouse_h["timings"] = h_timings
+    mouse_h["recday"] = mouse_recday
     # # for h, the first timings array is missing
     # # > delete the first task completely!
     # h_timings = h_timings[1::]
@@ -1397,6 +1293,7 @@ def clean_ephys_data(task_configs, locations_all, neurons, timings_all, mouse_re
 def prep_ephys_per_trial(timings_all, locations_all, no_trial_in_each_task, task_no, task_config, neurons):
     # first convert trial times from ms to bin number to match neuron and location arrays 
     # (1 bin = 25ms)
+    # import pdb; pdb.set_trace()
     timings_task = timings_all[task_no].copy()
     for r, row in enumerate(timings_task):
         for c, element in enumerate(row):
@@ -1417,7 +1314,9 @@ def prep_ephys_per_trial(timings_all, locations_all, no_trial_in_each_task, task
     task_config = [int((field_no-1)) for field_no in task_config]
 
     # now select the run you are currently focussing on.
-    row =  timings_task[-(no_trial_in_each_task+1),:].copy()
+    # I have no idea why I wrote thi... but I think it has to be this:
+    row = timings_task[no_trial_in_each_task]
+    # row =  timings_task[-(no_trial_in_each_task+1),:].copy()
     # current data of this specific run
     trajectory = locations_task[row[0]:row[-1]].copy()
 
@@ -1437,7 +1336,7 @@ def prep_ephys_per_trial(timings_all, locations_all, no_trial_in_each_task, task
 
     # some pre-processing to create my models.
     # to count subpaths
-    subpath_file = [locations_task[row[0]:row[1]+1], locations_task[row[1]+1:row[2]+1], locations_task[row[2]+1:row[3]+1], locations_task[row[3]+1:row[4]+1]]
+    subpath_file = [locations_task[row[0]:row[1]], locations_task[row[1]:row[2]], locations_task[row[2]:row[3]], locations_task[row[3]:row[4]]]
     timings_curr_run = [(elem - row[0]) for elem in row]
 
     # to find out the step number per subpath
@@ -1480,4 +1379,102 @@ def plotting_hist_scat(data_list, label_string_list, label_tick_list, title_stri
 
 
 
+
+
+
+
+
+
+
+
+
+
+    # clean data according to recording day.
+
+    
+    # if mouse_recday == 'me11_05122021_06122021': #mouse a
+    # # ALL FINE WITH a!
+    #     # task 5 and 9 are the same, as well as 6 and 7
+    #     # data of the first 4 tasks look similar, and tasks 5,6,7,8,9 look more similar
+    #     if ignore_double_tasks == 1:
+    #     # task 5 and 9 are the same, as well as 6 and 7
+    #     # throw out 6 and 9
+    #     # 1 and 4 are nearly the same, but have a different last field... so I leave them in.
+    #         ave_clocks_between = np.concatenate((ave_clocks_between[:, 0:60], ave_clocks_between[:, 72:96]), axis = 1)
+    #         ave_neurons_between = np.concatenate((ave_neurons_between[:, 0:60], ave_neurons_between[:,72:96]), axis = 1)
+    #         ave_midnight_between = np.concatenate((ave_midnight_between[:, 0:60], ave_midnight_between[:,72:96]), axis = 1)
+    #         ave_location_between = np.concatenate((ave_location_between[:, 0:60], ave_location_between[:,72:96]), axis = 1)
+    #         ave_phase_between = np.concatenate((ave_phase_between[:, 0:60], ave_phase_between[:,72:96]), axis = 1)
+            
+
+
+    # if mouse_recday == 'me11_01122021_02122021':#mouse b
+    #     # get rid of the last task because it looks somewhat whacky
+    #     ave_clocks_between = ave_clocks_between[:,0:-12].copy()
+    #     ave_phase_between = ave_phase_between[:,0:-12].copy()
+    #     ave_midnight_between = ave_midnight_between[:,0:-12].copy()
+    #     ave_location_between = ave_location_between[:,0:-12].copy()
+    #     ave_neurons_between = ave_neurons_between[:, 0:-12].copy()
+    #     if ignore_double_tasks == 1:
+    #         ave_clocks_between = np.concatenate((ave_clocks_between[:, 0:36], ave_clocks_between[:, 48:-12]), axis = 1)
+    #         ave_neurons_between = np.concatenate((ave_neurons_between[:, 0:36], ave_neurons_between[:,48:-12]), axis = 1)
+    #         ave_midnight_between = np.concatenate((ave_midnight_between[:, 0:36], ave_midnight_between[:,48:-12]), axis = 1)
+    #         ave_location_between = np.concatenate((ave_location_between[:, 0:36], ave_location_between[:,48:-12]), axis = 1)
+    #         ave_phase_between = np.concatenate((ave_phase_between[:, 0:36], ave_phase_between[:,48:-12]), axis = 1)
+
+            
+            
+        
+    # if mouse_recday == 'me10_09122021_10122021': #mouse c 
+    #     # same tasks are: 1,4; and  5,6,9
+    #     # 4 and 9 look whacky, so remove those
+    #     # so then after removal 4 and 5 are the same 
+    #     ave_clocks_between = np.concatenate((ave_clocks_between[:, 0:36], ave_clocks_between[:, 48:96]), axis = 1)
+    #     ave_neurons_between = np.concatenate((ave_neurons_between[:, 0:36], ave_neurons_between[:,48:96]), axis = 1)
+    #     ave_midnight_between = np.concatenate((ave_midnight_between[:, 0:36], ave_midnight_between[:,48:96]), axis = 1)
+    #     ave_location_between = np.concatenate((ave_location_between[:, 0:36], ave_location_between[:,48:96]), axis = 1)
+    #     ave_phase_between = np.concatenate((ave_phase_between[:, 0:36], ave_phase_between[:,48:96]), axis = 1)
+    #     # consider also removing the penultimum one... this was before task 7, now it is 6
+    #     # so far this is still inside
+    #     if ignore_double_tasks == 1:
+    #         ave_clocks_between = np.concatenate((ave_clocks_between[:, 0:36], ave_clocks_between[:, 60:96]), axis = 1)
+    #         ave_neurons_between = np.concatenate((ave_neurons_between[:, 0:36], ave_neurons_between[:,60:96]), axis = 1)
+    #         ave_midnight_between = np.concatenate((ave_midnight_between[:, 0:36], ave_midnight_between[:,60:96]), axis = 1)
+    #         ave_location_between = np.concatenate((ave_location_between[:, 0:36], ave_location_between[:,60:96]), axis = 1)
+    #         ave_phase_between = np.concatenate((ave_phase_between[:, 0:36], ave_phase_between[:,60:96]), axis = 1)
+                
+            
+    # # if mouse_recday == 'me08_10092021_11092021': #mouse d 
+    # # same tasks: 1, 4
+    # # ALL FINE WITH d ONCE THE LAST BUT THE LAST EPHYS FILE WAS LOST 
+    
+    # if mouse_recday == 'ah04_09122021_10122021': #mouse e range 0,8
+    # # throw out the 4th 
+    # # same tasks: (all tasks are unique, before 1 and 4 were the same but 4 is gone)
+    #     ave_clocks_between = np.concatenate((ave_clocks_between[:, 0:36], ave_clocks_between[:, 48::]), axis = 1)
+    #     ave_neurons_between = np.concatenate((ave_neurons_between[:, 0:36], ave_neurons_between[:,48::]), axis = 1)
+    #     ave_midnight_between = np.concatenate((ave_midnight_between[:, 0:36], ave_midnight_between[:,48::]), axis = 1)
+    #     ave_location_between = np.concatenate((ave_location_between[:, 0:36], ave_location_between[:,48::]), axis = 1)
+    #     ave_phase_between = np.concatenate((ave_phase_between[:, 0:36], ave_phase_between[:,48::]), axis = 1)
+
+    # if mouse_recday == 'ah04_05122021_06122021': #mouse f range 0,8
+    # # throw out number 4
+    # # new 4 (previous 5) and last one - 7 (previous 8) are the same
+    #     ave_clocks_between = np.concatenate((ave_clocks_between[:, 0:36], ave_clocks_between[:, 48::]), axis = 1)
+    #     ave_neurons_between = np.concatenate((ave_neurons_between[:, 0:36], ave_neurons_between[:,48::]), axis = 1)
+    #     ave_midnight_between = np.concatenate((ave_midnight_between[:, 0:36], ave_midnight_between[:,48::]), axis = 1)
+    #     ave_location_between = np.concatenate((ave_location_between[:, 0:36], ave_location_between[:,48::]), axis = 1)
+    #     ave_phase_between = np.concatenate((ave_phase_between[:, 0:36], ave_phase_between[:,48::]), axis = 1)
+            
+    # #if mouse_recday == 'ah04_01122021_02122021': #mouse g range 0,8
+    # # same tasks: 1,4 and 5,8
+    # # ALL FINE WITH g 
+    # import pdb; pdb.set_trace()
+    
+       
+    # if mouse_recday == 'ah03_18082021_19082021': #mouse h range 0,8
+    #     # hmmmm here I am not sure... maybe it is alright??
+    #     # the fourth task looks a bit off, but I am leaving it in for now
+    #     # same tasks: 1,4 and 5,8
+    #     print('yey')
 
