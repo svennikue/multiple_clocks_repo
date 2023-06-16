@@ -325,9 +325,7 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
             #     early_mask = early_mask[0:min_length].copy()
             #     mid_mask = mid_mask[0:min_length].copy()
             #     late_mask = late_mask[0:min_length].copy()
-                
-                
-            
+
             RSM_location_early = mc.simulation.RDMs.within_task_RDM(location_between[:, early_mask], plotting = False, titlestring = 'early Location RDM')
             RSM_location_mid = mc.simulation.RDMs.within_task_RDM(location_between[:, mid_mask], plotting = False, titlestring = 'mid Location RDM')
             RSM_location_late = mc.simulation.RDMs.within_task_RDM(location_between[:, late_mask], plotting = False, titlestring = 'late Location RDM')
@@ -817,7 +815,7 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
 
 
 # with this one, I want to compare different models and find the optimal output for my analysis.
-def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_recday, plotting = False, continuous = True, no_bins_per_state = 3, number_phase_neurons = 3):
+def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_recday, plotting = False, continuous = True, no_bins_per_state = 3, number_phase_neurons = 3, mask_within = True, split_by_phase = True):
     # import pdb; pdb.set_trace()
     # this is now all  based on creating an average across runs first.
     
@@ -855,7 +853,7 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
             
             if continuous == True:
                 location_model, phase_model, state_model, midnight_model, clocks_model, phase_state_model = mc.simulation.predictions.set_continous_models_ephys(trajectory, timings_curr_run, index_make_step, step_number, no_phase_neurons= number_phase_neurons, plot = False)
-            
+                   
             
             # now create the regressors per run
             regs_phase_state_run = mc.simulation.predictions.create_x_regressors_per_state(walked_path = trajectory, subpath_timings = timings_curr_run, step_no = step_number, no_regs_per_state = no_bins_per_state)
@@ -865,6 +863,8 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
             midnight_phase_state= mc.simulation.predictions.transform_data_to_betas(midnight_model, regs_phase_state_run)
             location_phase_state = mc.simulation.predictions.transform_data_to_betas(location_model, regs_phase_state_run)
             phase_phase_state = mc.simulation.predictions.transform_data_to_betas(phase_model, regs_phase_state_run)
+
+ 
             
             # these need to be concatenated for each run and task
             if task_no == 0:
@@ -874,12 +874,20 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
                 midnight_between = midnight_phase_state.copy()
                 location_between = location_phase_state.copy()
                 phase_between = phase_phase_state.copy()
+                if split_by_phase:
+                    phase_separation = mc.simulation.predictions.set_phase_model_ephys(trajectory, timings_curr_run, index_make_step, step_number)
+                    phase_separation = np.round(mc.simulation.predictions.transform_data_to_betas(phase_separation, regs_phase_state_run))
             else:
                 neurons_between = np.concatenate((neurons_between, neurons_phase_state), axis = 1)
                 clocks_between = np.concatenate((clocks_between, clock_phase_state), axis = 1)
                 midnight_between = np.concatenate((midnight_between, midnight_phase_state), axis = 1)
                 location_between = np.concatenate((location_between, location_phase_state), axis = 1)
                 phase_between = np.concatenate((phase_between,phase_phase_state), axis = 1)
+                if split_by_phase == 1:
+                    phase_separation_temp = mc.simulation.predictions.set_phase_model_ephys(trajectory, timings_curr_run, index_make_step, step_number)
+                    phase_separation_temp = np.round(mc.simulation.predictions.transform_data_to_betas(phase_separation_temp, regs_phase_state_run))
+                    phase_separation = np.concatenate((phase_separation, phase_separation_temp), axis = 1)
+                
         
         
         # create an averaged neuron file and RDM. 
@@ -889,12 +897,14 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
             sum_midnight_between = midnight_between.copy()
             sum_phase_between = phase_between.copy()
             sum_neurons_between = neurons_between.copy()
+            sum_phase_separation = phase_separation.copy()
         if no_trial_in_each_task > 0:
             sum_location_between = sum_location_between.copy() + location_between.copy()
             sum_clocks_between = sum_clocks_between.copy() + clocks_between.copy()
             sum_midnight_between = sum_midnight_between.copy() + midnight_between.copy()
             sum_phase_between = sum_phase_between.copy() + phase_between.copy()
             sum_neurons_between = sum_neurons_between.copy() + neurons_between.copy()
+            sum_phase_separation = sum_phase_separation.copy() + phase_separation.copy()
         
         
     ave_location_between = sum_location_between/no_trial_in_each_task
@@ -902,7 +912,14 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
     ave_midnight_between = sum_midnight_between/no_trial_in_each_task
     ave_phase_between = sum_phase_between/no_trial_in_each_task
     ave_neurons_between = sum_neurons_between/no_trial_in_each_task
+    ave_phase_separation = sum_phase_separation/no_trial_in_each_task
 
+    if split_by_phase:
+        max_val = np.max(ave_phase_separation)
+        # import pdb; pdb.set_trace()
+        early_mask = np.where(ave_phase_separation[0,:] == max_val)[0]
+        mid_mask = np.where(ave_phase_separation[1,:] == max_val)[0]
+        late_mask = np.where(ave_phase_separation[2,:] == max_val)[0]
   
     if plotting == True:
         # plot the averaged simulated and cleaned data
@@ -919,30 +936,31 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
         RSM_neurons_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_neurons_between, plotting = True, titlestring = 'Between tasks Data RSM, 12*12, averaged over runs', intervalline= 4*no_bins_per_state)
         
         # separately per phase
-        mc.simulation.predictions.plot_without_legends(ave_clocks_between[:, 0::3], titlestring='early clocks across tasks', intervalline= 4*no_bins_per_state/3)
-        mc.simulation.predictions.plot_without_legends(ave_neurons_between[:, 0::3], titlestring='early neurons across tasks', intervalline= 4*no_bins_per_state/3)
-        mc.simulation.predictions.plot_without_legends(ave_midnight_between[:, 0::3], titlestring='early midnight across tasks', intervalline= 4*no_bins_per_state/3)
-        
-        mc.simulation.predictions.plot_without_legends(ave_clocks_between[:, 1::3], titlestring='mid clocks across tasks', intervalline= 4*no_bins_per_state/3)
-        mc.simulation.predictions.plot_without_legends(ave_neurons_between[:, 1::3], titlestring='mid neurons across tasks', intervalline= 4*no_bins_per_state/3)
-        mc.simulation.predictions.plot_without_legends(ave_midnight_between[:, 1::3], titlestring='mid midnight across tasks', intervalline= 4*no_bins_per_state/3)
-        
-        mc.simulation.predictions.plot_without_legends(ave_clocks_between[:, 2::3], titlestring='late clocks across tasks', intervalline= 4*no_bins_per_state/3)
-        mc.simulation.predictions.plot_without_legends(ave_neurons_between[:, 2::3], titlestring='late neurons across tasks', intervalline= 4*no_bins_per_state/3)
-        mc.simulation.predictions.plot_without_legends(ave_midnight_between[:, 2::3], titlestring='late midnight across tasks', intervalline= 4*no_bins_per_state/3)
-        
-        RSM_early_clocks = mc.simulation.RDMs.within_task_RDM(ave_clocks_between[:, 0::3], plotting=True, titlestring='RSM early clocks, averaged over runs', intervalline= 4*no_bins_per_state/3)
-        RSM_early_neuron = mc.simulation.RDMs.within_task_RDM(ave_neurons_between[:, 0::3], plotting=True, titlestring='RSM early neurons, averaged over runs', intervalline= 4*no_bins_per_state/3)
-        RSM_early_midnight = mc.simulation.RDMs.within_task_RDM(ave_midnight_between[:, 0::3], plotting=True, titlestring='RSM early midnight, averaged over runs', intervalline= 4*no_bins_per_state/3)
-        
-        RSM_mid_clocks = mc.simulation.RDMs.within_task_RDM(ave_clocks_between[:, 1::3], plotting=True, titlestring='RSM mid clocks, averaged over runs', intervalline= 4*no_bins_per_state/3)
-        RSM_mid_neuron = mc.simulation.RDMs.within_task_RDM(ave_neurons_between[:, 1::3], plotting=True, titlestring='RSM mid neurons, averaged over runs', intervalline= 4*no_bins_per_state/3)
-        RSM_mid_midnight = mc.simulation.RDMs.within_task_RDM(ave_midnight_between[:, 1::3], plotting=True, titlestring='RSM mid midnight, averaged over runs', intervalline= 4*no_bins_per_state/3)
-        
-        RSM_late_clocks = mc.simulation.RDMs.within_task_RDM(ave_clocks_between[:, 2::3], plotting=True, titlestring='RSM late clocks, averaged over runs', intervalline= 4*no_bins_per_state/3)
-        RSM_late_neuron = mc.simulation.RDMs.within_task_RDM(ave_neurons_between[:, 2::3], plotting=True, titlestring='RSM late neurons, averaged over runs', intervalline= 4*no_bins_per_state/3)
-        RSM_late_midnight = mc.simulation.RDMs.within_task_RDM(ave_midnight_between[:, 2::3], plotting=True, titlestring='RSM late midnight, averaged over runs', intervalline= 4*no_bins_per_state/3)
-        
+        if split_by_phase:
+            mc.simulation.predictions.plot_without_legends(ave_clocks_between[:, early_mask], titlestring='early clocks across tasks', intervalline= 4*no_bins_per_state/3)
+            mc.simulation.predictions.plot_without_legends(ave_neurons_between[:, early_mask], titlestring='early neurons across tasks', intervalline= 4*no_bins_per_state/3)
+            mc.simulation.predictions.plot_without_legends(ave_midnight_between[:, early_mask], titlestring='early midnight across tasks', intervalline= 4*no_bins_per_state/3)
+            
+            mc.simulation.predictions.plot_without_legends(ave_clocks_between[:, mid_mask], titlestring='mid clocks across tasks', intervalline= 4*no_bins_per_state/3)
+            mc.simulation.predictions.plot_without_legends(ave_neurons_between[:, mid_mask], titlestring='mid neurons across tasks', intervalline= 4*no_bins_per_state/3)
+            mc.simulation.predictions.plot_without_legends(ave_midnight_between[:, mid_mask], titlestring='mid midnight across tasks', intervalline= 4*no_bins_per_state/3)
+            
+            mc.simulation.predictions.plot_without_legends(ave_clocks_between[:, late_mask], titlestring='late clocks across tasks', intervalline= 4*no_bins_per_state/3)
+            mc.simulation.predictions.plot_without_legends(ave_neurons_between[:, late_mask], titlestring='late neurons across tasks', intervalline= 4*no_bins_per_state/3)
+            mc.simulation.predictions.plot_without_legends(ave_midnight_between[:, late_mask], titlestring='late midnight across tasks', intervalline= 4*no_bins_per_state/3)
+            
+            RSM_early_clocks = mc.simulation.RDMs.within_task_RDM(ave_clocks_between[:, early_mask], plotting=True, titlestring='RSM early clocks, averaged over runs', intervalline= 4*no_bins_per_state/3)
+            RSM_early_neuron = mc.simulation.RDMs.within_task_RDM(ave_neurons_between[:, early_mask], plotting=True, titlestring='RSM early neurons, averaged over runs', intervalline= 4*no_bins_per_state/3)
+            RSM_early_midnight = mc.simulation.RDMs.within_task_RDM(ave_midnight_between[:, early_mask], plotting=True, titlestring='RSM early midnight, averaged over runs', intervalline= 4*no_bins_per_state/3)
+            
+            RSM_mid_clocks = mc.simulation.RDMs.within_task_RDM(ave_clocks_between[:, mid_mask], plotting=True, titlestring='RSM mid clocks, averaged over runs', intervalline= 4*no_bins_per_state/3)
+            RSM_mid_neuron = mc.simulation.RDMs.within_task_RDM(ave_neurons_between[:, mid_mask], plotting=True, titlestring='RSM mid neurons, averaged over runs', intervalline= 4*no_bins_per_state/3)
+            RSM_mid_midnight = mc.simulation.RDMs.within_task_RDM(ave_midnight_between[:, mid_mask], plotting=True, titlestring='RSM mid midnight, averaged over runs', intervalline= 4*no_bins_per_state/3)
+            
+            RSM_late_clocks = mc.simulation.RDMs.within_task_RDM(ave_clocks_between[:, late_mask], plotting=True, titlestring='RSM late clocks, averaged over runs', intervalline= 4*no_bins_per_state/3)
+            RSM_late_neuron = mc.simulation.RDMs.within_task_RDM(ave_neurons_between[:, late_mask], plotting=True, titlestring='RSM late neurons, averaged over runs', intervalline= 4*no_bins_per_state/3)
+            RSM_late_midnight = mc.simulation.RDMs.within_task_RDM(ave_midnight_between[:, late_mask], plotting=True, titlestring='RSM late midnight, averaged over runs', intervalline= 4*no_bins_per_state/3)
+            
     
     elif plotting == False: 
         # for all phases
@@ -952,19 +970,20 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
         RSM_phase_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_phase_between, plotting = False)
         RSM_neurons_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_neurons_between, plotting = False)
         
-        # for each phase separately
-        RSM_early_clocks = mc.simulation.RDMs.within_task_RDM(ave_clocks_between[:, 0::3], plotting = False)
-        RSM_early_neuron = mc.simulation.RDMs.within_task_RDM(ave_neurons_between[:, 0::3], plotting = False)
-        RSM_early_midnight = mc.simulation.RDMs.within_task_RDM(ave_midnight_between[:, 0::3], plotting = False)
-        
-        RSM_mid_clocks = mc.simulation.RDMs.within_task_RDM(ave_clocks_between[:, 1::3], plotting = False)
-        RSM_mid_neuron = mc.simulation.RDMs.within_task_RDM(ave_neurons_between[:, 1::3], plotting = False)
-        RSM_mid_midnight = mc.simulation.RDMs.within_task_RDM(ave_midnight_between[:, 1::3], plotting = False)
-        
-        RSM_late_clocks = mc.simulation.RDMs.within_task_RDM(ave_clocks_between[:, 2::3], plotting = False)
-        RSM_late_neuron = mc.simulation.RDMs.within_task_RDM(ave_neurons_between[:, 2::3], plotting = False)
-        RSM_late_midnight = mc.simulation.RDMs.within_task_RDM(ave_midnight_between[:, 2::3], plotting = False)
-        
+        if split_by_phase:
+            # for each phase separately
+            RSM_early_clocks = mc.simulation.RDMs.within_task_RDM(ave_clocks_between[:, early_mask], plotting = False)
+            RSM_early_neuron = mc.simulation.RDMs.within_task_RDM(ave_neurons_between[:, early_mask], plotting = False)
+            RSM_early_midnight = mc.simulation.RDMs.within_task_RDM(ave_midnight_between[:, early_mask], plotting = False)
+            
+            RSM_mid_clocks = mc.simulation.RDMs.within_task_RDM(ave_clocks_between[:, mid_mask], plotting = False)
+            RSM_mid_neuron = mc.simulation.RDMs.within_task_RDM(ave_neurons_between[:, mid_mask], plotting = False)
+            RSM_mid_midnight = mc.simulation.RDMs.within_task_RDM(ave_midnight_between[:, mid_mask], plotting = False)
+            
+            RSM_late_clocks = mc.simulation.RDMs.within_task_RDM(ave_clocks_between[:, late_mask], plotting = False)
+            RSM_late_neuron = mc.simulation.RDMs.within_task_RDM(ave_neurons_between[:, late_mask], plotting = False)
+            RSM_late_midnight = mc.simulation.RDMs.within_task_RDM(ave_midnight_between[:, late_mask], plotting = False)
+            
     
     # run regressions separetly for each phase
     
@@ -974,75 +993,74 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
     regressors['midnight']=RSM_midnight_betas_ave
     regressors['phase']=RSM_phase_betas_ave
     regressors['location']=RSM_location_betas_ave
-    results_normal = mc.simulation.RDMs.GLM_RDMs(RSM_neurons_betas_ave, regressors, mask_within = True, no_tasks = len(task_configs))
-    
-    regressors_early = {}
-    regressors_early['clocks']=RSM_early_clocks
-    regressors_early['midnight']=RSM_early_midnight
-    regressors_mid = {}
-    regressors_mid['clocks']=RSM_mid_clocks
-    regressors_mid['midnight']=RSM_mid_midnight
-    regressors_late = {}
-    regressors_late['clocks']=RSM_late_clocks
-    regressors_late['midnight']=RSM_late_midnight
-    
-    results_early = mc.simulation.RDMs.GLM_RDMs(RSM_early_neuron, regressors_early, mask_within = True, no_tasks = len(task_configs))
-    results_mid = mc.simulation.RDMs.GLM_RDMs(RSM_mid_neuron, regressors_mid, mask_within = True, no_tasks = len(task_configs))
-    results_late = mc.simulation.RDMs.GLM_RDMs(RSM_late_neuron, regressors_late, mask_within = True, no_tasks = len(task_configs))
-    
-    
-    reg_early, scipy_early = mc.simulation.RDMs.lin_reg_RDMs(RSM_early_neuron, regressor_one_matrix = RSM_early_midnight, regressor_two_matrix= RSM_early_clocks)
-    print('results for early are [midnight, clocks]', reg_early.coef_)
-    reg_mid, scipy_mid = mc.simulation.RDMs.lin_reg_RDMs(RSM_mid_neuron, regressor_one_matrix = RSM_mid_midnight, regressor_two_matrix= RSM_mid_clocks)
-    print('results for mid are [midnight, clocks]', reg_mid.coef_)
-    reg_late, scipy_late = mc.simulation.RDMs.lin_reg_RDMs(RSM_late_neuron, regressor_one_matrix = RSM_late_midnight, regressor_two_matrix= RSM_late_clocks)
-    print('results for late are [midnight, clocks]', reg_late.coef_)
-
-    # LITTLE REGRESSION PLAYAROUND
-    # this is a regression where I put all early phases of all tasks behind each other
-    # then all mid phases of each tasks, etc; and then do the regression.
-    from sklearn.linear_model import LinearRegression
-    
-
-    Yearly = list(RSM_early_neuron[np.tril_indices(len(RSM_early_neuron) , -1)])
-    Ymid = list(RSM_mid_neuron[np.tril_indices(len(RSM_mid_neuron) , -1)])
-    Ylate = list(RSM_late_neuron[np.tril_indices(len(RSM_late_neuron) , -1)])
-    Yall = np.hstack((Yearly, Ymid, Ylate))
-    
-    Xearly = list(RSM_early_midnight[np.tril_indices(len(RSM_early_neuron), -1)])
-    Xclock_early = list(RSM_early_clocks[np.tril_indices(len(RSM_early_neuron), -1)])
-    Xearly = np.vstack((Xearly, Xclock_early))
-    
-    Xmid = list(RSM_mid_midnight[np.tril_indices(len(RSM_mid_neuron), -1)])
-    Xclock_mid = list(RSM_mid_clocks[np.tril_indices(len(RSM_mid_neuron), -1)])
-    Xmid = np.vstack((Xmid, Xclock_mid))
-    
-    Xlate = list(RSM_late_midnight[np.tril_indices(len(RSM_late_neuron), -1)])
-    Xclock_late = list(RSM_late_clocks[np.tril_indices(len(RSM_late_neuron), -1)])
-    Xlate = np.vstack((Xlate, Xclock_late))
-    
-    Xall = np.hstack((Xearly, Xmid, Xlate))
-    x_all_reshaped = np.transpose(Xall)
-    reversed_phases_reg_results = LinearRegression().fit(x_all_reshaped, Yall)
-    print('results for putting all neurons together are [midnight, clocks]', reversed_phases_reg_results.coef_)
-
-    # do whole regression with only midnight and clock
-    reg_mid_clock, scipyblah = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons_betas_ave, regressor_one_matrix = RSM_midnight_betas_ave, regressor_two_matrix= RSM_clock_betas_ave)
-    print('results all normal RSMs are [midnight, clocks]', reg_mid_clock.coef_)
-    
-    # regression with all models
-    results_average, scipy_regression_results = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons_betas_ave, regressor_one_matrix=RSM_midnight_betas_ave, regressor_two_matrix= RSM_clock_betas_ave, regressor_three_matrix= RSM_location_betas_ave, regressor_four_matrix= RSM_phase_betas_ave)
-    print('regression results are: [midnight, clocks,location, phase]:', results_average.coef_)
-
+    results_normal = mc.simulation.RDMs.GLM_RDMs(RSM_neurons_betas_ave, regressors, mask_within, no_tasks = len(task_configs))
     
     # collect all values in a results table which I then output in the end.
     result_dict = {}
-    result_dict['reg_early_phase_midnight-clocks'] = reg_early.coef_
-    result_dict['reg_mid_phase_midnight-clocks'] = reg_mid.coef_
-    result_dict['reg_late_phase_midnight-clocks'] = reg_late.coef_
-    result_dict['reg_all_midnight-clocks'] = reg_mid_clock.coef_
-    result_dict['reg_all_midnight-clocks-loc-phase'] = results_average.coef_
-    result_dict['reg_all_reversedphase_midnight-clocks'] = reversed_phases_reg_results.coef_
+    result_dict['normal']= results_normal
+    
+    if split_by_phase:
+        regressors_early = {}
+        regressors_early['clocks']=RSM_early_clocks
+        regressors_early['midnight']=RSM_early_midnight
+        regressors_mid = {}
+        regressors_mid['clocks']=RSM_mid_clocks
+        regressors_mid['midnight']=RSM_mid_midnight
+        regressors_late = {}
+        regressors_late['clocks']=RSM_late_clocks
+        regressors_late['midnight']=RSM_late_midnight
+        
+        results_early = mc.simulation.RDMs.GLM_RDMs(RSM_early_neuron, regressors_early, mask_within, no_tasks = len(task_configs))
+        results_mid = mc.simulation.RDMs.GLM_RDMs(RSM_mid_neuron, regressors_mid, mask_within, no_tasks = len(task_configs))
+        results_late = mc.simulation.RDMs.GLM_RDMs(RSM_late_neuron, regressors_late, mask_within, no_tasks = len(task_configs))
+        
+        result_dict['early']=results_early
+        result_dict['mid']= results_mid
+        result_dict['late']= results_late
+
+    # # LITTLE REGRESSION PLAYAROUND
+    # # this is a regression where I put all early phases of all tasks behind each other
+    # # then all mid phases of each tasks, etc; and then do the regression.
+    # from sklearn.linear_model import LinearRegression
+    
+    # Yearly = list(RSM_early_neuron[np.tril_indices(len(RSM_early_neuron) , -1)])
+    # Ymid = list(RSM_mid_neuron[np.tril_indices(len(RSM_mid_neuron) , -1)])
+    # Ylate = list(RSM_late_neuron[np.tril_indices(len(RSM_late_neuron) , -1)])
+    # Yall = np.hstack((Yearly, Ymid, Ylate))
+    
+    # Xearly = list(RSM_early_midnight[np.tril_indices(len(RSM_early_neuron), -1)])
+    # Xclock_early = list(RSM_early_clocks[np.tril_indices(len(RSM_early_neuron), -1)])
+    # Xearly = np.vstack((Xearly, Xclock_early))
+    
+    # Xmid = list(RSM_mid_midnight[np.tril_indices(len(RSM_mid_neuron), -1)])
+    # Xclock_mid = list(RSM_mid_clocks[np.tril_indices(len(RSM_mid_neuron), -1)])
+    # Xmid = np.vstack((Xmid, Xclock_mid))
+    
+    # Xlate = list(RSM_late_midnight[np.tril_indices(len(RSM_late_neuron), -1)])
+    # Xclock_late = list(RSM_late_clocks[np.tril_indices(len(RSM_late_neuron), -1)])
+    # Xlate = np.vstack((Xlate, Xclock_late))
+    
+    # Xall = np.hstack((Xearly, Xmid, Xlate))
+    # x_all_reshaped = np.transpose(Xall)
+    # reversed_phases_reg_results = LinearRegression().fit(x_all_reshaped, Yall)
+    # print('results for putting all neurons together are [midnight, clocks]', reversed_phases_reg_results.coef_)
+
+    # # do whole regression with only midnight and clock
+    # reg_mid_clock, scipyblah = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons_betas_ave, regressor_one_matrix = RSM_midnight_betas_ave, regressor_two_matrix= RSM_clock_betas_ave)
+    # print('results all normal RSMs are [midnight, clocks]', reg_mid_clock.coef_)
+    
+    # # regression with all models
+    # results_average, scipy_regression_results = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons_betas_ave, regressor_one_matrix=RSM_midnight_betas_ave, regressor_two_matrix= RSM_clock_betas_ave, regressor_three_matrix= RSM_location_betas_ave, regressor_four_matrix= RSM_phase_betas_ave)
+    # print('regression results are: [midnight, clocks,location, phase]:', results_average.coef_)
+
+
+    
+    # result_dict['reg_early_phase_midnight-clocks'] = reg_early.coef_
+    # result_dict['reg_mid_phase_midnight-clocks'] = reg_mid.coef_
+    # result_dict['reg_late_phase_midnight-clocks'] = reg_late.coef_
+    # result_dict['reg_all_midnight-clocks'] = reg_mid_clock.coef_
+    # result_dict['reg_all_midnight-clocks-loc-phase'] = results_average.coef_
+    # result_dict['reg_all_reversedphase_midnight-clocks'] = reversed_phases_reg_results.coef_
     
 
     return result_dict

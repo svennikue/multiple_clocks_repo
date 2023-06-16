@@ -86,8 +86,7 @@ mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], mouse_a_clean["neu
 #a_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], mouse_a_clean["neurons"], mouse_a_clean["timings"], mouse_a_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
 
 # whole dataset
-a_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_a["rewards_configs"], mouse_a["locations"], mouse_a["neurons"], mouse_a["timings"], mouse_a["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
-
+essi
 
 # define a mask for clock and midnight neurons, respectively
 clock_neurons = []
@@ -102,8 +101,8 @@ for neurons in mouse_a_clean["neurons"]:
 
 print(f"Neuron number of recday {mouse_a['recday']} is {len(mouse_a_clean['neurons'][0])}, Midnight neuron number is {len(midnight_neurons[0])} and Clock neurons are {len(clock_neurons[0])}")    
            
-a_midn_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], midnight_neurons, mouse_a_clean["timings"], mouse_a_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
-a_clocks_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], clock_neurons, mouse_a_clean["timings"], mouse_a_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+a_midn_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], midnight_neurons, mouse_a_clean["timings"], mouse_a_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
+a_clocks_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], clock_neurons, mouse_a_clean["timings"], mouse_a_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
 if save:
     with open(os.path.join(out_path,f"{mouse_a_clean['recday']}_res_dic"), 'wb') as f:
@@ -126,7 +125,7 @@ mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], mouse_b_clean["neu
 
 #b_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], mouse_b_clean["neurons"], mouse_b_clean["timings"], mouse_b_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
 # whole dataset
-b_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_b["rewards_configs"], mouse_b["locations"], mouse_b["neurons"], mouse_b["timings"], mouse_b["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+b_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_b["rewards_configs"], mouse_b["locations"], mouse_b["neurons"], mouse_b["timings"], mouse_b["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
 
 # define a mask for clock and midnight neurons, respectively
@@ -141,8 +140,8 @@ for neurons in mouse_b_clean["neurons"]:
 
 print(f"Neuron number of recday {mouse_b['recday']} is {len(mouse_b_clean['neurons'][0])}, Midnight neuron number is {len(midnight_neurons[0])} and Clock neurons are {len(clock_neurons[0])}")    
     
-b_midn_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], midnight_neurons, mouse_b_clean["timings"], mouse_b_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
-b_clocks_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], clock_neurons, mouse_b_clean["timings"], mouse_b_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+b_midn_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], midnight_neurons, mouse_b_clean["timings"], mouse_b_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
+b_clocks_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], clock_neurons, mouse_b_clean["timings"], mouse_b_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
 if save: 
     with open(os.path.join(out_path,f"{mouse_b_clean['recday']}_res_dic"), 'wb') as f:
@@ -165,7 +164,7 @@ mouse_c_clean["rewards_configs"], mouse_c_clean["locations"], mouse_c_clean["neu
 
 #c_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_c_clean["rewards_configs"], mouse_c_clean["locations"], mouse_c_clean["neurons"], mouse_c_clean["timings"], mouse_c_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
 # whole dataset
-c_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_c["rewards_configs"], mouse_c["locations"], mouse_c["neurons"], mouse_c["timings"], mouse_c["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+c_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_c["rewards_configs"], mouse_c["locations"], mouse_c["neurons"], mouse_c["timings"], mouse_c["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
 
 # define a mask for clock and midnight neurons, respectively
@@ -178,8 +177,8 @@ for neurons in mouse_c_clean["neurons"]:
     clock_neurons.append(neurons[clock_n_mask, :])
     midnight_neurons.append(neurons[midnight_n_mask, :])
     
-c_midn_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_c_clean["rewards_configs"], mouse_c_clean["locations"], midnight_neurons, mouse_c_clean["timings"], mouse_c_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
-c_clocks_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_c_clean["rewards_configs"], mouse_c_clean["locations"], clock_neurons, mouse_c_clean["timings"], mouse_c_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+c_midn_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_c_clean["rewards_configs"], mouse_c_clean["locations"], midnight_neurons, mouse_c_clean["timings"], mouse_c_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
+c_clocks_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_c_clean["rewards_configs"], mouse_c_clean["locations"], clock_neurons, mouse_c_clean["timings"], mouse_c_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
 print(f"Neuron number of recday {mouse_c['recday']} is {len(mouse_c_clean['neurons'][0])}, Midnight neuron number is {len(midnight_neurons[0])} and Clock neurons are {len(clock_neurons[0])}")    
 
@@ -203,7 +202,7 @@ mouse_d_clean["rewards_configs"], mouse_d_clean["locations"], mouse_d_clean["neu
 
 #d_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_d_clean["rewards_configs"], mouse_d_clean["locations"], mouse_d_clean["neurons"], mouse_d_clean["timings"], mouse_d_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
 # whole dataset
-d_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_d["rewards_configs"], mouse_d["locations"], mouse_d["neurons"], mouse_d["timings"], mouse_d["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+d_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_d["rewards_configs"], mouse_d["locations"], mouse_d["neurons"], mouse_d["timings"], mouse_d["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
 
 # define a mask for clock and midnight neurons, respectively
@@ -218,8 +217,8 @@ for neurons in mouse_d_clean["neurons"]:
 
 print(f"Neuron number of recday {mouse_d['recday']} is {len(mouse_d_clean['neurons'][0])}, Midnight neuron number is {len(midnight_neurons[0])} and Clock neurons are {len(clock_neurons[0])}")    
     
-d_midn_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_d_clean["rewards_configs"], mouse_d_clean["locations"], midnight_neurons, mouse_d_clean["timings"], mouse_d_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
-d_clocks_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_d_clean["rewards_configs"], mouse_d_clean["locations"], clock_neurons, mouse_d_clean["timings"], mouse_d_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+d_midn_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_d_clean["rewards_configs"], mouse_d_clean["locations"], midnight_neurons, mouse_d_clean["timings"], mouse_d_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
+d_clocks_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_d_clean["rewards_configs"], mouse_d_clean["locations"], clock_neurons, mouse_d_clean["timings"], mouse_d_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
 if save: 
     with open(os.path.join(out_path,f"{mouse_d_clean['recday']}_res_dic"), 'wb') as f:
@@ -254,8 +253,8 @@ for neurons in mouse_e_clean["neurons"]:
     clock_neurons.append(neurons[clock_n_mask, :])
     midnight_neurons.append(neurons[midnight_n_mask, :])
     
-e_midn_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_e_clean["rewards_configs"], mouse_e_clean["locations"], midnight_neurons, mouse_e_clean["timings"], mouse_e_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
-e_clocks_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_e_clean["rewards_configs"], mouse_e_clean["locations"], clock_neurons, mouse_e_clean["timings"], mouse_e_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+e_midn_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_e_clean["rewards_configs"], mouse_e_clean["locations"], midnight_neurons, mouse_e_clean["timings"], mouse_e_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
+e_clocks_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_e_clean["rewards_configs"], mouse_e_clean["locations"], clock_neurons, mouse_e_clean["timings"], mouse_e_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
 print(f"Neuron number of recday {mouse_e['recday']} is {len(mouse_e_clean['neurons'][0])}, Midnight neuron number is {len(midnight_neurons[0])} and Clock neurons are {len(clock_neurons[0])}")    
 
@@ -279,7 +278,7 @@ mouse_f_clean["rewards_configs"], mouse_f_clean["locations"], mouse_f_clean["neu
 print('now all neurons') 
 #f_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_f_clean["rewards_configs"], mouse_f_clean["locations"], mouse_f_clean["neurons"], mouse_f_clean["timings"], mouse_f_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
 # whole dataset
-f_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_f["rewards_configs"], mouse_f["locations"], mouse_f["neurons"], mouse_f["timings"], mouse_f["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+f_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_f["rewards_configs"], mouse_f["locations"], mouse_f["neurons"], mouse_f["timings"], mouse_f["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
 
 # define a mask for clock and midnight neurons, respectively
@@ -293,9 +292,9 @@ for neurons in mouse_f_clean["neurons"]:
     midnight_neurons.append(neurons[midnight_n_mask, :])
 
 print('now only midnight neurons')      
-f_midn_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_f_clean["rewards_configs"], mouse_f_clean["locations"], midnight_neurons, mouse_f_clean["timings"], mouse_f_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+f_midn_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_f_clean["rewards_configs"], mouse_f_clean["locations"], midnight_neurons, mouse_f_clean["timings"], mouse_f_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 print('now only clock neurons neurons')  
-f_clocks_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_f_clean["rewards_configs"], mouse_f_clean["locations"], clock_neurons, mouse_f_clean["timings"], mouse_f_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+f_clocks_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_f_clean["rewards_configs"], mouse_f_clean["locations"], clock_neurons, mouse_f_clean["timings"], mouse_f_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
 print(f"Neuron number of recday {mouse_f['recday']} is {len(mouse_f_clean['neurons'][0])}, Midnight neuron number is {len(midnight_neurons[0])} and Clock neurons are {len(clock_neurons[0])}")    
 
@@ -319,7 +318,7 @@ mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], mouse_g_clean["neu
 print('now all neurons')  
 #g_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], mouse_g_clean["neurons"], mouse_g_clean["timings"], mouse_g_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
 
-g_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_g["rewards_configs"], mouse_g["locations"], mouse_g["neurons"], mouse_g["timings"], mouse_g["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+g_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_g["rewards_configs"], mouse_g["locations"], mouse_g["neurons"], mouse_g["timings"], mouse_g["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
 # define a mask for clock and midnight neurons, respectively
 clock_neurons = []
@@ -332,9 +331,9 @@ for neurons in mouse_g_clean["neurons"]:
     midnight_neurons.append(neurons[midnight_n_mask, :])
     
 print('now only midnight neurons')    
-g_midn_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], midnight_neurons, mouse_g_clean["timings"], mouse_g_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+g_midn_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], midnight_neurons, mouse_g_clean["timings"], mouse_g_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 print('now only clock neurons neurons')  
-g_clocks_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], clock_neurons, mouse_g_clean["timings"], mouse_g_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+g_clocks_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], clock_neurons, mouse_g_clean["timings"], mouse_g_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
 print(f"Neuron number of recday {mouse_g['recday']} is {len(mouse_g_clean['neurons'][0])}, Midnight neuron number is {len(midnight_neurons[0])} and Clock neurons are {len(clock_neurons[0])}")    
 
@@ -358,7 +357,7 @@ mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], mouse_h_clean["neu
 #h_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], mouse_h_clean["neurons"], mouse_h_clean["timings"], mouse_h_clean["recday"], plotting = True, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
 
 # compare what happens if I take the whole dataset.
-h_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_h["rewards_configs"], mouse_h["locations"], mouse_h["neurons"], mouse_h["timings"], mouse_h["recday"], plotting = True, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+h_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_h["rewards_configs"], mouse_h["locations"], mouse_h["neurons"], mouse_h["timings"], mouse_h["recday"], plotting = True, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
 
 
@@ -372,8 +371,8 @@ for neurons in mouse_h_clean["neurons"]:
     clock_neurons.append(neurons[clock_n_mask, :])
     midnight_neurons.append(neurons[midnight_n_mask, :])
     
-h_midn_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], midnight_neurons, mouse_h_clean["timings"], mouse_h_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
-h_clocks_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], clock_neurons, mouse_h_clean["timings"], mouse_h_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+h_midn_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], midnight_neurons, mouse_h_clean["timings"], mouse_h_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
+h_clocks_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], clock_neurons, mouse_h_clean["timings"], mouse_h_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
 print(f"Neuron number of recday {mouse_h['recday']} is {len(mouse_h_clean['neurons'][0])}, Midnight neuron number is {len(midnight_neurons[0])} and Clock neurons are {len(clock_neurons[0])}")    
 
@@ -388,197 +387,202 @@ if save:
         pickle.dump(h_clocks_result_dict, f)
 
 
-
-# PLOT THE RESULTS OF THIS!!
-# one plot: all neurons
-data_all = [[a_reg_result_dict["reg_early_phase_midnight-clocks"][0],b_reg_result_dict["reg_early_phase_midnight-clocks"][0], c_reg_result_dict["reg_early_phase_midnight-clocks"][0], d_reg_result_dict["reg_early_phase_midnight-clocks"][0], e_reg_result_dict["reg_early_phase_midnight-clocks"][0]],
-              [a_reg_result_dict["reg_early_phase_midnight-clocks"][1],b_reg_result_dict["reg_early_phase_midnight-clocks"][1], c_reg_result_dict["reg_early_phase_midnight-clocks"][1], d_reg_result_dict["reg_early_phase_midnight-clocks"][1], e_reg_result_dict["reg_early_phase_midnight-clocks"][1]],
-              [a_reg_result_dict["reg_mid_phase_midnight-clocks"][0],b_reg_result_dict["reg_mid_phase_midnight-clocks"][0], c_reg_result_dict["reg_mid_phase_midnight-clocks"][0], d_reg_result_dict["reg_mid_phase_midnight-clocks"][0], e_reg_result_dict["reg_mid_phase_midnight-clocks"][0]],
-              [a_reg_result_dict["reg_mid_phase_midnight-clocks"][1],b_reg_result_dict["reg_mid_phase_midnight-clocks"][1], c_reg_result_dict["reg_mid_phase_midnight-clocks"][1], d_reg_result_dict["reg_mid_phase_midnight-clocks"][1], e_reg_result_dict["reg_mid_phase_midnight-clocks"][1]],
-              [a_reg_result_dict["reg_late_phase_midnight-clocks"][0],b_reg_result_dict["reg_late_phase_midnight-clocks"][0], c_reg_result_dict["reg_late_phase_midnight-clocks"][0], d_reg_result_dict["reg_late_phase_midnight-clocks"][0], e_reg_result_dict["reg_late_phase_midnight-clocks"][0]],
-              [a_reg_result_dict["reg_late_phase_midnight-clocks"][1],b_reg_result_dict["reg_late_phase_midnight-clocks"][1], c_reg_result_dict["reg_late_phase_midnight-clocks"][1], d_reg_result_dict["reg_late_phase_midnight-clocks"][1], e_reg_result_dict["reg_late_phase_midnight-clocks"][1]],
-              [a_reg_result_dict["reg_all_reversedphase_midnight-clocks"][0],b_reg_result_dict["reg_all_reversedphase_midnight-clocks"][0], c_reg_result_dict["reg_all_reversedphase_midnight-clocks"][0], d_reg_result_dict["reg_all_reversedphase_midnight-clocks"][0], e_reg_result_dict["reg_all_reversedphase_midnight-clocks"][0]],
-              [a_reg_result_dict["reg_all_reversedphase_midnight-clocks"][1],b_reg_result_dict["reg_all_reversedphase_midnight-clocks"][1], c_reg_result_dict["reg_all_reversedphase_midnight-clocks"][1], d_reg_result_dict["reg_all_reversedphase_midnight-clocks"][1], e_reg_result_dict["reg_all_reversedphase_midnight-clocks"][1]]]
+# THIS CAN BE EASILY ADJUSTED, JUST COMMENTED OUT SO I CAN STORE THE RESULTS!!
 
 
-label_string_list_all = ['early midight', 'early clocks', 'mid midnight', 'mid clocks', 'late midnight', 'late clocks', 'put together midnight', 'put together clocks']
-label_tick_list_all = [0,1,2,3,4,5,6,7]
-title_string_all = 'All neurons included, averaged over trials, between tasks, binned in 10 bins per state, continuous model'
 
-mc.simulation.analyse_ephys.plotting_hist_scat(data_all, label_string_list_all, label_tick_list_all, title_string_all)
-
-
-# second plot: only midnight
-data_midn = [[a_midn_result_dict["reg_early_phase_midnight-clocks"][0],b_midn_result_dict["reg_early_phase_midnight-clocks"][0], c_midn_result_dict["reg_early_phase_midnight-clocks"][0], d_midn_result_dict["reg_early_phase_midnight-clocks"][0], e_midn_result_dict["reg_early_phase_midnight-clocks"][0]],
-              [a_midn_result_dict["reg_early_phase_midnight-clocks"][1],b_midn_result_dict["reg_early_phase_midnight-clocks"][1], c_midn_result_dict["reg_early_phase_midnight-clocks"][1], d_midn_result_dict["reg_early_phase_midnight-clocks"][1], e_midn_result_dict["reg_early_phase_midnight-clocks"][1]],
-              [a_midn_result_dict["reg_mid_phase_midnight-clocks"][0],b_midn_result_dict["reg_mid_phase_midnight-clocks"][0], c_midn_result_dict["reg_mid_phase_midnight-clocks"][0], d_midn_result_dict["reg_mid_phase_midnight-clocks"][0], e_midn_result_dict["reg_mid_phase_midnight-clocks"][0]],
-              [a_midn_result_dict["reg_mid_phase_midnight-clocks"][1],b_midn_result_dict["reg_mid_phase_midnight-clocks"][1], c_midn_result_dict["reg_mid_phase_midnight-clocks"][1], d_midn_result_dict["reg_mid_phase_midnight-clocks"][1], e_midn_result_dict["reg_mid_phase_midnight-clocks"][1]],
-              [a_midn_result_dict["reg_late_phase_midnight-clocks"][0],b_midn_result_dict["reg_late_phase_midnight-clocks"][0], c_midn_result_dict["reg_late_phase_midnight-clocks"][0], d_midn_result_dict["reg_late_phase_midnight-clocks"][0], e_midn_result_dict["reg_late_phase_midnight-clocks"][0]],
-              [a_midn_result_dict["reg_late_phase_midnight-clocks"][1],b_midn_result_dict["reg_late_phase_midnight-clocks"][1], c_midn_result_dict["reg_late_phase_midnight-clocks"][1], d_midn_result_dict["reg_late_phase_midnight-clocks"][1], e_midn_result_dict["reg_late_phase_midnight-clocks"][1]],
-              [a_midn_result_dict["reg_all_reversedphase_midnight-clocks"][0],b_midn_result_dict["reg_all_reversedphase_midnight-clocks"][0], c_midn_result_dict["reg_all_reversedphase_midnight-clocks"][0], d_midn_result_dict["reg_all_reversedphase_midnight-clocks"][0], e_midn_result_dict["reg_all_reversedphase_midnight-clocks"][0]],
-              [a_midn_result_dict["reg_all_reversedphase_midnight-clocks"][1],b_midn_result_dict["reg_all_reversedphase_midnight-clocks"][1], c_midn_result_dict["reg_all_reversedphase_midnight-clocks"][1], d_midn_result_dict["reg_all_reversedphase_midnight-clocks"][1], e_midn_result_dict["reg_all_reversedphase_midnight-clocks"][1]]]
+# # PLOT THE RESULTS OF THIS!!
+# # one plot: all neurons
+# data_all = [[a_reg_result_dict["reg_early_phase_midnight-clocks"][0],b_reg_result_dict["reg_early_phase_midnight-clocks"][0], c_reg_result_dict["reg_early_phase_midnight-clocks"][0], d_reg_result_dict["reg_early_phase_midnight-clocks"][0], e_reg_result_dict["reg_early_phase_midnight-clocks"][0]],
+#               [a_reg_result_dict["reg_early_phase_midnight-clocks"][1],b_reg_result_dict["reg_early_phase_midnight-clocks"][1], c_reg_result_dict["reg_early_phase_midnight-clocks"][1], d_reg_result_dict["reg_early_phase_midnight-clocks"][1], e_reg_result_dict["reg_early_phase_midnight-clocks"][1]],
+#               [a_reg_result_dict["reg_mid_phase_midnight-clocks"][0],b_reg_result_dict["reg_mid_phase_midnight-clocks"][0], c_reg_result_dict["reg_mid_phase_midnight-clocks"][0], d_reg_result_dict["reg_mid_phase_midnight-clocks"][0], e_reg_result_dict["reg_mid_phase_midnight-clocks"][0]],
+#               [a_reg_result_dict["reg_mid_phase_midnight-clocks"][1],b_reg_result_dict["reg_mid_phase_midnight-clocks"][1], c_reg_result_dict["reg_mid_phase_midnight-clocks"][1], d_reg_result_dict["reg_mid_phase_midnight-clocks"][1], e_reg_result_dict["reg_mid_phase_midnight-clocks"][1]],
+#               [a_reg_result_dict["reg_late_phase_midnight-clocks"][0],b_reg_result_dict["reg_late_phase_midnight-clocks"][0], c_reg_result_dict["reg_late_phase_midnight-clocks"][0], d_reg_result_dict["reg_late_phase_midnight-clocks"][0], e_reg_result_dict["reg_late_phase_midnight-clocks"][0]],
+#               [a_reg_result_dict["reg_late_phase_midnight-clocks"][1],b_reg_result_dict["reg_late_phase_midnight-clocks"][1], c_reg_result_dict["reg_late_phase_midnight-clocks"][1], d_reg_result_dict["reg_late_phase_midnight-clocks"][1], e_reg_result_dict["reg_late_phase_midnight-clocks"][1]],
+#               [a_reg_result_dict["reg_all_reversedphase_midnight-clocks"][0],b_reg_result_dict["reg_all_reversedphase_midnight-clocks"][0], c_reg_result_dict["reg_all_reversedphase_midnight-clocks"][0], d_reg_result_dict["reg_all_reversedphase_midnight-clocks"][0], e_reg_result_dict["reg_all_reversedphase_midnight-clocks"][0]],
+#               [a_reg_result_dict["reg_all_reversedphase_midnight-clocks"][1],b_reg_result_dict["reg_all_reversedphase_midnight-clocks"][1], c_reg_result_dict["reg_all_reversedphase_midnight-clocks"][1], d_reg_result_dict["reg_all_reversedphase_midnight-clocks"][1], e_reg_result_dict["reg_all_reversedphase_midnight-clocks"][1]]]
 
 
-label_string_list_all = ['early midight', 'early clocks', 'mid midnight', 'mid clocks', 'late midnight', 'late clocks', 'put together midnight', 'put together clocks']
-label_tick_list_all = [0,1,2,3,4,5,6,7]
-title_string_all = 'Only MIDNIGHT neurons included, averaged over trials, between tasks, binned in 10 bins per state, continuous model'
+# label_string_list_all = ['early midight', 'early clocks', 'mid midnight', 'mid clocks', 'late midnight', 'late clocks', 'put together midnight', 'put together clocks']
+# label_tick_list_all = [0,1,2,3,4,5,6,7]
+# title_string_all = 'All neurons included, averaged over trials, between tasks, binned in 10 bins per state, continuous model'
 
-mc.simulation.analyse_ephys.plotting_hist_scat(data_midn, label_string_list_all, label_tick_list_all, title_string_all)
-
-
-# third plot: the whole clocks
-data_clocks = [[a_clocks_result_dict["reg_early_phase_midnight-clocks"][0],b_clocks_result_dict["reg_early_phase_midnight-clocks"][0], c_clocks_result_dict["reg_early_phase_midnight-clocks"][0], d_clocks_result_dict["reg_early_phase_midnight-clocks"][0], e_clocks_result_dict["reg_early_phase_midnight-clocks"][0]],
-              [a_clocks_result_dict["reg_early_phase_midnight-clocks"][1],b_clocks_result_dict["reg_early_phase_midnight-clocks"][1], c_clocks_result_dict["reg_early_phase_midnight-clocks"][1], d_clocks_result_dict["reg_early_phase_midnight-clocks"][1], e_clocks_result_dict["reg_early_phase_midnight-clocks"][1]],
-              [a_clocks_result_dict["reg_mid_phase_midnight-clocks"][0],b_clocks_result_dict["reg_mid_phase_midnight-clocks"][0], c_clocks_result_dict["reg_mid_phase_midnight-clocks"][0], d_clocks_result_dict["reg_mid_phase_midnight-clocks"][0], e_clocks_result_dict["reg_mid_phase_midnight-clocks"][0]],
-              [a_clocks_result_dict["reg_mid_phase_midnight-clocks"][1],b_clocks_result_dict["reg_mid_phase_midnight-clocks"][1], c_clocks_result_dict["reg_mid_phase_midnight-clocks"][1], d_clocks_result_dict["reg_mid_phase_midnight-clocks"][1], e_clocks_result_dict["reg_mid_phase_midnight-clocks"][1]],
-              [a_clocks_result_dict["reg_late_phase_midnight-clocks"][0],b_clocks_result_dict["reg_late_phase_midnight-clocks"][0], c_clocks_result_dict["reg_late_phase_midnight-clocks"][0], d_clocks_result_dict["reg_late_phase_midnight-clocks"][0], e_clocks_result_dict["reg_late_phase_midnight-clocks"][0]],
-              [a_clocks_result_dict["reg_late_phase_midnight-clocks"][1],b_clocks_result_dict["reg_late_phase_midnight-clocks"][1], c_clocks_result_dict["reg_late_phase_midnight-clocks"][1], d_clocks_result_dict["reg_late_phase_midnight-clocks"][1], e_clocks_result_dict["reg_late_phase_midnight-clocks"][1]],
-              [a_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][0],b_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][0], c_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][0], d_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][0], e_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][0]],
-              [a_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][1],b_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][1], c_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][1], d_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][1], e_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][1]]]
+# mc.simulation.analyse_ephys.plotting_hist_scat(data_all, label_string_list_all, label_tick_list_all, title_string_all)
 
 
-label_string_list_all = ['early midight', 'early clocks', 'mid midnight', 'mid clocks', 'late midnight', 'late clocks', 'put together midnight', 'put together clocks']
-label_tick_list_all = [0,1,2,3,4,5,6,7]
-title_string_all = 'Only CLOCK neurons included, averaged over trials, between tasks, binned in 10 bins per state, continuous model'
+# # second plot: only midnight
+# data_midn = [[a_midn_result_dict["reg_early_phase_midnight-clocks"][0],b_midn_result_dict["reg_early_phase_midnight-clocks"][0], c_midn_result_dict["reg_early_phase_midnight-clocks"][0], d_midn_result_dict["reg_early_phase_midnight-clocks"][0], e_midn_result_dict["reg_early_phase_midnight-clocks"][0]],
+#               [a_midn_result_dict["reg_early_phase_midnight-clocks"][1],b_midn_result_dict["reg_early_phase_midnight-clocks"][1], c_midn_result_dict["reg_early_phase_midnight-clocks"][1], d_midn_result_dict["reg_early_phase_midnight-clocks"][1], e_midn_result_dict["reg_early_phase_midnight-clocks"][1]],
+#               [a_midn_result_dict["reg_mid_phase_midnight-clocks"][0],b_midn_result_dict["reg_mid_phase_midnight-clocks"][0], c_midn_result_dict["reg_mid_phase_midnight-clocks"][0], d_midn_result_dict["reg_mid_phase_midnight-clocks"][0], e_midn_result_dict["reg_mid_phase_midnight-clocks"][0]],
+#               [a_midn_result_dict["reg_mid_phase_midnight-clocks"][1],b_midn_result_dict["reg_mid_phase_midnight-clocks"][1], c_midn_result_dict["reg_mid_phase_midnight-clocks"][1], d_midn_result_dict["reg_mid_phase_midnight-clocks"][1], e_midn_result_dict["reg_mid_phase_midnight-clocks"][1]],
+#               [a_midn_result_dict["reg_late_phase_midnight-clocks"][0],b_midn_result_dict["reg_late_phase_midnight-clocks"][0], c_midn_result_dict["reg_late_phase_midnight-clocks"][0], d_midn_result_dict["reg_late_phase_midnight-clocks"][0], e_midn_result_dict["reg_late_phase_midnight-clocks"][0]],
+#               [a_midn_result_dict["reg_late_phase_midnight-clocks"][1],b_midn_result_dict["reg_late_phase_midnight-clocks"][1], c_midn_result_dict["reg_late_phase_midnight-clocks"][1], d_midn_result_dict["reg_late_phase_midnight-clocks"][1], e_midn_result_dict["reg_late_phase_midnight-clocks"][1]],
+#               [a_midn_result_dict["reg_all_reversedphase_midnight-clocks"][0],b_midn_result_dict["reg_all_reversedphase_midnight-clocks"][0], c_midn_result_dict["reg_all_reversedphase_midnight-clocks"][0], d_midn_result_dict["reg_all_reversedphase_midnight-clocks"][0], e_midn_result_dict["reg_all_reversedphase_midnight-clocks"][0]],
+#               [a_midn_result_dict["reg_all_reversedphase_midnight-clocks"][1],b_midn_result_dict["reg_all_reversedphase_midnight-clocks"][1], c_midn_result_dict["reg_all_reversedphase_midnight-clocks"][1], d_midn_result_dict["reg_all_reversedphase_midnight-clocks"][1], e_midn_result_dict["reg_all_reversedphase_midnight-clocks"][1]]]
 
-mc.simulation.analyse_ephys.plotting_hist_scat(data_clocks, label_string_list_all, label_tick_list_all, title_string_all)
+
+# label_string_list_all = ['early midight', 'early clocks', 'mid midnight', 'mid clocks', 'late midnight', 'late clocks', 'put together midnight', 'put together clocks']
+# label_tick_list_all = [0,1,2,3,4,5,6,7]
+# title_string_all = 'Only MIDNIGHT neurons included, averaged over trials, between tasks, binned in 10 bins per state, continuous model'
+
+# mc.simulation.analyse_ephys.plotting_hist_scat(data_midn, label_string_list_all, label_tick_list_all, title_string_all)
 
 
-# build another figure.
-# this time, build it with the normal regression
-letters = ['a','b','c','d','e','f', 'g', 'h']
-list_allneurons =[]
-list_midn = []
-list_clockn = []
-for i, mouse in enumerate(letters):
-    dataset_all = eval(f"{mouse}_reg_result_dict")
-    dataset_midn = eval(f"{mouse}_midn_result_dict")
-    dataset_clock = eval(f"{mouse}_clocks_result_dict")
-    list_allneurons.append(dataset_all['reg_all_midnight-clocks-loc-phase'])
-    list_midn.append(dataset_midn['reg_all_midnight-clocks-loc-phase'])
-    list_clockn.append(dataset_clock['reg_all_midnight-clocks-loc-phase'])
+# # third plot: the whole clocks
+# data_clocks = [[a_clocks_result_dict["reg_early_phase_midnight-clocks"][0],b_clocks_result_dict["reg_early_phase_midnight-clocks"][0], c_clocks_result_dict["reg_early_phase_midnight-clocks"][0], d_clocks_result_dict["reg_early_phase_midnight-clocks"][0], e_clocks_result_dict["reg_early_phase_midnight-clocks"][0]],
+#               [a_clocks_result_dict["reg_early_phase_midnight-clocks"][1],b_clocks_result_dict["reg_early_phase_midnight-clocks"][1], c_clocks_result_dict["reg_early_phase_midnight-clocks"][1], d_clocks_result_dict["reg_early_phase_midnight-clocks"][1], e_clocks_result_dict["reg_early_phase_midnight-clocks"][1]],
+#               [a_clocks_result_dict["reg_mid_phase_midnight-clocks"][0],b_clocks_result_dict["reg_mid_phase_midnight-clocks"][0], c_clocks_result_dict["reg_mid_phase_midnight-clocks"][0], d_clocks_result_dict["reg_mid_phase_midnight-clocks"][0], e_clocks_result_dict["reg_mid_phase_midnight-clocks"][0]],
+#               [a_clocks_result_dict["reg_mid_phase_midnight-clocks"][1],b_clocks_result_dict["reg_mid_phase_midnight-clocks"][1], c_clocks_result_dict["reg_mid_phase_midnight-clocks"][1], d_clocks_result_dict["reg_mid_phase_midnight-clocks"][1], e_clocks_result_dict["reg_mid_phase_midnight-clocks"][1]],
+#               [a_clocks_result_dict["reg_late_phase_midnight-clocks"][0],b_clocks_result_dict["reg_late_phase_midnight-clocks"][0], c_clocks_result_dict["reg_late_phase_midnight-clocks"][0], d_clocks_result_dict["reg_late_phase_midnight-clocks"][0], e_clocks_result_dict["reg_late_phase_midnight-clocks"][0]],
+#               [a_clocks_result_dict["reg_late_phase_midnight-clocks"][1],b_clocks_result_dict["reg_late_phase_midnight-clocks"][1], c_clocks_result_dict["reg_late_phase_midnight-clocks"][1], d_clocks_result_dict["reg_late_phase_midnight-clocks"][1], e_clocks_result_dict["reg_late_phase_midnight-clocks"][1]],
+#               [a_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][0],b_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][0], c_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][0], d_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][0], e_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][0]],
+#               [a_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][1],b_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][1], c_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][1], d_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][1], e_clocks_result_dict["reg_all_reversedphase_midnight-clocks"][1]]]
 
-plotting_clockn = np.empty((len(list_clockn[0]), len(list_clockn)))
-for col, regressor in enumerate(range(0, len(list_clockn[0]))):
-    for row, dataset in enumerate(range(0, len(list_clockn))):
-        plotting_clockn[col, row]= list_clockn[dataset][regressor]
 
-list_plot_clock = []
-for row in plotting_clockn:
-    list_plot_clock.append(row)
+# label_string_list_all = ['early midight', 'early clocks', 'mid midnight', 'mid clocks', 'late midnight', 'late clocks', 'put together midnight', 'put together clocks']
+# label_tick_list_all = [0,1,2,3,4,5,6,7]
+# title_string_all = 'Only CLOCK neurons included, averaged over trials, between tasks, binned in 10 bins per state, continuous model'
 
-plotting_midn = np.empty((len(list_midn[0]), len(list_midn)))
-for col, regressor in enumerate(range(0, len(list_midn[0]))):
-    for row, dataset in enumerate(range(0, len(list_midn))):
-        plotting_midn[col, row]= list_midn[dataset][regressor]
+# mc.simulation.analyse_ephys.plotting_hist_scat(data_clocks, label_string_list_all, label_tick_list_all, title_string_all)
 
-list_plot_midn = []
-for row in plotting_midn:
-    list_plot_midn.append(row)
 
-plotting_all = np.empty((len(list_allneurons[0]), len(list_allneurons)))
-for col, regressor in enumerate(range(0, len(list_allneurons[0]))):
-    for row, dataset in enumerate(range(0, len(list_allneurons))):
-        plotting_all[col, row]= list_allneurons[dataset][regressor]
+# # build another figure.
+# # this time, build it with the normal regression
+# letters = ['a','b','c','d','e','f', 'g', 'h']
+# list_allneurons =[]
+# list_midn = []
+# list_clockn = []
+# for i, mouse in enumerate(letters):
+#     dataset_all = eval(f"{mouse}_reg_result_dict")
+#     dataset_midn = eval(f"{mouse}_midn_result_dict")
+#     dataset_clock = eval(f"{mouse}_clocks_result_dict")
+#     list_allneurons.append(dataset_all['reg_all_midnight-clocks-loc-phase'])
+#     list_midn.append(dataset_midn['reg_all_midnight-clocks-loc-phase'])
+#     list_clockn.append(dataset_clock['reg_all_midnight-clocks-loc-phase'])
 
-list_plot_all = []
-for row in plotting_all:
-    list_plot_all.append(row)
+# plotting_clockn = np.empty((len(list_clockn[0]), len(list_clockn)))
+# for col, regressor in enumerate(range(0, len(list_clockn[0]))):
+#     for row, dataset in enumerate(range(0, len(list_clockn))):
+#         plotting_clockn[col, row]= list_clockn[dataset][regressor]
+
+# list_plot_clock = []
+# for row in plotting_clockn:
+#     list_plot_clock.append(row)
+
+# plotting_midn = np.empty((len(list_midn[0]), len(list_midn)))
+# for col, regressor in enumerate(range(0, len(list_midn[0]))):
+#     for row, dataset in enumerate(range(0, len(list_midn))):
+#         plotting_midn[col, row]= list_midn[dataset][regressor]
+
+# list_plot_midn = []
+# for row in plotting_midn:
+#     list_plot_midn.append(row)
+
+# plotting_all = np.empty((len(list_allneurons[0]), len(list_allneurons)))
+# for col, regressor in enumerate(range(0, len(list_allneurons[0]))):
+#     for row, dataset in enumerate(range(0, len(list_allneurons))):
+#         plotting_all[col, row]= list_allneurons[dataset][regressor]
+
+# list_plot_all = []
+# for row in plotting_all:
+#     list_plot_all.append(row)
      
-for elem in list_plot_midn:
-    list_plot_all.append(elem)
+# for elem in list_plot_midn:
+#     list_plot_all.append(elem)
 
-for elem in list_plot_midn:
-    list_plot_all.append(elem)
+# for elem in list_plot_midn:
+#     list_plot_all.append(elem)
 
-labels_compl_reg = ['all_midn', 'all_clocks', 'all_loc', 'all_phase', 'clock_midn', 'clock_clocks', 'clock_loc', 'clock_phase','midn_midn', 'midn_clocks', 'midn_loc', 'midn_phase']
-label_ticks_compl_reg = [1,2,3,4,5,6,7,8,9,10,11,12]
-title_compl_reg = ['Complete regression, leaving neurons out'] 
-mc.simulation.analyse_ephys.plotting_hist_scat(list_plot_all, labels_compl_reg, label_ticks_compl_reg, title_compl_reg)   
+# labels_compl_reg = ['all_midn', 'all_clocks', 'all_loc', 'all_phase', 'clock_midn', 'clock_clocks', 'clock_loc', 'clock_phase','midn_midn', 'midn_clocks', 'midn_loc', 'midn_phase']
+# label_ticks_compl_reg = [1,2,3,4,5,6,7,8,9,10,11,12]
+# title_compl_reg = ['Complete regression, leaving neurons out'] 
+# mc.simulation.analyse_ephys.plotting_hist_scat(list_plot_all, labels_compl_reg, label_ticks_compl_reg, title_compl_reg)   
  
  
 
-# build another figure.
-# use the early-mid-late weights
-letters = ['a','b','c','d','e','f', 'g', 'h']
-list_allneurons =[]
-list_midn = []
-list_clockn = []
-for part in ['reg_early_phase_midnight-clocks', 'reg_mid_phase_midnight-clocks', 'reg_late_phase_midnight-clocks']:
-    for i, mouse in enumerate(letters):
-        dataset_all = eval(f"{mouse}_reg_result_dict")
-        dataset_midn = eval(f"{mouse}_midn_result_dict")
-        dataset_clock = eval(f"{mouse}_clocks_result_dict")    
-        list_allneurons.append(dataset_all[part])
-        list_midn.append(dataset_midn[part])
-        list_clockn.append(dataset_clock[part])
+# # build another figure.
+# # use the early-mid-late weights
+# letters = ['a','b','c','d','e','f', 'g', 'h']
+# list_allneurons =[]
+# list_midn = []
+# list_clockn = []
+# for part in ['reg_early_phase_midnight-clocks', 'reg_mid_phase_midnight-clocks', 'reg_late_phase_midnight-clocks']:
+#     for i, mouse in enumerate(letters):
+#         dataset_all = eval(f"{mouse}_reg_result_dict")
+#         dataset_midn = eval(f"{mouse}_midn_result_dict")
+#         dataset_clock = eval(f"{mouse}_clocks_result_dict")    
+#         list_allneurons.append(dataset_all[part])
+#         list_midn.append(dataset_midn[part])
+#         list_clockn.append(dataset_clock[part])
 
-early_midnight_all = []
-early_clock_all = []
-early_midnight_midn = []
-early_clock_midn = []
-early_midnight_clo = []
-early_clock_clo = []
-for dataset,x in enumerate(letters):
-    early_midnight_all.append(list_allneurons[dataset][0])
-    early_clock_all.append(list_allneurons[dataset][1])
-    early_midnight_midn.append(list_midn[dataset][0])
-    early_clock_midn.append(list_midn[dataset][1])
-    early_midnight_clo.append(list_clockn[dataset][0])
-    early_clock_clo.append(list_clockn[dataset][1])
+# early_midnight_all = []
+# early_clock_all = []
+# early_midnight_midn = []
+# early_clock_midn = []
+# early_midnight_clo = []
+# early_clock_clo = []
+# for dataset,x in enumerate(letters):
+#     early_midnight_all.append(list_allneurons[dataset][0])
+#     early_clock_all.append(list_allneurons[dataset][1])
+#     early_midnight_midn.append(list_midn[dataset][0])
+#     early_clock_midn.append(list_midn[dataset][1])
+#     early_midnight_clo.append(list_clockn[dataset][0])
+#     early_clock_clo.append(list_clockn[dataset][1])
 
-mid_midnight_all = []
-mid_clocks_all = []
-mid_midnight_midn = []
-mid_clock_midn = []
-mid_midnight_clo = []
-mid_clock_clo = []
-for dataset,x in enumerate(letters):
-    mid_midnight_all.append(list_allneurons[dataset+len(letters)][0])
-    mid_clocks_all.append(list_allneurons[dataset+len(letters)][1])
-    mid_midnight_midn.append(list_midn[dataset+len(letters)][0])
-    mid_clock_midn.append(list_midn[dataset+len(letters)][1])
-    mid_midnight_clo.append(list_clockn[dataset+len(letters)][0])
-    mid_clock_clo.append(list_clockn[dataset+len(letters)][1])
+# mid_midnight_all = []
+# mid_clocks_all = []
+# mid_midnight_midn = []
+# mid_clock_midn = []
+# mid_midnight_clo = []
+# mid_clock_clo = []
+# for dataset,x in enumerate(letters):
+#     mid_midnight_all.append(list_allneurons[dataset+len(letters)][0])
+#     mid_clocks_all.append(list_allneurons[dataset+len(letters)][1])
+#     mid_midnight_midn.append(list_midn[dataset+len(letters)][0])
+#     mid_clock_midn.append(list_midn[dataset+len(letters)][1])
+#     mid_midnight_clo.append(list_clockn[dataset+len(letters)][0])
+#     mid_clock_clo.append(list_clockn[dataset+len(letters)][1])
 
-late_midnight_all = []
-late_clocks_all = []
-late_midnight_midn = []
-late_clock_midn = []
-late_midnight_clo = []
-late_clock_clo = []
-for dataset,x in enumerate(letters):
-    late_midnight_all.append(list_allneurons[dataset+len(letters)*2][0])
-    late_clocks_all.append(list_allneurons[dataset+len(letters)*2][1])
-    late_midnight_midn.append(list_midn[dataset+len(letters)*2][0])
-    late_clock_midn.append(list_midn[dataset+len(letters)*2][1])
-    late_midnight_clo.append(list_clockn[dataset+len(letters)*2][0])
-    late_clock_clo.append(list_clockn[dataset+len(letters)*2][1])
+# late_midnight_all = []
+# late_clocks_all = []
+# late_midnight_midn = []
+# late_clock_midn = []
+# late_midnight_clo = []
+# late_clock_clo = []
+# for dataset,x in enumerate(letters):
+#     late_midnight_all.append(list_allneurons[dataset+len(letters)*2][0])
+#     late_clocks_all.append(list_allneurons[dataset+len(letters)*2][1])
+#     late_midnight_midn.append(list_midn[dataset+len(letters)*2][0])
+#     late_clock_midn.append(list_midn[dataset+len(letters)*2][1])
+#     late_midnight_clo.append(list_clockn[dataset+len(letters)*2][0])
+#     late_clock_clo.append(list_clockn[dataset+len(letters)*2][1])
 
 
-plotting_early = [early_midnight_all, early_midnight_clo, early_midnight_midn, early_clock_all, early_clock_clo, early_clock_midn]    
+# plotting_early = [early_midnight_all, early_midnight_clo, early_midnight_midn, early_clock_all, early_clock_clo, early_clock_midn]    
 
-labels_early_reg = ['midnight_all', 'midnight_clo', 'midnight_midn', 'clock_all', 'clock_clo', 'clock_midn']
-label_ticks_early_reg = [1,2,3,4,5,6]
-title_early_reg = ['Early comparing all, only clock and only midn neurons'] 
-mc.simulation.analyse_ephys.plotting_hist_scat(plotting_early, labels_early_reg, label_ticks_early_reg, title_early_reg)   
+# labels_early_reg = ['midnight_all', 'midnight_clo', 'midnight_midn', 'clock_all', 'clock_clo', 'clock_midn']
+# label_ticks_early_reg = [1,2,3,4,5,6]
+# title_early_reg = ['Early comparing all, only clock and only midn neurons'] 
+# mc.simulation.analyse_ephys.plotting_hist_scat(plotting_early, labels_early_reg, label_ticks_early_reg, title_early_reg)   
  
-plotting_mid = [mid_midnight_all, mid_midnight_clo, mid_midnight_midn, mid_clocks_all, mid_clock_clo, mid_clock_midn]    
+# plotting_mid = [mid_midnight_all, mid_midnight_clo, mid_midnight_midn, mid_clocks_all, mid_clock_clo, mid_clock_midn]    
 
-labels_mid_reg = ['midnight_all', 'midnight_clo', 'midnight_midn', 'clock_all', 'clock_clo', 'clock_midn']
-label_ticks_mid_reg = [1,2,3,4,5,6]
-title_mid_reg = ['Mid comparing all, only clock and only midn neurons'] 
-mc.simulation.analyse_ephys.plotting_hist_scat(plotting_mid, labels_mid_reg, label_ticks_mid_reg, title_mid_reg)   
+# labels_mid_reg = ['midnight_all', 'midnight_clo', 'midnight_midn', 'clock_all', 'clock_clo', 'clock_midn']
+# label_ticks_mid_reg = [1,2,3,4,5,6]
+# title_mid_reg = ['Mid comparing all, only clock and only midn neurons'] 
+# mc.simulation.analyse_ephys.plotting_hist_scat(plotting_mid, labels_mid_reg, label_ticks_mid_reg, title_mid_reg)   
 
-plotting_late = [late_midnight_all, late_midnight_clo, late_midnight_midn, late_clocks_all, late_clock_clo, late_clock_midn]    
+# plotting_late = [late_midnight_all, late_midnight_clo, late_midnight_midn, late_clocks_all, late_clock_clo, late_clock_midn]    
 
-labels_late_reg = ['midnight_all', 'midnight_clo', 'midnight_midn', 'clock_all', 'clock_clo', 'clock_midn']
-label_ticks_late_reg = [1,2,3,4,5,6]
-title_late_reg = ['Late comparing all, only clock and only midn neurons'] 
-mc.simulation.analyse_ephys.plotting_hist_scat(plotting_late, labels_late_reg, label_ticks_late_reg, title_late_reg)   
+# labels_late_reg = ['midnight_all', 'midnight_clo', 'midnight_midn', 'clock_all', 'clock_clo', 'clock_midn']
+# label_ticks_late_reg = [1,2,3,4,5,6]
+# title_late_reg = ['Late comparing all, only clock and only midn neurons'] 
+# mc.simulation.analyse_ephys.plotting_hist_scat(plotting_late, labels_late_reg, label_ticks_late_reg, title_late_reg)   
 
 
-  
+################################################################################
+
+ 
     
 # # PART 2: 
 

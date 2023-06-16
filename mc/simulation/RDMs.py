@@ -310,9 +310,15 @@ def lin_reg_RDMs(data_matrix, regressor_one_matrix, regressor_two_matrix = None,
     
 
 def GLM_RDMs(data_matrix, regressor_dict, mask_within = True, no_tasks = None, t_val = True):
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     if mask_within == True:
-        within_task_mask = np.kron(np.eye(no_tasks), np.ones((int(len(data_matrix)/no_tasks), int(len(data_matrix)/no_tasks))))
+        within_task_mask = np.kron(np.eye(no_tasks), np.ones((int(np.round(len(data_matrix)/no_tasks)), int(np.round(len(data_matrix)/no_tasks)))))
+        
+        if len(within_task_mask) > len(data_matrix):
+            within_task_mask = np.concatenate((within_task_mask, np.transpose(within_task_mask[-2:-1,:])), axis =1 )
+        if len(within_task_mask) < len(data_matrix):
+            within_task_mask = within_task_mask[0:-1,:]
+            
         data_matrix[within_task_mask == 1] = np.nan
         for regressor_matrix in regressor_dict:
             regressor_dict[regressor_matrix][within_task_mask == 1] = np.nan
