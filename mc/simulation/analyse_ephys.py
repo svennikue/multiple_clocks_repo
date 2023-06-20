@@ -171,8 +171,8 @@ def reg_per_task_config(task_configs, locations_all, neurons, timings_all, contr
 
 
 
-def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_all, contrast_m, mouse_recday, continuous = True, no_bins_per_state = 0, split_by_phase = 1, number_phase_neurons = 3):
-    #import pdb; pdb.set_trace()
+def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_all, contrast_m, mouse_recday, continuous = True, no_bins_per_state = 0, split_by_phase = 1, number_phase_neurons = 3, mask_within = True):
+    # import pdb; pdb.set_trace()
     # mouse a
     contrast_m = np.array(contrast_m)
     coefficient = list()
@@ -204,6 +204,7 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
     # based on the biggest shared run number,
     # always concatenate the first,...nth run of one task with all other tasks
     coefficients_per_trial = np.zeros((min_trialno,len(contrast_m[0])))
+    tvals_per_trial = np.zeros((min_trialno,1+len(contrast_m[0])))
     contrast_results = np.zeros((len(contrast_m),len(coefficients_per_trial)))
     
     if split_by_phase == 1:
@@ -213,7 +214,9 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
     
     for no_trial_in_each_task in range(0, min_trialno):
         for task_no, task_config in enumerate(task_configs):
-            trajectory, timings_curr_run, index_make_step, step_number, curr_neurons = mc.simulation.analyse_ephys.prep_ephys_per_trial(timings_all, locations_all, no_trial_in_each_task, task_no, task_config, neurons)
+            run_no = -1*(no_trial_in_each_task + 1)
+            
+            trajectory, timings_curr_run, index_make_step, step_number, curr_neurons = mc.simulation.analyse_ephys.prep_ephys_per_trial(timings_all, locations_all, run_no, task_no, task_config, neurons)
                     
             if continuous == True:
                 location_model, phase_model, state_model, midnight_model, clocks_model, phase_state_model = mc.simulation.predictions.set_continous_models_ephys(trajectory, timings_curr_run, index_make_step, step_number, no_phase_neurons= number_phase_neurons)
@@ -279,7 +282,7 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
 
         
         if split_by_phase == 0:
-            import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()
             # then, for the RDMs which concatenate th nth run of each task config, create between-task RDMs
             # now create the model RDMs
             RSM_location = mc.simulation.RDMs.within_task_RDM(location_between, plotting = False, titlestring = 'Location RDM')
@@ -291,9 +294,20 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
             RSM_neurons = mc.simulation.RDMs.within_task_RDM(neurons_between, plotting = False, titlestring = 'Data RDM')
         
             # Lastly, create a linear regression with RSM_loc,clock and midnight as regressors and data to be predicted
-            results_reg, tvals = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons, regressor_one_matrix=RSM_clock, regressor_two_matrix= RSM_midnight, regressor_three_matrix= RSM_location, regressor_four_matrix= RSM_phase, t_val= 1)
+            
+            
+            regressors = {}
+            regressors['clocks']=RSM_clock
+            regressors['midnight']=RSM_midnight
+            regressors['phase']=RSM_phase
+            regressors['location']=RSM_location
+            results_reg = mc.simulation.RDMs.GLM_RDMs(RSM_neurons, regressors, mask_within, no_tasks = len(task_configs), plotting= False)
+            
+            
+            #results_reg, tvals = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons, regressor_one_matrix=RSM_clock, regressor_two_matrix= RSM_midnight, regressor_three_matrix= RSM_location, regressor_four_matrix= RSM_phase, t_val= 1)
             # print(f" The beta for the clocks model is {reg_res.coef_[0]}, for the midnight model is {reg_res.coef_[1]}, and for the location model is {reg_res.coef_[2]}")
-            coefficients_per_trial[no_trial_in_each_task] = results_reg.coef_
+            tvals_per_trial[no_trial_in_each_task]= results_reg['t_vals']
+            coefficients_per_trial[no_trial_in_each_task] = results_reg['coefs']
             # print(f" Computed betas for run {trial_no} of task {task_config}")
             
             # then compute contrasts
@@ -388,10 +402,11 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
             
     # so right now I am not saving the individual results per loop except for the contrasts.
     result = {}
+    # import pdb; pdb.set_trace()
     if split_by_phase == 0:
         result["coefficients_per_trial"] = coefficients_per_trial
         result["contrast_results"] = contrast_results
-        result["t-values"] = tvals
+        result["t-values"] = tvals_per_trial
     if split_by_phase == 1:
         result["early_without_phase"] = reg_early
         result["mid_without_phase"] = reg_mid
@@ -816,7 +831,7 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
 
 # with this one, I want to compare different models and find the optimal output for my analysis.
 def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_recday, plotting = False, continuous = True, no_bins_per_state = 3, number_phase_neurons = 3, mask_within = True, split_by_phase = True):
-    # import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
     # this is now all  based on creating an average across runs first.
     
     # find out which is the largest shared trial number between all task configs
@@ -828,7 +843,9 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
 
     for no_trial_in_each_task in range(0, min_trialno):
         for task_no, task_config in enumerate(task_configs):
-            trajectory, timings_curr_run, index_make_step, step_number, curr_neurons = mc.simulation.analyse_ephys.prep_ephys_per_trial(timings_all, locations_all, no_trial_in_each_task, task_no, task_config, neurons)
+            # to take the final runs not the first ones.
+            run_no = -1*(no_trial_in_each_task + 1)
+            trajectory, timings_curr_run, index_make_step, step_number, curr_neurons = mc.simulation.analyse_ephys.prep_ephys_per_trial(timings_all, locations_all, run_no, task_no, task_config, neurons)
             
             if continuous == False:
                 location_model = mc.simulation.predictions.set_location_raw_ephys(trajectory, step_time = 1, grid_size=3, plotting = False, field_no_given= 1)
@@ -986,14 +1003,14 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
             
     
     # run regressions separetly for each phase
-    
+    # import pdb; pdb.set_trace()
     # try the new regression.
     regressors = {}
     regressors['clocks']=RSM_clock_betas_ave
     regressors['midnight']=RSM_midnight_betas_ave
     regressors['phase']=RSM_phase_betas_ave
     regressors['location']=RSM_location_betas_ave
-    results_normal = mc.simulation.RDMs.GLM_RDMs(RSM_neurons_betas_ave, regressors, mask_within, no_tasks = len(task_configs))
+    results_normal = mc.simulation.RDMs.GLM_RDMs(RSM_neurons_betas_ave, regressors, mask_within, no_tasks = len(task_configs), plotting= True)
     
     # collect all values in a results table which I then output in the end.
     result_dict = {}
@@ -1229,75 +1246,130 @@ def load_ephys_data(Data_folder):
 
 def clean_ephys_data(task_configs, locations_all, neurons, timings_all, mouse_recday, ignore_double_tasks = 1):
     # first clean data.
-    if mouse_recday == 'me11_05122021_06122021': #mouse a
-    # ALL FINE WITH a!
-        # task 5 and 9 are the same, as well as 6 and 7
-        # data of the first 4 tasks look similar, and tasks 5,6,7,8,9 look more similar
-        if ignore_double_tasks == 1:
-        # task 5 and 9 are the same, as well as 6 and 7
-        # throw out 6 and 9
-        # 1 and 4 are nearly the same, but have a different last field... so I leave them in.
-            ignore = [8,5]
-                
-    if mouse_recday == 'me11_01122021_02122021':#mouse b
-        
-        if ignore_double_tasks == 1:
-            ignore = [-1, 3]
-            # and task 4 appears twice
-        elif ignore_double_tasks == 0:
-            ignore = [-1]
-            # get rid of the last task because it looks somewhat whacky
-        
-    if mouse_recday == 'me10_09122021_10122021':#mouse c 
-        if ignore_double_tasks == 1:
-            ignore = [8,3,4]
-        elif ignore_double_tasks == 0:
-            ignore = [8,3]
-        # same tasks are: 1,4; and  5,6,9
-        # 4 and 9 look whacky, so remove those
-        # so then after removal 5 and 6 are still the same and 5 has only 6 repeats
-        # consider also removing the penultimum one... this was before task 7, now it is 6
-        # so far this is still inside
-         
-    if mouse_recday == 'me08_10092021_11092021': #mouse d
-        if ignore_double_tasks == 1:
-            ignore = [3]
-            # DOUBLE CHECK THIS!!!
-    # same tasks: 1, 4
-    # ALL FINE WITH d ONCE THE LAST BUT THE LAST EPHYS FILE WAS LOST > deleted this before
+    # import pdb; pdb.set_trace()
+    # load dataset
+    # # first thing: check for missing data. mark those and potentially ignore.
+    # # loop through the neurons.
+    # missing_neurons = []
+    # for task_no, recording_task in enumerate(neurons):
+    #     missing_neurons.append(list(map(tuple, np.where(recording_task ==[]))))
 
-    if mouse_recday == 'ah04_09122021_10122021': #mouse e range 0,8
-    # throw out the 4th 
-    # same tasks: (all tasks are unique, before 1 and 4 were the same but 4 is gone)
-        ignore = [4]
     
-    if mouse_recday == 'ah04_05122021_06122021': #mouse f range 0,8
-    # throw out number 4
-    # new 4 (previous 5) and last one - 7 (previous 8) are the same
-        if ignore_double_tasks == 1:
-            ignore = [-1, 3]
-        elif ignore_double_tasks == 0:
-            ignore = [3]
-     
-    if mouse_recday == 'ah04_01122021_02122021': #mouse g range 0,8
-    # same tasks: 1,4 and 5,8
-    # ALL FINE WITH g 
-        if ignore_double_tasks == 1:
-            ignore = [4, 0]
+    # throw out those with significantly lower run numbers  
+    too_short = []
+    max_length = len(neurons[0][0])
+    for task_config_no, run in enumerate(locations_all):
+        # first find max
+        if max_length < len(run):
+            max_length = len(run)
+    for task_config_no, run in enumerate(locations_all):
+        # then compare the others against max
+        if len(run)< max_length/3:
+            too_short.append(task_config_no)
+    
+    ignore = too_short
+    
+    if ignore_double_tasks == 1:
+        # mark repeated tasks
+        repeated_tasks = []
+        for count, curr_task in enumerate(task_configs):
+            comp_task_configs = np.concatenate((task_configs[:count], task_configs[count+1:]))
+            for task_no, task in enumerate(comp_task_configs):
+                if all(x == y for x, y in zip(curr_task, task)):
+                    repeated_tasks.append(count)
+                    # print(curr_task, task, count)
         
-    if mouse_recday == 'ah03_18082021_19082021': #mouse h range 0,8
-        if ignore_double_tasks == 1:
-            ignore = [4, 0]
-    # hmmmm here I am not sure... maybe it is alright??
-    # the fourth task looks a bit off, but I am leaving it in for now
-    # same tasks: 1,4 and 5,8
+        # check which of the repeated tasks is the worse one
+        drop_repeats = []
+        for i, task in enumerate(repeated_tasks):
+            comp_rep_tasks = repeated_tasks[:i]+repeated_tasks[i+1:]
+            for comp_task in comp_rep_tasks:
+                if all(x == y for x, y in zip(task_configs[task], task_configs[comp_task])): 
+                    if len(timings_all[task])<len(timings_all[comp_task]):
+                        drop_repeats.append(task)
+                    elif len(timings_all[task])>len(timings_all[comp_task]):
+                        if comp_task not in drop_repeats:
+                            drop_repeats.append(comp_task)
+    
+        # finally, compare values in drop_repeats and repeated_tasks
+        ignore = drop_repeats + too_short
+        ignore_list = []
+        for i in set(ignore):
+            ignore_list.append(i)
+        ignore_list.sort(reverse= True)
+            
+                
+
+    # if mouse_recday == 'me11_05122021_06122021': #mouse a
+    # # ALL FINE WITH a!
+    #     # task 5 and 9 are the same, as well as 6 and 7
+    #     # data of the first 4 tasks look similar, and tasks 5,6,7,8,9 look more similar
+    #     if ignore_double_tasks == 1:
+    #     # task 5 and 9 are the same, as well as 6 and 7
+    #     # throw out 6 and 9
+    #     # 1 and 4 are nearly the same, but have a different last field... so I leave them in.
+    #         ignore = [8,5]
+                
+    # if mouse_recday == 'me11_01122021_02122021':#mouse b
+        
+    #     if ignore_double_tasks == 1:
+    #         ignore = [-1, 3]
+    #         # and task 4 appears twice
+    #     elif ignore_double_tasks == 0:
+    #         ignore = [-1]
+    #         # get rid of the last task because it looks somewhat whacky
+        
+    # if mouse_recday == 'me10_09122021_10122021':#mouse c 
+    #     if ignore_double_tasks == 1:
+    #         ignore = [8,3,4]
+    #     elif ignore_double_tasks == 0:
+    #         ignore = [8,3]
+    #     # same tasks are: 1,4; and  5,6,9
+    #     # 4 and 9 look whacky, so remove those
+    #     # so then after removal 5 and 6 are still the same and 5 has only 6 repeats
+    #     # consider also removing the penultimum one... this was before task 7, now it is 6
+    #     # so far this is still inside
+         
+    # if mouse_recday == 'me08_10092021_11092021': #mouse d
+    #     if ignore_double_tasks == 1:
+    #         ignore = [3]
+    #         # DOUBLE CHECK THIS!!!
+    # # same tasks: 1, 4
+    # # ALL FINE WITH d ONCE THE LAST BUT THE LAST EPHYS FILE WAS LOST > deleted this before
+
+    # if mouse_recday == 'ah04_09122021_10122021': #mouse e range 0,8
+    # # throw out the 4th 
+    # # same tasks: (all tasks are unique, before 1 and 4 were the same but 4 is gone)
+    #     ignore = [4]
+    
+    # if mouse_recday == 'ah04_05122021_06122021': #mouse f range 0,8
+    # # throw out number 4
+    # # new 4 (previous 5) and last one - 7 (previous 8) are the same
+    #     if ignore_double_tasks == 1:
+    #         ignore = [-1, 3]
+    #     elif ignore_double_tasks == 0:
+    #         ignore = [3]
+     
+    # if mouse_recday == 'ah04_01122021_02122021': #mouse g range 0,8
+    # # same tasks: 1,4 and 5,8
+    # # ALL FINE WITH g 
+    #     if ignore_double_tasks == 1:
+    #         ignore = [4, 0]
+        
+    # if mouse_recday == 'ah03_18082021_19082021': #mouse h range 0,8
+    #     if ignore_double_tasks == 1:
+    #         ignore = [4, 0]
+    # # hmmmm here I am not sure... maybe it is alright??
+    # # the fourth task looks a bit off, but I am leaving it in for now
+    # # same tasks: 1,4 and 5,8
    
+    
     task_configs_clean = [elem for elem in task_configs]
     locations_all_clean = locations_all.copy()
     neurons_clean = neurons.copy()
     timings_all_clean = timings_all.copy()
     
-    for ignore_task in ignore:
+    for ignore_task in ignore_list:
         task_configs_clean.pop(ignore_task)
         locations_all_clean.pop(ignore_task)
         neurons_clean.pop(ignore_task)

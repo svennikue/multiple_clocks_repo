@@ -309,19 +309,29 @@ def lin_reg_RDMs(data_matrix, regressor_one_matrix, regressor_two_matrix = None,
     
     
 
-def GLM_RDMs(data_matrix, regressor_dict, mask_within = True, no_tasks = None, t_val = True):
+def GLM_RDMs(data_matrix, regressor_dict, mask_within = True, no_tasks = None, t_val = True, plotting = False):
     # import pdb; pdb.set_trace()
     if mask_within == True:
         within_task_mask = np.kron(np.eye(no_tasks), np.ones((int(np.round(len(data_matrix)/no_tasks)), int(np.round(len(data_matrix)/no_tasks)))))
         
-        if len(within_task_mask) > len(data_matrix):
-            within_task_mask = np.concatenate((within_task_mask, np.transpose(within_task_mask[-2:-1,:])), axis =1 )
-        if len(within_task_mask) < len(data_matrix):
-            within_task_mask = within_task_mask[0:-1,:]
+        # in case the mask doesn't match the data matrix perfectly (that's due to my estimations of 'early' 'mid' 'late')
+        while len(within_task_mask) < len(data_matrix):
+            within_task_mask = np.concatenate((within_task_mask, within_task_mask[:,-2:-1]), axis =1 )
+            within_task_mask = np.concatenate((within_task_mask, within_task_mask[-2:-1,:]), axis =0 )
+        while len(within_task_mask) > len(data_matrix):
+            within_task_mask = np.delete(within_task_mask, -1, 0)
+            within_task_mask = np.delete(within_task_mask, -1, 1)
             
         data_matrix[within_task_mask == 1] = np.nan
         for regressor_matrix in regressor_dict:
             regressor_dict[regressor_matrix][within_task_mask == 1] = np.nan
+    
+    if plotting == True:
+        plot_data = np.tril(data_matrix, -1)
+        plt.figure()
+        plt.imshow(plot_data, aspect = 'auto')
+        for interval in range(0, len(data_matrix), int(len(data_matrix)/(no_tasks+1))):
+            plt.axvline(interval, color='white', ls='dashed')
     
     dimension = len(data_matrix) 
     reg_labels = []

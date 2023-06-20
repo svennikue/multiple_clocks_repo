@@ -1191,16 +1191,19 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
         # plt.figure();
         # for neuron in range(0, len(neuron_phase_functions)):
         #     plt.plot(x, neuron_phase_functions[neuron].pdf(x))
+        # to plot the functions.
+
         
     if wrap_around == 1:
         means_at_phase = np.linspace(-np.pi, np.pi, (no_phase_neurons*2)+1)
         means_at_phase = means_at_phase[1::2].copy()
         
         for div in means_at_phase:
-            neuron_phase_functions.append(scipy.stats.vonmises(1/(no_phase_neurons/2), loc=div))
+            neuron_phase_functions.append(scipy.stats.vonmises(1/(no_phase_neurons/10), loc=div))
+            #neuron_phase_functions.append(scipy.stats.vonmises(1/(no_phase_neurons/2), loc=div))
             # careful! this has to be read differently.
         
-        # # to plot the functions.
+        # to plot the functions.
         # plt.figure(); 
         # for f in neuron_phase_functions:
         #     plt.plot(np.linspace(0,1,1000), f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)/np.max(f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)))

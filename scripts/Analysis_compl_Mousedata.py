@@ -10,6 +10,7 @@ this script runs the entire analysis of Mohamadys data
 import numpy as np
 import mc
 import matplotlib.pyplot as plt
+import sys
 #import joypy
 #from matplotlib import cm
 #import plotly.figure_factory as ff
@@ -43,16 +44,16 @@ if save:
 if load_old: 
     # if I want to load old stuff, use this:
         # USE THIS TOMORROW!
-    mice_recdays = ['mouse_a', 'mouse_b', 'mouse_c', 'mouse_d']
+    mice_recdays = ['mouse_a', 'mouse_b', 'mouse_c', 'mouse_d', 'mouse_e', 'mouse_f', 'mouse_g', 'mouse_h']
     # eval(f"{mice_recdays[0]}['recday']")
     clock_results = {}
     midnight_results = {}
     all_results = {}
-    res_path = "/Users/xpsy1114/Documents/projects/multiple_clocks/output/2023-06-14"
+    res_path = "/Users/xpsy1114/Documents/projects/multiple_clocks/output/2023-06-19"
     for i, mouse_index in enumerate(mice_recdays): 
         mouse_recday = eval(f"{mouse_index}['recday']")
         clock_file_name = f"{mouse_recday}_clock_dic"
-        midn_file_name = f"{mouse_recday}_clock_dic"
+        midn_file_name = f"{mouse_recday}_midn_dic"
         results_file_name = f"{mouse_recday}_res_dic"
         with open(os.path.join(res_path,clock_file_name), 'rb') as f:
             clock_results[clock_file_name] = pickle.load(f)
@@ -60,6 +61,7 @@ if load_old:
             midnight_results[midn_file_name] = pickle.load(f)
         with open(os.path.join(res_path,results_file_name), 'rb') as f:
             all_results[results_file_name] = pickle.load(f)
+    sys.exit(0)
         
         
 
@@ -83,10 +85,12 @@ mouse_a_clean["cells"] = mouse_a["cells"].copy()
 mouse_a_clean["recday"] = mouse_a["recday"]
 mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], mouse_a_clean["neurons"], mouse_a_clean["timings"] = mc.simulation.analyse_ephys.clean_ephys_data(mouse_a["rewards_configs"], mouse_a["locations"], mouse_a["neurons"], mouse_a["timings"], mouse_a_clean["recday"])
 
-#a_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], mouse_a_clean["neurons"], mouse_a_clean["timings"], mouse_a_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+# cleaned datasat
+a_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], mouse_a_clean["neurons"], mouse_a_clean["timings"], mouse_a_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
 
 # whole dataset
-essi
+# a_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_a["rewards_configs"], mouse_a["locations"], mouse_a["neurons"], mouse_a["timings"], mouse_a["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
+
 
 # define a mask for clock and midnight neurons, respectively
 clock_neurons = []
@@ -123,9 +127,10 @@ mouse_b_clean["cells"] = mouse_b["cells"].copy()
 mouse_b_clean["recday"] = mouse_b["recday"]
 mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], mouse_b_clean["neurons"], mouse_b_clean["timings"] = mc.simulation.analyse_ephys.clean_ephys_data(mouse_b["rewards_configs"], mouse_b["locations"], mouse_b["neurons"], mouse_b["timings"], mouse_b_clean["recday"])
 
-#b_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], mouse_b_clean["neurons"], mouse_b_clean["timings"], mouse_b_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+# cleaned datasat
+b_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], mouse_b_clean["neurons"], mouse_b_clean["timings"], mouse_b_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
 # whole dataset
-b_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_b["rewards_configs"], mouse_b["locations"], mouse_b["neurons"], mouse_b["timings"], mouse_b["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
+#b_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_b["rewards_configs"], mouse_b["locations"], mouse_b["neurons"], mouse_b["timings"], mouse_b["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
 
 # define a mask for clock and midnight neurons, respectively
@@ -162,9 +167,10 @@ mouse_c_clean["cells"] = mouse_c["cells"].copy()
 mouse_c_clean["recday"] = mouse_c["recday"]
 mouse_c_clean["rewards_configs"], mouse_c_clean["locations"], mouse_c_clean["neurons"], mouse_c_clean["timings"] = mc.simulation.analyse_ephys.clean_ephys_data(mouse_c["rewards_configs"], mouse_c["locations"], mouse_c["neurons"], mouse_c["timings"], mouse_c_clean["recday"])
 
-#c_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_c_clean["rewards_configs"], mouse_c_clean["locations"], mouse_c_clean["neurons"], mouse_c_clean["timings"], mouse_c_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+# cleaned datasat
+c_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_c_clean["rewards_configs"], mouse_c_clean["locations"], mouse_c_clean["neurons"], mouse_c_clean["timings"], mouse_c_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
 # whole dataset
-c_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_c["rewards_configs"], mouse_c["locations"], mouse_c["neurons"], mouse_c["timings"], mouse_c["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
+#c_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_c["rewards_configs"], mouse_c["locations"], mouse_c["neurons"], mouse_c["timings"], mouse_c["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
 
 # define a mask for clock and midnight neurons, respectively
@@ -200,9 +206,10 @@ mouse_d_clean["cells"] = mouse_d["cells"].copy()
 mouse_d_clean["recday"] = mouse_d["recday"]
 mouse_d_clean["rewards_configs"], mouse_d_clean["locations"], mouse_d_clean["neurons"], mouse_d_clean["timings"] = mc.simulation.analyse_ephys.clean_ephys_data(mouse_d["rewards_configs"], mouse_d["locations"], mouse_d["neurons"], mouse_d["timings"], mouse_d_clean["recday"])
 
-#d_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_d_clean["rewards_configs"], mouse_d_clean["locations"], mouse_d_clean["neurons"], mouse_d_clean["timings"], mouse_d_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+# cleaned datasat
+d_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_d_clean["rewards_configs"], mouse_d_clean["locations"], mouse_d_clean["neurons"], mouse_d_clean["timings"], mouse_d_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
 # whole dataset
-d_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_d["rewards_configs"], mouse_d["locations"], mouse_d["neurons"], mouse_d["timings"], mouse_d["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
+#d_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_d["rewards_configs"], mouse_d["locations"], mouse_d["neurons"], mouse_d["timings"], mouse_d["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
 
 # define a mask for clock and midnight neurons, respectively
@@ -238,9 +245,10 @@ mouse_e_clean["cells"] = mouse_e["cells"].copy()
 mouse_e_clean["recday"] = mouse_e["recday"]
 mouse_e_clean["rewards_configs"], mouse_e_clean["locations"], mouse_e_clean["neurons"], mouse_e_clean["timings"] = mc.simulation.analyse_ephys.clean_ephys_data(mouse_e["rewards_configs"], mouse_e["locations"], mouse_e["neurons"], mouse_e["timings"], mouse_e_clean["recday"])
 
-#e_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_e_clean["rewards_configs"], mouse_e_clean["locations"], mouse_e_clean["neurons"], mouse_e_clean["timings"], mouse_e_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+# cleaned datasat
+e_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_e_clean["rewards_configs"], mouse_e_clean["locations"], mouse_e_clean["neurons"], mouse_e_clean["timings"], mouse_e_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
 #whole dataset
-e_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_e["rewards_configs"], mouse_e["locations"], mouse_e["neurons"], mouse_e["timings"], mouse_e["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+#e_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_e["rewards_configs"], mouse_e["locations"], mouse_e["neurons"], mouse_e["timings"], mouse_e["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
 
 
 # define a mask for clock and midnight neurons, respectively
@@ -276,9 +284,11 @@ mouse_f_clean["recday"] = mouse_f["recday"]
 mouse_f_clean["rewards_configs"], mouse_f_clean["locations"], mouse_f_clean["neurons"], mouse_f_clean["timings"] = mc.simulation.analyse_ephys.clean_ephys_data(mouse_f["rewards_configs"], mouse_f["locations"], mouse_f["neurons"], mouse_f["timings"], mouse_f_clean["recday"])
 
 print('now all neurons') 
-#f_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_f_clean["rewards_configs"], mouse_f_clean["locations"], mouse_f_clean["neurons"], mouse_f_clean["timings"], mouse_f_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+
+# cleaned datasat
+f_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_f_clean["rewards_configs"], mouse_f_clean["locations"], mouse_f_clean["neurons"], mouse_f_clean["timings"], mouse_f_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
 # whole dataset
-f_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_f["rewards_configs"], mouse_f["locations"], mouse_f["neurons"], mouse_f["timings"], mouse_f["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
+#f_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_f["rewards_configs"], mouse_f["locations"], mouse_f["neurons"], mouse_f["timings"], mouse_f["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
 
 # define a mask for clock and midnight neurons, respectively
@@ -316,9 +326,16 @@ mouse_g_clean["recday"] = mouse_g["recday"]
 mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], mouse_g_clean["neurons"], mouse_g_clean["timings"] = mc.simulation.analyse_ephys.clean_ephys_data(mouse_g["rewards_configs"], mouse_g["locations"], mouse_g["neurons"], mouse_g["timings"], mouse_g_clean["recday"])
 
 print('now all neurons')  
-#g_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], mouse_g_clean["neurons"], mouse_g_clean["timings"], mouse_g_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+# cleaned datasat
+g_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], mouse_g_clean["neurons"], mouse_g_clean["timings"], mouse_g_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+#g_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_g["rewards_configs"], mouse_g["locations"], mouse_g["neurons"], mouse_g["timings"], mouse_g["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
-g_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_g["rewards_configs"], mouse_g["locations"], mouse_g["neurons"], mouse_g["timings"], mouse_g["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
+
+# check how all of this looks like if you separate the trials.
+# g_reg_result_dict_split = mc.simulation.analyse_ephys.reg_between_tasks_singleruns(mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], mouse_g_clean["neurons"], mouse_g_clean["timings"], contrast_matrix, mouse_g_clean['recday'], continuous=True, no_bins_per_state= 10, split_by_phase= 0, number_phase_neurons= 3, mask_within= True)
+
+
+
 
 # define a mask for clock and midnight neurons, respectively
 clock_neurons = []
@@ -354,10 +371,10 @@ mouse_h_clean["cells"] = mouse_h["cells"].copy()
 mouse_h_clean["recday"] = mouse_h["recday"]
 mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], mouse_h_clean["neurons"], mouse_h_clean["timings"] = mc.simulation.analyse_ephys.clean_ephys_data(mouse_h["rewards_configs"], mouse_h["locations"], mouse_h["neurons"], mouse_h["timings"], mouse_h_clean["recday"])
 
-#h_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], mouse_h_clean["neurons"], mouse_h_clean["timings"], mouse_h_clean["recday"], plotting = True, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+h_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], mouse_h_clean["neurons"], mouse_h_clean["timings"], mouse_h_clean["recday"], plotting = True, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
 
 # compare what happens if I take the whole dataset.
-h_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_h["rewards_configs"], mouse_h["locations"], mouse_h["neurons"], mouse_h["timings"], mouse_h["recday"], plotting = True, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
+#h_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_h["rewards_configs"], mouse_h["locations"], mouse_h["neurons"], mouse_h["timings"], mouse_h["recday"], plotting = True, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
 
 
@@ -389,6 +406,49 @@ if save:
 
 # THIS CAN BE EASILY ADJUSTED, JUST COMMENTED OUT SO I CAN STORE THE RESULTS!!
 
+
+
+
+# PLOTTING
+
+data_normal_clocks_clocks = []
+data_normal_clocks_midn = []
+data_normal_clocks_phas = []
+data_normal_clocks_loc = []
+data_normal_midn_clocks = []
+data_normal_midn_midn = []
+data_normal_midn_phas = []
+data_normal_midn_loc = []
+data_normal_all_clocks = []
+data_normal_all_midn = []
+data_normal_all_phas = []
+data_normal_all_loc= []
+
+for mouse_res in clock_results:
+    data_normal_clocks_clocks.append(clock_results[mouse_res]['normal']['t_vals'][1])
+    data_normal_clocks_midn.append(clock_results[mouse_res]['normal']['t_vals'][2])
+    data_normal_clocks_phas.append(clock_results[mouse_res]['normal']['t_vals'][3])
+    data_normal_clocks_loc.append(clock_results[mouse_res]['normal']['t_vals'][4])
+
+for mouse_res in midnight_results:
+    data_normal_midn_clocks.append(midnight_results[mouse_res]['normal']['t_vals'][1])
+    data_normal_midn_midn.append(midnight_results[mouse_res]['normal']['t_vals'][2])
+    data_normal_midn_phas.append(midnight_results[mouse_res]['normal']['t_vals'][3])
+    data_normal_midn_loc.append(midnight_results[mouse_res]['normal']['t_vals'][4])
+
+for mouse_res in all_results:    
+    data_normal_all_clocks.append(all_results[mouse_res]['normal']['t_vals'][1])
+    data_normal_all_midn.append(all_results[mouse_res]['normal']['t_vals'][2])
+    data_normal_all_phas.append(all_results[mouse_res]['normal']['t_vals'][3])
+    data_normal_all_loc.append(all_results[mouse_res]['normal']['t_vals'][4])
+
+
+data_comp = [data_normal_all_clocks, data_normal_all_midn, data_normal_all_phas, data_normal_all_loc, data_normal_clocks_clocks, data_normal_clocks_midn, data_normal_clocks_phas, data_normal_clocks_loc, data_normal_midn_clocks, data_normal_midn_midn, data_normal_midn_phas, data_normal_midn_loc]
+label_string_list_comp = ['all_clocks', 'all_midn', 'all_phas', 'all_loc', 'cl_clocks', 'cl_midn', 'cl_phas', 'cl_loc', 'mid_clocks', 'mid_midn', 'mid_phas', 'mid_loc']
+label_tick_list_comp = [1,2,3,4,5,6,7,8,9,10,11,12]
+title_string_comp = 'including different neurons, complete model'
+
+mc.simulation.analyse_ephys.plotting_hist_scat(data_comp, label_string_list_comp, label_tick_list_comp, title_string_comp) 
 
 
 # # PLOT THE RESULTS OF THIS!!
