@@ -171,50 +171,41 @@ def reg_per_task_config(task_configs, locations_all, neurons, timings_all, contr
 
 
 
-def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_all, contrast_m, mouse_recday, continuous = True, no_bins_per_state = 0, split_by_phase = 1, number_phase_neurons = 3, mask_within = True):
-    # import pdb; pdb.set_trace()
-    # mouse a
-    contrast_m = np.array(contrast_m)
-    coefficient = list()
-    contrast_results_all = list()
-
+def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_all, contrast_m,  mouse_recday, contrast_split = None, continuous = True, no_bins_per_state = 0, split_by_phase = 1, number_phase_neurons = 3, mask_within = True):
+    #import pdb; pdb.set_trace()
     
-    # prepare result variabls
-    reg_early_two = []
-    reg_mid_two = []
-    reg_late_two = []
-    reg_early_all = []
-    reg_mid_all = []
-    reg_late_all = []
-    tval_early = []
-    tval_mid = []
-    tval_late = []
-    tval_early_all = []
-    tval_mid_all = []
-    tval_late_all = []
-    
-
-    # find out which is the largest shared trial number between all task configs
+    # first, find out which is the largest shared trial number between all task configs
+    # based on the biggest shared run number,
+    # always concatenate the first,...nth run of one task with all other tasks
+    labels_regs = []
     min_trialno = 60
     for task_number in timings_all:
         curr_trialno = len(task_number)
         if curr_trialno < min_trialno:
             min_trialno = curr_trialno
     
-    # based on the biggest shared run number,
-    # always concatenate the first,...nth run of one task with all other tasks
+    # always take the 6 first ones.
+    # min_trialno = 6
+    
+    contrast_m = np.array(contrast_m)
     coefficients_per_trial = np.zeros((min_trialno,len(contrast_m[0])))
     tvals_per_trial = np.zeros((min_trialno,1+len(contrast_m[0])))
-    contrast_results = np.zeros((len(contrast_m),len(coefficients_per_trial)))
+    contrast_results = np.zeros((len(contrast_m),min_trialno))
     
     if split_by_phase == 1:
-        contrast_results_early = np.zeros((len(contrast_m),len(coefficients_per_trial)))
-        contrast_results_mid = np.zeros((len(contrast_m),len(coefficients_per_trial)))
-        contrast_results_late = np.zeros((len(contrast_m),len(coefficients_per_trial)))
-    
+        phase_split = ['early', 'mid', 'late']
+        coefficients_per_trial_split = np.zeros((len(phase_split), min_trialno,len(contrast_split[0])))
+        tvals_per_trial_split = np.zeros((len(phase_split),min_trialno,1+len(contrast_split[0])))
+        contrast_results_split = np.zeros((len(phase_split),len(contrast_split),min_trialno))
+        tval_reor = np.zeros((min_trialno,1+len(contrast_split[0])))
+        coef_reor = np.zeros((min_trialno,len(contrast_split[0])))
+        contr_reor = np.zeros((len(contrast_split),min_trialno))
+        
+
     for no_trial_in_each_task in range(0, min_trialno):
         for task_no, task_config in enumerate(task_configs):
             run_no = -1*(no_trial_in_each_task + 1)
+            # run_no = no_trial_in_each_task
             
             trajectory, timings_curr_run, index_make_step, step_number, curr_neurons = mc.simulation.analyse_ephys.prep_ephys_per_trial(timings_all, locations_all, run_no, task_no, task_config, neurons)
                     
@@ -253,8 +244,6 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
                 location_model = mc.simulation.predictions.transform_data_to_betas(location_model, regs_phase_state_run)
                 phase_model = mc.simulation.predictions.transform_data_to_betas(phase_model, regs_phase_state_run)
             
-
-            
             # these need to be concatenated for each run and task
             if task_no == 0:
             #if task_no == 0 and trial_no == 0:
@@ -281,153 +270,127 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
                     phase_separation = np.concatenate((phase_separation, phase_separation_temp), axis = 1)
 
         
-        if split_by_phase == 0:
-            # import pdb; pdb.set_trace()
-            # then, for the RDMs which concatenate th nth run of each task config, create between-task RDMs
-            # now create the model RDMs
-            RSM_location = mc.simulation.RDMs.within_task_RDM(location_between, plotting = False, titlestring = 'Location RDM')
-            RSM_clock = mc.simulation.RDMs.within_task_RDM(clocks_between, plotting = False, titlestring = 'Clock RDM')
-            RSM_midnight = mc.simulation.RDMs.within_task_RDM(midnight_between, plotting = False, titlestring = 'Midnight RDM')
-            RSM_phase = mc.simulation.RDMs.within_task_RDM(phase_between, plotting = False, titlestring = 'Phase RDM')
         
-            # now create the data RDM
-            RSM_neurons = mc.simulation.RDMs.within_task_RDM(neurons_between, plotting = False, titlestring = 'Data RDM')
+        # import pdb; pdb.set_trace()
+        # then, for the RDMs which concatenate th nth run of each task config, create between-task RDMs
+        # now create the model RDMs
+        RSM_location = mc.simulation.RDMs.within_task_RDM(location_between, plotting = False, titlestring = 'Location RDM')
+        RSM_clock = mc.simulation.RDMs.within_task_RDM(clocks_between, plotting = False, titlestring = 'Clock RDM')
+        RSM_midnight = mc.simulation.RDMs.within_task_RDM(midnight_between, plotting = False, titlestring = 'Midnight RDM')
+        RSM_phase = mc.simulation.RDMs.within_task_RDM(phase_between, plotting = False, titlestring = 'Phase RDM')
+    
+        # now create the data RDM
+        RSM_neurons = mc.simulation.RDMs.within_task_RDM(neurons_between, plotting = False, titlestring = 'Data RDM')
+    
+        # Lastly, create a linear regression with RSM_loc,clock and midnight as regressors and data to be predicted
+        regressors = {}
+        regressors['clocks']=RSM_clock
+        regressors['midnight']=RSM_midnight
+        regressors['phase']=RSM_phase
+        regressors['location']=RSM_location
+        results_reg = mc.simulation.RDMs.GLM_RDMs(RSM_neurons, regressors, mask_within, no_tasks = len(task_configs), plotting= False)
         
-            # Lastly, create a linear regression with RSM_loc,clock and midnight as regressors and data to be predicted
-            
-            
-            regressors = {}
-            regressors['clocks']=RSM_clock
-            regressors['midnight']=RSM_midnight
-            regressors['phase']=RSM_phase
-            regressors['location']=RSM_location
-            results_reg = mc.simulation.RDMs.GLM_RDMs(RSM_neurons, regressors, mask_within, no_tasks = len(task_configs), plotting= False)
-            
-            
-            #results_reg, tvals = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons, regressor_one_matrix=RSM_clock, regressor_two_matrix= RSM_midnight, regressor_three_matrix= RSM_location, regressor_four_matrix= RSM_phase, t_val= 1)
-            # print(f" The beta for the clocks model is {reg_res.coef_[0]}, for the midnight model is {reg_res.coef_[1]}, and for the location model is {reg_res.coef_[2]}")
-            tvals_per_trial[no_trial_in_each_task]= results_reg['t_vals']
-            coefficients_per_trial[no_trial_in_each_task] = results_reg['coefs']
-            # print(f" Computed betas for run {trial_no} of task {task_config}")
-            
-            # then compute contrasts
-            # I want to know: [0 0 1], [0 1 0], [1 0 0] and [-1 1 0], [0 -1 1], ....
         
-            # # in case I want to have an overview of all betas for this trial config
-            # x = np.linspace(0,len(coefficients_per_trial)-1,len(coefficients_per_trial))
-            # plt.figure(); plt.plot(x, coefficients_per_trial[:,0], label = 'clocks'); plt.plot(x, coefficients_per_trial[:,1], label = 'midnight'); plt.plot(x, coefficients_per_trial[:,2], label = 'location'); plt.plot(x, coefficients_per_trial[:,3], label = 'phase'); plt.legend(loc="upper left"); plt.ylabel('beta'); plt.xlabel('run number'); plt.axhline(0, color='grey', ls='dashed'); plt.title(f"Recording day {mouse_recday} task {task_no}")
-             
+        #results_reg, tvals = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons, regressor_one_matrix=RSM_clock, regressor_two_matrix= RSM_midnight, regressor_three_matrix= RSM_location, regressor_four_matrix= RSM_phase, t_val= 1)
+        # print(f" The beta for the clocks model is {reg_res.coef_[0]}, for the midnight model is {reg_res.coef_[1]}, and for the location model is {reg_res.coef_[2]}")
+        tvals_per_trial[no_trial_in_each_task]= results_reg['t_vals']
+        coefficients_per_trial[no_trial_in_each_task] = results_reg['coefs']
+        labels_regs.append(results_reg['label_regs'])
+        # print(f" Computed betas for run {trial_no} of task {task_config}")
+        
+        # then compute contrasts
+        # I want to know: [0 0 1], [0 1 0], [1 0 0] and [-1 1 0], [0 -1 1], ....
+    
+        # # in case I want to have an overview of all betas for this trial config
+        # x = np.linspace(0,len(coefficients_per_trial)-1,len(coefficients_per_trial))
+        # plt.figure(); plt.plot(x, coefficients_per_trial[:,0], label = 'clocks'); plt.plot(x, coefficients_per_trial[:,1], label = 'midnight'); plt.plot(x, coefficients_per_trial[:,2], label = 'location'); plt.plot(x, coefficients_per_trial[:,3], label = 'phase'); plt.legend(loc="upper left"); plt.ylabel('beta'); plt.xlabel('run number'); plt.axhline(0, color='grey', ls='dashed'); plt.title(f"Recording day {mouse_recday} task {task_no}")
+         
+        for contrast_no, contrast in enumerate(contrast_m):
+            contrast_results[contrast_no,no_trial_in_each_task] = np.matmul(contrast,coefficients_per_trial[no_trial_in_each_task].transpose())
+              
             
-            for contrast_no, contrast in enumerate(contrast_m):
-                contrast_results[contrast_no,no_trial_in_each_task] = np.matmul(contrast,coefficients_per_trial[no_trial_in_each_task].transpose())
-                  
+        
+        if split_by_phase == 1:
+            # do the same thing but per phase by splitting everything into the phase-mask-defined bins first
+            label_regs_split = []
+            for no_phase, phase in enumerate(phase_split):
+                currphase_mask = np.where(phase_separation[no_phase,:] == 1)[0]
+                # prepare the re-ordered matrices.
+                if no_phase == 0:
+                    reordered_neurons = neurons_between[:,currphase_mask].copy()
+                    # take out location temporarily
+                    # reordered_location = location_between[:, currphase_mask].copy()
+                    reordered_clocks = clocks_between[:,currphase_mask].copy()
+                    reordered_midnight = midnight_between[:,currphase_mask].copy()
+                elif no_phase > 0:
+                    reordered_neurons = np.concatenate((reordered_neurons, neurons_between[:,currphase_mask]), axis = 1)
+                    # take out location temporarily
+                    # reordered_location = np.concatenate((reordered_location, location_between[:, currphase_mask]), axis = 1)
+                    reordered_clocks = np.concatenate((reordered_clocks, clocks_between[:,currphase_mask]), axis =1 )
+                    reordered_midnight = np.concatenate((reordered_midnight, midnight_between[:,currphase_mask]), axis = 1)
+                # take out location temporarily
+                # RSM_location_currphase = mc.simulation.RDMs.within_task_RDM(location_between[:, currphase_mask], plotting = False, titlestring = f"{phase} Location RDM")
+                RSM_clocks_currphase = mc.simulation.RDMs.within_task_RDM(clocks_between[:,currphase_mask], plotting = False, titlestring = f"{phase} Clock RDM")
+                RSM_midnight_currphase = mc.simulation.RDMs.within_task_RDM(midnight_between[:,currphase_mask], plotting = False, titlestring = f"{phase} Midnight RDM")
+                # I cannot include phase here bc it's nearly 1. It would mess up my regression weights.
+                # RSM_phase_currphase = mc.simulation.RDMs.within_task_RDM(phase_between[:,currphase_mask], plotting = False, titlestring = f"{phase} Phase RDM")
+                # now create the data RDM
+                RSM_neurons_currphase = mc.simulation.RDMs.within_task_RDM(neurons_between[:,currphase_mask], plotting = False, titlestring = f"{phase} Data RDM") 
                 
-        
-        elif split_by_phase == 1:
-            # import pdb; pdb.set_trace()
-            early_mask = np.where(phase_separation[0,:] == 1)[0]
-            mid_mask = np.where(phase_separation[1,:] == 1)[0]
-            late_mask = np.where(phase_separation[2,:] == 1)[0]
+                regs_currphase = {}
+                regs_currphase['clocks']= RSM_clocks_currphase
+                regs_currphase['midnight']= RSM_midnight_currphase
+                # I cannot include phase here bc it's nearly 1. It would mess up my regression weights.
+                # regs_currphase['phase']= RSM_phase_currphase
+                # take out location temporarily
+                # regs_currphase['location']= RSM_location_currphase
+                results_reg_currphase = mc.simulation.RDMs.GLM_RDMs(RSM_neurons_currphase, regs_currphase, mask_within, no_tasks = len(task_configs), plotting= False)
+                # import pdb; pdb.set_trace()
+                tvals_per_trial_split[no_phase, no_trial_in_each_task, :]= results_reg_currphase['t_vals']
+                coefficients_per_trial_split[no_phase,no_trial_in_each_task,:] = results_reg_currphase['coefs']
+                label_regs_split.append(results_reg_currphase["label_regs"])
+                
+                for contrast_no, contrast in enumerate(contrast_split):
+                    contrast_results_split[no_phase, contrast_no,:] = np.matmul(contrast,coefficients_per_trial_split[no_phase, no_trial_in_each_task,:].transpose())
+            
+            # reordered regression
+            # take out location temporarily
+            # RSM_reordered_loc = mc.simulation.RDMs.within_task_RDM(reordered_location, plotting= False, titlestring= "reordered Location")
+            RSM_reordered_neurons = mc.simulation.RDMs.within_task_RDM(reordered_neurons, plotting= False, titlestring= "reordered neurons")
+            RSM_reordered_clocks = mc.simulation.RDMs.within_task_RDM(reordered_clocks, plotting= False, titlestring= "reordered clocks")
+            RSM_reordered_midnight = mc.simulation.RDMs.within_task_RDM(reordered_midnight, plotting= False, titlestring= "reordered midnight")
+            
+            regs_reordered = {}
+            regs_reordered['clocks'] = RSM_reordered_clocks
+            regs_reordered['midnight'] = RSM_reordered_midnight
+            # take out location temporarily
+            # regs_reordered['location'] = RSM_reordered_loc
+            
+            # mask within false because the reordering screws with the within-task order
+            results_reg_reordered = mc.simulation.RDMs.GLM_RDMs(RSM_reordered_neurons, regs_reordered, mask_within = False, no_tasks = len(task_configs), plotting= False)
+            tval_reor[no_trial_in_each_task] = results_reg_reordered['t_vals']
+            coef_reor[no_trial_in_each_task] = results_reg_reordered['coefs']
             
             
-            # I don't think this is needed after all bc the regressions are done separetly.
+            for contrast_no, contrast in enumerate(contrast_split):
+                contr_reor[contrast_no] = np.matmul(contrast,coef_reor[no_trial_in_each_task,:].transpose())
+                
+        print(f"done with trial_no {no_trial_in_each_task}")           
             
-            # # check if these are all the same lengths, and if not, drop the last datapoint
-            # # CAREFUL! This is not very elegant... but necessary for the regression
-            # if len(early_mask) != len(mid_mask) or len(early_mask) != len(late_mask) or len(late_mask) != len(mid_mask):
-            #     min_length = min(len(early_mask), len(late_mask), len(mid_mask))
-            #     early_mask = early_mask[0:min_length].copy()
-            #     mid_mask = mid_mask[0:min_length].copy()
-            #     late_mask = late_mask[0:min_length].copy()
-
-            RSM_location_early = mc.simulation.RDMs.within_task_RDM(location_between[:, early_mask], plotting = False, titlestring = 'early Location RDM')
-            RSM_location_mid = mc.simulation.RDMs.within_task_RDM(location_between[:, mid_mask], plotting = False, titlestring = 'mid Location RDM')
-            RSM_location_late = mc.simulation.RDMs.within_task_RDM(location_between[:, late_mask], plotting = False, titlestring = 'late Location RDM')
-            
-            RSM_clocks_early = mc.simulation.RDMs.within_task_RDM(clocks_between[:,early_mask], plotting = False, titlestring = 'early Clock RDM')
-            RSM_clocks_mid = mc.simulation.RDMs.within_task_RDM(clocks_between[:,mid_mask], plotting = False, titlestring = 'mid Clock RDM')
-            RSM_clocks_late = mc.simulation.RDMs.within_task_RDM(clocks_between[:,late_mask], plotting = False, titlestring = 'late Clock RDM')
-            
-            RSM_midnight_early = mc.simulation.RDMs.within_task_RDM(midnight_between[:,early_mask], plotting = False, titlestring = 'early Midnight RDM')
-            RSM_midnight_mid = mc.simulation.RDMs.within_task_RDM(midnight_between[:,mid_mask], plotting = False, titlestring = 'mid Midnight RDM')
-            RSM_midnight_late = mc.simulation.RDMs.within_task_RDM(midnight_between[:,late_mask], plotting = False, titlestring = 'late Midnight RDM')
-            
-            RSM_phase_early = mc.simulation.RDMs.within_task_RDM(phase_between[:,early_mask], plotting = False, titlestring = 'early Phase RDM')
-            RSM_phase_mid = mc.simulation.RDMs.within_task_RDM(phase_between[:,mid_mask], plotting = False, titlestring = 'mid Phase RDM')
-            RSM_phase_late = mc.simulation.RDMs.within_task_RDM(phase_between[:,late_mask], plotting = False, titlestring = 'late Phase RDM')
-        
-        
-            # now create the data RDM
-            RSM_neurons_early = mc.simulation.RDMs.within_task_RDM(neurons_between[:,early_mask], plotting = False, titlestring = 'early Data RDM')
-            RSM_neurons_mid = mc.simulation.RDMs.within_task_RDM(neurons_between[:,mid_mask], plotting = False, titlestring = 'mid Data RDM')
-            RSM_neurons_late = mc.simulation.RDMs.within_task_RDM(neurons_between[:,late_mask], plotting = False, titlestring = 'late Data RDM')
-        
-            # then do the, this time 3, regressions.
-            reg_early, tval_early_perrrun = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons_early, regressor_one_matrix = RSM_midnight_early, regressor_two_matrix= RSM_clocks_early, t_val= 1)
-            print(f"results for early trial_no {no_trial_in_each_task} are [midnight, clocks] {reg_early.coef_}")
-            reg_mid, tval_mid_perrrun = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons_mid, regressor_one_matrix = RSM_midnight_mid, regressor_two_matrix= RSM_clocks_mid, t_val= 1)
-            print(f"results for mid trial_no {no_trial_in_each_task} are [midnight, clocks] {reg_mid.coef_}")
-            reg_late, tval_late_perrrun = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons_late, regressor_one_matrix = RSM_midnight_late, regressor_two_matrix= RSM_clocks_late, t_val= 1)
-            print(f"results for late trial_no {no_trial_in_each_task} are [midnight, clocks] {reg_late.coef_}")
-            
-            # to compare [might delete later] also check with phase as regressor
-            reg_early_with_phase, tval_early_with_phase_perrrun = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons_early, regressor_one_matrix= RSM_clocks_early, regressor_two_matrix= RSM_midnight_early, regressor_three_matrix= RSM_location_early, regressor_four_matrix= RSM_phase_early, t_val= 1)
-            print(f"results for early trial_no {no_trial_in_each_task} are [clocks, midnight, loc, phase] {reg_early_with_phase.coef_}")
-            reg_mid_with_phase, tval_mid_with_phase_perrrun= mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons_mid, regressor_one_matrix= RSM_clocks_mid, regressor_two_matrix= RSM_midnight_mid, regressor_three_matrix= RSM_location_mid, regressor_four_matrix= RSM_phase_mid, t_val= 1)
-            print(f"results for mid trial_no {no_trial_in_each_task} are [clocks, midnight, loc, phase] {reg_mid_with_phase.coef_}")
-            reg_late_with_phase, tval_late_with_phase_perrrun = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons_late, regressor_one_matrix= RSM_clocks_late, regressor_two_matrix= RSM_midnight_late, regressor_three_matrix= RSM_location_late, regressor_four_matrix= RSM_phase_late, t_val= 1)
-            print(f"results for late trial_no {no_trial_in_each_task} are [clocks, midnight, loc, phase] {reg_late_with_phase.coef_}")
-            
-            
-            # then do the contrasts only for the complete model, otherwise it doesnt work
-            for contrast_no, contrast in enumerate(contrast_m):
-                contrast_results_early[contrast_no,no_trial_in_each_task] = np.matmul(contrast,reg_early_with_phase.coef_.transpose())
-            for contrast_no, contrast in enumerate(contrast_m):
-                contrast_results_mid[contrast_no,no_trial_in_each_task] = np.matmul(contrast,reg_mid_with_phase.coef_.transpose())
-            for contrast_no, contrast in enumerate(contrast_m):
-                contrast_results_late[contrast_no,no_trial_in_each_task] = np.matmul(contrast,reg_late_with_phase.coef_.transpose())
-            reg_early_two.append(reg_early.coef_)
-            reg_mid_two.append(reg_mid.coef_)
-            reg_late_two.append(reg_late.coef_)
-            reg_early_all.append(reg_early_with_phase.coef_)
-            reg_mid_all.append(reg_mid_with_phase.coef_)
-            reg_late_all.append(reg_late_with_phase.coef_)
-            tval_early.append(tval_early_perrrun)
-            tval_mid.append(tval_mid_perrrun)
-            tval_late.append(tval_late_perrrun)
-            tval_early_all.append(tval_early_with_phase_perrrun)
-            tval_mid_all.append(tval_mid_with_phase_perrrun)
-            tval_late_all.append(tval_late_with_phase_perrrun)
-            
-            
-    # so right now I am not saving the individual results per loop except for the contrasts.
     result = {}
-    # import pdb; pdb.set_trace()
-    if split_by_phase == 0:
-        result["coefficients_per_trial"] = coefficients_per_trial
-        result["contrast_results"] = contrast_results
-        result["t-values"] = tvals_per_trial
-    if split_by_phase == 1:
-        result["early_without_phase"] = reg_early
-        result["mid_without_phase"] = reg_mid
-        result["late_without_phase"] = reg_late
-        result["early_with_phase"] = reg_early_all
-        result["mid_with_phase"] = reg_mid_all
-        result["late_with_phase"] = reg_late_all
-        result["contrast_early"] = contrast_results_early
-        result["contrast_mid"] = contrast_results_mid
-        result["contrast_late"] = contrast_results_late
-        result["tval_early_without_phase"] = tval_early
-        result["tval_mid_without_phase"] = tval_mid
-        result["tval_late_without_phase"] = tval_late
-        result["tval_early_with_phase"] = tval_early_all
-        result["tval_mid_with_phase"] = tval_mid_all
-        result["tval_late_with_phase"] = tval_late_all
-
-        # at the end of the trial, store the whole matrix in coefficient:
-        #coefficient.append(coefficients_per_trial)
-        print(f"done with trial_no {no_trial_in_each_task}")
-        
+    result["coefficients_per_trial"] = coefficients_per_trial
+    result["contrast_results"] = contrast_results
+    result["t-values"] = tvals_per_trial
+    result["labels"] = labels_regs
+    if split_by_phase == True:
+        result["split_coef_per_trial"] = coefficients_per_trial_split
+        result["split_contrasts"] = contrast_results_split
+        result["split_t-vals"] = tvals_per_trial_split
+        result["split_labels"] = label_regs_split
+        result["reord_coefs"] = coef_reor
+        result["reord_t-vals"] = tval_reor
+        result["reord_contrasts"] = contr_reor
+ 
     return result
 
 
@@ -1070,7 +1033,6 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
     # results_average, scipy_regression_results = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons_betas_ave, regressor_one_matrix=RSM_midnight_betas_ave, regressor_two_matrix= RSM_clock_betas_ave, regressor_three_matrix= RSM_location_betas_ave, regressor_four_matrix= RSM_phase_betas_ave)
     # print('regression results are: [midnight, clocks,location, phase]:', results_average.coef_)
 
-
     
     # result_dict['reg_early_phase_midnight-clocks'] = reg_early.coef_
     # result_dict['reg_mid_phase_midnight-clocks'] = reg_mid.coef_
@@ -1079,7 +1041,6 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
     # result_dict['reg_all_midnight-clocks-loc-phase'] = results_average.coef_
     # result_dict['reg_all_reversedphase_midnight-clocks'] = reversed_phases_reg_results.coef_
     
-
     return result_dict
 
 
@@ -1087,7 +1048,7 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
 
 
 def load_ephys_data(Data_folder):
-    
+    # import pdb; pdb.set_trace()
     mouse_a = {}
     mouse_b = {}
     mouse_c = {}
@@ -1100,6 +1061,8 @@ def load_ephys_data(Data_folder):
     
     mouse_recday='me11_05122021_06122021' #mouse a
     mouse_a["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+    mouse_a["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
+    mouse_a["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
     a_no_task_configs = len(mouse_a["rewards_configs"])
     mouse_a["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
     a_locations = list()
@@ -1114,11 +1077,20 @@ def load_ephys_data(Data_folder):
     mouse_a["timings"] = a_timings
     mouse_a["recday"] = mouse_recday
     
+    mouse_a["neuron_type"] = np.zeros((len(mouse_a["anchor_lag"]), len(mouse_a["anchor_lag"][1])))
+    for i, neuron in enumerate(mouse_a["anchor_lag"]):
+        max_neuron = np.argmax(neuron)
+        mouse_a["neuron_type"][i, max_neuron] = 1
+        
+        
+    
     
     
 
     mouse_recday='me11_01122021_02122021' #mouse b 
     mouse_b["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+    mouse_b["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
+    mouse_b["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
     b_no_task_configs = len(mouse_b["rewards_configs"])
     mouse_b["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
     b_locations = list()
@@ -1132,10 +1104,16 @@ def load_ephys_data(Data_folder):
     mouse_b["neurons"] = b_neurons
     mouse_b["timings"] = b_timings
     mouse_b["recday"] = mouse_recday
-
+    mouse_b["neuron_type"] = np.zeros((len(mouse_b["anchor_lag"]), len(mouse_b["anchor_lag"][1])))
+    for i, neuron in enumerate(mouse_b["anchor_lag"]):
+        max_neuron = np.argmax(neuron)
+        mouse_b["neuron_type"][i, max_neuron] = 1
+        
 
     mouse_recday='me10_09122021_10122021' #mouse c range 0,9
     mouse_c["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+    mouse_c["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
+    mouse_c["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
     c_no_task_configs = len(mouse_c["rewards_configs"])
     mouse_c["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
     c_locations = list()
@@ -1149,13 +1127,18 @@ def load_ephys_data(Data_folder):
     mouse_c["neurons"] = c_neurons
     mouse_c["timings"] = c_timings
     mouse_c["recday"] = mouse_recday
-        
+    mouse_c["neuron_type"] = np.zeros((len(mouse_c["anchor_lag"]), len(mouse_c["anchor_lag"][1])))
+    for i, neuron in enumerate(mouse_c["anchor_lag"]):
+        max_neuron = np.argmax(neuron)
+        mouse_c["neuron_type"][i, max_neuron] = 1   
 
     mouse_recday='me08_10092021_11092021' #mouse d range 0,6
     mouse_d["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
     mouse_d["rewards_configs"] = mouse_d["rewards_configs"][0:-1, :].copy()
     # apparently there is one run less for this day..., so exclude that one
     # mohammady says: The ephys file for the last task on that day was lost
+    mouse_d["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
+    mouse_d["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
     d_no_task_configs = len(mouse_d["rewards_configs"])
     mouse_d["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
     d_locations = list()
@@ -1169,10 +1152,15 @@ def load_ephys_data(Data_folder):
     mouse_d["neurons"] = d_neurons
     mouse_d["timings"] = d_timings
     mouse_d["recday"] = mouse_recday
-
+    mouse_d["neuron_type"] = np.zeros((len(mouse_d["anchor_lag"]), len(mouse_d["anchor_lag"][1])))
+    for i, neuron in enumerate(mouse_d["anchor_lag"]):
+        max_neuron = np.argmax(neuron)
+        mouse_d["neuron_type"][i, max_neuron] = 1
 
     mouse_recday='ah04_09122021_10122021' #mouse e range 0,8
     mouse_e["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+    mouse_e["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
+    mouse_e["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
     e_no_task_configs = len(mouse_e["rewards_configs"])
     mouse_e["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
     e_locations = list()
@@ -1186,11 +1174,16 @@ def load_ephys_data(Data_folder):
     mouse_e["neurons"] = e_neurons
     mouse_e["timings"] = e_timings 
     mouse_e["recday"] = mouse_recday
-        
+    mouse_e["neuron_type"] = np.zeros((len(mouse_e["anchor_lag"]), len(mouse_e["anchor_lag"][1])))
+    for i, neuron in enumerate(mouse_e["anchor_lag"]):
+        max_neuron = np.argmax(neuron)
+        mouse_e["neuron_type"][i, max_neuron] = 1   
      
         
     mouse_recday='ah04_05122021_06122021' #mouse f range 0,8
     mouse_f["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+    mouse_f["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
+    mouse_f["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
     f_no_task_configs = len(mouse_f["rewards_configs"])
     mouse_f["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
     f_locations = list()
@@ -1204,9 +1197,15 @@ def load_ephys_data(Data_folder):
     mouse_f["neurons"] = f_neurons
     mouse_f["timings"] = f_timings
     mouse_f["recday"] = mouse_recday
+    mouse_f["neuron_type"] = np.zeros((len(mouse_f["anchor_lag"]), len(mouse_f["anchor_lag"][1])))
+    for i, neuron in enumerate(mouse_f["anchor_lag"]):
+        max_neuron = np.argmax(neuron)
+        mouse_f["neuron_type"][i, max_neuron] = 1
 
     mouse_recday='ah04_01122021_02122021' #mouse g range 0,8
     mouse_g["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+    mouse_g["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
+    mouse_g["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
     g_no_task_configs = len(mouse_g["rewards_configs"])
     mouse_g["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
     g_locations = list()
@@ -1220,9 +1219,15 @@ def load_ephys_data(Data_folder):
     mouse_g["neurons"] = g_neurons
     mouse_g["timings"] = g_timings
     mouse_g["recday"] = mouse_recday
-
+    mouse_g["neuron_type"] = np.zeros((len(mouse_g["anchor_lag"]), len(mouse_g["anchor_lag"][1])))
+    for i, neuron in enumerate(mouse_g["anchor_lag"]):
+        max_neuron = np.argmax(neuron)
+        mouse_g["neuron_type"][i, max_neuron] = 1
+    
     mouse_recday='ah03_18082021_19082021' #mouse h range 0,8
     mouse_h["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+    mouse_h["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
+    mouse_h["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
     h_no_task_configs = len(mouse_h["rewards_configs"])
     mouse_h["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
     h_locations = list()
@@ -1236,6 +1241,10 @@ def load_ephys_data(Data_folder):
     mouse_h["neurons"] = h_neurons
     mouse_h["timings"] = h_timings
     mouse_h["recday"] = mouse_recday
+    mouse_h["neuron_type"] = np.zeros((len(mouse_h["anchor_lag"]), len(mouse_h["anchor_lag"][1])))
+    for i, neuron in enumerate(mouse_h["anchor_lag"]):
+        max_neuron = np.argmax(neuron)
+        mouse_h["neuron_type"][i, max_neuron] = 1
     # # for h, the first timings array is missing
     # # > delete the first task completely!
     # h_timings = h_timings[1::]

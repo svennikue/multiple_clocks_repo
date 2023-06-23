@@ -233,7 +233,7 @@ def corr_matrices_kendall(matrix_one, matrix_two, exclude_diag = True):
     return coef
 
 def corr_matrices_pearson(matrix_one, matrix_two, exclude_diag = True):
-    # import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
     dimension = len(matrix_one) 
     if exclude_diag == True:
         diag_array_one = list(matrix_one[np.tril_indices(dimension, -1)])
@@ -241,7 +241,11 @@ def corr_matrices_pearson(matrix_one, matrix_two, exclude_diag = True):
     else: # this is diagonal plus upper triangle
         diag_array_one = list(matrix_one[np.triu_indices(dimension)])
         diag_array_two = list(matrix_two[np.triu_indices(dimension)])
-    coef = np.corrcoef(diag_array_one, diag_array_two) # pearson's, because:
+    
+    # CLEAN FROM nans
+    diag_array_one_clean = diag_array_one[~np.isnan(diag_array_one)]
+    diag_array_two_clean = diag_array_two[~np.isnan(diag_array_two)]
+    coef = np.corrcoef(diag_array_one_clean, diag_array_two_clean) # pearson's, because:
         # I will use a linear regression in the end, so there will be a linear
         # relationship assumed between the two model matrices. Since pearson's r
         # seems to be much higher, I should look at that one rather than the rank corr.
@@ -335,6 +339,7 @@ def GLM_RDMs(data_matrix, regressor_dict, mask_within = True, no_tasks = None, t
     
     dimension = len(data_matrix) 
     reg_labels = []
+    # import pdb; pdb.set_trace()
     for i, regressor_matrix in enumerate(regressor_dict):
         reg_labels.append(regressor_matrix)
         if i == 0:
@@ -351,15 +356,15 @@ def GLM_RDMs(data_matrix, regressor_dict, mask_within = True, no_tasks = None, t
         X_cleaned[i] = row[~np.isnan(diag_array_data)]
     diag_array_data = diag_array_data[~np.isnan(diag_array_data)]
     
-    x_reshaped = np.transpose(X_cleaned)
-    regression_results = LinearRegression().fit(x_reshaped, diag_array_data)
+    x_cl_reshaped = np.transpose(X_cleaned)
+    regression_results = LinearRegression().fit(x_cl_reshaped, diag_array_data)
     results = {}
     results['coefs'] = regression_results.coef_
-    results['label regs'] = reg_labels
+    results['label_regs'] = reg_labels
     
     if t_val is not None:
     # second try
-        X_3 = sm.add_constant(x_reshaped)
+        X_3 = sm.add_constant(x_cl_reshaped)
         est = sm.OLS(diag_array_data, X_3)
         scipy_reg_est = est.fit().tvalues
         results['t_vals'] = scipy_reg_est

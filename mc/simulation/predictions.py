@@ -1302,12 +1302,6 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
     
      
     # 5. stick the neuron-clock matrices in 
-      
-    # NOOOO I AM DOING SOMETHING WRONG. 
-    # I confused myself.... nooooooo :(((
-    # fix this!!!
-    # NEW TRY CLOCK MODEL
-
     full_clock_matrix_dummy = np.zeros([len(norm_midn)*len(norm_phas_stat),len(norm_midn[0])]) # fields times phases.
     # for ever 12th row, stick a row of the midnight matrix in (corresponds to the respective first neuron of the clock)
     for row in range(0, len(norm_midn)):
@@ -1346,7 +1340,9 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
             firing_factor = norm_midn[row, activation_neuron].copy()
             #firing_factor = norm_midn[row,activation_neuron]/ max_firing
             shifted_adjusted_clock = shifted_clock.copy()*firing_factor
-            # then add the values to the existing clocks.
+            # then add the values to the existing clocks, but also replace the first row by 0!!
+            shifted_adjusted_clock[0] = np.zeros((len(shifted_adjusted_clock[0])))
+        
             # Q: IS THIS WAY OF DEALING WIHT DOUBLE ACTIVATION OK???
             clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()
     
@@ -1361,8 +1357,8 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
         mc.simulation.predictions.plot_without_legends(phas_model, titlestring='Phase Model', timings_curr_run = subpath_timings)
         mc.simulation.predictions.plot_without_legends(stat_model, titlestring='State Model',timings_curr_run = subpath_timings)
         mc.simulation.predictions.plot_without_legends(midn_model, titlestring='Midnight Model', timings_curr_run = subpath_timings)
-        mc.simulation.predictions.plot_without_legends(clo_model, titlestring='Clocks model',timings_curr_run = subpath_timings)
-        mc.simulation.predictions.plot_without_legends(phas_stat, titlestring='Inside of the clock', timings_curr_run = subpath_timings)
+        mc.simulation.predictions.plot_without_legends(clo_model, titlestring='Musicbox model',timings_curr_run = subpath_timings)
+        mc.simulation.predictions.plot_without_legends(phas_stat, titlestring='One ring of musicbox', timings_curr_run = subpath_timings)
         
     return loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat
 
