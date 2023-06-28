@@ -21,8 +21,8 @@ import os
 import pickle
 
 #
-save = False
-load_old = True
+save = True
+load_old = False
 do_per_run = True
 do_neuron_subset = True
 
@@ -61,15 +61,15 @@ if load_old:
         # clock_file_name = f"{mouse_recday}_clock_dic"
         midn_file_name = f"{mouse_recday}_midn_dic"
         perrun_file_name = f"{mouse_recday}_res_perrun"
-        #results_file_name = f"{mouse_recday}_res_dic"
+        results_file_name = f"{mouse_recday}_res_dic"
         #with open(os.path.join(res_path,clock_file_name), 'rb') as f:
         #    clock_results[clock_file_name] = pickle.load(f)
         with open(os.path.join(res_path,midn_file_name), 'rb') as f:
             midnight_results[midn_file_name] = pickle.load(f)
         with open(os.path.join(res_path,perrun_file_name), 'rb') as f:
             perrun_results[midn_file_name] = pickle.load(f)
-        #with open(os.path.join(res_path,results_file_name), 'rb') as f:
-        #    all_results[results_file_name] = pickle.load(f)
+        with open(os.path.join(res_path,results_file_name), 'rb') as f:
+            all_results[results_file_name] = pickle.load(f)
     sys.exit(0)
                 
 
@@ -100,7 +100,7 @@ if do_per_run == True:
                                       
 else:    
     # cleaned datasat
-    a_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], mouse_a_clean["neurons"], mouse_a_clean["timings"], mouse_a_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+    a_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], mouse_a_clean["neurons"], mouse_a_clean["timings"], mouse_a_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
 
 # whole dataset
 # a_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_a["rewards_configs"], mouse_a["locations"], mouse_a["neurons"], mouse_a["timings"], mouse_a["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
@@ -146,7 +146,6 @@ if save:
         # with open(os.path.join(out_path,f"{mouse_a_clean['recday']}_clock_dic"), 'wb') as f:
         #     pickle.dump(a_clocks_result_dict, f)
 
-
     
 
 # mouse b
@@ -159,7 +158,7 @@ if do_per_run == True:
     b_reg_per_run = mc.simulation.analyse_ephys.reg_between_tasks_singleruns(mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], mouse_b_clean["neurons"], mouse_b_clean["timings"], contrast_matrix, mouse_b_clean["recday"], contrast_split= contrast_split_by_phase, continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
 else:    
     # cleaned datasat
-    b_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], mouse_b_clean["neurons"], mouse_b_clean["timings"], mouse_b_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+    b_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], mouse_b_clean["neurons"], mouse_b_clean["timings"], mouse_b_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
     # whole dataset
     #b_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_b["rewards_configs"], mouse_b["locations"], mouse_b["neurons"], mouse_b["timings"], mouse_b["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
@@ -214,7 +213,7 @@ if do_per_run == True:
     c_reg_per_run = mc.simulation.analyse_ephys.reg_between_tasks_singleruns(mouse_c_clean["rewards_configs"], mouse_c_clean["locations"], mouse_c_clean["neurons"], mouse_c_clean["timings"], contrast_matrix, mouse_c_clean["recday"],contrast_split= contrast_split_by_phase,  continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
 else:
     # cleaned datasat
-    c_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_c_clean["rewards_configs"], mouse_c_clean["locations"], mouse_c_clean["neurons"], mouse_c_clean["timings"], mouse_c_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+    c_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_c_clean["rewards_configs"], mouse_c_clean["locations"], mouse_c_clean["neurons"], mouse_c_clean["timings"], mouse_c_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
     # whole dataset
     #c_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_c["rewards_configs"], mouse_c["locations"], mouse_c["neurons"], mouse_c["timings"], mouse_c["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
@@ -266,7 +265,7 @@ if do_per_run == True:
     d_reg_per_run = mc.simulation.analyse_ephys.reg_between_tasks_singleruns(mouse_d_clean["rewards_configs"], mouse_d_clean["locations"], mouse_d_clean["neurons"], mouse_d_clean["timings"], contrast_matrix, mouse_d_clean["recday"], contrast_split= contrast_split_by_phase,  continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
 else:
     # cleaned datasat
-    d_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_d_clean["rewards_configs"], mouse_d_clean["locations"], mouse_d_clean["neurons"], mouse_d_clean["timings"], mouse_d_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+    d_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_d_clean["rewards_configs"], mouse_d_clean["locations"], mouse_d_clean["neurons"], mouse_d_clean["timings"], mouse_d_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
     # whole dataset
     #d_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_d["rewards_configs"], mouse_d["locations"], mouse_d["neurons"], mouse_d["timings"], mouse_d["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
@@ -320,7 +319,7 @@ if do_per_run == True:
     e_reg_per_run = mc.simulation.analyse_ephys.reg_between_tasks_singleruns(mouse_e_clean["rewards_configs"], mouse_e_clean["locations"], mouse_e_clean["neurons"], mouse_e_clean["timings"], contrast_matrix, mouse_e_clean["recday"], contrast_split= contrast_split_by_phase,  continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
 else:
     # cleaned datasat
-    e_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_e_clean["rewards_configs"], mouse_e_clean["locations"], mouse_e_clean["neurons"], mouse_e_clean["timings"], mouse_e_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+    e_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_e_clean["rewards_configs"], mouse_e_clean["locations"], mouse_e_clean["neurons"], mouse_e_clean["timings"], mouse_e_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
     #whole dataset
     #e_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_e["rewards_configs"], mouse_e["locations"], mouse_e["neurons"], mouse_e["timings"], mouse_e["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
 
@@ -375,7 +374,7 @@ if do_per_run == True:
     f_reg_per_run = mc.simulation.analyse_ephys.reg_between_tasks_singleruns(mouse_f_clean["rewards_configs"], mouse_f_clean["locations"], mouse_f_clean["neurons"], mouse_f_clean["timings"], contrast_matrix, mouse_f_clean["recday"], contrast_split= contrast_split_by_phase, continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
 else: 
     # cleaned datasat
-    f_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_f_clean["rewards_configs"], mouse_f_clean["locations"], mouse_f_clean["neurons"], mouse_f_clean["timings"], mouse_f_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+    f_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_f_clean["rewards_configs"], mouse_f_clean["locations"], mouse_f_clean["neurons"], mouse_f_clean["timings"], mouse_f_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
     # whole dataset
     #f_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_f["rewards_configs"], mouse_f["locations"], mouse_f["neurons"], mouse_f["timings"], mouse_f["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
 
@@ -431,7 +430,7 @@ if do_per_run == True:
 else:
     print('now all neurons')  
     # cleaned datasat
-    g_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], mouse_g_clean["neurons"], mouse_g_clean["timings"], mouse_g_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+    g_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], mouse_g_clean["neurons"], mouse_g_clean["timings"], mouse_g_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
     #g_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_g["rewards_configs"], mouse_g["locations"], mouse_g["neurons"], mouse_g["timings"], mouse_g["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
         
     # check how all of this looks like if you separate the trials.
@@ -487,7 +486,7 @@ mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], mouse_h_clean["neu
 if do_per_run == True:
     h_reg_per_run = mc.simulation.analyse_ephys.reg_between_tasks_singleruns(mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], mouse_h_clean["neurons"], mouse_h_clean["timings"], contrast_matrix, mouse_h_clean["recday"], contrast_split= contrast_split_by_phase, continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
 else:
-    h_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], mouse_h_clean["neurons"], mouse_h_clean["timings"], mouse_h_clean["recday"], plotting = True, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
+    h_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], mouse_h_clean["neurons"], mouse_h_clean["timings"], mouse_h_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
 
     # compare what happens if I take the whole dataset.
     #h_reg_result_dict = mc.simulation.analyse_ephys.reg_across_tasks(mouse_h["rewards_configs"], mouse_h["locations"], mouse_h["neurons"], mouse_h["timings"], mouse_h["recday"], plotting = True, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
@@ -688,33 +687,32 @@ if do_per_run == True:
     phase_split = ['early', 'mid', 'late']
     letters = ['a','b','c','d','e','f', 'g', 'h']
     # do one where I plot the split contrast clocks vs. everything and just the clock t-vals
-    for i, mouse in enumerate(letters):
-        dataset = eval(f"{mouse}_reg_per_run")
-        for phase_no, phase in enumerate(phase_split):
+    if load_old == True:
+        for mouse_result in enumerate(perrun_results):
             if i == 0:
-                t_clocks_early = ["split_t-vals"][0, : , 1]
-                t_clocks_mid = ["split_t-vals"][1, : , 1]
-                t_clocks_late = ["split_t-vals"][2, : , 1]
-                
-                tvals_per_trial_split[no_phase, no_trial_in_each_task, :]= results_reg_currphase['t_vals']
-    
-    
- 
-    # list_allneurons =[]
-    # list_midn = []
-    # list_clockn = []
-    for i, mouse in enumerate(letters):
-        dataset = eval(f"{mouse}_reg_per_run")
-        if i == 0:
-            t_clocks = dataset["t-values"][:,1]
-            t_midn = dataset["t-values"][:,2]
-            t_phas = dataset["t-values"][:,3]
-            t_loc = dataset["t-values"][:,4]
-        elif i > 0:
-            t_clocks = np.concatenate((t_clocks, dataset["t-values"][:,1]))
-            t_midn = np.concatenate((t_midn,dataset["t-values"][:,2]))
-            t_phas = np.concatenate((t_phas, dataset["t-values"][:,3]))
-            t_loc = np.concatenate((t_loc, dataset["t-values"][:,4]))
+                t_clocks = perrun_results[mouse_result]["t-values"][:,1]
+                t_midn = perrun_results[mouse_result]["t-values"][:,2]
+                t_phas = perrun_results[mouse_result]["t-values"][:,3]
+                t_loc = perrun_results[mouse_result]["t-values"][:,4]
+            elif i > 0:
+                t_clocks = np.concatenate((t_clocks, perrun_results[mouse_result]["t-values"][:,1]))
+                t_midn = np.concatenate((t_midn,perrun_results[mouse_result]["t-values"][:,2]))
+                t_phas = np.concatenate((t_phas, perrun_results[mouse_result]["t-values"][:,3]))
+                t_loc = np.concatenate((t_loc, perrun_results[mouse_result]["t-values"][:,4]))
+        
+    if load_old == False:
+        for i, mouse in enumerate(letters):
+            dataset = eval(f"{mouse}_reg_per_run")
+            if i == 0:
+                t_clocks = dataset["t-values"][:,1]
+                t_midn = dataset["t-values"][:,2]
+                t_phas = dataset["t-values"][:,3]
+                t_loc = dataset["t-values"][:,4]
+            elif i > 0:
+                t_clocks = np.concatenate((t_clocks, dataset["t-values"][:,1]))
+                t_midn = np.concatenate((t_midn,dataset["t-values"][:,2]))
+                t_phas = np.concatenate((t_phas, dataset["t-values"][:,3]))
+                t_loc = np.concatenate((t_loc, dataset["t-values"][:,4]))
             
 
     data_tval_perrun = [t_clocks, t_midn, t_phas, t_loc]
@@ -724,55 +722,145 @@ if do_per_run == True:
 
     mc.simulation.analyse_ephys.plotting_hist_scat(data_tval_perrun, label_tval_perrun, label_tick_list_tperrun, title_string_tperrun) 
 
+   
+    # REORDERED PER RUN
+    letters = ['a','b','c','d','e','f', 'g', 'h']
+    for i, mouse in enumerate(letters):
+        dataset = eval(f"{mouse}_reg_per_run")
+        if i == 0:
+            t_clocks = dataset["reord_t-vals"][:,1]
+            t_midn = dataset["reord_t-vals"][:,2]
+            t_loc = dataset["reord_t-vals"][:,3]
+
+        elif i > 0:
+            t_clocks = np.concatenate((t_clocks, dataset["reord_t-vals"][:,1]))
+            t_midn = np.concatenate((t_midn,dataset["reord_t-vals"][:,2]))
+            t_loc = np.concatenate((t_loc, dataset["reord_t-vals"][:,3]))
+        
+
+    data_reord_perrun = [t_clocks, t_midn, t_loc]
+    label_reord_perrun = ["Musicbox", "Midnight", "Location"]
+    label_tick_reord_tperrun = [1,2,3]
+    title_string_tperrun_reord = 'tvals per run, reordered'
+
+    mc.simulation.analyse_ephys.plotting_hist_scat(data_reord_perrun, label_reord_perrun, label_tick_reord_tperrun, title_string_tperrun_reord) 
+    
+    
+    # MIDNIGTH, REORDRED PER RUN
+    for i, mouse in enumerate(letters):
+        dataset = eval(f"{mouse}_midn_result_dict")
+        if i == 0:
+            t_clocks_midn = dataset["reord_t-vals"][:,1]
+            t_midn_midn = dataset["reord_t-vals"][:,2]
+            t_loc_midn = dataset["reord_t-vals"][:,3]
+
+        elif i > 0:
+            t_clocks_midn = np.concatenate((t_clocks_midn, dataset["reord_t-vals"][:,1]))
+            t_midn_midn = np.concatenate((t_midn_midn,dataset["reord_t-vals"][:,2]))
+            t_loc_midn = np.concatenate((t_loc_midn, dataset["reord_t-vals"][:,3]))
+    
+    data_comp_mid = [t_clocks, t_clocks_midn, t_midn, t_midn_midn, t_loc, t_loc_midn]
+    label_comp_mid = ["Musicbox, all","Musicbox, MidnN", "Midnight, all", "Midnight, MidnN", "Loc, all", "Loc, MidnN"]
+    label_tick_comp_mid = [1,2,3,4,5,6]
+    title_string_comp_mid = 'tvals per run, reordered'
+
+    mc.simulation.analyse_ephys.plotting_hist_scat(data_comp_mid, label_comp_mid, label_tick_comp_mid, title_string_comp_mid) 
+    
+    
+    
+    # WITHOUT LOCATION
+    letters = ['a','b','c','d','e','f', 'g', 'h']
+    for i, mouse in enumerate(letters):
+        dataset = eval(f"{mouse}_reg_per_run")
+        if i == 0:
+            t_clocks = dataset["reord_t-vals"][:,1]
+            t_midn = dataset["reord_t-vals"][:,2]
+            #t_loc = dataset["reord_t-vals"][:,3]
+
+        elif i > 0:
+            t_clocks = np.concatenate((t_clocks, dataset["reord_t-vals"][:,1]))
+            t_midn = np.concatenate((t_midn,dataset["reord_t-vals"][:,2]))
+            #t_loc = np.concatenate((t_loc, dataset["reord_t-vals"][:,3]))
+        
+    
+    # MIDNIGTH, REORDRED PER RUN
+    for i, mouse in enumerate(letters):
+        dataset = eval(f"{mouse}_midn_result_dict")
+        if i == 0:
+            t_clocks_midn = dataset["reord_t-vals"][:,1]
+            t_midn_midn = dataset["reord_t-vals"][:,2]
+            #t_loc_midn = dataset["reord_t-vals"][:,3]
+
+        elif i > 0:
+            t_clocks_midn = np.concatenate((t_clocks_midn, dataset["reord_t-vals"][:,1]))
+            t_midn_midn = np.concatenate((t_midn_midn,dataset["reord_t-vals"][:,2]))
+            #t_loc_midn = np.concatenate((t_loc_midn, dataset["reord_t-vals"][:,3]))
+    
+    data_comp_mid = [t_clocks, t_clocks_midn, t_midn, t_midn_midn]
+    label_comp_mid = ["Musicbox, all","Musicbox, MidnN", "Midnight, all", "Midnight, MidnN"]
+    label_tick_comp_mid = [1,2,3,4]
+    title_string_comp_mid = 'tvals per run, reordered'
+
+    mc.simulation.analyse_ephys.plotting_hist_scat(data_comp_mid, label_comp_mid, label_tick_comp_mid, title_string_comp_mid) 
+    
+    
+    data_comp_mid = [t_midn, t_midn_midn]
+    label_comp_mid = ["Midnight, all", "Midnight, MidnN"]
+    label_tick_comp_mid = [1,2]
+    title_string_comp_mid = 'tvals per run, reordered'
+
+    mc.simulation.analyse_ephys.plotting_hist_scat(data_comp_mid, label_comp_mid, label_tick_comp_mid, title_string_comp_mid) 
+    
+    
     
     # secondly, plot the contrast clocks-midnight.
     # "The clocks model is a better predictor than the midnight model (contrast)
     
     
-    # then, plot 6 early vs 6 late runs for early/mid/late.
-    for i, mouse in enumerate(letters):
-        dataset = eval(f"{mouse}_reg_per_run")
-        if i == 0:
-            t_cl_early = [runs[2] for runs in dataset["tval_early_without_phase"]]
-            t_cl_mid  = [runs[2] for runs in dataset["tval_mid_without_phase"]]
-            t_cl_late = [runs[2] for runs in dataset["tval_late_without_phase"]]
-            t_mid_early = [runs[1] for runs in dataset["tval_early_without_phase"]]
-            t_mid_mid = [runs[1] for runs in dataset["tval_mid_without_phase"]]
-            t_mid_late = [runs[1] for runs in dataset["tval_late_without_phase"]]
-        if i > 0:
-            t_cl_early = np.concatenate((t_cl_early, [runs[2] for runs in dataset["tval_early_without_phase"]]))
-            t_cl_mid  = np.concatenate((t_cl_mid, [runs[2] for runs in dataset["tval_mid_without_phase"]]))
-            t_cl_late = np.concatenate((t_cl_late,[runs[2] for runs in dataset["tval_late_without_phase"]]))
-            t_mid_early = np.concatenate((t_mid_early, [runs[1] for runs in dataset["tval_early_without_phase"]]))
-            t_mid_mid = np.concatenate((t_mid_mid, [runs[1] for runs in dataset["tval_mid_without_phase"]]))
-            t_mid_late = np.concatenate((t_mid_late, [runs[1] for runs in dataset["tval_late_without_phase"]]))
-    data_split_tval_perrun = [t_cl_early, t_cl_mid, t_cl_late, t_mid_early, t_mid_mid, t_mid_late]
-    label_split_tval_perrun = ['t_cl_early', 't_cl_mid', 't_cl_late', 't_mid_early', 't_mid_mid', 't_mid_late']
-    label_split_tick_list_tperrun = [1,2,3,4,5,6]
-    title_split_string_tperrun = 'tvals. SPLIT. Reg for FIRST 6 RUNS of each task. Contin, 10 bins, 3 phase neurons, mask within tasks'
-    mc.simulation.analyse_ephys.plotting_hist_scat(data_split_tval_perrun, label_split_tval_perrun, label_split_tick_list_tperrun, title_split_string_tperrun) 
+    # # then, plot 6 early vs 6 late runs for early/mid/late.
+    # for i, mouse in enumerate(letters):
+    #     dataset = eval(f"{mouse}_reg_per_run")
+    #     if i == 0:
+    #         t_cl_early = [runs[2] for runs in dataset["tval_early_without_phase"]]
+    #         t_cl_mid  = [runs[2] for runs in dataset["tval_mid_without_phase"]]
+    #         t_cl_late = [runs[2] for runs in dataset["tval_late_without_phase"]]
+    #         t_mid_early = [runs[1] for runs in dataset["tval_early_without_phase"]]
+    #         t_mid_mid = [runs[1] for runs in dataset["tval_mid_without_phase"]]
+    #         t_mid_late = [runs[1] for runs in dataset["tval_late_without_phase"]]
+    #     if i > 0:
+    #         t_cl_early = np.concatenate((t_cl_early, [runs[2] for runs in dataset["tval_early_without_phase"]]))
+    #         t_cl_mid  = np.concatenate((t_cl_mid, [runs[2] for runs in dataset["tval_mid_without_phase"]]))
+    #         t_cl_late = np.concatenate((t_cl_late,[runs[2] for runs in dataset["tval_late_without_phase"]]))
+    #         t_mid_early = np.concatenate((t_mid_early, [runs[1] for runs in dataset["tval_early_without_phase"]]))
+    #         t_mid_mid = np.concatenate((t_mid_mid, [runs[1] for runs in dataset["tval_mid_without_phase"]]))
+    #         t_mid_late = np.concatenate((t_mid_late, [runs[1] for runs in dataset["tval_late_without_phase"]]))
+    # data_split_tval_perrun = [t_cl_early, t_cl_mid, t_cl_late, t_mid_early, t_mid_mid, t_mid_late]
+    # label_split_tval_perrun = ['t_cl_early', 't_cl_mid', 't_cl_late', 't_mid_early', 't_mid_mid', 't_mid_late']
+    # label_split_tick_list_tperrun = [1,2,3,4,5,6]
+    # title_split_string_tperrun = 'tvals. SPLIT. Reg for FIRST 6 RUNS of each task. Contin, 10 bins, 3 phase neurons, mask within tasks'
+    # mc.simulation.analyse_ephys.plotting_hist_scat(data_split_tval_perrun, label_split_tval_perrun, label_split_tick_list_tperrun, title_split_string_tperrun) 
     
-    for i, mouse in enumerate(letters):
-        dataset = eval(f"{mouse}_reg_per_run")
-        if i == 0:
-            t_cl_early = [runs[2] for runs in dataset["tval_early_without_phase"]]
-            t_cl_mid  = [runs[2] for runs in dataset["tval_mid_without_phase"]]
-            t_cl_late = [runs[2] for runs in dataset["tval_late_without_phase"]]
-            t_mid_early = [runs[1] for runs in dataset["tval_early_without_phase"]]
-            t_mid_mid = [runs[1] for runs in dataset["tval_mid_without_phase"]]
-            t_mid_late = [runs[1] for runs in dataset["tval_late_without_phase"]]
-        if i > 0:
-            t_cl_early = np.concatenate((t_cl_early, [runs[2] for runs in dataset["tval_early_without_phase"]]))
-            t_cl_mid  = np.concatenate((t_cl_mid, [runs[2] for runs in dataset["tval_mid_without_phase"]]))
-            t_cl_late = np.concatenate((t_cl_late,[runs[2] for runs in dataset["tval_late_without_phase"]]))
-            t_mid_early = np.concatenate((t_mid_early, [runs[1] for runs in dataset["tval_early_without_phase"]]))
-            t_mid_mid = np.concatenate((t_mid_mid, [runs[1] for runs in dataset["tval_mid_without_phase"]]))
-            t_mid_late = np.concatenate((t_mid_late, [runs[1] for runs in dataset["tval_late_without_phase"]]))
-    data_split_tval_perrun = [t_cl_early, t_cl_mid, t_cl_late, t_mid_early, t_mid_mid, t_mid_late]
-    label_split_tval_perrun = ['t_cl_early', 't_cl_mid', 't_cl_late', 't_mid_early', 't_mid_mid', 't_mid_late']
-    label_split_tick_list_tperrun = [1,2,3,4,5,6]
-    title_split_string_tperrun = 'tvals. SPLIT. Reg for FIRST 6 RUNS of each task. Contin, 10 bins, 3 phase neurons, mask within tasks'
-    mc.simulation.analyse_ephys.plotting_hist_scat(data_split_tval_perrun, label_split_tval_perrun, label_split_tick_list_tperrun, title_split_string_tperrun) 
+    # for i, mouse in enumerate(letters):
+    #     dataset = eval(f"{mouse}_reg_per_run")
+    #     if i == 0:
+    #         t_cl_early = [runs[2] for runs in dataset["tval_early_without_phase"]]
+    #         t_cl_mid  = [runs[2] for runs in dataset["tval_mid_without_phase"]]
+    #         t_cl_late = [runs[2] for runs in dataset["tval_late_without_phase"]]
+    #         t_mid_early = [runs[1] for runs in dataset["tval_early_without_phase"]]
+    #         t_mid_mid = [runs[1] for runs in dataset["tval_mid_without_phase"]]
+    #         t_mid_late = [runs[1] for runs in dataset["tval_late_without_phase"]]
+    #     if i > 0:
+    #         t_cl_early = np.concatenate((t_cl_early, [runs[2] for runs in dataset["tval_early_without_phase"]]))
+    #         t_cl_mid  = np.concatenate((t_cl_mid, [runs[2] for runs in dataset["tval_mid_without_phase"]]))
+    #         t_cl_late = np.concatenate((t_cl_late,[runs[2] for runs in dataset["tval_late_without_phase"]]))
+    #         t_mid_early = np.concatenate((t_mid_early, [runs[1] for runs in dataset["tval_early_without_phase"]]))
+    #         t_mid_mid = np.concatenate((t_mid_mid, [runs[1] for runs in dataset["tval_mid_without_phase"]]))
+    #         t_mid_late = np.concatenate((t_mid_late, [runs[1] for runs in dataset["tval_late_without_phase"]]))
+    # data_split_tval_perrun = [t_cl_early, t_cl_mid, t_cl_late, t_mid_early, t_mid_mid, t_mid_late]
+    # label_split_tval_perrun = ['t_cl_early', 't_cl_mid', 't_cl_late', 't_mid_early', 't_mid_mid', 't_mid_late']
+    # label_split_tick_list_tperrun = [1,2,3,4,5,6]
+    # title_split_string_tperrun = 'tvals. SPLIT. Reg for FIRST 6 RUNS of each task. Contin, 10 bins, 3 phase neurons, mask within tasks'
+    # mc.simulation.analyse_ephys.plotting_hist_scat(data_split_tval_perrun, label_split_tval_perrun, label_split_tick_list_tperrun, title_split_string_tperrun) 
     
     
     
@@ -789,46 +877,88 @@ if do_per_run == True:
     datasets = []
     phase_split = ['early', 'mid', 'late']
     letters = ['a','b','c','d','e','f', 'g', 'h']
-
-    for i, mouse in enumerate(letters):
-        datasets.append(f"{mouse}_reg_per_run")
-        datasets.append(f"{mouse}_midn_result_dict")
-        for one, dataset in enumerate(datasets):
-            if i == 0: 
-                if one == 0:
-                    contr = [runs[1] for runs in eval(dataset)["contrast_results"]]
-                    t_val = [runs[2] for runs in eval(dataset)["t-values"]]
-                    reord_contr = [runs[1] for runs in eval(dataset)["reord_contrasts"]]
-                    reord_tval = [runs[2] for runs in eval(dataset)["reord_t-vals"]]
-                    earl_contr = [runs[1] for runs in eval(dataset)["split_contrasts"][0]]
-                    mid_contr = [runs[1] for runs in eval(dataset)["split_contrasts"][1]]
-                    late_contr = [runs[1] for runs in eval(dataset)["split_contrasts"][2]]
-                elif one == 1: 
-                    contr_mid = [runs[1] for runs in eval(dataset)["contrast_results"]]
-                    t_val_mid = [runs[2] for runs in eval(dataset)["t-values"]]
-                    reord_contr_mid = [runs[1] for runs in eval(dataset)["reord_contrasts"]]
-                    reord_tval_mid = [runs[2] for runs in eval(dataset)["reord_t-vals"]]
-                    earl_contr_mid = [runs[1] for runs in eval(dataset)["split_contrasts"][0]]
-                    mid_contr_mid = [runs[1] for runs in eval(dataset)["split_contrasts"][1]]
-                    late_contr_mid = [runs[1] for runs in eval(dataset)["split_contrasts"][2]]
-            if i > 0:
-                if one == 0:
-                    contr = np.concatenate((contr, [runs[1] for runs in eval(dataset)["contrast_results"]]))
-                    t_val = np.concatenate((t_val, [runs[2] for runs in eval(dataset)["t-values"]]))
-                    reord_contr = np.concatenate((reord_contr,[runs[1] for runs in eval(dataset)["reord_contrasts"]]))
-                    reord_tval = np.concatenate((reord_tval,[runs[2] for runs in eval(dataset)["reord_t-vals"]]))
-                    earl_contr = np.concatenate((earl_contr,[runs[1] for runs in eval(dataset)["split_contrasts"][0]]))
-                    mid_contr = np.concatenate((mid_contr,[runs[1] for runs in eval(dataset)["split_contrasts"][1]]))
-                    late_contr = np.concatenate((late_contr, [runs[1] for runs in eval(dataset)["split_contrasts"][2]]))
-                elif one == 1: 
-                    contr_mid = np.concatenate((contr_mid, [runs[1] for runs in eval(dataset)["contrast_results"]]))
-                    t_val_mid = np.concatenate((t_val_mid, [runs[2] for runs in eval(dataset)["t-values"]]))
-                    reord_contr_mid = np.concatenate((reord_contr_mid,[runs[1] for runs in eval(dataset)["reord_contrasts"]]))
-                    reord_tval_mid = np.concatenate((reord_tval_mid, [runs[2] for runs in eval(dataset)["reord_t-vals"]]))
-                    earl_contr_mid = np.concatenate((earl_contr_mid, [runs[1] for runs in eval(dataset)["split_contrasts"][0]]))
-                    mid_contr_mid = np.concatenate((mid_contr_mid, [runs[1] for runs in eval(dataset)["split_contrasts"][1]]))
-                    late_contr_mid = np.concatenate((late_contr_mid, [runs[1] for runs in eval(dataset)["split_contrasts"][2]]))
+    key_list = []
+    for key in perrun_results:
+        key_list.append(key)
         
+        
+        
+    # for i, mouse in enumerate(letters):
+    #     if load_old == True: 
+    #         dataset = perrun_results.copy()
+    #     if load_old == False:
+    #         datasets.append(f"{mouse}_reg_per_run")
+    #         datasets.append(f"{mouse}_midn_result_dict")
+    
+    # if load_old == False:
+    #     for i, mouse in enumerate(letters):
+    #         datasets.append(f"{mouse}_reg_per_run")
+    #         datasets.append(f"{mouse}_midn_result_dict")
+    
+    # elif load_old == True: 
+    #         dataset = perrun_results.copy()
+    #         dataset.append(midnight_results.copy())))
+    #     if load_old == False:
+    #         datasets.append(f"{mouse}_reg_per_run")
+    #         datasets.append(f"{mouse}_midn_result_dict")
+    datasets = {} 
+    for i, mouse in enumerate(letters):
+        if load_old == False:
+            datasets["all"] = eval(f"{mouse}_reg_per_run")
+            datasets["mid"] = eval(f"{mouse}_midn_result_dict")
+        if load_old == True: 
+            datasets["all"] = perrun_results[key_list[i]].copy()
+            datasets["mid"] = (midnight_results[key_list[i]].copy())
+    
+        for one, dataset in enumerate(datasets):
+            if one == 0:
+                if i == 0: 
+                        contr = [runs[1] for runs in datasets[dataset]["contrast_results"]]
+                        t_val = [runs[2] for runs in datasets[dataset]["t-values"]]
+                        reord_contr = [runs[1] for runs in datasets[dataset]["reord_contrasts"]]
+                        reord_tval = [runs[2] for runs in datasets[dataset]["reord_t-vals"]]
+                        earl_contr = [runs[1] for runs in datasets[dataset]["split_contrasts"][0]]
+                        mid_contr = [runs[1] for runs in datasets[dataset]["split_contrasts"][1]]
+                        late_contr = [runs[1] for runs in datasets[dataset]["split_contrasts"][2]]
+                        earl_tval = datasets[dataset]["split_t-vals"][0,:,2]
+                        mid_tval = datasets[dataset]["split_t-vals"][1,:,2]
+                        late_tval = datasets[dataset]["split_t-vals"][2,:,2]
+                elif i > 0:
+                    contr = np.concatenate((contr, [runs[1] for runs in datasets[dataset]["contrast_results"]]))
+                    t_val = np.concatenate((t_val, [runs[2] for runs in datasets[dataset]["t-values"]]))
+                    reord_contr = np.concatenate((reord_contr,[runs[1] for runs in datasets[dataset]["reord_contrasts"]]))
+                    reord_tval = np.concatenate((reord_tval,[runs[2] for runs in datasets[dataset]["reord_t-vals"]]))
+                    earl_contr = np.concatenate((earl_contr,[runs[1] for runs in datasets[dataset]["split_contrasts"][0]]))
+                    mid_contr = np.concatenate((mid_contr,[runs[1] for runs in datasets[dataset]["split_contrasts"][1]]))
+                    late_contr = np.concatenate((late_contr, [runs[1] for runs in datasets[dataset]["split_contrasts"][2]]))
+                    earl_tval = np.concatenate((earl_tval, datasets[dataset]["split_t-vals"][0,:,2]))
+                    mid_tval = np.concatenate((mid_tval, datasets[dataset]["split_t-vals"][1,:,2]))
+                    late_tval = np.concatenate((late_tval, datasets[dataset]["split_t-vals"][2,:,2]))
+            
+            elif one == 1: 
+                if i == 0:
+                        contr_mid = [runs[1] for runs in datasets[dataset]["contrast_results"]]
+                        t_val_mid = [runs[2] for runs in datasets[dataset]["t-values"]]
+                        reord_contr_mid = [runs[1] for runs in datasets[dataset]["reord_contrasts"]]
+                        reord_tval_mid = [runs[2] for runs in datasets[dataset]["reord_t-vals"]]
+                        earl_contr_mid = [runs[1] for runs in datasets[dataset]["split_contrasts"][0]]
+                        mid_contr_mid = [runs[1] for runs in datasets[dataset]["split_contrasts"][1]]
+                        late_contr_mid = [runs[1] for runs in datasets[dataset]["split_contrasts"][2]]
+                        earl_tval_mid = datasets[dataset]["split_t-vals"][0,:,2]
+                        mid_tval_mid = datasets[dataset]["split_t-vals"][1,:,2]
+                        late_tval_mid = datasets[dataset]["split_t-vals"][2,:,2]
+                elif i > 0: 
+                        contr_mid = np.concatenate((contr_mid, [runs[1] for runs in datasets[dataset]["contrast_results"]]))
+                        t_val_mid = np.concatenate((t_val_mid, [runs[2] for runs in datasets[dataset]["t-values"]]))
+                        reord_contr_mid = np.concatenate((reord_contr_mid,[runs[1] for runs in datasets[dataset]["reord_contrasts"]]))
+                        reord_tval_mid = np.concatenate((reord_tval_mid, [runs[2] for runs in datasets[dataset]["reord_t-vals"]]))
+                        earl_contr_mid = np.concatenate((earl_contr_mid, [runs[1] for runs in datasets[dataset]["split_contrasts"][0]]))
+                        mid_contr_mid = np.concatenate((mid_contr_mid, [runs[1] for runs in datasets[dataset]["split_contrasts"][1]]))
+                        late_contr_mid = np.concatenate((late_contr_mid, [runs[1] for runs in datasets[dataset]["split_contrasts"][2]]))
+                        earl_tval_mid = np.concatenate((earl_tval_mid, datasets[dataset]["split_t-vals"][0,:,2]))
+                        mid_tval_mid = np.concatenate((mid_tval_mid, datasets[dataset]["split_t-vals"][1,:,2]))
+                        late_tval_mid = np.concatenate((late_tval_mid, datasets[dataset]["split_t-vals"][2,:,2]))
+                        
         data_mid_comp_contr = [contr, contr_mid, reord_contr, reord_contr_mid, earl_contr, earl_contr_mid, mid_contr, mid_contr_mid, late_contr, late_contr_mid]
         label_mid_comp_contr = ["contr", "contr_mid", "reord_contr", "reord_contr_mid", "earl_contr", "earl_contr_mid", "mid_contr", "mid_contr_mid", "late_contr", "late_contr_mid"]
         tick_mid_comp_contr = [1,2,3,4,5,6,7,8,9,10]
@@ -844,7 +974,40 @@ if do_per_run == True:
         
         
     
-    
+# to answer my first question lab meeting.
+
+letters = ['a','b','c','d','e','f', 'g', 'h']
+tval_clocks=[]
+tval_midn=[]
+tval_phase=[]
+tval_loc=[]
+tval_reord_clocks=[]
+tval_reord_midn=[]
+tval_reord_locs=[]
+
+for i, mouse in enumerate(letters):   
+    if load_old == False:
+        dataset = eval(f"{mouse}_reg_result_dict")
+        tval_clocks.append(dataset["normal"]["t_vals"][1])
+        tval_midn.append(dataset["normal"]["t_vals"][2])
+        tval_phase.append(dataset["normal"]["t_vals"][3])
+        tval_loc.append(dataset["normal"]["t_vals"][4])
+        tval_reord_clocks.append(dataset["reord_t-vals"][1])
+        tval_reord_midn.append(dataset["reord_t-vals"][2])
+        tval_reord_locs.append(dataset["reord_t-vals"][3])
+
+data_compl = [tval_clocks, tval_phase, tval_loc, tval_midn]  
+string_compl = ["tval musicbox", "tval phase", "tval location", "tval midnight"]          
+tick_compl = [1,2,3,4]
+title_compl = "t values for the complete model, averaged across tasks"
+mc.simulation.analyse_ephys.plotting_hist_scat(data_compl, string_compl, tick_compl, title_compl) 
+
+data_compl_reord = [tval_reord_clocks, tval_reord_locs, tval_reord_midn]  
+string_compl_reord = ["musicbox","location", "midnight"]          
+tick_compl_reord = [1,2,3]
+title_compl_reord = "t values for the reordered model, averaged across tasks"
+mc.simulation.analyse_ephys.plotting_hist_scat(data_compl_reord, string_compl_reord, tick_compl_reord, title_compl_reord) 
+  
 
 # # PLOT THE RESULTS OF THIS!!
 # # one plot: all neurons

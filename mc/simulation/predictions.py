@@ -764,7 +764,7 @@ def set_location_matrix(walked_path, step_number, phases, size_grid = 3):
 # 3.1 continuous models: all
 # fuck it, I can probably do all continous models in one. LESSSE GOOOOO
 def set_continous_models(walked_path, step_number, step_time, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25):
-    # import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
 
     # build all possible coord combinations 
     all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
@@ -1340,6 +1340,7 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
             firing_factor = norm_midn[row, activation_neuron].copy()
             #firing_factor = norm_midn[row,activation_neuron]/ max_firing
             shifted_adjusted_clock = shifted_clock.copy()*firing_factor
+            
             # then add the values to the existing clocks, but also replace the first row by 0!!
             shifted_adjusted_clock[0] = np.zeros((len(shifted_adjusted_clock[0])))
         

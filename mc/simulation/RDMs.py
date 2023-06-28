@@ -42,7 +42,7 @@ def within_task_RDM(activation_matrix, ax=None, plotting = False, titlestring = 
         if intervalline:
             intervalline = int(intervalline)
             for interval in range(0, len(activation_matrix[0]), intervalline):
-                plt.axvline(interval, color='red', ls='dashed')
+                plt.axvline(interval, color='white', ls='dashed')
         # sn.heatmap(corr_matrix, annot = False)
     return RSM
 
@@ -334,7 +334,7 @@ def GLM_RDMs(data_matrix, regressor_dict, mask_within = True, no_tasks = None, t
         plot_data = np.tril(data_matrix, -1)
         plt.figure()
         plt.imshow(plot_data, aspect = 'auto')
-        for interval in range(0, len(data_matrix), int(len(data_matrix)/(no_tasks+1))):
+        for interval in range(0, len(data_matrix), int(len(data_matrix)/(no_tasks))):
             plt.axvline(interval, color='white', ls='dashed')
     
     dimension = len(data_matrix) 
