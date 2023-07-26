@@ -725,7 +725,7 @@ if section_six_one == 1:
     time_per_step = 20
     rewards = 4
     permutations = 10
-    bining_in_x = 3 # can't be smaller than time_per_step!!
+    bining_in_x = 15 # can't be smaller than time_per_step!!
     
     
     

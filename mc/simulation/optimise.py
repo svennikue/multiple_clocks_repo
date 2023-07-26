@@ -758,7 +758,7 @@ def show_several_taskconfigs(rew_coords, prediction_one, gridsize, timeperstep, 
 
 ########## write new optimisation function with the new models. don't want to change everything.
 def opt_fmri_tasks(no_tasks, grid_size, step_time, reward_no, permutations, hrf = True, no_bins_per_state = None, bin_data = False):
-    import pdb; pdb.set_trace() 
+    # import pdb; pdb.set_trace() 
     # for i, model_name in enumerate(models):
     #     compute_model = eval()
     #     dataset = eval(f"{mouse}_reg_result_dict")
@@ -805,27 +805,30 @@ def opt_fmri_tasks(no_tasks, grid_size, step_time, reward_no, permutations, hrf 
         
         
         # the current MRI sequence takes a sample every 1.256 seconds -> subsample by factor 13
-        for curr_model in prep_model_dict:
-            prep_model_dict[curr_model] = mc.simulation.predictions.subsample(prep_model_dict[curr_model], subsample_factor = 13)
+        
+        # TEMPORARILY CHANGE THIS BACK!
+        # for curr_model in prep_model_dict:
+        #     prep_model_dict[curr_model] = mc.simulation.predictions.subsample(prep_model_dict[curr_model], subsample_factor = 13)
         
         
         #interpolation_test = mc.simulation.predictions.interpolate_neurons(prep_model_dict[curr_model], 10)
         
         # 2.2 binning wanted?
         if bin_data == True:
-            for curr_model in prep_model_dict:
-                prep_model_dict[curr_model] = mc.simulation.predictions.interpolate_neurons(prep_model_dict[curr_model], 10)
+            # TEMPORARILY CHANGE THIS BACK!
+            # for curr_model in prep_model_dict:
+            #     prep_model_dict[curr_model] = mc.simulation.predictions.interpolate_neurons(prep_model_dict[curr_model], 10)
             
             # for now, bin by interpolating!!
             # you can change this later if you want. 
  
-            # timebin_regressors = mc.simulation.predictions.create_x_regressors_per_state_simulation(walk, steps_per_walk, step_time, no_regs_per_state = no_bins_per_state)
-            # if hrf == True:
-            #     timebin_regressors = mc.simulation.predictions.convolve_with_hrf(timebin_regressors, steps_per_walk, step_time, plotting = False)
+            timebin_regressors = mc.simulation.predictions.create_x_regressors_per_state_simulation(walk, steps_per_walk, step_time, no_regs_per_state = no_bins_per_state)
+            if hrf == True:
+                timebin_regressors = mc.simulation.predictions.convolve_with_hrf(timebin_regressors, steps_per_walk, step_time, plotting = False)
             # timebin_regressors = mc.simulation.predictions.subsample(timebin_regressors, subsample_factor=13)    
-            # for curr_model in prep_model_dict:
-            #     prep_model_dict[curr_model] = mc.simulation.predictions.transform_data_to_betas(prep_model_dict[curr_model], timebin_regressors)
-            #     prep_model_dict[curr_model] = pd.DataFrame(prep_model_dict[curr_model])
+            for curr_model in prep_model_dict:
+                prep_model_dict[curr_model] = mc.simulation.predictions.transform_data_to_betas(prep_model_dict[curr_model], timebin_regressors)
+                prep_model_dict[curr_model] = pd.DataFrame(prep_model_dict[curr_model])
 
         # 2.0 prepare the column names - I need those to later drop the correct columns!
         for curr_model in prep_model_dict:
@@ -922,25 +925,25 @@ def opt_fmri_tasks(no_tasks, grid_size, step_time, reward_no, permutations, hrf 
         temp_prep_model_dict["midn_mod_df"] = temp_midn_mod
         temp_prep_model_dict["clo_mod_df"] = temp_clo_mod
 
-        
+        # TEMPORARILY CHANGE THIS BACK!
         # the current MRI sequence takes a sample every 1.256 seconds -> subsample by factor 13
-        for curr_model in temp_prep_model_dict:
-            temp_prep_model_dict[curr_model] = mc.simulation.predictions.subsample(temp_prep_model_dict[curr_model], subsample_factor = 13)
+        # for curr_model in temp_prep_model_dict:
+        #     temp_prep_model_dict[curr_model] = mc.simulation.predictions.subsample(temp_prep_model_dict[curr_model], subsample_factor = 13)
          
         # 2.2 binning wanted?
         # 2.2 binning wanted?
-        if bin_data == True:
-            for curr_model in temp_prep_model_dict:
-                temp_prep_model_dict[curr_model] = mc.simulation.predictions.interpolate_neurons(temp_prep_model_dict[curr_model], 10)
-   
         # if bin_data == True:
-        #     temp_timebin_regressors = mc.simulation.predictions.create_x_regressors_per_state_simulation(temp_walk, temp_steps_per_walk, step_time, no_regs_per_state = no_bins_per_state)
-        #     if hrf == True:
-        #         temp_timebin_regressors = mc.simulation.predictions.convolve_with_hrf(temp_timebin_regressors, steps_per_walk, step_time, plotting = False)
-        #     temp_timebin_regressors = mc.simulation.predictions.subsample(temp_timebin_regressors, subsample_factor=13) 
-        #     for curr_model in prep_model_dict:
-        #         temp_prep_model_dict[curr_model] = mc.simulation.predictions.transform_data_to_betas(temp_prep_model_dict[curr_model], temp_timebin_regressors)
-        #         temp_prep_model_dict[curr_model] = pd.DataFrame(temp_prep_model_dict[curr_model])
+        #     for curr_model in temp_prep_model_dict:
+        #         temp_prep_model_dict[curr_model] = mc.simulation.predictions.interpolate_neurons(temp_prep_model_dict[curr_model], 10)
+        # # TEMPORARILY CHANGE THIS BACK!
+        if bin_data == True:
+            temp_timebin_regressors = mc.simulation.predictions.create_x_regressors_per_state_simulation(temp_walk, temp_steps_per_walk, step_time, no_regs_per_state = no_bins_per_state)
+            if hrf == True:
+                temp_timebin_regressors = mc.simulation.predictions.convolve_with_hrf(temp_timebin_regressors, steps_per_walk, step_time, plotting = False)
+            # temp_timebin_regressors = mc.simulation.predictions.subsample(temp_timebin_regressors, subsample_factor=13) 
+            for curr_model in prep_model_dict:
+                temp_prep_model_dict[curr_model] = mc.simulation.predictions.transform_data_to_betas(temp_prep_model_dict[curr_model], temp_timebin_regressors)
+                temp_prep_model_dict[curr_model] = pd.DataFrame(temp_prep_model_dict[curr_model])
         
         for curr_model in temp_prep_model_dict:
             temp_prep_model_dict[curr_model] = pd.DataFrame(temp_prep_model_dict[curr_model]).fillna(0)

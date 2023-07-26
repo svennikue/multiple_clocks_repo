@@ -266,7 +266,6 @@ def corr_matrices_pearson(matrix_one, matrix_two, no_tasks = None, mask_within =
     
     # make sure to exclude nans!
     coef = ma.corrcoef(ma.masked_invalid(diag_array_one), ma.masked_invalid(diag_array_two))
-
     # pearson's, because:
         # I will use a linear regression in the end, so there will be a linear
         # relationship assumed between the two model matrices. Since pearson's r
