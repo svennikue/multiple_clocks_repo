@@ -252,8 +252,7 @@ def optimise_several_task_configs(prediction_one, prediction_two, no_tasks, hrf 
             model_one_df = pd.DataFrame(clocks_model)
             model_two_df = pd.DataFrame(midnight_model)
             
-        # 2.0 prepare the column names
-        # change back if this doesnt work!!!
+        # 2.0 prepare the column names - I need those to later drop the correct columns!
         model_one_df = model_one_df.fillna(0)
         model_two_df = model_two_df.fillna(0)
         length_of_task = len(model_one_df.columns)
@@ -550,7 +549,7 @@ def testing_several_task_configs(no_tasks, perms = 1):
     # change back if this way of naming the columns doesnt work!!        
     model_one_X_tasks_df.columns = range(model_one_X_tasks_df.columns.size)
     model_two_X_tasks_df.columns = range(model_two_X_tasks_df.columns.size)
-    
+    df_task_configs.columns = range(df_task_configs.columns.size)
     
     # 3. create RDMs and establish a similarity value
     RSM_one = mc.simulation.RDMs.df_based_RDM(model_one_X_tasks_df)
@@ -757,6 +756,322 @@ def show_several_taskconfigs(rew_coords, prediction_one, gridsize, timeperstep, 
 
 
 
+########## write new optimisation function with the new models. don't want to change everything.
+def opt_fmri_tasks(no_tasks, grid_size, step_time, reward_no, permutations, hrf = True, no_bins_per_state = None, bin_data = False):
+    import pdb; pdb.set_trace() 
+    # for i, model_name in enumerate(models):
+    #     compute_model = eval()
+    #     dataset = eval(f"{mouse}_reg_result_dict")
+    
+    # create random task configurations.
+    model_dict = {}
+    for task in range(0, no_tasks):
+        # 1. create a task configuration
+        rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False)
+        walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid_size, plotting = False)
+        
+        # store the configurations.
+        # probably change this to dictionaries!!!
+        if task == 0:
+            df_rewards = pd.DataFrame(rew_coords)
+            df_walk = pd.DataFrame(walk)
+            df_task_configs = pd.concat([df_rewards, df_walk], axis = 1)
+        else:
+            df_rewards = pd.DataFrame(rew_coords)
+            df_walk = pd.DataFrame(walk)
+            df_task_configs = pd.concat([df_task_configs, df_rewards, df_walk], axis = 1)
+        
+        # 2. create model predictions for this configuration.
+        loc_mod, phas_mod, stat_mod, midn_mod, clo_mod, phasestate_mod = mc.simulation.predictions.set_continous_models(walk, steps_per_walk, step_time, grid_size, no_phase_neurons=3, fire_radius = 0.25)
+        
+        
+        
+        # 2.1 HRF convolution wanted?
+        if hrf == True:
+            loc_mod = mc.simulation.predictions.convolve_with_hrf(loc_mod, steps_per_walk, step_time, plotting = False)
+            phas_mod =  mc.simulation.predictions.convolve_with_hrf(phas_mod, steps_per_walk, step_time, plotting = False)
+            midn_mod = mc.simulation.predictions.convolve_with_hrf(midn_mod, steps_per_walk, step_time, plotting = False)
+            clo_mod =mc.simulation.predictions.convolve_with_hrf(clo_mod, steps_per_walk, step_time, plotting = False)
+
+        prep_model_dict = {}
+        prep_model_dict["loc_mod_df"]= loc_mod
+        prep_model_dict["phas_mod_df"] = phas_mod
+        prep_model_dict["midn_mod_df"] = midn_mod
+        prep_model_dict["clo_mod_df"] = clo_mod
+        # prep_model_dict["loc_mod_df"]= pd.DataFrame(loc_mod).fillna(0)
+        # prep_model_dict["phas_mod_df"] = pd.DataFrame(phas_mod).fillna(0)
+        # prep_model_dict["midn_mod_df"] = pd.DataFrame(midn_mod).fillna(0)
+        # prep_model_dict["clo_mod_df"] = pd.DataFrame(clo_mod).fillna(0)
+        
+        
+        # the current MRI sequence takes a sample every 1.256 seconds -> subsample by factor 13
+        for curr_model in prep_model_dict:
+            prep_model_dict[curr_model] = mc.simulation.predictions.subsample(prep_model_dict[curr_model], subsample_factor = 13)
+        
+        
+        #interpolation_test = mc.simulation.predictions.interpolate_neurons(prep_model_dict[curr_model], 10)
+        
+        # 2.2 binning wanted?
+        if bin_data == True:
+            for curr_model in prep_model_dict:
+                prep_model_dict[curr_model] = mc.simulation.predictions.interpolate_neurons(prep_model_dict[curr_model], 10)
+            
+            # for now, bin by interpolating!!
+            # you can change this later if you want. 
+ 
+            # timebin_regressors = mc.simulation.predictions.create_x_regressors_per_state_simulation(walk, steps_per_walk, step_time, no_regs_per_state = no_bins_per_state)
+            # if hrf == True:
+            #     timebin_regressors = mc.simulation.predictions.convolve_with_hrf(timebin_regressors, steps_per_walk, step_time, plotting = False)
+            # timebin_regressors = mc.simulation.predictions.subsample(timebin_regressors, subsample_factor=13)    
+            # for curr_model in prep_model_dict:
+            #     prep_model_dict[curr_model] = mc.simulation.predictions.transform_data_to_betas(prep_model_dict[curr_model], timebin_regressors)
+            #     prep_model_dict[curr_model] = pd.DataFrame(prep_model_dict[curr_model])
+
+        # 2.0 prepare the column names - I need those to later drop the correct columns!
+        for curr_model in prep_model_dict:
+            prep_model_dict[curr_model] = pd.DataFrame(prep_model_dict[curr_model]).fillna(0)
+
+        length_of_task = len(prep_model_dict["loc_mod_df"].columns)
+        
+        # 3. concatenate the different task simulations
+        if task < 1:
+            for curr_model in prep_model_dict:
+                model_dict[curr_model] = prep_model_dict[curr_model].copy()
+            length_all_tasks = [length_of_task]
+            temp_best_reward_coords = np.array(rew_coords)
+            best_reward_coords = np.expand_dims(temp_best_reward_coords, axis = 0)
+
+        if task > 0:
+            for curr_model in prep_model_dict:
+                model_dict[curr_model] = pd.concat([model_dict[curr_model], prep_model_dict[curr_model]], axis = 1)
+            length_all_tasks.append(length_of_task)
+            # store the reward coords too
+            curr_coords = np.array(rew_coords)
+            best_reward_coords = np.concatenate([best_reward_coords, curr_coords.reshape([1, curr_coords.shape[0], curr_coords.shape[1]])], axis=0)
+        
+    # 4. name the columns so that I can drop the right ones later and 
+    # 5. create RDMs and establish a similarity value  
+    RSM_dict = {}
+    for curr_model in model_dict:
+        model_dict[curr_model].columns = range(model_dict[curr_model].columns.size)
+        RSM_dict[curr_model] = mc.simulation.RDMs.df_based_RDM(model_dict[curr_model])
+    
+    df_task_configs.columns = range(df_task_configs.columns.size)
+    
+    for elem in model_dict:
+        plt.figure();
+        plt.imshow(model_dict[elem], aspect = 'auto')
+    # for elem in RSM_dict:
+    #     plt.figure();
+    #     plt.imshow(RSM_dict[elem], aspect = 'auto')
+    
+    
+    # 6 . identify current similarity - PEARSON OR KENDALL????
+    similarity_between_dict = {}
+    for i, curr_RSM_one in enumerate(RSM_dict):
+        for j, curr_RSM_two in enumerate(RSM_dict):
+            curr_corr = f"{curr_RSM_one}_with_{curr_RSM_two}"
+            correlation = mc.simulation.RDMs.corr_matrices_pearson(RSM_dict[curr_RSM_one], RSM_dict[curr_RSM_two], no_tasks = None, mask_within = False, exclude_diag = True)
+            similarity_between_dict[curr_corr] = correlation[0,1]
+    # corr_kendall = mc.simulation.RDMs.corr_matrices_kendall(RSM_one, RSM_two)
+    
+
+    # NOW enter a loop in which I always exchange one task.
+    # based on this, try to optimize the correlation coefficient (similarity_between)
+    
+    # After this loop, I will have a dictionary of dataframes with the same length,
+    # that I will now correlate and test for their similarity. I will then continue
+    # by systematically looping through the sub-models, exchanging single predictions
+    # and testing if this will decrease the similarity.
+    #for perm in range(0, perms): 
+    
+    # for now, just take the correlations with the clocks model.
+    
+    cum_length_per_task = np.cumsum(length_all_tasks)
+    of_interest = ['clo_mod_df_with_loc_mod_df', 'clo_mod_df_with_midn_mod_df', 'clo_mod_df_with_phas_mod_df']
+    similarity_between = 0
+    # I want to make the sum of these 3 as low as possible.
+    for elem in of_interest:
+        similarity_between = similarity_between + similarity_between_dict[elem]
+    
+    for perm in range(0, permutations):
+        # create new configuration
+        # 1. create a task configuration
+        temp_rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False)
+        temp_walk, temp_steps_per_walk = mc.simulation.grid.walk_paths(temp_rew_coords, grid_size, plotting = False)
+        
+        # store this configuration in case I want it later
+        temp_df_rewards = pd.DataFrame(temp_rew_coords)
+        temp_df_walk = pd.DataFrame(temp_walk)
+        temp_df_task_configs = pd.concat([temp_df_rewards, temp_df_walk], axis = 1)
+        
+        # create new neural predictions for this task config
+        temp_loc_mod, temp_phas_mod, temp_stat_mod, temp_midn_mod, temp_clo_mod, phasestate_mod = mc.simulation.predictions.set_continous_models(temp_walk, temp_steps_per_walk, step_time, grid_size, no_phase_neurons=3, fire_radius = 0.25)
+        
+        
+        # 2.1 check if HRF convolution wanted?
+        if hrf == True:
+            temp_loc_mod = mc.simulation.predictions.convolve_with_hrf(temp_loc_mod, steps_per_walk, step_time, plotting = False)
+            temp_phas_mod =  mc.simulation.predictions.convolve_with_hrf(temp_phas_mod, steps_per_walk, step_time, plotting = False)
+            temp_midn_mod = mc.simulation.predictions.convolve_with_hrf(temp_midn_mod, steps_per_walk, step_time, plotting = False)
+            temp_clo_mod =mc.simulation.predictions.convolve_with_hrf(temp_clo_mod, steps_per_walk, step_time, plotting = False)
+        
+        temp_prep_model_dict = {}
+        temp_prep_model_dict["loc_mod_df"]= temp_loc_mod
+        temp_prep_model_dict["phas_mod_df"] = temp_phas_mod
+        temp_prep_model_dict["midn_mod_df"] = temp_midn_mod
+        temp_prep_model_dict["clo_mod_df"] = temp_clo_mod
+
+        
+        # the current MRI sequence takes a sample every 1.256 seconds -> subsample by factor 13
+        for curr_model in temp_prep_model_dict:
+            temp_prep_model_dict[curr_model] = mc.simulation.predictions.subsample(temp_prep_model_dict[curr_model], subsample_factor = 13)
+         
+        # 2.2 binning wanted?
+        # 2.2 binning wanted?
+        if bin_data == True:
+            for curr_model in temp_prep_model_dict:
+                temp_prep_model_dict[curr_model] = mc.simulation.predictions.interpolate_neurons(temp_prep_model_dict[curr_model], 10)
+   
+        # if bin_data == True:
+        #     temp_timebin_regressors = mc.simulation.predictions.create_x_regressors_per_state_simulation(temp_walk, temp_steps_per_walk, step_time, no_regs_per_state = no_bins_per_state)
+        #     if hrf == True:
+        #         temp_timebin_regressors = mc.simulation.predictions.convolve_with_hrf(temp_timebin_regressors, steps_per_walk, step_time, plotting = False)
+        #     temp_timebin_regressors = mc.simulation.predictions.subsample(temp_timebin_regressors, subsample_factor=13) 
+        #     for curr_model in prep_model_dict:
+        #         temp_prep_model_dict[curr_model] = mc.simulation.predictions.transform_data_to_betas(temp_prep_model_dict[curr_model], temp_timebin_regressors)
+        #         temp_prep_model_dict[curr_model] = pd.DataFrame(temp_prep_model_dict[curr_model])
+        
+        for curr_model in temp_prep_model_dict:
+            temp_prep_model_dict[curr_model] = pd.DataFrame(temp_prep_model_dict[curr_model]).fillna(0)
+        temp_length_of_task = len(temp_prep_model_dict["loc_mod_df"].columns)
+        
+        
+        # 3.: replace every of the 10 tasks with the new one and check if the similarity sum is lower.
+        # prepare loop here 
+        temp_similarity = 4
+        config_no = -1
+        
+        while (temp_similarity > similarity_between) and (config_no < (no_tasks-1)):
+            config_no+=1
+            # identify which columns to cut
+            temp_similarity = 4
+            # if bin_data == True:
+            #     if config_no == 0:
+            #         cut_out_cols_min = config_no
+            #         cut_out_cols_max = len(steps_per_walk)*no_bins_per_state # array that tells me how long each task is
+            #     else:
+            #         cut_out_cols_min = config_no * (len(steps_per_walk)*no_bins_per_state)
+            #         cut_out_cols_max = config_no+1 * (len(steps_per_walk)*no_bins_per_state) 
+                
+            # elif bin_data == False:     
+            if config_no == 0:
+                cut_out_cols_min = config_no
+                cut_out_cols_max = cum_length_per_task[config_no] # array that tells me how long each task is
+            else:
+                cut_out_cols_min = cum_length_per_task[config_no-1]
+                cut_out_cols_max = cum_length_per_task[config_no]
+            
+            # cut the old data append the new.   
+            
+            temp_model_dict = {}
+            for curr_model in model_dict:
+                temp_model_dict[curr_model] = model_dict[curr_model].drop(model_dict[curr_model].iloc[:, cut_out_cols_min: cut_out_cols_max], axis = 1)
+                # print(len(temp_model_dict[curr_model].columns))
+                temp_model_dict[curr_model] = pd.concat([temp_model_dict[curr_model], temp_prep_model_dict[curr_model]], axis = 1)
+                # print(len(temp_model_dict[curr_model].columns))
+                
+            # delete the respective number, add the new column count 
+            temp_length_all_tasks = np.delete(length_all_tasks, config_no)
+            temp_length_all_tasks = np.append(temp_length_all_tasks, temp_length_of_task)
+            # update cum_length_per_task
+            temp_cum_length_all_tasks = np.cumsum(temp_length_all_tasks)
+            
+            # create new RDMs for the updated task configuration
+            temp_RSM_dict = {}
+            for curr_model in temp_model_dict:
+                temp_RSM_dict[curr_model] = mc.simulation.RDMs.df_based_RDM(temp_model_dict[curr_model])
+            
+            temp_similarity_between_dict = {}
+            for i, curr_RSM_one in enumerate(temp_RSM_dict):
+                for j, curr_RSM_two in enumerate(temp_RSM_dict):
+                    curr_corr = f"{curr_RSM_one}_with_{curr_RSM_two}"
+                    temp_correlation = mc.simulation.RDMs.corr_matrices_pearson(temp_RSM_dict[curr_RSM_one], temp_RSM_dict[curr_RSM_two])
+                    temp_similarity_between_dict[curr_corr] = temp_correlation[0,1]
+                    
+            # then create the sum of interest
+            temp_similarity = 0
+            # I want to make the sum of these 3 as low as possible.
+            for elem in of_interest:
+                temp_similarity = temp_similarity + temp_similarity_between_dict[elem]
+            
+            if temp_similarity < similarity_between:
+                print(f'if we replace task at position {config_no}, similarity will go down to {temp_similarity}')
+                print(f'replace {best_reward_coords[config_no]} with {temp_rew_coords}')
+            
+            
+        # test if the new task config in this combination makes for a lower similarity (or if all tasks were tested)
+        # and if so, take this configuration from now on.
+        
+        if temp_similarity < similarity_between:
+            # import pdb; pdb.set_trace()
+            final_similarity_dict = temp_similarity_between_dict.copy()
+            similarity_between = temp_similarity.copy()
+            model_dict = temp_model_dict.copy()
+            
+            length_all_tasks = temp_length_all_tasks.copy()
+            cum_length_per_task = temp_cum_length_all_tasks.copy()
+            
+            # and update the reward and path info
+            # drop the respective columns
+            # DOUBLE CHECK IF I AM ACTUALLY DROPPING THE RIGHT ONE!!! 20.07.23
+            temp_all_task_configs = df_task_configs.drop(df_task_configs.iloc[:, config_no*4:(config_no+1)*4], axis = 1)
+            # and then append the new one at the end.
+
+            temp_all_task_configs = pd.concat([temp_all_task_configs, temp_df_task_configs], axis = 1)
+            df_task_configs = temp_all_task_configs.copy()
+            df_task_configs.columns = range(df_task_configs.columns.size)
+            
+            # update rewards
+            if config_no == 0:
+                # delete the first one
+                temp_best_reward_coords = best_reward_coords[1:]
+                # append the new one
+                curr_coords = np.array(temp_rew_coords)
+                best_reward_coords = np.concatenate([temp_best_reward_coords, curr_coords.reshape([1, curr_coords.shape[0], curr_coords.shape[1]])], axis=0)
+            if config_no == (no_tasks-1):
+                # delete the last one
+                temp_best_reward_coords = best_reward_coords[:-1]
+                # append the new one
+                curr_coords = np.array(temp_rew_coords)
+                best_reward_coords = np.concatenate([temp_best_reward_coords, curr_coords.reshape([1, curr_coords.shape[0], curr_coords.shape[1]])], axis=0)
+                
+            elif config_no > 0: 
+                # delete the current one
+                temp_best_reward_coords_pt1 = best_reward_coords[0:config_no]
+                temp_best_reward_coords_pt2 = best_reward_coords[(config_no+1):]
+                # glue together
+                temp_best_reward_coords = np.concatenate([temp_best_reward_coords_pt1,temp_best_reward_coords_pt2], axis = 0)
+                # append the new one
+                curr_coords = np.array(temp_rew_coords)
+                best_reward_coords = np.concatenate([temp_best_reward_coords, curr_coords.reshape([1, curr_coords.shape[0], curr_coords.shape[1]])], axis=0)
+                
+            
+        print(f'Finished perm {perm}, curr best sum of 3 correlations is {similarity_between}, temp_sim is {temp_similarity}')
+    
+    # DOUBLE CHECK IF IT WORKS!!!!20.07.23
+    
+    # show the final result RDMs.
+    best_RSM_dict = {}
+    for curr_model in model_dict:
+        best_RSM_dict[curr_model] = mc.simulation.RDMs.df_based_RDM(model_dict[curr_model])
+        plt.figure();
+        plt.imshow(best_RSM_dict[curr_model], aspect = 'auto')
+        
+    print(f"done, yey! Final values are: {final_similarity_dict['clo_mod_df_with_loc_mod_df']} for clo_with_loc, {final_similarity_dict['clo_mod_df_with_midn_mod_df']} for clo with mind, {final_similarity_dict['clo_mod_df_with_phas_mod_df']} for clo with phase")
+
+
+    return final_similarity_dict, model_dict, df_task_configs, best_reward_coords
 
 
 

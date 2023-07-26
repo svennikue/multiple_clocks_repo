@@ -58,7 +58,7 @@ from scipy.stats import norm
 from itertools import product
 from scipy.signal import argrelextrema
 from sklearn import preprocessing
-
+from scipy import interpolate
 
 # PART 1
 ############ Helpers ################
@@ -134,6 +134,19 @@ def subsample(matrix, subsample_factor):
     return subsampled_matrix
 
 
+
+def interpolate_neurons(matrix, interpol_len):
+    # import pdb; pdb.set_trace() 
+    interpol_matrix = np.zeros((len(matrix), interpol_len))
+    for i, row in enumerate(matrix):
+        x = np.linspace(0,1,len(row))
+        new_x = np.linspace(0,1, interpol_len)
+        f = interpolate.interp1d(x,row, kind = 'linear')
+        interpol_matrix[i] = f(new_x)
+    return interpol_matrix
+        
+        
+
 # loop function to create an average prediction.
 def many_configs_loop(loop_no, which_matrix):
     # import pdb; pdb.set_trace()
@@ -152,6 +165,37 @@ def many_configs_loop(loop_no, which_matrix):
             sum_matrix = np.nansum(np.dstack((sum_matrix[:],temp_matrix[:])),2)
     average_matrix = sum_matrix[:]/loop_no
     return average_matrix
+
+
+def create_x_regressors_per_state_simulation(walked_path, step_per_subpath, time_per_step,no_regs_per_state, grid_size = 3):
+    # import pdb; pdb.set_trace()
+    # first test if bins are smaller than time_per_step
+    if time_per_step < no_regs_per_state:
+        raise Exception(f"Sorry, you can't have less bins  per states (curr. {no_regs_per_state}) than the resolution of 1 stepn(curr. {time_per_step}).")
+    # trajectory = []
+    # for elem in walked_path:
+    #     trajectory.append(mc.simulation.predictions.field_to_number(elem, grid_size))
+    # trajectory = np.repeat(trajectory, repeats = time_per_step)
+    
+    timebins_per_step = [step*time_per_step for step in step_per_subpath]
+    
+    n_states = len(step_per_subpath)                       
+    cols_to_fill_previous = 0
+    cumsumsteps = np.cumsum(timebins_per_step)
+    
+    regressors = np.zeros([n_states*no_regs_per_state, cumsumsteps[-1]])
+    
+    for count_paths, (pathlength) in enumerate(timebins_per_step):
+        # create a string that tells me how many columns are one nth of a state
+        time_per_state_in_nth_part = ([pathlength // no_regs_per_state + (1 if x < pathlength % no_regs_per_state else 0) for x in range (no_regs_per_state)])
+        time_per_state_in_nth_part_cum = np.cumsum(time_per_state_in_nth_part)
+        for nth_part in range(0, no_regs_per_state):
+            if nth_part == 0:
+                regressors[nth_part+(count_paths*no_regs_per_state), cols_to_fill_previous+ 0: cols_to_fill_previous+ time_per_state_in_nth_part_cum[nth_part]] = 1   
+            else:
+                regressors[nth_part+(count_paths*no_regs_per_state), cols_to_fill_previous + time_per_state_in_nth_part_cum[nth_part-1]: cols_to_fill_previous + time_per_state_in_nth_part_cum[nth_part]] = 1
+        cols_to_fill_previous = cols_to_fill_previous + pathlength
+    return regressors
 
 
 def create_x_regressors_per_state(walked_path, subpath_timings, step_no, no_regs_per_state):
@@ -763,8 +807,8 @@ def set_location_matrix(walked_path, step_number, phases, size_grid = 3):
 
 # 3.1 continuous models: all
 # fuck it, I can probably do all continous models in one. LESSSE GOOOOO
-def set_continous_models(walked_path, step_number, step_time, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25):
-    #import pdb; pdb.set_trace()
+def set_continous_models(walked_path, step_number, step_time, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1):
+    # import pdb; pdb.set_trace()
 
     # build all possible coord combinations 
     all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
@@ -780,41 +824,47 @@ def set_continous_models(walked_path, step_number, step_time, grid_size = 3, no_
     # and 2/no_phase_neurons and 1.
     neuron_phase_functions = []
     #means_at_phase = np.linspace(0, 1, (no_phase_neurons))
-    means_at_phase = np.linspace(0, 1, (no_phase_neurons*2)+1)
-    means_at_phase = means_at_phase[1::2].copy()
-    for div in means_at_phase: 
-        neuron_phase_functions.append(norm(loc = div, scale = 1/no_phase_neurons/2)) 
+    if wrap_around == 0:
+        means_at_phase = np.linspace(0, 1, (no_phase_neurons*2)+1)
+        means_at_phase = means_at_phase[1::2].copy()
+        for div in means_at_phase: 
+            neuron_phase_functions.append(norm(loc = div, scale = 1/(no_phase_neurons/2))) 
+    
+        # # to plot the functions.
+        # x = np.linspace(0,1,1000)
+        # plt.figure();
+        # for neuron in range(0, len(neuron_phase_functions)):
+        #     plt.plot(x, neuron_phase_functions[neuron].pdf(x))
+        # to plot the functions.
 
+        
+    if wrap_around == 1:
+        means_at_phase = np.linspace(-np.pi, np.pi, (no_phase_neurons*2)+1)
+        means_at_phase = means_at_phase[1::2].copy()
+        
+        for div in means_at_phase:
+            neuron_phase_functions.append(scipy.stats.vonmises(1/(no_phase_neurons/10), loc=div))
+            #neuron_phase_functions.append(scipy.stats.vonmises(1/(no_phase_neurons/2), loc=div))
+            # careful! this has to be read differently.
+        
+        # to plot the functions.
+        # plt.figure(); 
+        # for f in neuron_phase_functions:
+        #     plt.plot(np.linspace(0,1,1000), f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)/np.max(f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)))
+                   
     # make the state continuum
-    # this has to have a lot more overlap.
-    # neuron_state_functions = []
-    # means_at_state = np.linspace(0,(len(step_number)-1), (len(step_number)))
-    # for div in means_at_state:
-    #     neuron_state_functions.append(norm(loc = div, scale = 1/len(step_number)/2))
-    
     neuron_state_functions = []
-    
-    # NEEE DAS IST AUCH KACKE. HOW DO I GET THE PHASES TO CODE FOR THE ACTUAL PHASE??
-    # make means at 0.5, 1.5, 2.5, 3.5????
+    #if wrap_around == 0:
+        # actually, there should not be any smoothness in state.
     means_at_state = np.linspace(0,(len(step_number)-1), (len(step_number)))
-    #means_at_state = np.linspace(0,(len(step_number)-1)+((len(step_number)-1)*0.2), (len(step_number)))
     for div in means_at_state:
-        neuron_state_functions.append(norm(loc = div, scale = (1/len(step_number))/2))
-    
-    x = np.linspace(0, max(means_at_state),1000)
-    # # for neuron in neuron_phase_functions:
-    plt.figure(); 
-    for neuron in neuron_state_functions:
-        plt.plot(x, neuron.pdf(x))
-            
-    # to plot the neural functions per model
-    x = np.linspace(0, 3 ,1000)
-    # for neuron in neuron_phase_functions:
-    plt.figure(); 
-    for neuron in neuron_phase_functions:
-        plt.plot(x, neuron.pdf(x))
-    
-    
+        neuron_state_functions.append(norm(loc = div, scale = 1/len(step_number)))
+        
+    # x = np.linspace(0,3,1000)
+    # plt.figure();
+    # for neuron in range(0, len(neuron_state_functions)):
+    #     plt.plot(x, neuron_state_functions[neuron].pdf(x))
+
     cumsumsteps = np.cumsum(step_number)
     # this time, do it per subpath.
     for count_paths, pathlength in enumerate(step_number):
@@ -846,7 +896,8 @@ def set_continous_models(walked_path, step_number, step_time, grid_size = 3, no_
         
         # thrid step: make phase neurons
         # fit subpaths into 0:1 trajectory
-        samplepoints = np.linspace(0, 1, len(locs_over_time))
+        samplepoints = np.linspace(-np.pi, np.pi, len(locs_over_time)) if wrap_around == 1 else np.linspace(0, 1, len(locs_over_time))
+        
         phase_matrix_subpath = np.empty([len(neuron_phase_functions), len(samplepoints)])
         phase_matrix_subpath[:] = np.nan
         # read out the respective phase coding 

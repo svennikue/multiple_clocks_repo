@@ -291,6 +291,37 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
         results_reg = mc.simulation.RDMs.GLM_RDMs(RSM_neurons, regressors, mask_within, no_tasks = len(task_configs), plotting= False)
         
         
+        
+        # similarities_kendall = {}
+        # for i, curr_RSM_one in enumerate(regressors):
+        #     for j, curr_RSM_two in enumerate(regressors):
+        #         curr_corr = f"{curr_RSM_one}_with_{curr_RSM_two}"
+        #         temp_corr = mc.simulation.RDMs.corr_matrices_kendall(regressors[curr_RSM_one], regressors[curr_RSM_two])
+        #         similarities_kendall[curr_corr] = temp_corr.correlation
+        
+        # similarities_exclude_autocorr = {}
+        # for i, curr_RSM_one in enumerate(regressors):
+        #     for j, curr_RSM_two in enumerate(regressors):
+        #         curr_corr = f"{curr_RSM_one}_with_{curr_RSM_two}"
+        #         temp_corr = mc.simulation.RDMs.corr_matrices_pearson(regressors[curr_RSM_one], regressors[curr_RSM_two], no_tasks = task_no, mask_within= True, exclude_diag=True)
+        #         similarities_exclude_autocorr[curr_corr] = temp_corr[0,1]
+         
+        
+        for RDM in regressors:
+            plt.figure();
+            plt.imshow(regressors[RDM])
+            
+        import pdb; pdb.set_trace()
+        
+        sim_exclude_autocorr_ephys = {}
+        for i, curr_RSM_one in enumerate(regressors):
+            for j, curr_RSM_two in enumerate(regressors):
+                curr_corr = f"{curr_RSM_one}_with_{curr_RSM_two}"
+                temp_corr = mc.simulation.RDMs.corr_matrices_pearson(regressors[curr_RSM_one], regressors[curr_RSM_two], no_tasks = task_no, mask_within= True, exclude_diag=True)
+                sim_exclude_autocorr_ephys[curr_corr] = temp_corr[0,1]
+                
+                
+        
         #results_reg, tvals = mc.simulation.RDMs.lin_reg_RDMs(RSM_neurons, regressor_one_matrix=RSM_clock, regressor_two_matrix= RSM_midnight, regressor_three_matrix= RSM_location, regressor_four_matrix= RSM_phase, t_val= 1)
         # print(f" The beta for the clocks model is {reg_res.coef_[0]}, for the midnight model is {reg_res.coef_[1]}, and for the location model is {reg_res.coef_[2]}")
         tvals_per_trial[no_trial_in_each_task]= results_reg['t_vals']
@@ -1499,8 +1530,8 @@ def plotting_hist_scat(data_list, label_string_list, label_tick_list, title_stri
     ax.boxplot(data_list)
     sigma = 0.08
     mu = 0.01
-    noise = np.ones(len(data_list[0])) + sigma * np.random.randn(len(data_list[1])) + mu
     for index, contrast in enumerate(data_list):
+        noise = np.ones(len(data_list[index])) + sigma * np.random.randn(len(data_list[index])) + mu
         data_to_plot = contrast.copy()
         for i, elem in enumerate(data_to_plot):
             data_to_plot[i] = elem +noise[index]     

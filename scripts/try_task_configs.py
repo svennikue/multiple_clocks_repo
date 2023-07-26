@@ -32,7 +32,7 @@ section_one_four = 0 # plotting 0-angle and clocks, convolved with HRF
 # playing around with different task parameters (steptime, gridsize, reward amount)
 section_two_one = 0 # optimise similarities between different models over many permutations.
 section_two_two = 0 # plot the successful reward patterns from section 2.1
-section_two_three = 1 # find out if parameters work, but only one run.
+section_two_three = 0 # find out if parameters work, but only one run.
 
 ## section 3: identify task configurations that correlate low BETWEEN several configs.
 section_three_one = 0
@@ -46,7 +46,8 @@ section_four_one = 0
 ## section 5: create a step x step RDM with HRF convolution by taking a GLM approach
 section_five_one = 0
 
-
+## section 6: now actually prepare the fMRI experiment.
+section_six_one = 1
 
 
 ##############################
@@ -711,7 +712,70 @@ if section_five_one == 1:
     
     
     
+if section_six_one == 1:
     
+    save = 0
+    plot = 0
+    
+    models = ['clocks', 'midnight', 'loc', 'phase']
+    
+    task_repeats = 10
+    grid = 4
+    hrf_stg = False
+    time_per_step = 20
+    rewards = 4
+    permutations = 10
+    bining_in_x = 3 # can't be smaller than time_per_step!!
+    
+    
+    
+    
+    # takes a while with 300, but gets to around .56, ans 1800 timepoints for 10 tasks
+
+    corr_dict, model_dict, optimal_task_configs, betw_rew_coords = mc.simulation.optimise.opt_fmri_tasks(task_repeats, grid, time_per_step, rewards, permutations, hrf_stg,bining_in_x, bin_data = True)
+    # Cso this doesnt work yet
+    # lowest corr so far: .523 (pearson)
+    
+    
+    # test a few things.
+    RDM_dict = {}
+    for curr_model in model_dict:
+        RDM_dict[curr_model] = mc.simulation.RDMs.df_based_RDM(model_dict[curr_model])
+        plt.figure();
+        plt.imshow(RDM_dict[curr_model])
+    
+    similarities_kendall = {}
+    for i, curr_RSM_one in enumerate(RDM_dict):
+        for j, curr_RSM_two in enumerate(RDM_dict):
+            curr_corr = f"{curr_RSM_one}_with_{curr_RSM_two}"
+            temp_corr = mc.simulation.RDMs.corr_matrices_kendall(RDM_dict[curr_RSM_one], RDM_dict[curr_RSM_two])
+            similarities_kendall[curr_corr] = temp_corr.correlation
+    
+    similarities_exclude_autocorr = {}
+    for i, curr_RSM_one in enumerate(RDM_dict):
+        for j, curr_RSM_two in enumerate(RDM_dict):
+            curr_corr = f"{curr_RSM_one}_with_{curr_RSM_two}"
+            temp_corr = mc.simulation.RDMs.corr_matrices_pearson(RDM_dict[curr_RSM_one], RDM_dict[curr_RSM_two], no_tasks = 10, mask_within= True, exclude_diag=True)
+            similarities_exclude_autocorr[curr_corr] = temp_corr[0,1]
+
+    if save == 1:
+        time = datetime.now().strftime("%Y%m%d-%H%M%S")
+        file = '.csv'
+        folder_hrf = '/Users/xpsy1114/Documents/projects/multiple_clocks/results/between_configs_allmodels_hrf'
+        steptime = '_' + str(time_per_step) + '_ms_per_step' 
+        filename = folder_hrf + time + '_perms' + str(permutations) + steptime + file 
+        file_to_save = pd.DataFrame(optimal_task_configs)
+        file_to_save.to_csv(filename)
+        
+        filename_rew = folder_hrf + time + '_perms' + str(permutations) + steptime
+        np.save(filename_rew, betw_rew_coords)
+        
+    if plot == 1:
+        for model_result in model_dict:
+            plt.figure()
+            plt.imshow(model_dict[model_result])
+            plt.title('best_%s' %model_result)
+        
     
     
     

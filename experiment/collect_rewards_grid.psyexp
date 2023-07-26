@@ -99,14 +99,14 @@
         <Param val="False" valType="bool" updates="None" name="disabled"/>
         <Param val="" valType="code" updates="None" name="durationEstim"/>
         <Param val="False" valType="bool" updates="constant" name="flipHoriz"/>
-        <Param val="False" valType="bool" updates="constant" name="flipVert"/>
+        <Param val="True" valType="bool" updates="constant" name="flipVert"/>
         <Param val="coffee.png" valType="file" updates="constant" name="image"/>
         <Param val="linear" valType="str" updates="constant" name="interpolate"/>
         <Param val="" valType="str" updates="constant" name="mask"/>
         <Param val="target_reward" valType="code" updates="None" name="name"/>
         <Param val="" valType="num" updates="constant" name="opacity"/>
         <Param val="0" valType="num" updates="constant" name="ori"/>
-        <Param val="$location" valType="list" updates="set every repeat" name="pos"/>
+        <Param val="location" valType="list" updates="set every repeat" name="pos"/>
         <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
         <Param val="(0.12, 0.12)" valType="list" updates="constant" name="size"/>
         <Param val="" valType="code" updates="None" name="startEstim"/>
@@ -218,7 +218,7 @@
       <Param name="conditions" updates="None" val="[{'square': 1, 'location': [-0.2, 0.2]}, {'square': 2, 'location': [0, 0.2]}, {'square': 3, 'location': [0.2, 0.2]}, {'square': 4, 'location': [-0.2, 0]}, {'square': 5, 'location': [0, 0]}, {'square': 6, 'location': [0.2, 0]}, {'square': 7, 'location': [-0.2, -0.2]}, {'square': 8, 'location': [0, -0.2]}, {'square': 9, 'location': [0.2, -0.2]}, {'square': 4, 'location': [-0.2, 0]}, {'square': 7, 'location': [-0.2, -0.2]}, {'square': 1, 'location': [-0.2, 0.2]}]" valType="str"/>
       <Param name="conditionsFile" updates="None" val="conditions.xlsx" valType="file"/>
       <Param name="endPoints" updates="None" val="[0, 1]" valType="num"/>
-      <Param name="isTrials" updates="None" val="True" valType="bool"/>
+      <Param name="isTrials" updates="None" val="False" valType="bool"/>
       <Param name="loopType" updates="None" val="random" valType="str"/>
       <Param name="nReps" updates="None" val="1" valType="num"/>
       <Param name="name" updates="None" val="trials" valType="code"/>

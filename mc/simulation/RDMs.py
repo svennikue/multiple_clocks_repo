@@ -232,8 +232,24 @@ def corr_matrices_kendall(matrix_one, matrix_two, exclude_diag = True):
         # " We recommend Kendall's τA
     return coef
 
-def corr_matrices_pearson(matrix_one, matrix_two, exclude_diag = True):
-    import pdb; pdb.set_trace()
+def corr_matrices_pearson(matrix_one, matrix_two, no_tasks = None, mask_within = False, exclude_diag = True):
+    # import pdb; pdb.set_trace()
+    import numpy.ma as ma
+    if mask_within == True:
+        within_task_mask = np.kron(np.eye(no_tasks), np.ones((int(np.round(len(matrix_one)/no_tasks)), int(np.round(len(matrix_one)/no_tasks)))))
+        
+        # in case the mask doesn't match the data matrix perfectly (that's due to my estimations of 'early' 'mid' 'late')
+        while len(within_task_mask) < len(matrix_one):
+            within_task_mask = np.concatenate((within_task_mask, within_task_mask[:,-2:-1]), axis =1 )
+            within_task_mask = np.concatenate((within_task_mask, within_task_mask[-2:-1,:]), axis =0 )
+        while len(within_task_mask) > len(matrix_one):
+            within_task_mask = np.delete(within_task_mask, -1, 0)
+            within_task_mask = np.delete(within_task_mask, -1, 1)
+            
+        matrix_one[within_task_mask == 1] = np.nan
+        matrix_two[within_task_mask == 1] = np.nan
+        
+        
     dimension = len(matrix_one) 
     if exclude_diag == True:
         diag_array_one = list(matrix_one[np.tril_indices(dimension, -1)])
@@ -242,10 +258,16 @@ def corr_matrices_pearson(matrix_one, matrix_two, exclude_diag = True):
         diag_array_one = list(matrix_one[np.triu_indices(dimension)])
         diag_array_two = list(matrix_two[np.triu_indices(dimension)])
     
-    # CLEAN FROM nans
-    diag_array_one_clean = diag_array_one[~np.isnan(diag_array_one)]
-    diag_array_two_clean = diag_array_two[~np.isnan(diag_array_two)]
-    coef = np.corrcoef(diag_array_one_clean, diag_array_two_clean) # pearson's, because:
+
+    # # CLEAN FROM nans
+    # diag_array_one_clean = np.array(diag_array_one)[~np.isnan(diag_array_one)]
+    # diag_array_two_clean = np.array(diag_array_two)[~np.isnan(diag_array_two)]
+    # coef = np.corrcoef(diag_array_one_clean, diag_array_two_clean) 
+    
+    # make sure to exclude nans!
+    coef = ma.corrcoef(ma.masked_invalid(diag_array_one), ma.masked_invalid(diag_array_two))
+
+    # pearson's, because:
         # I will use a linear regression in the end, so there will be a linear
         # relationship assumed between the two model matrices. Since pearson's r
         # seems to be much higher, I should look at that one rather than the rank corr.

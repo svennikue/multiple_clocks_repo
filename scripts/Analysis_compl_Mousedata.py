@@ -21,8 +21,8 @@ import os
 import pickle
 
 #
-save = True
-load_old = False
+save = False
+load_old = True
 do_per_run = True
 do_neuron_subset = True
 
@@ -55,7 +55,7 @@ if load_old:
     midnight_results = {}
     all_results = {}
     perrun_results = {}
-    res_path = "/Users/xpsy1114/Documents/projects/multiple_clocks/output/2023-06-28"
+    res_path = "/Users/xpsy1114/Documents/projects/multiple_clocks/output/2023-06-28_with_loc"
     for i, mouse_index in enumerate(mice_recdays): 
         mouse_recday = eval(f"{mouse_index}['recday']")
         # clock_file_name = f"{mouse_recday}_clock_dic"
@@ -90,7 +90,10 @@ if load_old:
 # mouse a
 mouse_a_clean =  {}
 mouse_a_clean["cells"] = mouse_a["cells"].copy()
+# cell coding: Phase, State, Place and Anchoring
+    # e.g. a cell thats True, True, True, False is phase, state and place tuned but not spatially anchored
 mouse_a_clean["recday"] = mouse_a["recday"]
+mouse_a_clean["neuron_type"] = mouse_a["neuron_type"].copy()
 mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], mouse_a_clean["neurons"], mouse_a_clean["timings"] = mc.simulation.analyse_ephys.clean_ephys_data(mouse_a["rewards_configs"], mouse_a["locations"], mouse_a["neurons"], mouse_a["timings"], mouse_a_clean["recday"])
 
 
@@ -108,7 +111,7 @@ else:
 if do_neuron_subset == True:
     # define a mask for clock and midnight neurons, respectively
     midnight_neurons = []
-    midnight_mask = np.where(mouse_a["neuron_type"][:,0] == 1)[0]
+    midnight_mask = np.where(mouse_a_clean["neuron_type"][:,0] == 1)[0]
     for neurons in mouse_a_clean["neurons"]:
         midnight_neurons.append(neurons[midnight_mask, :])
     
@@ -152,6 +155,8 @@ if save:
 mouse_b_clean =  {}
 mouse_b_clean["cells"] = mouse_b["cells"].copy()
 mouse_b_clean["recday"] = mouse_b["recday"]
+mouse_b_clean["neuron_type"] = mouse_b["neuron_type"].copy()
+
 mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], mouse_b_clean["neurons"], mouse_b_clean["timings"] = mc.simulation.analyse_ephys.clean_ephys_data(mouse_b["rewards_configs"], mouse_b["locations"], mouse_b["neurons"], mouse_b["timings"], mouse_b_clean["recday"])
 
 if do_per_run == True:
@@ -165,7 +170,7 @@ else:
 if do_neuron_subset == True:
     # define a mask for clock and midnight neurons, respectively
     midnight_neurons = []
-    midnight_mask = np.where(mouse_b["neuron_type"][:,0] == 1)[0]
+    midnight_mask = np.where(mouse_b_clean["neuron_type"][:,0] == 1)[0]
     for neurons in mouse_b_clean["neurons"]:
         midnight_neurons.append(neurons[midnight_mask, :])
     
@@ -205,6 +210,7 @@ if save:
     
 # mouse c
 mouse_c_clean =  {}
+mouse_c_clean["neuron_type"] = mouse_c["neuron_type"].copy()
 mouse_c_clean["cells"] = mouse_c["cells"].copy()
 mouse_c_clean["recday"] = mouse_c["recday"]
 mouse_c_clean["rewards_configs"], mouse_c_clean["locations"], mouse_c_clean["neurons"], mouse_c_clean["timings"] = mc.simulation.analyse_ephys.clean_ephys_data(mouse_c["rewards_configs"], mouse_c["locations"], mouse_c["neurons"], mouse_c["timings"], mouse_c_clean["recday"])
@@ -257,6 +263,7 @@ if save:
 
 # mouse d
 mouse_d_clean =  {}
+mouse_d_clean["neuron_type"] = mouse_d["neuron_type"].copy()
 mouse_d_clean["cells"] = mouse_d["cells"].copy()
 mouse_d_clean["recday"] = mouse_d["recday"]
 mouse_d_clean["rewards_configs"], mouse_d_clean["locations"], mouse_d_clean["neurons"], mouse_d_clean["timings"] = mc.simulation.analyse_ephys.clean_ephys_data(mouse_d["rewards_configs"], mouse_d["locations"], mouse_d["neurons"], mouse_d["timings"], mouse_d_clean["recday"])
@@ -272,7 +279,7 @@ else:
 if do_neuron_subset == True:
     # define a mask for clock and midnight neurons, respectively
     midnight_neurons = []
-    midnight_mask = np.where(mouse_d["neuron_type"][:,0] == 1)[0]
+    midnight_mask = np.where(mouse_d_clean["neuron_type"][:,0] == 1)[0]
     for neurons in mouse_d_clean["neurons"]:
         midnight_neurons.append(neurons[midnight_mask, :])
     
@@ -311,6 +318,7 @@ if save:
 
 # mouse e
 mouse_e_clean =  {}
+mouse_e_clean["neuron_type"] = mouse_e["neuron_type"].copy()
 mouse_e_clean["cells"] = mouse_e["cells"].copy()
 mouse_e_clean["recday"] = mouse_e["recday"]
 mouse_e_clean["rewards_configs"], mouse_e_clean["locations"], mouse_e_clean["neurons"], mouse_e_clean["timings"] = mc.simulation.analyse_ephys.clean_ephys_data(mouse_e["rewards_configs"], mouse_e["locations"], mouse_e["neurons"], mouse_e["timings"], mouse_e_clean["recday"])
@@ -326,7 +334,7 @@ else:
 if do_neuron_subset == True:
     # define a mask for clock and midnight neurons, respectively
     midnight_neurons = []
-    midnight_mask = np.where(mouse_e["neuron_type"][:,0] == 1)[0]
+    midnight_mask = np.where(mouse_e_clean["neuron_type"][:,0] == 1)[0]
     for neurons in mouse_e_clean["neurons"]:
         midnight_neurons.append(neurons[midnight_mask, :])
     
@@ -364,6 +372,7 @@ if save:
 
 # mouse f
 mouse_f_clean =  {}
+mouse_f_clean["neuron_type"] = mouse_f["neuron_type"].copy()
 mouse_f_clean["cells"] = mouse_f["cells"].copy()
 mouse_f_clean["recday"] = mouse_f["recday"]
 mouse_f_clean["rewards_configs"], mouse_f_clean["locations"], mouse_f_clean["neurons"], mouse_f_clean["timings"] = mc.simulation.analyse_ephys.clean_ephys_data(mouse_f["rewards_configs"], mouse_f["locations"], mouse_f["neurons"], mouse_f["timings"], mouse_f_clean["recday"])
@@ -381,7 +390,7 @@ else:
 if do_neuron_subset == True:
     # define a mask for clock and midnight neurons, respectively
     midnight_neurons = []
-    midnight_mask = np.where(mouse_f["neuron_type"][:,0] == 1)[0]
+    midnight_mask = np.where(mouse_f_clean["neuron_type"][:,0] == 1)[0]
     for neurons in mouse_f_clean["neurons"]:
         midnight_neurons.append(neurons[midnight_mask, :])
     
@@ -421,6 +430,7 @@ if save:
 
 # mouse g
 mouse_g_clean =  {}
+mouse_g_clean["neuron_type"] = mouse_g["neuron_type"].copy()
 mouse_g_clean["cells"] = mouse_g["cells"].copy()
 mouse_g_clean["recday"] = mouse_g["recday"]
 mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], mouse_g_clean["neurons"], mouse_g_clean["timings"] = mc.simulation.analyse_ephys.clean_ephys_data(mouse_g["rewards_configs"], mouse_g["locations"], mouse_g["neurons"], mouse_g["timings"], mouse_g_clean["recday"])
@@ -439,7 +449,7 @@ else:
 if do_neuron_subset == True:
     # define a mask for clock and midnight neurons, respectively
     midnight_neurons = []
-    midnight_mask = np.where(mouse_g["neuron_type"][:,0] == 1)[0]
+    midnight_mask = np.where(mouse_g_clean["neuron_type"][:,0] == 1)[0]
     for neurons in mouse_g_clean["neurons"]:
         midnight_neurons.append(neurons[midnight_mask, :])
     
@@ -479,6 +489,7 @@ if save:
 
 # mouse h
 mouse_h_clean =  {}
+mouse_h_clean["neuron_type"] = mouse_h["neuron_type"].copy()
 mouse_h_clean["cells"] = mouse_h["cells"].copy()
 mouse_h_clean["recday"] = mouse_h["recday"]
 mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], mouse_h_clean["neurons"], mouse_h_clean["timings"] = mc.simulation.analyse_ephys.clean_ephys_data(mouse_h["rewards_configs"], mouse_h["locations"], mouse_h["neurons"], mouse_h["timings"], mouse_h_clean["recday"])
@@ -495,7 +506,7 @@ else:
 if do_neuron_subset == True: 
     # define a mask for clock and midnight neurons, respectively
     midnight_neurons = []
-    midnight_mask = np.where(mouse_h["neuron_type"][:,0] == 1)[0]
+    midnight_mask = np.where(mouse_h_clean["neuron_type"][:,0] == 1)[0]
     for neurons in mouse_h_clean["neurons"]:
         midnight_neurons.append(neurons[midnight_mask, :])
     
@@ -724,7 +735,9 @@ if do_per_run == True:
 
    
     # REORDERED PER RUN
-    letters = ['a','b','c','d','e','f', 'g', 'h']
+    # temporarily leave out b because its crap
+    letters = ['a','c','d','e','f', 'g', 'h']
+    #letters = ['a','b','c','d','e','f', 'g', 'h']
     for i, mouse in enumerate(letters):
         dataset = eval(f"{mouse}_reg_per_run")
         if i == 0:
@@ -770,32 +783,55 @@ if do_per_run == True:
     
     # WITHOUT LOCATION
     letters = ['a','b','c','d','e','f', 'g', 'h']
-    for i, mouse in enumerate(letters):
-        dataset = eval(f"{mouse}_reg_per_run")
-        if i == 0:
-            t_clocks = dataset["reord_t-vals"][:,1]
-            t_midn = dataset["reord_t-vals"][:,2]
-            #t_loc = dataset["reord_t-vals"][:,3]
-
-        elif i > 0:
-            t_clocks = np.concatenate((t_clocks, dataset["reord_t-vals"][:,1]))
-            t_midn = np.concatenate((t_midn,dataset["reord_t-vals"][:,2]))
-            #t_loc = np.concatenate((t_loc, dataset["reord_t-vals"][:,3]))
-        
+    if load_old == False:
+        for i, mouse in enumerate(letters):
+            dataset = eval(f"{mouse}_reg_per_run")
+            if i == 0:
+                t_clocks = dataset["reord_t-vals"][:,1]
+                t_midn = dataset["reord_t-vals"][:,2]
+                #t_loc = dataset["reord_t-vals"][:,3]
     
+            elif i > 0:
+                t_clocks = np.concatenate((t_clocks, dataset["reord_t-vals"][:,1]))
+                t_midn = np.concatenate((t_midn,dataset["reord_t-vals"][:,2]))
+                #t_loc = np.concatenate((t_loc, dataset["reord_t-vals"][:,3]))
+    if load_old == True:
+        for i, mouse in enumerate(perrun_results):
+            if mouse == 'me11_01122021_02122021_midn_dic':
+                continue
+            for i, mouse in enumerate(perrun_results):
+                if i == 0:
+                    t_clocks = perrun_results[mouse]["reord_t-vals"][:,1]
+                    t_midn = perrun_results[mouse]["reord_t-vals"][:,2]
+                elif i > 0:
+                     t_clocks = np.concatenate((t_clocks, perrun_results[mouse]["reord_t-vals"][:,1]))
+                     t_midn = np.concatenate((t_midn, perrun_results[mouse]["reord_t-vals"][:,2]))
+                     
+
     # MIDNIGTH, REORDRED PER RUN
-    for i, mouse in enumerate(letters):
-        dataset = eval(f"{mouse}_midn_result_dict")
-        if i == 0:
-            t_clocks_midn = dataset["reord_t-vals"][:,1]
-            t_midn_midn = dataset["reord_t-vals"][:,2]
-            #t_loc_midn = dataset["reord_t-vals"][:,3]
-
-        elif i > 0:
-            t_clocks_midn = np.concatenate((t_clocks_midn, dataset["reord_t-vals"][:,1]))
-            t_midn_midn = np.concatenate((t_midn_midn,dataset["reord_t-vals"][:,2]))
-            #t_loc_midn = np.concatenate((t_loc_midn, dataset["reord_t-vals"][:,3]))
+    if load_old == False:
+        for i, mouse in enumerate(letters):
+            dataset = eval(f"{mouse}_midn_result_dict")
+            if i == 0:
+                t_clocks_midn = dataset["reord_t-vals"][:,1]
+                t_midn_midn = dataset["reord_t-vals"][:,2]
+                #t_loc_midn = dataset["reord_t-vals"][:,3]
     
+            elif i > 0:
+                t_clocks_midn = np.concatenate((t_clocks_midn, dataset["reord_t-vals"][:,1]))
+                t_midn_midn = np.concatenate((t_midn_midn,dataset["reord_t-vals"][:,2]))
+                #t_loc_midn = np.concatenate((t_loc_midn, dataset["reord_t-vals"][:,3]))
+    if load_old == True:
+        for i, mouse in enumerate(midnight_results):
+            if mouse == 'me11_01122021_02122021_midn_dic':
+                continue
+            if i == 0:
+                t_clocks_midn = midnight_results[mouse]["reord_t-vals"][:,1]
+                t_midn_midn = midnight_results[mouse]["reord_t-vals"][:,2]
+            elif i > 0:
+                 t_clocks_midn = np.concatenate((t_clocks_midn, midnight_results[mouse]["reord_t-vals"][:,1]))
+                 t_midn_midn = np.concatenate((t_midn_midn, midnight_results[mouse]["reord_t-vals"][:,2]))
+                 
     data_comp_mid = [t_clocks, t_clocks_midn, t_midn, t_midn_midn]
     label_comp_mid = ["Musicbox, all","Musicbox, MidnN", "Midnight, all", "Midnight, MidnN"]
     label_tick_comp_mid = [1,2,3,4]
@@ -810,6 +846,13 @@ if do_per_run == True:
     title_string_comp_mid = 'tvals per run, reordered'
 
     mc.simulation.analyse_ephys.plotting_hist_scat(data_comp_mid, label_comp_mid, label_tick_comp_mid, title_string_comp_mid) 
+    
+    # find out where these outliers come from
+    if load_old == True:
+        for i, mouse in enumerate(midnight_results):
+            print(np.mean(midnight_results[mouse]["reord_t-vals"][:,1]))
+    
+    
     
     
     
