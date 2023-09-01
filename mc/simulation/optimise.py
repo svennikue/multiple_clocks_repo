@@ -805,13 +805,15 @@ def opt_fmri_tasks(no_tasks, grid_size, step_time, reward_no, permutations, hrf 
         
         
         # the current MRI sequence takes a sample every 1.256 seconds -> subsample by factor 13
+        # my fMRI sequence takes a sample every 1144ms -> hopefully every 1.1 secs > subsample by factor 11
         
         # TEMPORARILY CHANGE THIS BACK!
-        # for curr_model in prep_model_dict:
-        #     prep_model_dict[curr_model] = mc.simulation.predictions.subsample(prep_model_dict[curr_model], subsample_factor = 13)
+        #for curr_model in prep_model_dict:
+        #    prep_model_dict[curr_model] = mc.simulation.predictions.subsample(prep_model_dict[curr_model], subsample_factor = 11)
         
         
         #interpolation_test = mc.simulation.predictions.interpolate_neurons(prep_model_dict[curr_model], 10)
+        
         
         # 2.2 binning wanted?
         if bin_data == True:
@@ -825,11 +827,11 @@ def opt_fmri_tasks(no_tasks, grid_size, step_time, reward_no, permutations, hrf 
             timebin_regressors = mc.simulation.predictions.create_x_regressors_per_state_simulation(walk, steps_per_walk, step_time, no_regs_per_state = no_bins_per_state)
             if hrf == True:
                 timebin_regressors = mc.simulation.predictions.convolve_with_hrf(timebin_regressors, steps_per_walk, step_time, plotting = False)
-            # timebin_regressors = mc.simulation.predictions.subsample(timebin_regressors, subsample_factor=13)    
+                #timebin_regressors = mc.simulation.predictions.subsample(timebin_regressors, subsample_factor=11)    
             for curr_model in prep_model_dict:
                 prep_model_dict[curr_model] = mc.simulation.predictions.transform_data_to_betas(prep_model_dict[curr_model], timebin_regressors)
                 prep_model_dict[curr_model] = pd.DataFrame(prep_model_dict[curr_model])
-
+                
         # 2.0 prepare the column names - I need those to later drop the correct columns!
         for curr_model in prep_model_dict:
             prep_model_dict[curr_model] = pd.DataFrame(prep_model_dict[curr_model]).fillna(0)
@@ -877,7 +879,7 @@ def opt_fmri_tasks(no_tasks, grid_size, step_time, reward_no, permutations, hrf 
             correlation = mc.simulation.RDMs.corr_matrices_pearson(RSM_dict[curr_RSM_one], RSM_dict[curr_RSM_two], no_tasks = None, mask_within = False, exclude_diag = True)
             similarity_between_dict[curr_corr] = correlation[0,1]
     # corr_kendall = mc.simulation.RDMs.corr_matrices_kendall(RSM_one, RSM_two)
-    
+    import pdb; pdb.set_trace() 
 
     # NOW enter a loop in which I always exchange one task.
     # based on this, try to optimize the correlation coefficient (similarity_between)

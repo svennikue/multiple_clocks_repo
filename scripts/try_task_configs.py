@@ -721,8 +721,8 @@ if section_six_one == 1:
     
     task_repeats = 10
     grid = 4
-    hrf_stg = False
-    time_per_step = 20
+    hrf_stg = True
+    time_per_step = 20 #actually, I currently put it between 1.5 and 2.5 
     rewards = 4
     permutations = 10
     bining_in_x = 15 # can't be smaller than time_per_step!!
