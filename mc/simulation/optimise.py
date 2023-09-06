@@ -51,7 +51,7 @@ def optimise_task_for(prediction_one, prediction_two, hrf = True, grid_size = 3,
     
     for perm_no in range(perms):
         # 1. create a task configuration
-        rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False)
+        rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False, old_rewards=None, step_longer_one=True)
         walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid_size, plotting = False)
         
         # 2. create the predictions for both models
@@ -206,7 +206,7 @@ def optimise_several_task_configs(prediction_one, prediction_two, no_tasks, hrf 
     # first, create X random task configurations for model 1 and model 2.
     for task in range(0, no_tasks):
         # 1. create a task configuration
-        rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False)
+        rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False, old_rewards=None, step_longer_one=True)
         walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid_size, plotting = False)
         
         # store the configurations.
@@ -306,7 +306,7 @@ def optimise_several_task_configs(prediction_one, prediction_two, no_tasks, hrf 
     for perm in range(0, perms):        
         # create new configuration
         # 1. create a task configuration
-        temp_rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False)
+        temp_rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False, old_rewards=None, step_longer_one=True)
         temp_walk, temp_steps_per_walk_temp = mc.simulation.grid.walk_paths(temp_rew_coords, grid_size, plotting = False)
         
         # store this configuration in case I want it later
@@ -767,7 +767,7 @@ def opt_fmri_tasks(no_tasks, grid_size, step_time, reward_no, permutations, hrf 
     model_dict = {}
     for task in range(0, no_tasks):
         # 1. create a task configuration
-        rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False)
+        rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False, old_rewards=None, step_longer_one=True)
         walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid_size, plotting = False)
         
         # store the configurations.
@@ -879,7 +879,7 @@ def opt_fmri_tasks(no_tasks, grid_size, step_time, reward_no, permutations, hrf 
             correlation = mc.simulation.RDMs.corr_matrices_pearson(RSM_dict[curr_RSM_one], RSM_dict[curr_RSM_two], no_tasks = None, mask_within = False, exclude_diag = True)
             similarity_between_dict[curr_corr] = correlation[0,1]
     # corr_kendall = mc.simulation.RDMs.corr_matrices_kendall(RSM_one, RSM_two)
-    import pdb; pdb.set_trace() 
+
 
     # NOW enter a loop in which I always exchange one task.
     # based on this, try to optimize the correlation coefficient (similarity_between)
@@ -897,12 +897,14 @@ def opt_fmri_tasks(no_tasks, grid_size, step_time, reward_no, permutations, hrf 
     similarity_between = 0
     # I want to make the sum of these 3 as low as possible.
     for elem in of_interest:
-        similarity_between = similarity_between + similarity_between_dict[elem]
+        similarity_between = abs(similarity_between) + abs(similarity_between_dict[elem])
     
+    
+    # import pdb; pdb.set_trace() 
     for perm in range(0, permutations):
         # create new configuration
         # 1. create a task configuration
-        temp_rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False)
+        temp_rew_coords = mc.simulation.grid.create_grid(grid_size, reward_no, plot = False, old_rewards=None, step_longer_one=True)
         temp_walk, temp_steps_per_walk = mc.simulation.grid.walk_paths(temp_rew_coords, grid_size, plotting = False)
         
         # store this configuration in case I want it later
@@ -928,9 +930,9 @@ def opt_fmri_tasks(no_tasks, grid_size, step_time, reward_no, permutations, hrf 
         temp_prep_model_dict["clo_mod_df"] = temp_clo_mod
 
         # TEMPORARILY CHANGE THIS BACK!
-        # the current MRI sequence takes a sample every 1.256 seconds -> subsample by factor 13
+        # the current MRI sequence takes a sample every 1.1 seconds -> subsample by factor 11
         # for curr_model in temp_prep_model_dict:
-        #     temp_prep_model_dict[curr_model] = mc.simulation.predictions.subsample(temp_prep_model_dict[curr_model], subsample_factor = 13)
+        #     temp_prep_model_dict[curr_model] = mc.simulation.predictions.subsample(temp_prep_model_dict[curr_model], subsample_factor = 11)
          
         # 2.2 binning wanted?
         # 2.2 binning wanted?
@@ -942,7 +944,7 @@ def opt_fmri_tasks(no_tasks, grid_size, step_time, reward_no, permutations, hrf 
             temp_timebin_regressors = mc.simulation.predictions.create_x_regressors_per_state_simulation(temp_walk, temp_steps_per_walk, step_time, no_regs_per_state = no_bins_per_state)
             if hrf == True:
                 temp_timebin_regressors = mc.simulation.predictions.convolve_with_hrf(temp_timebin_regressors, steps_per_walk, step_time, plotting = False)
-            # temp_timebin_regressors = mc.simulation.predictions.subsample(temp_timebin_regressors, subsample_factor=13) 
+            # temp_timebin_regressors = mc.simulation.predictions.subsample(temp_timebin_regressors, subsample_factor=11) 
             for curr_model in prep_model_dict:
                 temp_prep_model_dict[curr_model] = mc.simulation.predictions.transform_data_to_betas(temp_prep_model_dict[curr_model], temp_timebin_regressors)
                 temp_prep_model_dict[curr_model] = pd.DataFrame(temp_prep_model_dict[curr_model])
@@ -957,7 +959,7 @@ def opt_fmri_tasks(no_tasks, grid_size, step_time, reward_no, permutations, hrf 
         temp_similarity = 4
         config_no = -1
         
-        while (temp_similarity > similarity_between) and (config_no < (no_tasks-1)):
+        while (abs(temp_similarity) > abs(similarity_between)) and (config_no < (no_tasks-1)):
             config_no+=1
             # identify which columns to cut
             temp_similarity = 4
@@ -981,10 +983,10 @@ def opt_fmri_tasks(no_tasks, grid_size, step_time, reward_no, permutations, hrf 
             
             temp_model_dict = {}
             for curr_model in model_dict:
+                #import pdb; pdb.set_trace() 
                 temp_model_dict[curr_model] = model_dict[curr_model].drop(model_dict[curr_model].iloc[:, cut_out_cols_min: cut_out_cols_max], axis = 1)
-                # print(len(temp_model_dict[curr_model].columns))
                 temp_model_dict[curr_model] = pd.concat([temp_model_dict[curr_model], temp_prep_model_dict[curr_model]], axis = 1)
-                # print(len(temp_model_dict[curr_model].columns))
+                #print(f"the length of {curr_model} is now {len(temp_model_dict[curr_model].columns)}")
                 
             # delete the respective number, add the new column count 
             temp_length_all_tasks = np.delete(length_all_tasks, config_no)
@@ -996,6 +998,7 @@ def opt_fmri_tasks(no_tasks, grid_size, step_time, reward_no, permutations, hrf 
             temp_RSM_dict = {}
             for curr_model in temp_model_dict:
                 temp_RSM_dict[curr_model] = mc.simulation.RDMs.df_based_RDM(temp_model_dict[curr_model])
+                temp_model_dict[curr_model].columns = range(temp_model_dict[curr_model].columns.size)
             
             temp_similarity_between_dict = {}
             for i, curr_RSM_one in enumerate(temp_RSM_dict):
@@ -1008,21 +1011,24 @@ def opt_fmri_tasks(no_tasks, grid_size, step_time, reward_no, permutations, hrf 
             temp_similarity = 0
             # I want to make the sum of these 3 as low as possible.
             for elem in of_interest:
-                temp_similarity = temp_similarity + temp_similarity_between_dict[elem]
+                temp_similarity = abs(temp_similarity) + abs(temp_similarity_between_dict[elem])
             
-            if temp_similarity < similarity_between:
+            if abs(temp_similarity) < abs(similarity_between):
                 print(f'if we replace task at position {config_no}, similarity will go down to {temp_similarity}')
                 print(f'replace {best_reward_coords[config_no]} with {temp_rew_coords}')
+                print(f"the length of {curr_model} is now {len(temp_model_dict[curr_model].columns)}")
             
             
         # test if the new task config in this combination makes for a lower similarity (or if all tasks were tested)
         # and if so, take this configuration from now on.
         
-        if temp_similarity < similarity_between:
+        if abs(temp_similarity) < abs(similarity_between):
             # import pdb; pdb.set_trace()
             final_similarity_dict = temp_similarity_between_dict.copy()
             similarity_between = temp_similarity.copy()
             model_dict = temp_model_dict.copy()
+            for curr_model in model_dict:
+                model_dict[curr_model].columns = range(model_dict[curr_model].columns.size)
             
             length_all_tasks = temp_length_all_tasks.copy()
             cum_length_per_task = temp_cum_length_all_tasks.copy()
@@ -1060,9 +1066,8 @@ def opt_fmri_tasks(no_tasks, grid_size, step_time, reward_no, permutations, hrf 
                 # append the new one
                 curr_coords = np.array(temp_rew_coords)
                 best_reward_coords = np.concatenate([temp_best_reward_coords, curr_coords.reshape([1, curr_coords.shape[0], curr_coords.shape[1]])], axis=0)
-                
-            
-        print(f'Finished perm {perm}, curr best sum of 3 correlations is {similarity_between}, temp_sim is {temp_similarity}')
+                  
+        print(f'Finished perm {perm}, curr best sum of 3 correlations is {similarity_between}, temp_sim is {temp_similarity}, length of models is {len(model_dict[curr_model].columns)}')
     
     # DOUBLE CHECK IF IT WORKS!!!!20.07.23
     

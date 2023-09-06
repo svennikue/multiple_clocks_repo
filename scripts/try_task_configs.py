@@ -714,20 +714,18 @@ if section_five_one == 1:
     
 if section_six_one == 1:
     
-    save = 0
-    plot = 0
+    save = 1
+    plot = 1
     
     models = ['clocks', 'midnight', 'loc', 'phase']
     
-    task_repeats = 10
-    grid = 4
+    task_repeats = 5
+    grid = 3
     hrf_stg = True
     time_per_step = 20 #actually, I currently put it between 1.5 and 2.5 
     rewards = 4
-    permutations = 10
-    bining_in_x = 15 # can't be smaller than time_per_step!!
-    
-    
+    permutations = 500
+    bining_in_x = 3 # can't be smaller than time_per_step!!
     
     
     # takes a while with 300, but gets to around .56, ans 1800 timepoints for 10 tasks
@@ -775,6 +773,10 @@ if section_six_one == 1:
             plt.figure()
             plt.imshow(model_dict[model_result])
             plt.title('best_%s' %model_result)
+        
+        # I also want the plots of the actual best task configurations.
+        
+        walk, steps_per_walk = mc.simulation.grid.walk_paths(rew_coords, grid, plotting = True)
         
     
     

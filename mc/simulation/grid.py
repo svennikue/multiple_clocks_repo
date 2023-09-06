@@ -18,8 +18,8 @@ import mc
 import numpy as np
 
 
-def create_grid(size_grid = 3, num_rewards = 4, ax = None, plot = False, old_rewards = None):
-    # import pdb; pdb.set_trace()
+def create_grid(size_grid = 3, num_rewards = 4, ax = None, plot = False, old_rewards = None, step_longer_one = False):
+    #import pdb; pdb.set_trace()
     # first create the 3 x 3 grid and plot.
     coord = [list(p) for p in product(range(size_grid), range(size_grid))]
 
@@ -27,6 +27,92 @@ def create_grid(size_grid = 3, num_rewards = 4, ax = None, plot = False, old_rew
     if old_rewards is None:
         # create 4 reward locations, except if those are given
         reward_coords = [np.array(random.sample(coord, num_rewards))]
+        if step_longer_one == True:
+            # for i in range(0, len(reward_coords[0])):
+            #     distance = sum(abs(reward_coords[0][i -1]- reward_coords[0][i]))
+            #     while abs(distance) <= 1:
+            #         replacement = random.sample(coord, 1)[0]
+            #         reward_coords[0][i] = replacement 
+            #         # now check if distance between replacement and any except the to-replaced
+            #         # item is bigger than 1:
+            #         for j in range(0, len(reward_coords[0])):
+            #             if j != i:
+            #                 the_same = sum(abs(replacement - reward_coords[0][j]))
+            #             distance = sum(abs(reward_coords[0][j -1]- reward_coords[0][j]))
+            #             # check if its the same as any sample
+            #             if (abs(the_same) == 0) or abs(distance) <= 1:
+            #                 replacement = random.sample(coord, 1)[0]
+            #                 break
+                    
+                    
+            for i in range(0, len(reward_coords[0])):
+                for j in range(0, len(reward_coords[0])):
+                    the_same = sum(abs(reward_coords[0][i] - reward_coords[0][j]))
+                    if j == i:
+                        the_same = 4
+                    distance = sum(abs(reward_coords[0][i -1]- reward_coords[0][i]))
+                    while (abs(distance) <= 1) or (the_same == 0):
+                        replacement = random.sample(coord, 1)[0]
+                        reward_coords[0][i] = replacement
+                        the_same = sum(abs(reward_coords[0][i] - reward_coords[0][j]))
+                        if j == i:
+                            the_same = 4
+                        distance = sum(abs(reward_coords[0][i -1]- reward_coords[0][i]))
+                                
+                            
+                            
+                            
+                        # distance = sum(abs(reward_coords[0][i -1]- reward_coords[0][i]))
+                        # while abs(distance) <= 1:
+                        #     replacement = random.sample(coord, 1)[0]
+                        #     reward_coords[0][i] = replacement 
+                        #     # now check if distance between replacement and any except the to-replaced
+                        #     # item is bigger than 1:
+                        #     for j in range(0, len(reward_coords[0])):
+                        #         if j != i:
+                        #             the_same = sum(abs(replacement - reward_coords[0][j]))
+                        #         distance = sum(abs(reward_coords[0][j -1]- reward_coords[0][j]))
+                        #         # check if its the same as any sample
+                        #         if (abs(the_same) == 0) or abs(distance) <= 1:
+                        #             replacement = random.sample(coord, 1)[0]
+                        #             break
+                         
+                    
+                #distance = sum(abs(reward_coords[0][i -1] - reward_coords[0][i]))
+                
+                
+    
+                
+                # # first check if every entry is unique.
+                # for j in range(0, len(reward_coords[0])):
+                #     the_same = sum(abs(reward_coords[0][i]-reward_coords[0][j]))
+                    
+                    
+                    
+                # # then check if they are more than 1 step apart.
+                # distance = sum(abs(reward_coords[0][i -1]- reward_coords[0][i]))
+                # while abs(distance) <= 1:
+                #     replacement = random.sample(coord, 1)[0]
+                #     reward_coords[0][i] = replacement
+                #     distance = sum(abs(reward_coords[0][i -1] - reward_coords[0][i]))
+                
+                    
+                    
+                    
+                    
+                #     already_exists = 0
+                #     while already_exists == 0:
+                #         for j in range(0, len(reward_coords[0])):
+                #             already_exists = sum(abs(replacement-reward_coords[0][j]))
+                #             if already_exists == 0:
+                #                 replacement = random.sample(coord, 1)[0]
+                #                 #already_exists = sum(abs(replacement-reward_coords[0][j]))
+                #                 already_exists = 0
+                #                 break 
+                #     reward_coords[0][i] = replacement
+                #     distance = sum(abs(reward_coords[0][i -1] - reward_coords[0][i]))
+
+                #print(f"distance is now {sum(reward_coords[0][i -1]-reward_coords[0][i])}")
     else:
         # read the reward coordinations and the path
         # careful! Here, every 4th column are the reward locations.
