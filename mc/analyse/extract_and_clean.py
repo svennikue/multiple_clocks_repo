@@ -8,3 +8,11 @@ This file is to open and clean my behavioural variables.
 """
 
 
+import pandas as pd
+import numpy as np
+import mc
+
+
+
+def print_stuff(string_input):
+    print(string_input)

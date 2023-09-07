@@ -5,12 +5,8 @@ Documents all modules within sub-package simulation
 #__all__ = ["set_clocks", "set_location_matrix", "walk_steps", "test"]
 #import mc.simulation.set_clocks
 #import mc.simulation.set_location_matrix
-import mc.simulation.grid
-import mc.simulation.predictions
-import mc.simulation.RDMs
-import mc.simulation.optimise
-#import mc.simulation.analyse_ephys
-
+import mc.analyse.analyse_ephys
+import mc.analyse.extract_and_clean
 
 #import mc.set_clocks
 #import mc.set_location_matrix

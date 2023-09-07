@@ -5,6 +5,7 @@ Documents all submodules of mc
 #__all__ = ["simulation", "experiment"]
 
 import mc.simulation
+import mc.analyse
 
 #import mc.simulation.set_clocks
 #import mc.simulation.walk_steps

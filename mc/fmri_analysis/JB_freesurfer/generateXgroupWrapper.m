@@ -1,0 +1,1 @@
+generateXgroup(subjectDir, subjectList, outDir)
