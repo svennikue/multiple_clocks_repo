@@ -82,3 +82,14 @@ def jitter(expected_step_no):
     y = bins**(shape-1) * ((np.exp(-bins/scale))/(sps.gamma(shape) * scale**shape))
     plt.plot(bins, y, linewidth=2, color='r')  
     plt.show()
+    
+    
+
+# code snippet to create a regressor
+def create_EV(onset, duration, magnitude, name, folder):
+    regressor_matrix = np.ones((len(magnitude),3))
+    regressor_matrix[:,0] = onset
+    regressor_matrix[:,1] = duration
+    regressor_matrix[:,2] = magnitude
+    np.savetxt(str(folder) + 'ev_' + str(name) + '.txt', regressor_matrix, delimiter="    ", fmt='%f')
+    return regressor_matrix

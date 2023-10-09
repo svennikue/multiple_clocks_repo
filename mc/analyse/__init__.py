@@ -7,6 +7,7 @@ Documents all modules within sub-package simulation
 #import mc.simulation.set_location_matrix
 import mc.analyse.analyse_ephys
 import mc.analyse.extract_and_clean
+import mc.analyse.analyse_MRI_behav
 
 #import mc.set_clocks
 #import mc.set_location_matrix
