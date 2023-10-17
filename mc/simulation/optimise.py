@@ -831,7 +831,8 @@ def opt_fmri_tasks(no_tasks, grid_size, step_time, reward_no, permutations, hrf 
             for curr_model in prep_model_dict:
                 prep_model_dict[curr_model] = mc.simulation.predictions.transform_data_to_betas(prep_model_dict[curr_model], timebin_regressors)
                 prep_model_dict[curr_model] = pd.DataFrame(prep_model_dict[curr_model])
-                
+        
+        #import pdb; pdb.set_trace()         
         # 2.0 prepare the column names - I need those to later drop the correct columns!
         for curr_model in prep_model_dict:
             prep_model_dict[curr_model] = pd.DataFrame(prep_model_dict[curr_model]).fillna(0)

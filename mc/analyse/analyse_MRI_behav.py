@@ -86,9 +86,15 @@ def jitter(expected_step_no):
     
 
 # code snippet to create a regressor
-def create_EV(onset, duration, magnitude, name, folder):
+def create_EV(onset, duration, magnitude, name, folder, TR_at_sec):
+    if len(onset) > len(duration):
+        onset = onset[:len(duration)]
+        magnitude = magnitude[:len(duration)]
+    elif len(duration) > len(onset):
+        duration = onset[:len(onset)]
+        magnitude = magnitude[:len(onset)]
     regressor_matrix = np.ones((len(magnitude),3))
-    regressor_matrix[:,0] = onset
+    regressor_matrix[:,0] = [(time - TR_at_sec) for time in onset]
     regressor_matrix[:,1] = duration
     regressor_matrix[:,2] = magnitude
     np.savetxt(str(folder) + 'ev_' + str(name) + '.txt', regressor_matrix, delimiter="    ", fmt='%f')
