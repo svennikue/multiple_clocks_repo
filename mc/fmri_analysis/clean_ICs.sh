@@ -25,10 +25,17 @@ for subjectTag in "${subjects[@]}"; do
 
     echo "starting a log file" > $preprocDir/logging_fix.txt
     # Use labeled ICA components and regress out their contribution; also regress out motion regressors
-    $toolboxDir/fix/fix -a $preprocDir/labels.txt -m
+    # use -a flag for ica cleanup and -m for motion correction.
+    # folder needs to be .ica folder.
+    # $toolboxDir/fix/fix -a $preprocDir/filtered_func_data.ica/labels.txt -m
+    # instead of doing fix, just do fsl_regfilt, since I am doing manual IC selection anyways.
+    prep_noise_ICs=$(tail -n 1 $preprocDir/filtered_func_data.ica/labels.txt)  
+    noise_ICs=$(echo "$prep_noise_ICs" | tr -d '[]' | sed 's/\t/,/g' | sed 's/\(.*\)/"\1"/') 
+
+    fsl_regfilt -i $preprocDir/filtered_func_data.nii.gz -d $preprocDir/filtered_func_data.ica/melodic_mix -f $noise_ICs -o $preprocDir/filtered_func_data_clean.nii.gz
 
     # Display progress to see if any error messages are caused by fix or by later commands
-    echo Finished fix using labels in $preprocDir/labels.txt >> $preprocDir/logging_fix.txt
+    echo Finished denoising using labels in $preprocDir/labels.txt >> $preprocDir/logging_denoise.txt
 
     # Get median value of data
     m=$(fslstats $preprocDir/filtered_func_data_clean.nii.gz -k $preprocDir/mask.nii.gz -p 50)

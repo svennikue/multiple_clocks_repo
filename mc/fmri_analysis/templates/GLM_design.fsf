@@ -1,0 +1,9191 @@
+
+# FEAT version number
+set fmri(version) 6.00
+
+# Are we in MELODIC?
+set fmri(inmelodic) 0
+
+# Analysis level
+# 1 : First-level analysis
+# 2 : Higher-level analysis
+set fmri(level) 1
+
+# Which stages to run
+# 0 : No first-level analysis (registration and/or group stats only)
+# 7 : Full first-level analysis
+# 1 : Pre-processing
+# 2 : Statistics
+set fmri(analysis) 2
+
+# Use relative filenames
+set fmri(relative_yn) 0
+
+# Balloon help
+set fmri(help_yn) 1
+
+# Run Featwatcher
+set fmri(featwatcher_yn) 1
+
+# Cleanup first-level standard-space images
+set fmri(sscleanup_yn) 0
+
+# Output directory
+set fmri(outputdir) "/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-01/func/glm_03"
+
+# TR(s)
+set fmri(tr) 1.078000 
+
+# Total volumes
+set fmri(npts) 1670
+
+# Delete volumes
+set fmri(ndelete) 0
+
+# Perfusion tag/control order
+set fmri(tagfirst) 1
+
+# Number of first-level analyses
+set fmri(multiple) 1
+
+# Higher-level input type
+# 1 : Inputs are lower-level FEAT directories
+# 2 : Inputs are cope images from FEAT directories
+set fmri(inputtype) 2
+
+# Carry out pre-stats processing?
+set fmri(filtering_yn) 0
+
+# Brain/background threshold, %
+set fmri(brain_thresh) 10
+
+# Critical z for design efficiency calculation
+set fmri(critical_z) 5.3
+
+# Noise level
+set fmri(noise) 0.492934
+
+# Noise AR(1)
+set fmri(noisear) 0.355061
+
+# Motion correction
+# 0 : None
+# 1 : MCFLIRT
+set fmri(mc) 1
+
+# Spin-history (currently obsolete)
+set fmri(sh_yn) 0
+
+# B0 fieldmap unwarping?
+set fmri(regunwarp_yn) 0
+
+# GDC Test
+set fmri(gdc) ""
+
+# EPI dwell time (ms)
+set fmri(dwell) 0.0
+
+# EPI TE (ms)
+set fmri(te) 0.0
+
+# % Signal loss threshold
+set fmri(signallossthresh) 10
+
+# Unwarp direction
+set fmri(unwarp_dir) y-
+
+# Slice timing correction
+# 0 : None
+# 1 : Regular up (0, 1, 2, 3, ...)
+# 2 : Regular down
+# 3 : Use slice order file
+# 4 : Use slice timings file
+# 5 : Interleaved (0, 2, 4 ... 1, 3, 5 ... )
+set fmri(st) 0
+
+# Slice timings file
+set fmri(st_file) ""
+
+# BET brain extraction
+set fmri(bet_yn) 1
+
+# Spatial smoothing FWHM (mm)
+set fmri(smooth) 5
+
+# Intensity normalization
+set fmri(norm_yn) 0
+
+# Perfusion subtraction
+set fmri(perfsub_yn) 0
+
+# Highpass temporal filtering
+set fmri(temphp_yn) 1
+
+# Lowpass temporal filtering
+set fmri(templp_yn) 0
+
+# MELODIC ICA data exploration
+set fmri(melodic_yn) 0
+
+# Carry out main stats?
+set fmri(stats_yn) 1
+
+# Carry out prewhitening?
+set fmri(prewhiten_yn) 1
+
+# Add motion parameters to model
+# 0 : No
+# 1 : Yes
+set fmri(motionevs) 0
+set fmri(motionevsbeta) ""
+set fmri(scriptevsbeta) ""
+
+# Robust outlier detection in FLAME?
+set fmri(robust_yn) 0
+
+# Higher-level modelling
+# 3 : Fixed effects
+# 0 : Mixed Effects: Simple OLS
+# 2 : Mixed Effects: FLAME 1
+# 1 : Mixed Effects: FLAME 1+2
+set fmri(mixed_yn) 2
+
+# Higher-level permutations
+set fmri(randomisePermutations) 5000
+
+# Number of EVs
+set fmri(evs_orig) 40
+set fmri(evs_real) 80
+set fmri(evs_vox) 0
+
+# Number of contrasts
+set fmri(ncon_orig) 6
+set fmri(ncon_real) 6
+
+# Number of F-tests
+set fmri(nftests_orig) 0
+set fmri(nftests_real) 0
+
+# Add constant column to design matrix? (obsolete)
+set fmri(constcol) 0
+
+# Carry out post-stats steps?
+set fmri(poststats_yn) 0
+
+# Pre-threshold masking?
+set fmri(threshmask) ""
+
+# Thresholding
+# 0 : None
+# 1 : Uncorrected
+# 2 : Voxel
+# 3 : Cluster
+set fmri(thresh) 3
+
+# P threshold
+set fmri(prob_thresh) 0.05
+
+# Z threshold
+set fmri(z_thresh) 3.1
+
+# Z min/max for colour rendering
+# 0 : Use actual Z min/max
+# 1 : Use preset Z min/max
+set fmri(zdisplay) 0
+
+# Z min in colour rendering
+set fmri(zmin) 2
+
+# Z max in colour rendering
+set fmri(zmax) 8
+
+# Colour rendering type
+# 0 : Solid blobs
+# 1 : Transparent blobs
+set fmri(rendertype) 1
+
+# Background image for higher-level stats overlays
+# 1 : Mean highres
+# 2 : First highres
+# 3 : Mean functional
+# 4 : First functional
+# 5 : Standard space template
+set fmri(bgimage) 1
+
+# Create time series plots
+set fmri(tsplot_yn) 1
+
+# Registration to initial structural
+set fmri(reginitial_highres_yn) 0
+
+# Search space for registration to initial structural
+# 0   : No search
+# 90  : Normal search
+# 180 : Full search
+set fmri(reginitial_highres_search) 90
+
+# Degrees of Freedom for registration to initial structural
+set fmri(reginitial_highres_dof) 3
+
+# Registration to main structural
+set fmri(reghighres_yn) 0
+
+# Search space for registration to main structural
+# 0   : No search
+# 90  : Normal search
+# 180 : Full search
+set fmri(reghighres_search) 90
+
+# Degrees of Freedom for registration to main structural
+set fmri(reghighres_dof) BBR
+
+# Registration to standard image?
+set fmri(regstandard_yn) 1
+
+# Use alternate reference images?
+set fmri(alternateReference_yn) 0
+
+# Standard image
+set fmri(regstandard) "/Users/xpsy1114/fsl/data/standard/MNI152_T1_2mm_brain"
+
+# Search space for registration to standard space
+# 0   : No search
+# 90  : Normal search
+# 180 : Full search
+set fmri(regstandard_search) 90
+
+# Degrees of Freedom for registration to standard space
+set fmri(regstandard_dof) 12
+
+# Do nonlinear registration from structural to standard space?
+set fmri(regstandard_nonlinear_yn) 0
+
+# Control nonlinear warp field resolution
+set fmri(regstandard_nonlinear_warpres) 10
+
+# High pass filter cutoff
+set fmri(paradigm_hp) 100
+
+# Total voxels
+set fmri(totalVoxels) 1246648320
+
+
+# Number of lower-level copes feeding into higher-level analysis
+set fmri(ncopeinputs) 0
+
+# 4D AVW data or FEAT directory (1)
+set feat_files(1) "/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-01/func/preproc_clean_01.feat/filtered_func_data_clean"
+
+# Add confound EVs text file
+set fmri(confoundevs) 0
+
+# EV 1 title
+set fmri(evtitle1) "A-A-path"
+
+# Basic waveform shape (EV 1)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape1) 3
+
+# Convolution (EV 1)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve1) 2
+
+# Convolve phase (EV 1)
+set fmri(convolve_phase1) 0
+
+# Apply temporal filtering (EV 1)
+set fmri(tempfilt_yn1) 1
+
+# Add temporal derivative (EV 1)
+set fmri(deriv_yn1) 0
+
+# Custom EV file (EV 1)
+set fmri(custom1) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_A_A_subpath.txt"
+
+# Gamma sigma (EV 1)
+set fmri(gammasigma1) 3
+
+# Gamma delay (EV 1)
+set fmri(gammadelay1) 6
+
+# Orthogonalise EV 1 wrt EV 0
+set fmri(ortho1.0) 0
+
+# Orthogonalise EV 1 wrt EV 1
+set fmri(ortho1.1) 0
+
+# Orthogonalise EV 1 wrt EV 2
+set fmri(ortho1.2) 0
+
+# Orthogonalise EV 1 wrt EV 3
+set fmri(ortho1.3) 0
+
+# Orthogonalise EV 1 wrt EV 4
+set fmri(ortho1.4) 0
+
+# Orthogonalise EV 1 wrt EV 5
+set fmri(ortho1.5) 0
+
+# Orthogonalise EV 1 wrt EV 6
+set fmri(ortho1.6) 0
+
+# Orthogonalise EV 1 wrt EV 7
+set fmri(ortho1.7) 0
+
+# Orthogonalise EV 1 wrt EV 8
+set fmri(ortho1.8) 0
+
+# Orthogonalise EV 1 wrt EV 9
+set fmri(ortho1.9) 0
+
+# Orthogonalise EV 1 wrt EV 10
+set fmri(ortho1.10) 0
+
+# Orthogonalise EV 1 wrt EV 11
+set fmri(ortho1.11) 0
+
+# Orthogonalise EV 1 wrt EV 12
+set fmri(ortho1.12) 0
+
+# Orthogonalise EV 1 wrt EV 13
+set fmri(ortho1.13) 0
+
+# Orthogonalise EV 1 wrt EV 14
+set fmri(ortho1.14) 0
+
+# Orthogonalise EV 1 wrt EV 15
+set fmri(ortho1.15) 0
+
+# Orthogonalise EV 1 wrt EV 16
+set fmri(ortho1.16) 0
+
+# Orthogonalise EV 1 wrt EV 17
+set fmri(ortho1.17) 0
+
+# Orthogonalise EV 1 wrt EV 18
+set fmri(ortho1.18) 0
+
+# Orthogonalise EV 1 wrt EV 19
+set fmri(ortho1.19) 0
+
+# Orthogonalise EV 1 wrt EV 20
+set fmri(ortho1.20) 0
+
+# Orthogonalise EV 1 wrt EV 21
+set fmri(ortho1.21) 0
+
+# Orthogonalise EV 1 wrt EV 22
+set fmri(ortho1.22) 0
+
+# Orthogonalise EV 1 wrt EV 23
+set fmri(ortho1.23) 0
+
+# Orthogonalise EV 1 wrt EV 24
+set fmri(ortho1.24) 0
+
+# Orthogonalise EV 1 wrt EV 25
+set fmri(ortho1.25) 0
+
+# Orthogonalise EV 1 wrt EV 26
+set fmri(ortho1.26) 0
+
+# Orthogonalise EV 1 wrt EV 27
+set fmri(ortho1.27) 0
+
+# Orthogonalise EV 1 wrt EV 28
+set fmri(ortho1.28) 0
+
+# Orthogonalise EV 1 wrt EV 29
+set fmri(ortho1.29) 0
+
+# Orthogonalise EV 1 wrt EV 30
+set fmri(ortho1.30) 0
+
+# Orthogonalise EV 1 wrt EV 31
+set fmri(ortho1.31) 0
+
+# Orthogonalise EV 1 wrt EV 32
+set fmri(ortho1.32) 0
+
+# Orthogonalise EV 1 wrt EV 33
+set fmri(ortho1.33) 0
+
+# Orthogonalise EV 1 wrt EV 34
+set fmri(ortho1.34) 0
+
+# Orthogonalise EV 1 wrt EV 35
+set fmri(ortho1.35) 0
+
+# Orthogonalise EV 1 wrt EV 36
+set fmri(ortho1.36) 0
+
+# Orthogonalise EV 1 wrt EV 37
+set fmri(ortho1.37) 0
+
+# Orthogonalise EV 1 wrt EV 38
+set fmri(ortho1.38) 0
+
+# Orthogonalise EV 1 wrt EV 39
+set fmri(ortho1.39) 0
+
+# Orthogonalise EV 1 wrt EV 40
+set fmri(ortho1.40) 0
+
+# EV 2 title
+set fmri(evtitle2) "A-A-rew"
+
+# Basic waveform shape (EV 2)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape2) 3
+
+# Convolution (EV 2)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve2) 2
+
+# Convolve phase (EV 2)
+set fmri(convolve_phase2) 0
+
+# Apply temporal filtering (EV 2)
+set fmri(tempfilt_yn2) 1
+
+# Add temporal derivative (EV 2)
+set fmri(deriv_yn2) 0
+
+# Custom EV file (EV 2)
+set fmri(custom2) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_A_A_reward.txt"
+
+# Gamma sigma (EV 2)
+set fmri(gammasigma2) 3
+
+# Gamma delay (EV 2)
+set fmri(gammadelay2) 6
+
+# Orthogonalise EV 2 wrt EV 0
+set fmri(ortho2.0) 0
+
+# Orthogonalise EV 2 wrt EV 1
+set fmri(ortho2.1) 0
+
+# Orthogonalise EV 2 wrt EV 2
+set fmri(ortho2.2) 0
+
+# Orthogonalise EV 2 wrt EV 3
+set fmri(ortho2.3) 0
+
+# Orthogonalise EV 2 wrt EV 4
+set fmri(ortho2.4) 0
+
+# Orthogonalise EV 2 wrt EV 5
+set fmri(ortho2.5) 0
+
+# Orthogonalise EV 2 wrt EV 6
+set fmri(ortho2.6) 0
+
+# Orthogonalise EV 2 wrt EV 7
+set fmri(ortho2.7) 0
+
+# Orthogonalise EV 2 wrt EV 8
+set fmri(ortho2.8) 0
+
+# Orthogonalise EV 2 wrt EV 9
+set fmri(ortho2.9) 0
+
+# Orthogonalise EV 2 wrt EV 10
+set fmri(ortho2.10) 0
+
+# Orthogonalise EV 2 wrt EV 11
+set fmri(ortho2.11) 0
+
+# Orthogonalise EV 2 wrt EV 12
+set fmri(ortho2.12) 0
+
+# Orthogonalise EV 2 wrt EV 13
+set fmri(ortho2.13) 0
+
+# Orthogonalise EV 2 wrt EV 14
+set fmri(ortho2.14) 0
+
+# Orthogonalise EV 2 wrt EV 15
+set fmri(ortho2.15) 0
+
+# Orthogonalise EV 2 wrt EV 16
+set fmri(ortho2.16) 0
+
+# Orthogonalise EV 2 wrt EV 17
+set fmri(ortho2.17) 0
+
+# Orthogonalise EV 2 wrt EV 18
+set fmri(ortho2.18) 0
+
+# Orthogonalise EV 2 wrt EV 19
+set fmri(ortho2.19) 0
+
+# Orthogonalise EV 2 wrt EV 20
+set fmri(ortho2.20) 0
+
+# Orthogonalise EV 2 wrt EV 21
+set fmri(ortho2.21) 0
+
+# Orthogonalise EV 2 wrt EV 22
+set fmri(ortho2.22) 0
+
+# Orthogonalise EV 2 wrt EV 23
+set fmri(ortho2.23) 0
+
+# Orthogonalise EV 2 wrt EV 24
+set fmri(ortho2.24) 0
+
+# Orthogonalise EV 2 wrt EV 25
+set fmri(ortho2.25) 0
+
+# Orthogonalise EV 2 wrt EV 26
+set fmri(ortho2.26) 0
+
+# Orthogonalise EV 2 wrt EV 27
+set fmri(ortho2.27) 0
+
+# Orthogonalise EV 2 wrt EV 28
+set fmri(ortho2.28) 0
+
+# Orthogonalise EV 2 wrt EV 29
+set fmri(ortho2.29) 0
+
+# Orthogonalise EV 2 wrt EV 30
+set fmri(ortho2.30) 0
+
+# Orthogonalise EV 2 wrt EV 31
+set fmri(ortho2.31) 0
+
+# Orthogonalise EV 2 wrt EV 32
+set fmri(ortho2.32) 0
+
+# Orthogonalise EV 2 wrt EV 33
+set fmri(ortho2.33) 0
+
+# Orthogonalise EV 2 wrt EV 34
+set fmri(ortho2.34) 0
+
+# Orthogonalise EV 2 wrt EV 35
+set fmri(ortho2.35) 0
+
+# Orthogonalise EV 2 wrt EV 36
+set fmri(ortho2.36) 0
+
+# Orthogonalise EV 2 wrt EV 37
+set fmri(ortho2.37) 0
+
+# Orthogonalise EV 2 wrt EV 38
+set fmri(ortho2.38) 0
+
+# Orthogonalise EV 2 wrt EV 39
+set fmri(ortho2.39) 0
+
+# Orthogonalise EV 2 wrt EV 40
+set fmri(ortho2.40) 0
+
+# EV 3 title
+set fmri(evtitle3) "A-B-path"
+
+# Basic waveform shape (EV 3)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape3) 3
+
+# Convolution (EV 3)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve3) 2
+
+# Convolve phase (EV 3)
+set fmri(convolve_phase3) 0
+
+# Apply temporal filtering (EV 3)
+set fmri(tempfilt_yn3) 1
+
+# Add temporal derivative (EV 3)
+set fmri(deriv_yn3) 1
+
+# Custom EV file (EV 3)
+set fmri(custom3) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_A_B_subpath.txt"
+
+# Gamma sigma (EV 3)
+set fmri(gammasigma3) 3
+
+# Gamma delay (EV 3)
+set fmri(gammadelay3) 6
+
+# Orthogonalise EV 3 wrt EV 0
+set fmri(ortho3.0) 0
+
+# Orthogonalise EV 3 wrt EV 1
+set fmri(ortho3.1) 0
+
+# Orthogonalise EV 3 wrt EV 2
+set fmri(ortho3.2) 0
+
+# Orthogonalise EV 3 wrt EV 3
+set fmri(ortho3.3) 0
+
+# Orthogonalise EV 3 wrt EV 4
+set fmri(ortho3.4) 0
+
+# Orthogonalise EV 3 wrt EV 5
+set fmri(ortho3.5) 0
+
+# Orthogonalise EV 3 wrt EV 6
+set fmri(ortho3.6) 0
+
+# Orthogonalise EV 3 wrt EV 7
+set fmri(ortho3.7) 0
+
+# Orthogonalise EV 3 wrt EV 8
+set fmri(ortho3.8) 0
+
+# Orthogonalise EV 3 wrt EV 9
+set fmri(ortho3.9) 0
+
+# Orthogonalise EV 3 wrt EV 10
+set fmri(ortho3.10) 0
+
+# Orthogonalise EV 3 wrt EV 11
+set fmri(ortho3.11) 0
+
+# Orthogonalise EV 3 wrt EV 12
+set fmri(ortho3.12) 0
+
+# Orthogonalise EV 3 wrt EV 13
+set fmri(ortho3.13) 0
+
+# Orthogonalise EV 3 wrt EV 14
+set fmri(ortho3.14) 0
+
+# Orthogonalise EV 3 wrt EV 15
+set fmri(ortho3.15) 0
+
+# Orthogonalise EV 3 wrt EV 16
+set fmri(ortho3.16) 0
+
+# Orthogonalise EV 3 wrt EV 17
+set fmri(ortho3.17) 0
+
+# Orthogonalise EV 3 wrt EV 18
+set fmri(ortho3.18) 0
+
+# Orthogonalise EV 3 wrt EV 19
+set fmri(ortho3.19) 0
+
+# Orthogonalise EV 3 wrt EV 20
+set fmri(ortho3.20) 0
+
+# Orthogonalise EV 3 wrt EV 21
+set fmri(ortho3.21) 0
+
+# Orthogonalise EV 3 wrt EV 22
+set fmri(ortho3.22) 0
+
+# Orthogonalise EV 3 wrt EV 23
+set fmri(ortho3.23) 0
+
+# Orthogonalise EV 3 wrt EV 24
+set fmri(ortho3.24) 0
+
+# Orthogonalise EV 3 wrt EV 25
+set fmri(ortho3.25) 0
+
+# Orthogonalise EV 3 wrt EV 26
+set fmri(ortho3.26) 0
+
+# Orthogonalise EV 3 wrt EV 27
+set fmri(ortho3.27) 0
+
+# Orthogonalise EV 3 wrt EV 28
+set fmri(ortho3.28) 0
+
+# Orthogonalise EV 3 wrt EV 29
+set fmri(ortho3.29) 0
+
+# Orthogonalise EV 3 wrt EV 30
+set fmri(ortho3.30) 0
+
+# Orthogonalise EV 3 wrt EV 31
+set fmri(ortho3.31) 0
+
+# Orthogonalise EV 3 wrt EV 32
+set fmri(ortho3.32) 0
+
+# Orthogonalise EV 3 wrt EV 33
+set fmri(ortho3.33) 0
+
+# Orthogonalise EV 3 wrt EV 34
+set fmri(ortho3.34) 0
+
+# Orthogonalise EV 3 wrt EV 35
+set fmri(ortho3.35) 0
+
+# Orthogonalise EV 3 wrt EV 36
+set fmri(ortho3.36) 0
+
+# Orthogonalise EV 3 wrt EV 37
+set fmri(ortho3.37) 0
+
+# Orthogonalise EV 3 wrt EV 38
+set fmri(ortho3.38) 0
+
+# Orthogonalise EV 3 wrt EV 39
+set fmri(ortho3.39) 0
+
+# Orthogonalise EV 3 wrt EV 40
+set fmri(ortho3.40) 0
+
+# EV 4 title
+set fmri(evtitle4) "A-B-rew"
+
+# Basic waveform shape (EV 4)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape4) 3
+
+# Convolution (EV 4)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve4) 2
+
+# Convolve phase (EV 4)
+set fmri(convolve_phase4) 0
+
+# Apply temporal filtering (EV 4)
+set fmri(tempfilt_yn4) 1
+
+# Add temporal derivative (EV 4)
+set fmri(deriv_yn4) 1
+
+# Custom EV file (EV 4)
+set fmri(custom4) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_A_B_reward.txt"
+
+# Gamma sigma (EV 4)
+set fmri(gammasigma4) 3
+
+# Gamma delay (EV 4)
+set fmri(gammadelay4) 6
+
+# Orthogonalise EV 4 wrt EV 0
+set fmri(ortho4.0) 0
+
+# Orthogonalise EV 4 wrt EV 1
+set fmri(ortho4.1) 0
+
+# Orthogonalise EV 4 wrt EV 2
+set fmri(ortho4.2) 0
+
+# Orthogonalise EV 4 wrt EV 3
+set fmri(ortho4.3) 0
+
+# Orthogonalise EV 4 wrt EV 4
+set fmri(ortho4.4) 0
+
+# Orthogonalise EV 4 wrt EV 5
+set fmri(ortho4.5) 0
+
+# Orthogonalise EV 4 wrt EV 6
+set fmri(ortho4.6) 0
+
+# Orthogonalise EV 4 wrt EV 7
+set fmri(ortho4.7) 0
+
+# Orthogonalise EV 4 wrt EV 8
+set fmri(ortho4.8) 0
+
+# Orthogonalise EV 4 wrt EV 9
+set fmri(ortho4.9) 0
+
+# Orthogonalise EV 4 wrt EV 10
+set fmri(ortho4.10) 0
+
+# Orthogonalise EV 4 wrt EV 11
+set fmri(ortho4.11) 0
+
+# Orthogonalise EV 4 wrt EV 12
+set fmri(ortho4.12) 0
+
+# Orthogonalise EV 4 wrt EV 13
+set fmri(ortho4.13) 0
+
+# Orthogonalise EV 4 wrt EV 14
+set fmri(ortho4.14) 0
+
+# Orthogonalise EV 4 wrt EV 15
+set fmri(ortho4.15) 0
+
+# Orthogonalise EV 4 wrt EV 16
+set fmri(ortho4.16) 0
+
+# Orthogonalise EV 4 wrt EV 17
+set fmri(ortho4.17) 0
+
+# Orthogonalise EV 4 wrt EV 18
+set fmri(ortho4.18) 0
+
+# Orthogonalise EV 4 wrt EV 19
+set fmri(ortho4.19) 0
+
+# Orthogonalise EV 4 wrt EV 20
+set fmri(ortho4.20) 0
+
+# Orthogonalise EV 4 wrt EV 21
+set fmri(ortho4.21) 0
+
+# Orthogonalise EV 4 wrt EV 22
+set fmri(ortho4.22) 0
+
+# Orthogonalise EV 4 wrt EV 23
+set fmri(ortho4.23) 0
+
+# Orthogonalise EV 4 wrt EV 24
+set fmri(ortho4.24) 0
+
+# Orthogonalise EV 4 wrt EV 25
+set fmri(ortho4.25) 0
+
+# Orthogonalise EV 4 wrt EV 26
+set fmri(ortho4.26) 0
+
+# Orthogonalise EV 4 wrt EV 27
+set fmri(ortho4.27) 0
+
+# Orthogonalise EV 4 wrt EV 28
+set fmri(ortho4.28) 0
+
+# Orthogonalise EV 4 wrt EV 29
+set fmri(ortho4.29) 0
+
+# Orthogonalise EV 4 wrt EV 30
+set fmri(ortho4.30) 0
+
+# Orthogonalise EV 4 wrt EV 31
+set fmri(ortho4.31) 0
+
+# Orthogonalise EV 4 wrt EV 32
+set fmri(ortho4.32) 0
+
+# Orthogonalise EV 4 wrt EV 33
+set fmri(ortho4.33) 0
+
+# Orthogonalise EV 4 wrt EV 34
+set fmri(ortho4.34) 0
+
+# Orthogonalise EV 4 wrt EV 35
+set fmri(ortho4.35) 0
+
+# Orthogonalise EV 4 wrt EV 36
+set fmri(ortho4.36) 0
+
+# Orthogonalise EV 4 wrt EV 37
+set fmri(ortho4.37) 0
+
+# Orthogonalise EV 4 wrt EV 38
+set fmri(ortho4.38) 0
+
+# Orthogonalise EV 4 wrt EV 39
+set fmri(ortho4.39) 0
+
+# Orthogonalise EV 4 wrt EV 40
+set fmri(ortho4.40) 0
+
+# EV 5 title
+set fmri(evtitle5) "A-C-path"
+
+# Basic waveform shape (EV 5)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape5) 3
+
+# Convolution (EV 5)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve5) 2
+
+# Convolve phase (EV 5)
+set fmri(convolve_phase5) 0
+
+# Apply temporal filtering (EV 5)
+set fmri(tempfilt_yn5) 1
+
+# Add temporal derivative (EV 5)
+set fmri(deriv_yn5) 1
+
+# Custom EV file (EV 5)
+set fmri(custom5) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_A_C_subpath.txt"
+
+# Gamma sigma (EV 5)
+set fmri(gammasigma5) 3
+
+# Gamma delay (EV 5)
+set fmri(gammadelay5) 6
+
+# Orthogonalise EV 5 wrt EV 0
+set fmri(ortho5.0) 0
+
+# Orthogonalise EV 5 wrt EV 1
+set fmri(ortho5.1) 0
+
+# Orthogonalise EV 5 wrt EV 2
+set fmri(ortho5.2) 0
+
+# Orthogonalise EV 5 wrt EV 3
+set fmri(ortho5.3) 0
+
+# Orthogonalise EV 5 wrt EV 4
+set fmri(ortho5.4) 0
+
+# Orthogonalise EV 5 wrt EV 5
+set fmri(ortho5.5) 0
+
+# Orthogonalise EV 5 wrt EV 6
+set fmri(ortho5.6) 0
+
+# Orthogonalise EV 5 wrt EV 7
+set fmri(ortho5.7) 0
+
+# Orthogonalise EV 5 wrt EV 8
+set fmri(ortho5.8) 0
+
+# Orthogonalise EV 5 wrt EV 9
+set fmri(ortho5.9) 0
+
+# Orthogonalise EV 5 wrt EV 10
+set fmri(ortho5.10) 0
+
+# Orthogonalise EV 5 wrt EV 11
+set fmri(ortho5.11) 0
+
+# Orthogonalise EV 5 wrt EV 12
+set fmri(ortho5.12) 0
+
+# Orthogonalise EV 5 wrt EV 13
+set fmri(ortho5.13) 0
+
+# Orthogonalise EV 5 wrt EV 14
+set fmri(ortho5.14) 0
+
+# Orthogonalise EV 5 wrt EV 15
+set fmri(ortho5.15) 0
+
+# Orthogonalise EV 5 wrt EV 16
+set fmri(ortho5.16) 0
+
+# Orthogonalise EV 5 wrt EV 17
+set fmri(ortho5.17) 0
+
+# Orthogonalise EV 5 wrt EV 18
+set fmri(ortho5.18) 0
+
+# Orthogonalise EV 5 wrt EV 19
+set fmri(ortho5.19) 0
+
+# Orthogonalise EV 5 wrt EV 20
+set fmri(ortho5.20) 0
+
+# Orthogonalise EV 5 wrt EV 21
+set fmri(ortho5.21) 0
+
+# Orthogonalise EV 5 wrt EV 22
+set fmri(ortho5.22) 0
+
+# Orthogonalise EV 5 wrt EV 23
+set fmri(ortho5.23) 0
+
+# Orthogonalise EV 5 wrt EV 24
+set fmri(ortho5.24) 0
+
+# Orthogonalise EV 5 wrt EV 25
+set fmri(ortho5.25) 0
+
+# Orthogonalise EV 5 wrt EV 26
+set fmri(ortho5.26) 0
+
+# Orthogonalise EV 5 wrt EV 27
+set fmri(ortho5.27) 0
+
+# Orthogonalise EV 5 wrt EV 28
+set fmri(ortho5.28) 0
+
+# Orthogonalise EV 5 wrt EV 29
+set fmri(ortho5.29) 0
+
+# Orthogonalise EV 5 wrt EV 30
+set fmri(ortho5.30) 0
+
+# Orthogonalise EV 5 wrt EV 31
+set fmri(ortho5.31) 0
+
+# Orthogonalise EV 5 wrt EV 32
+set fmri(ortho5.32) 0
+
+# Orthogonalise EV 5 wrt EV 33
+set fmri(ortho5.33) 0
+
+# Orthogonalise EV 5 wrt EV 34
+set fmri(ortho5.34) 0
+
+# Orthogonalise EV 5 wrt EV 35
+set fmri(ortho5.35) 0
+
+# Orthogonalise EV 5 wrt EV 36
+set fmri(ortho5.36) 0
+
+# Orthogonalise EV 5 wrt EV 37
+set fmri(ortho5.37) 0
+
+# Orthogonalise EV 5 wrt EV 38
+set fmri(ortho5.38) 0
+
+# Orthogonalise EV 5 wrt EV 39
+set fmri(ortho5.39) 0
+
+# Orthogonalise EV 5 wrt EV 40
+set fmri(ortho5.40) 0
+
+# EV 6 title
+set fmri(evtitle6) "A-C-rew"
+
+# Basic waveform shape (EV 6)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape6) 3
+
+# Convolution (EV 6)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve6) 2
+
+# Convolve phase (EV 6)
+set fmri(convolve_phase6) 0
+
+# Apply temporal filtering (EV 6)
+set fmri(tempfilt_yn6) 1
+
+# Add temporal derivative (EV 6)
+set fmri(deriv_yn6) 1
+
+# Custom EV file (EV 6)
+set fmri(custom6) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_A_C_reward.txt"
+
+# Gamma sigma (EV 6)
+set fmri(gammasigma6) 3
+
+# Gamma delay (EV 6)
+set fmri(gammadelay6) 6
+
+# Orthogonalise EV 6 wrt EV 0
+set fmri(ortho6.0) 0
+
+# Orthogonalise EV 6 wrt EV 1
+set fmri(ortho6.1) 0
+
+# Orthogonalise EV 6 wrt EV 2
+set fmri(ortho6.2) 0
+
+# Orthogonalise EV 6 wrt EV 3
+set fmri(ortho6.3) 0
+
+# Orthogonalise EV 6 wrt EV 4
+set fmri(ortho6.4) 0
+
+# Orthogonalise EV 6 wrt EV 5
+set fmri(ortho6.5) 0
+
+# Orthogonalise EV 6 wrt EV 6
+set fmri(ortho6.6) 0
+
+# Orthogonalise EV 6 wrt EV 7
+set fmri(ortho6.7) 0
+
+# Orthogonalise EV 6 wrt EV 8
+set fmri(ortho6.8) 0
+
+# Orthogonalise EV 6 wrt EV 9
+set fmri(ortho6.9) 0
+
+# Orthogonalise EV 6 wrt EV 10
+set fmri(ortho6.10) 0
+
+# Orthogonalise EV 6 wrt EV 11
+set fmri(ortho6.11) 0
+
+# Orthogonalise EV 6 wrt EV 12
+set fmri(ortho6.12) 0
+
+# Orthogonalise EV 6 wrt EV 13
+set fmri(ortho6.13) 0
+
+# Orthogonalise EV 6 wrt EV 14
+set fmri(ortho6.14) 0
+
+# Orthogonalise EV 6 wrt EV 15
+set fmri(ortho6.15) 0
+
+# Orthogonalise EV 6 wrt EV 16
+set fmri(ortho6.16) 0
+
+# Orthogonalise EV 6 wrt EV 17
+set fmri(ortho6.17) 0
+
+# Orthogonalise EV 6 wrt EV 18
+set fmri(ortho6.18) 0
+
+# Orthogonalise EV 6 wrt EV 19
+set fmri(ortho6.19) 0
+
+# Orthogonalise EV 6 wrt EV 20
+set fmri(ortho6.20) 0
+
+# Orthogonalise EV 6 wrt EV 21
+set fmri(ortho6.21) 0
+
+# Orthogonalise EV 6 wrt EV 22
+set fmri(ortho6.22) 0
+
+# Orthogonalise EV 6 wrt EV 23
+set fmri(ortho6.23) 0
+
+# Orthogonalise EV 6 wrt EV 24
+set fmri(ortho6.24) 0
+
+# Orthogonalise EV 6 wrt EV 25
+set fmri(ortho6.25) 0
+
+# Orthogonalise EV 6 wrt EV 26
+set fmri(ortho6.26) 0
+
+# Orthogonalise EV 6 wrt EV 27
+set fmri(ortho6.27) 0
+
+# Orthogonalise EV 6 wrt EV 28
+set fmri(ortho6.28) 0
+
+# Orthogonalise EV 6 wrt EV 29
+set fmri(ortho6.29) 0
+
+# Orthogonalise EV 6 wrt EV 30
+set fmri(ortho6.30) 0
+
+# Orthogonalise EV 6 wrt EV 31
+set fmri(ortho6.31) 0
+
+# Orthogonalise EV 6 wrt EV 32
+set fmri(ortho6.32) 0
+
+# Orthogonalise EV 6 wrt EV 33
+set fmri(ortho6.33) 0
+
+# Orthogonalise EV 6 wrt EV 34
+set fmri(ortho6.34) 0
+
+# Orthogonalise EV 6 wrt EV 35
+set fmri(ortho6.35) 0
+
+# Orthogonalise EV 6 wrt EV 36
+set fmri(ortho6.36) 0
+
+# Orthogonalise EV 6 wrt EV 37
+set fmri(ortho6.37) 0
+
+# Orthogonalise EV 6 wrt EV 38
+set fmri(ortho6.38) 0
+
+# Orthogonalise EV 6 wrt EV 39
+set fmri(ortho6.39) 0
+
+# Orthogonalise EV 6 wrt EV 40
+set fmri(ortho6.40) 0
+
+# EV 7 title
+set fmri(evtitle7) "A-D-path"
+
+# Basic waveform shape (EV 7)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape7) 3
+
+# Convolution (EV 7)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve7) 2
+
+# Convolve phase (EV 7)
+set fmri(convolve_phase7) 0
+
+# Apply temporal filtering (EV 7)
+set fmri(tempfilt_yn7) 1
+
+# Add temporal derivative (EV 7)
+set fmri(deriv_yn7) 1
+
+# Custom EV file (EV 7)
+set fmri(custom7) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_A_D_subpath.txt"
+
+# Gamma sigma (EV 7)
+set fmri(gammasigma7) 3
+
+# Gamma delay (EV 7)
+set fmri(gammadelay7) 6
+
+# Orthogonalise EV 7 wrt EV 0
+set fmri(ortho7.0) 0
+
+# Orthogonalise EV 7 wrt EV 1
+set fmri(ortho7.1) 0
+
+# Orthogonalise EV 7 wrt EV 2
+set fmri(ortho7.2) 0
+
+# Orthogonalise EV 7 wrt EV 3
+set fmri(ortho7.3) 0
+
+# Orthogonalise EV 7 wrt EV 4
+set fmri(ortho7.4) 0
+
+# Orthogonalise EV 7 wrt EV 5
+set fmri(ortho7.5) 0
+
+# Orthogonalise EV 7 wrt EV 6
+set fmri(ortho7.6) 0
+
+# Orthogonalise EV 7 wrt EV 7
+set fmri(ortho7.7) 0
+
+# Orthogonalise EV 7 wrt EV 8
+set fmri(ortho7.8) 0
+
+# Orthogonalise EV 7 wrt EV 9
+set fmri(ortho7.9) 0
+
+# Orthogonalise EV 7 wrt EV 10
+set fmri(ortho7.10) 0
+
+# Orthogonalise EV 7 wrt EV 11
+set fmri(ortho7.11) 0
+
+# Orthogonalise EV 7 wrt EV 12
+set fmri(ortho7.12) 0
+
+# Orthogonalise EV 7 wrt EV 13
+set fmri(ortho7.13) 0
+
+# Orthogonalise EV 7 wrt EV 14
+set fmri(ortho7.14) 0
+
+# Orthogonalise EV 7 wrt EV 15
+set fmri(ortho7.15) 0
+
+# Orthogonalise EV 7 wrt EV 16
+set fmri(ortho7.16) 0
+
+# Orthogonalise EV 7 wrt EV 17
+set fmri(ortho7.17) 0
+
+# Orthogonalise EV 7 wrt EV 18
+set fmri(ortho7.18) 0
+
+# Orthogonalise EV 7 wrt EV 19
+set fmri(ortho7.19) 0
+
+# Orthogonalise EV 7 wrt EV 20
+set fmri(ortho7.20) 0
+
+# Orthogonalise EV 7 wrt EV 21
+set fmri(ortho7.21) 0
+
+# Orthogonalise EV 7 wrt EV 22
+set fmri(ortho7.22) 0
+
+# Orthogonalise EV 7 wrt EV 23
+set fmri(ortho7.23) 0
+
+# Orthogonalise EV 7 wrt EV 24
+set fmri(ortho7.24) 0
+
+# Orthogonalise EV 7 wrt EV 25
+set fmri(ortho7.25) 0
+
+# Orthogonalise EV 7 wrt EV 26
+set fmri(ortho7.26) 0
+
+# Orthogonalise EV 7 wrt EV 27
+set fmri(ortho7.27) 0
+
+# Orthogonalise EV 7 wrt EV 28
+set fmri(ortho7.28) 0
+
+# Orthogonalise EV 7 wrt EV 29
+set fmri(ortho7.29) 0
+
+# Orthogonalise EV 7 wrt EV 30
+set fmri(ortho7.30) 0
+
+# Orthogonalise EV 7 wrt EV 31
+set fmri(ortho7.31) 0
+
+# Orthogonalise EV 7 wrt EV 32
+set fmri(ortho7.32) 0
+
+# Orthogonalise EV 7 wrt EV 33
+set fmri(ortho7.33) 0
+
+# Orthogonalise EV 7 wrt EV 34
+set fmri(ortho7.34) 0
+
+# Orthogonalise EV 7 wrt EV 35
+set fmri(ortho7.35) 0
+
+# Orthogonalise EV 7 wrt EV 36
+set fmri(ortho7.36) 0
+
+# Orthogonalise EV 7 wrt EV 37
+set fmri(ortho7.37) 0
+
+# Orthogonalise EV 7 wrt EV 38
+set fmri(ortho7.38) 0
+
+# Orthogonalise EV 7 wrt EV 39
+set fmri(ortho7.39) 0
+
+# Orthogonalise EV 7 wrt EV 40
+set fmri(ortho7.40) 0
+
+# EV 8 title
+set fmri(evtitle8) "A-D-rew"
+
+# Basic waveform shape (EV 8)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape8) 3
+
+# Convolution (EV 8)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve8) 2
+
+# Convolve phase (EV 8)
+set fmri(convolve_phase8) 0
+
+# Apply temporal filtering (EV 8)
+set fmri(tempfilt_yn8) 1
+
+# Add temporal derivative (EV 8)
+set fmri(deriv_yn8) 1
+
+# Custom EV file (EV 8)
+set fmri(custom8) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_A_D_reward.txt"
+
+# Gamma sigma (EV 8)
+set fmri(gammasigma8) 3
+
+# Gamma delay (EV 8)
+set fmri(gammadelay8) 6
+
+# Orthogonalise EV 8 wrt EV 0
+set fmri(ortho8.0) 0
+
+# Orthogonalise EV 8 wrt EV 1
+set fmri(ortho8.1) 0
+
+# Orthogonalise EV 8 wrt EV 2
+set fmri(ortho8.2) 0
+
+# Orthogonalise EV 8 wrt EV 3
+set fmri(ortho8.3) 0
+
+# Orthogonalise EV 8 wrt EV 4
+set fmri(ortho8.4) 0
+
+# Orthogonalise EV 8 wrt EV 5
+set fmri(ortho8.5) 0
+
+# Orthogonalise EV 8 wrt EV 6
+set fmri(ortho8.6) 0
+
+# Orthogonalise EV 8 wrt EV 7
+set fmri(ortho8.7) 0
+
+# Orthogonalise EV 8 wrt EV 8
+set fmri(ortho8.8) 0
+
+# Orthogonalise EV 8 wrt EV 9
+set fmri(ortho8.9) 0
+
+# Orthogonalise EV 8 wrt EV 10
+set fmri(ortho8.10) 0
+
+# Orthogonalise EV 8 wrt EV 11
+set fmri(ortho8.11) 0
+
+# Orthogonalise EV 8 wrt EV 12
+set fmri(ortho8.12) 0
+
+# Orthogonalise EV 8 wrt EV 13
+set fmri(ortho8.13) 0
+
+# Orthogonalise EV 8 wrt EV 14
+set fmri(ortho8.14) 0
+
+# Orthogonalise EV 8 wrt EV 15
+set fmri(ortho8.15) 0
+
+# Orthogonalise EV 8 wrt EV 16
+set fmri(ortho8.16) 0
+
+# Orthogonalise EV 8 wrt EV 17
+set fmri(ortho8.17) 0
+
+# Orthogonalise EV 8 wrt EV 18
+set fmri(ortho8.18) 0
+
+# Orthogonalise EV 8 wrt EV 19
+set fmri(ortho8.19) 0
+
+# Orthogonalise EV 8 wrt EV 20
+set fmri(ortho8.20) 0
+
+# Orthogonalise EV 8 wrt EV 21
+set fmri(ortho8.21) 0
+
+# Orthogonalise EV 8 wrt EV 22
+set fmri(ortho8.22) 0
+
+# Orthogonalise EV 8 wrt EV 23
+set fmri(ortho8.23) 0
+
+# Orthogonalise EV 8 wrt EV 24
+set fmri(ortho8.24) 0
+
+# Orthogonalise EV 8 wrt EV 25
+set fmri(ortho8.25) 0
+
+# Orthogonalise EV 8 wrt EV 26
+set fmri(ortho8.26) 0
+
+# Orthogonalise EV 8 wrt EV 27
+set fmri(ortho8.27) 0
+
+# Orthogonalise EV 8 wrt EV 28
+set fmri(ortho8.28) 0
+
+# Orthogonalise EV 8 wrt EV 29
+set fmri(ortho8.29) 0
+
+# Orthogonalise EV 8 wrt EV 30
+set fmri(ortho8.30) 0
+
+# Orthogonalise EV 8 wrt EV 31
+set fmri(ortho8.31) 0
+
+# Orthogonalise EV 8 wrt EV 32
+set fmri(ortho8.32) 0
+
+# Orthogonalise EV 8 wrt EV 33
+set fmri(ortho8.33) 0
+
+# Orthogonalise EV 8 wrt EV 34
+set fmri(ortho8.34) 0
+
+# Orthogonalise EV 8 wrt EV 35
+set fmri(ortho8.35) 0
+
+# Orthogonalise EV 8 wrt EV 36
+set fmri(ortho8.36) 0
+
+# Orthogonalise EV 8 wrt EV 37
+set fmri(ortho8.37) 0
+
+# Orthogonalise EV 8 wrt EV 38
+set fmri(ortho8.38) 0
+
+# Orthogonalise EV 8 wrt EV 39
+set fmri(ortho8.39) 0
+
+# Orthogonalise EV 8 wrt EV 40
+set fmri(ortho8.40) 0
+
+# EV 9 title
+set fmri(evtitle9) "B-A-path"
+
+# Basic waveform shape (EV 9)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape9) 3
+
+# Convolution (EV 9)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve9) 2
+
+# Convolve phase (EV 9)
+set fmri(convolve_phase9) 0
+
+# Apply temporal filtering (EV 9)
+set fmri(tempfilt_yn9) 1
+
+# Add temporal derivative (EV 9)
+set fmri(deriv_yn9) 1
+
+# Custom EV file (EV 9)
+set fmri(custom9) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_B_A_subpath.txt"
+
+# Gamma sigma (EV 9)
+set fmri(gammasigma9) 3
+
+# Gamma delay (EV 9)
+set fmri(gammadelay9) 6
+
+# Orthogonalise EV 9 wrt EV 0
+set fmri(ortho9.0) 0
+
+# Orthogonalise EV 9 wrt EV 1
+set fmri(ortho9.1) 0
+
+# Orthogonalise EV 9 wrt EV 2
+set fmri(ortho9.2) 0
+
+# Orthogonalise EV 9 wrt EV 3
+set fmri(ortho9.3) 0
+
+# Orthogonalise EV 9 wrt EV 4
+set fmri(ortho9.4) 0
+
+# Orthogonalise EV 9 wrt EV 5
+set fmri(ortho9.5) 0
+
+# Orthogonalise EV 9 wrt EV 6
+set fmri(ortho9.6) 0
+
+# Orthogonalise EV 9 wrt EV 7
+set fmri(ortho9.7) 0
+
+# Orthogonalise EV 9 wrt EV 8
+set fmri(ortho9.8) 0
+
+# Orthogonalise EV 9 wrt EV 9
+set fmri(ortho9.9) 0
+
+# Orthogonalise EV 9 wrt EV 10
+set fmri(ortho9.10) 0
+
+# Orthogonalise EV 9 wrt EV 11
+set fmri(ortho9.11) 0
+
+# Orthogonalise EV 9 wrt EV 12
+set fmri(ortho9.12) 0
+
+# Orthogonalise EV 9 wrt EV 13
+set fmri(ortho9.13) 0
+
+# Orthogonalise EV 9 wrt EV 14
+set fmri(ortho9.14) 0
+
+# Orthogonalise EV 9 wrt EV 15
+set fmri(ortho9.15) 0
+
+# Orthogonalise EV 9 wrt EV 16
+set fmri(ortho9.16) 0
+
+# Orthogonalise EV 9 wrt EV 17
+set fmri(ortho9.17) 0
+
+# Orthogonalise EV 9 wrt EV 18
+set fmri(ortho9.18) 0
+
+# Orthogonalise EV 9 wrt EV 19
+set fmri(ortho9.19) 0
+
+# Orthogonalise EV 9 wrt EV 20
+set fmri(ortho9.20) 0
+
+# Orthogonalise EV 9 wrt EV 21
+set fmri(ortho9.21) 0
+
+# Orthogonalise EV 9 wrt EV 22
+set fmri(ortho9.22) 0
+
+# Orthogonalise EV 9 wrt EV 23
+set fmri(ortho9.23) 0
+
+# Orthogonalise EV 9 wrt EV 24
+set fmri(ortho9.24) 0
+
+# Orthogonalise EV 9 wrt EV 25
+set fmri(ortho9.25) 0
+
+# Orthogonalise EV 9 wrt EV 26
+set fmri(ortho9.26) 0
+
+# Orthogonalise EV 9 wrt EV 27
+set fmri(ortho9.27) 0
+
+# Orthogonalise EV 9 wrt EV 28
+set fmri(ortho9.28) 0
+
+# Orthogonalise EV 9 wrt EV 29
+set fmri(ortho9.29) 0
+
+# Orthogonalise EV 9 wrt EV 30
+set fmri(ortho9.30) 0
+
+# Orthogonalise EV 9 wrt EV 31
+set fmri(ortho9.31) 0
+
+# Orthogonalise EV 9 wrt EV 32
+set fmri(ortho9.32) 0
+
+# Orthogonalise EV 9 wrt EV 33
+set fmri(ortho9.33) 0
+
+# Orthogonalise EV 9 wrt EV 34
+set fmri(ortho9.34) 0
+
+# Orthogonalise EV 9 wrt EV 35
+set fmri(ortho9.35) 0
+
+# Orthogonalise EV 9 wrt EV 36
+set fmri(ortho9.36) 0
+
+# Orthogonalise EV 9 wrt EV 37
+set fmri(ortho9.37) 0
+
+# Orthogonalise EV 9 wrt EV 38
+set fmri(ortho9.38) 0
+
+# Orthogonalise EV 9 wrt EV 39
+set fmri(ortho9.39) 0
+
+# Orthogonalise EV 9 wrt EV 40
+set fmri(ortho9.40) 0
+
+# EV 10 title
+set fmri(evtitle10) "B-A-rew"
+
+# Basic waveform shape (EV 10)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape10) 3
+
+# Convolution (EV 10)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve10) 2
+
+# Convolve phase (EV 10)
+set fmri(convolve_phase10) 0
+
+# Apply temporal filtering (EV 10)
+set fmri(tempfilt_yn10) 1
+
+# Add temporal derivative (EV 10)
+set fmri(deriv_yn10) 1
+
+# Custom EV file (EV 10)
+set fmri(custom10) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_B_A_reward.txt"
+
+# Gamma sigma (EV 10)
+set fmri(gammasigma10) 3
+
+# Gamma delay (EV 10)
+set fmri(gammadelay10) 6
+
+# Orthogonalise EV 10 wrt EV 0
+set fmri(ortho10.0) 0
+
+# Orthogonalise EV 10 wrt EV 1
+set fmri(ortho10.1) 0
+
+# Orthogonalise EV 10 wrt EV 2
+set fmri(ortho10.2) 0
+
+# Orthogonalise EV 10 wrt EV 3
+set fmri(ortho10.3) 0
+
+# Orthogonalise EV 10 wrt EV 4
+set fmri(ortho10.4) 0
+
+# Orthogonalise EV 10 wrt EV 5
+set fmri(ortho10.5) 0
+
+# Orthogonalise EV 10 wrt EV 6
+set fmri(ortho10.6) 0
+
+# Orthogonalise EV 10 wrt EV 7
+set fmri(ortho10.7) 0
+
+# Orthogonalise EV 10 wrt EV 8
+set fmri(ortho10.8) 0
+
+# Orthogonalise EV 10 wrt EV 9
+set fmri(ortho10.9) 0
+
+# Orthogonalise EV 10 wrt EV 10
+set fmri(ortho10.10) 0
+
+# Orthogonalise EV 10 wrt EV 11
+set fmri(ortho10.11) 0
+
+# Orthogonalise EV 10 wrt EV 12
+set fmri(ortho10.12) 0
+
+# Orthogonalise EV 10 wrt EV 13
+set fmri(ortho10.13) 0
+
+# Orthogonalise EV 10 wrt EV 14
+set fmri(ortho10.14) 0
+
+# Orthogonalise EV 10 wrt EV 15
+set fmri(ortho10.15) 0
+
+# Orthogonalise EV 10 wrt EV 16
+set fmri(ortho10.16) 0
+
+# Orthogonalise EV 10 wrt EV 17
+set fmri(ortho10.17) 0
+
+# Orthogonalise EV 10 wrt EV 18
+set fmri(ortho10.18) 0
+
+# Orthogonalise EV 10 wrt EV 19
+set fmri(ortho10.19) 0
+
+# Orthogonalise EV 10 wrt EV 20
+set fmri(ortho10.20) 0
+
+# Orthogonalise EV 10 wrt EV 21
+set fmri(ortho10.21) 0
+
+# Orthogonalise EV 10 wrt EV 22
+set fmri(ortho10.22) 0
+
+# Orthogonalise EV 10 wrt EV 23
+set fmri(ortho10.23) 0
+
+# Orthogonalise EV 10 wrt EV 24
+set fmri(ortho10.24) 0
+
+# Orthogonalise EV 10 wrt EV 25
+set fmri(ortho10.25) 0
+
+# Orthogonalise EV 10 wrt EV 26
+set fmri(ortho10.26) 0
+
+# Orthogonalise EV 10 wrt EV 27
+set fmri(ortho10.27) 0
+
+# Orthogonalise EV 10 wrt EV 28
+set fmri(ortho10.28) 0
+
+# Orthogonalise EV 10 wrt EV 29
+set fmri(ortho10.29) 0
+
+# Orthogonalise EV 10 wrt EV 30
+set fmri(ortho10.30) 0
+
+# Orthogonalise EV 10 wrt EV 31
+set fmri(ortho10.31) 0
+
+# Orthogonalise EV 10 wrt EV 32
+set fmri(ortho10.32) 0
+
+# Orthogonalise EV 10 wrt EV 33
+set fmri(ortho10.33) 0
+
+# Orthogonalise EV 10 wrt EV 34
+set fmri(ortho10.34) 0
+
+# Orthogonalise EV 10 wrt EV 35
+set fmri(ortho10.35) 0
+
+# Orthogonalise EV 10 wrt EV 36
+set fmri(ortho10.36) 0
+
+# Orthogonalise EV 10 wrt EV 37
+set fmri(ortho10.37) 0
+
+# Orthogonalise EV 10 wrt EV 38
+set fmri(ortho10.38) 0
+
+# Orthogonalise EV 10 wrt EV 39
+set fmri(ortho10.39) 0
+
+# Orthogonalise EV 10 wrt EV 40
+set fmri(ortho10.40) 0
+
+# EV 11 title
+set fmri(evtitle11) "B-B-path"
+
+# Basic waveform shape (EV 11)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape11) 3
+
+# Convolution (EV 11)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve11) 2
+
+# Convolve phase (EV 11)
+set fmri(convolve_phase11) 0
+
+# Apply temporal filtering (EV 11)
+set fmri(tempfilt_yn11) 1
+
+# Add temporal derivative (EV 11)
+set fmri(deriv_yn11) 1
+
+# Custom EV file (EV 11)
+set fmri(custom11) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_B_B_subpath.txt"
+
+# Gamma sigma (EV 11)
+set fmri(gammasigma11) 3
+
+# Gamma delay (EV 11)
+set fmri(gammadelay11) 6
+
+# Orthogonalise EV 11 wrt EV 0
+set fmri(ortho11.0) 0
+
+# Orthogonalise EV 11 wrt EV 1
+set fmri(ortho11.1) 0
+
+# Orthogonalise EV 11 wrt EV 2
+set fmri(ortho11.2) 0
+
+# Orthogonalise EV 11 wrt EV 3
+set fmri(ortho11.3) 0
+
+# Orthogonalise EV 11 wrt EV 4
+set fmri(ortho11.4) 0
+
+# Orthogonalise EV 11 wrt EV 5
+set fmri(ortho11.5) 0
+
+# Orthogonalise EV 11 wrt EV 6
+set fmri(ortho11.6) 0
+
+# Orthogonalise EV 11 wrt EV 7
+set fmri(ortho11.7) 0
+
+# Orthogonalise EV 11 wrt EV 8
+set fmri(ortho11.8) 0
+
+# Orthogonalise EV 11 wrt EV 9
+set fmri(ortho11.9) 0
+
+# Orthogonalise EV 11 wrt EV 10
+set fmri(ortho11.10) 0
+
+# Orthogonalise EV 11 wrt EV 11
+set fmri(ortho11.11) 0
+
+# Orthogonalise EV 11 wrt EV 12
+set fmri(ortho11.12) 0
+
+# Orthogonalise EV 11 wrt EV 13
+set fmri(ortho11.13) 0
+
+# Orthogonalise EV 11 wrt EV 14
+set fmri(ortho11.14) 0
+
+# Orthogonalise EV 11 wrt EV 15
+set fmri(ortho11.15) 0
+
+# Orthogonalise EV 11 wrt EV 16
+set fmri(ortho11.16) 0
+
+# Orthogonalise EV 11 wrt EV 17
+set fmri(ortho11.17) 0
+
+# Orthogonalise EV 11 wrt EV 18
+set fmri(ortho11.18) 0
+
+# Orthogonalise EV 11 wrt EV 19
+set fmri(ortho11.19) 0
+
+# Orthogonalise EV 11 wrt EV 20
+set fmri(ortho11.20) 0
+
+# Orthogonalise EV 11 wrt EV 21
+set fmri(ortho11.21) 0
+
+# Orthogonalise EV 11 wrt EV 22
+set fmri(ortho11.22) 0
+
+# Orthogonalise EV 11 wrt EV 23
+set fmri(ortho11.23) 0
+
+# Orthogonalise EV 11 wrt EV 24
+set fmri(ortho11.24) 0
+
+# Orthogonalise EV 11 wrt EV 25
+set fmri(ortho11.25) 0
+
+# Orthogonalise EV 11 wrt EV 26
+set fmri(ortho11.26) 0
+
+# Orthogonalise EV 11 wrt EV 27
+set fmri(ortho11.27) 0
+
+# Orthogonalise EV 11 wrt EV 28
+set fmri(ortho11.28) 0
+
+# Orthogonalise EV 11 wrt EV 29
+set fmri(ortho11.29) 0
+
+# Orthogonalise EV 11 wrt EV 30
+set fmri(ortho11.30) 0
+
+# Orthogonalise EV 11 wrt EV 31
+set fmri(ortho11.31) 0
+
+# Orthogonalise EV 11 wrt EV 32
+set fmri(ortho11.32) 0
+
+# Orthogonalise EV 11 wrt EV 33
+set fmri(ortho11.33) 0
+
+# Orthogonalise EV 11 wrt EV 34
+set fmri(ortho11.34) 0
+
+# Orthogonalise EV 11 wrt EV 35
+set fmri(ortho11.35) 0
+
+# Orthogonalise EV 11 wrt EV 36
+set fmri(ortho11.36) 0
+
+# Orthogonalise EV 11 wrt EV 37
+set fmri(ortho11.37) 0
+
+# Orthogonalise EV 11 wrt EV 38
+set fmri(ortho11.38) 0
+
+# Orthogonalise EV 11 wrt EV 39
+set fmri(ortho11.39) 0
+
+# Orthogonalise EV 11 wrt EV 40
+set fmri(ortho11.40) 0
+
+# EV 12 title
+set fmri(evtitle12) "B-B-rew"
+
+# Basic waveform shape (EV 12)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape12) 3
+
+# Convolution (EV 12)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve12) 2
+
+# Convolve phase (EV 12)
+set fmri(convolve_phase12) 0
+
+# Apply temporal filtering (EV 12)
+set fmri(tempfilt_yn12) 1
+
+# Add temporal derivative (EV 12)
+set fmri(deriv_yn12) 1
+
+# Custom EV file (EV 12)
+set fmri(custom12) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_B_B_reward.txt"
+
+# Gamma sigma (EV 12)
+set fmri(gammasigma12) 3
+
+# Gamma delay (EV 12)
+set fmri(gammadelay12) 6
+
+# Orthogonalise EV 12 wrt EV 0
+set fmri(ortho12.0) 0
+
+# Orthogonalise EV 12 wrt EV 1
+set fmri(ortho12.1) 0
+
+# Orthogonalise EV 12 wrt EV 2
+set fmri(ortho12.2) 0
+
+# Orthogonalise EV 12 wrt EV 3
+set fmri(ortho12.3) 0
+
+# Orthogonalise EV 12 wrt EV 4
+set fmri(ortho12.4) 0
+
+# Orthogonalise EV 12 wrt EV 5
+set fmri(ortho12.5) 0
+
+# Orthogonalise EV 12 wrt EV 6
+set fmri(ortho12.6) 0
+
+# Orthogonalise EV 12 wrt EV 7
+set fmri(ortho12.7) 0
+
+# Orthogonalise EV 12 wrt EV 8
+set fmri(ortho12.8) 0
+
+# Orthogonalise EV 12 wrt EV 9
+set fmri(ortho12.9) 0
+
+# Orthogonalise EV 12 wrt EV 10
+set fmri(ortho12.10) 0
+
+# Orthogonalise EV 12 wrt EV 11
+set fmri(ortho12.11) 0
+
+# Orthogonalise EV 12 wrt EV 12
+set fmri(ortho12.12) 0
+
+# Orthogonalise EV 12 wrt EV 13
+set fmri(ortho12.13) 0
+
+# Orthogonalise EV 12 wrt EV 14
+set fmri(ortho12.14) 0
+
+# Orthogonalise EV 12 wrt EV 15
+set fmri(ortho12.15) 0
+
+# Orthogonalise EV 12 wrt EV 16
+set fmri(ortho12.16) 0
+
+# Orthogonalise EV 12 wrt EV 17
+set fmri(ortho12.17) 0
+
+# Orthogonalise EV 12 wrt EV 18
+set fmri(ortho12.18) 0
+
+# Orthogonalise EV 12 wrt EV 19
+set fmri(ortho12.19) 0
+
+# Orthogonalise EV 12 wrt EV 20
+set fmri(ortho12.20) 0
+
+# Orthogonalise EV 12 wrt EV 21
+set fmri(ortho12.21) 0
+
+# Orthogonalise EV 12 wrt EV 22
+set fmri(ortho12.22) 0
+
+# Orthogonalise EV 12 wrt EV 23
+set fmri(ortho12.23) 0
+
+# Orthogonalise EV 12 wrt EV 24
+set fmri(ortho12.24) 0
+
+# Orthogonalise EV 12 wrt EV 25
+set fmri(ortho12.25) 0
+
+# Orthogonalise EV 12 wrt EV 26
+set fmri(ortho12.26) 0
+
+# Orthogonalise EV 12 wrt EV 27
+set fmri(ortho12.27) 0
+
+# Orthogonalise EV 12 wrt EV 28
+set fmri(ortho12.28) 0
+
+# Orthogonalise EV 12 wrt EV 29
+set fmri(ortho12.29) 0
+
+# Orthogonalise EV 12 wrt EV 30
+set fmri(ortho12.30) 0
+
+# Orthogonalise EV 12 wrt EV 31
+set fmri(ortho12.31) 0
+
+# Orthogonalise EV 12 wrt EV 32
+set fmri(ortho12.32) 0
+
+# Orthogonalise EV 12 wrt EV 33
+set fmri(ortho12.33) 0
+
+# Orthogonalise EV 12 wrt EV 34
+set fmri(ortho12.34) 0
+
+# Orthogonalise EV 12 wrt EV 35
+set fmri(ortho12.35) 0
+
+# Orthogonalise EV 12 wrt EV 36
+set fmri(ortho12.36) 0
+
+# Orthogonalise EV 12 wrt EV 37
+set fmri(ortho12.37) 0
+
+# Orthogonalise EV 12 wrt EV 38
+set fmri(ortho12.38) 0
+
+# Orthogonalise EV 12 wrt EV 39
+set fmri(ortho12.39) 0
+
+# Orthogonalise EV 12 wrt EV 40
+set fmri(ortho12.40) 0
+
+# EV 13 title
+set fmri(evtitle13) "B-C-path"
+
+# Basic waveform shape (EV 13)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape13) 3
+
+# Convolution (EV 13)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve13) 2
+
+# Convolve phase (EV 13)
+set fmri(convolve_phase13) 0
+
+# Apply temporal filtering (EV 13)
+set fmri(tempfilt_yn13) 1
+
+# Add temporal derivative (EV 13)
+set fmri(deriv_yn13) 1
+
+# Custom EV file (EV 13)
+set fmri(custom13) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_B_C_subpath.txt"
+
+# Gamma sigma (EV 13)
+set fmri(gammasigma13) 3
+
+# Gamma delay (EV 13)
+set fmri(gammadelay13) 6
+
+# Orthogonalise EV 13 wrt EV 0
+set fmri(ortho13.0) 0
+
+# Orthogonalise EV 13 wrt EV 1
+set fmri(ortho13.1) 0
+
+# Orthogonalise EV 13 wrt EV 2
+set fmri(ortho13.2) 0
+
+# Orthogonalise EV 13 wrt EV 3
+set fmri(ortho13.3) 0
+
+# Orthogonalise EV 13 wrt EV 4
+set fmri(ortho13.4) 0
+
+# Orthogonalise EV 13 wrt EV 5
+set fmri(ortho13.5) 0
+
+# Orthogonalise EV 13 wrt EV 6
+set fmri(ortho13.6) 0
+
+# Orthogonalise EV 13 wrt EV 7
+set fmri(ortho13.7) 0
+
+# Orthogonalise EV 13 wrt EV 8
+set fmri(ortho13.8) 0
+
+# Orthogonalise EV 13 wrt EV 9
+set fmri(ortho13.9) 0
+
+# Orthogonalise EV 13 wrt EV 10
+set fmri(ortho13.10) 0
+
+# Orthogonalise EV 13 wrt EV 11
+set fmri(ortho13.11) 0
+
+# Orthogonalise EV 13 wrt EV 12
+set fmri(ortho13.12) 0
+
+# Orthogonalise EV 13 wrt EV 13
+set fmri(ortho13.13) 0
+
+# Orthogonalise EV 13 wrt EV 14
+set fmri(ortho13.14) 0
+
+# Orthogonalise EV 13 wrt EV 15
+set fmri(ortho13.15) 0
+
+# Orthogonalise EV 13 wrt EV 16
+set fmri(ortho13.16) 0
+
+# Orthogonalise EV 13 wrt EV 17
+set fmri(ortho13.17) 0
+
+# Orthogonalise EV 13 wrt EV 18
+set fmri(ortho13.18) 0
+
+# Orthogonalise EV 13 wrt EV 19
+set fmri(ortho13.19) 0
+
+# Orthogonalise EV 13 wrt EV 20
+set fmri(ortho13.20) 0
+
+# Orthogonalise EV 13 wrt EV 21
+set fmri(ortho13.21) 0
+
+# Orthogonalise EV 13 wrt EV 22
+set fmri(ortho13.22) 0
+
+# Orthogonalise EV 13 wrt EV 23
+set fmri(ortho13.23) 0
+
+# Orthogonalise EV 13 wrt EV 24
+set fmri(ortho13.24) 0
+
+# Orthogonalise EV 13 wrt EV 25
+set fmri(ortho13.25) 0
+
+# Orthogonalise EV 13 wrt EV 26
+set fmri(ortho13.26) 0
+
+# Orthogonalise EV 13 wrt EV 27
+set fmri(ortho13.27) 0
+
+# Orthogonalise EV 13 wrt EV 28
+set fmri(ortho13.28) 0
+
+# Orthogonalise EV 13 wrt EV 29
+set fmri(ortho13.29) 0
+
+# Orthogonalise EV 13 wrt EV 30
+set fmri(ortho13.30) 0
+
+# Orthogonalise EV 13 wrt EV 31
+set fmri(ortho13.31) 0
+
+# Orthogonalise EV 13 wrt EV 32
+set fmri(ortho13.32) 0
+
+# Orthogonalise EV 13 wrt EV 33
+set fmri(ortho13.33) 0
+
+# Orthogonalise EV 13 wrt EV 34
+set fmri(ortho13.34) 0
+
+# Orthogonalise EV 13 wrt EV 35
+set fmri(ortho13.35) 0
+
+# Orthogonalise EV 13 wrt EV 36
+set fmri(ortho13.36) 0
+
+# Orthogonalise EV 13 wrt EV 37
+set fmri(ortho13.37) 0
+
+# Orthogonalise EV 13 wrt EV 38
+set fmri(ortho13.38) 0
+
+# Orthogonalise EV 13 wrt EV 39
+set fmri(ortho13.39) 0
+
+# Orthogonalise EV 13 wrt EV 40
+set fmri(ortho13.40) 0
+
+# EV 14 title
+set fmri(evtitle14) "B-C-rew"
+
+# Basic waveform shape (EV 14)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape14) 3
+
+# Convolution (EV 14)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve14) 2
+
+# Convolve phase (EV 14)
+set fmri(convolve_phase14) 0
+
+# Apply temporal filtering (EV 14)
+set fmri(tempfilt_yn14) 1
+
+# Add temporal derivative (EV 14)
+set fmri(deriv_yn14) 1
+
+# Custom EV file (EV 14)
+set fmri(custom14) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_B_C_reward.txt"
+
+# Gamma sigma (EV 14)
+set fmri(gammasigma14) 3
+
+# Gamma delay (EV 14)
+set fmri(gammadelay14) 6
+
+# Orthogonalise EV 14 wrt EV 0
+set fmri(ortho14.0) 0
+
+# Orthogonalise EV 14 wrt EV 1
+set fmri(ortho14.1) 0
+
+# Orthogonalise EV 14 wrt EV 2
+set fmri(ortho14.2) 0
+
+# Orthogonalise EV 14 wrt EV 3
+set fmri(ortho14.3) 0
+
+# Orthogonalise EV 14 wrt EV 4
+set fmri(ortho14.4) 0
+
+# Orthogonalise EV 14 wrt EV 5
+set fmri(ortho14.5) 0
+
+# Orthogonalise EV 14 wrt EV 6
+set fmri(ortho14.6) 0
+
+# Orthogonalise EV 14 wrt EV 7
+set fmri(ortho14.7) 0
+
+# Orthogonalise EV 14 wrt EV 8
+set fmri(ortho14.8) 0
+
+# Orthogonalise EV 14 wrt EV 9
+set fmri(ortho14.9) 0
+
+# Orthogonalise EV 14 wrt EV 10
+set fmri(ortho14.10) 0
+
+# Orthogonalise EV 14 wrt EV 11
+set fmri(ortho14.11) 0
+
+# Orthogonalise EV 14 wrt EV 12
+set fmri(ortho14.12) 0
+
+# Orthogonalise EV 14 wrt EV 13
+set fmri(ortho14.13) 0
+
+# Orthogonalise EV 14 wrt EV 14
+set fmri(ortho14.14) 0
+
+# Orthogonalise EV 14 wrt EV 15
+set fmri(ortho14.15) 0
+
+# Orthogonalise EV 14 wrt EV 16
+set fmri(ortho14.16) 0
+
+# Orthogonalise EV 14 wrt EV 17
+set fmri(ortho14.17) 0
+
+# Orthogonalise EV 14 wrt EV 18
+set fmri(ortho14.18) 0
+
+# Orthogonalise EV 14 wrt EV 19
+set fmri(ortho14.19) 0
+
+# Orthogonalise EV 14 wrt EV 20
+set fmri(ortho14.20) 0
+
+# Orthogonalise EV 14 wrt EV 21
+set fmri(ortho14.21) 0
+
+# Orthogonalise EV 14 wrt EV 22
+set fmri(ortho14.22) 0
+
+# Orthogonalise EV 14 wrt EV 23
+set fmri(ortho14.23) 0
+
+# Orthogonalise EV 14 wrt EV 24
+set fmri(ortho14.24) 0
+
+# Orthogonalise EV 14 wrt EV 25
+set fmri(ortho14.25) 0
+
+# Orthogonalise EV 14 wrt EV 26
+set fmri(ortho14.26) 0
+
+# Orthogonalise EV 14 wrt EV 27
+set fmri(ortho14.27) 0
+
+# Orthogonalise EV 14 wrt EV 28
+set fmri(ortho14.28) 0
+
+# Orthogonalise EV 14 wrt EV 29
+set fmri(ortho14.29) 0
+
+# Orthogonalise EV 14 wrt EV 30
+set fmri(ortho14.30) 0
+
+# Orthogonalise EV 14 wrt EV 31
+set fmri(ortho14.31) 0
+
+# Orthogonalise EV 14 wrt EV 32
+set fmri(ortho14.32) 0
+
+# Orthogonalise EV 14 wrt EV 33
+set fmri(ortho14.33) 0
+
+# Orthogonalise EV 14 wrt EV 34
+set fmri(ortho14.34) 0
+
+# Orthogonalise EV 14 wrt EV 35
+set fmri(ortho14.35) 0
+
+# Orthogonalise EV 14 wrt EV 36
+set fmri(ortho14.36) 0
+
+# Orthogonalise EV 14 wrt EV 37
+set fmri(ortho14.37) 0
+
+# Orthogonalise EV 14 wrt EV 38
+set fmri(ortho14.38) 0
+
+# Orthogonalise EV 14 wrt EV 39
+set fmri(ortho14.39) 0
+
+# Orthogonalise EV 14 wrt EV 40
+set fmri(ortho14.40) 0
+
+# EV 15 title
+set fmri(evtitle15) "B-D-path"
+
+# Basic waveform shape (EV 15)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape15) 3
+
+# Convolution (EV 15)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve15) 2
+
+# Convolve phase (EV 15)
+set fmri(convolve_phase15) 0
+
+# Apply temporal filtering (EV 15)
+set fmri(tempfilt_yn15) 1
+
+# Add temporal derivative (EV 15)
+set fmri(deriv_yn15) 1
+
+# Custom EV file (EV 15)
+set fmri(custom15) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_B_D_subpath.txt"
+
+# Gamma sigma (EV 15)
+set fmri(gammasigma15) 3
+
+# Gamma delay (EV 15)
+set fmri(gammadelay15) 6
+
+# Orthogonalise EV 15 wrt EV 0
+set fmri(ortho15.0) 0
+
+# Orthogonalise EV 15 wrt EV 1
+set fmri(ortho15.1) 0
+
+# Orthogonalise EV 15 wrt EV 2
+set fmri(ortho15.2) 0
+
+# Orthogonalise EV 15 wrt EV 3
+set fmri(ortho15.3) 0
+
+# Orthogonalise EV 15 wrt EV 4
+set fmri(ortho15.4) 0
+
+# Orthogonalise EV 15 wrt EV 5
+set fmri(ortho15.5) 0
+
+# Orthogonalise EV 15 wrt EV 6
+set fmri(ortho15.6) 0
+
+# Orthogonalise EV 15 wrt EV 7
+set fmri(ortho15.7) 0
+
+# Orthogonalise EV 15 wrt EV 8
+set fmri(ortho15.8) 0
+
+# Orthogonalise EV 15 wrt EV 9
+set fmri(ortho15.9) 0
+
+# Orthogonalise EV 15 wrt EV 10
+set fmri(ortho15.10) 0
+
+# Orthogonalise EV 15 wrt EV 11
+set fmri(ortho15.11) 0
+
+# Orthogonalise EV 15 wrt EV 12
+set fmri(ortho15.12) 0
+
+# Orthogonalise EV 15 wrt EV 13
+set fmri(ortho15.13) 0
+
+# Orthogonalise EV 15 wrt EV 14
+set fmri(ortho15.14) 0
+
+# Orthogonalise EV 15 wrt EV 15
+set fmri(ortho15.15) 0
+
+# Orthogonalise EV 15 wrt EV 16
+set fmri(ortho15.16) 0
+
+# Orthogonalise EV 15 wrt EV 17
+set fmri(ortho15.17) 0
+
+# Orthogonalise EV 15 wrt EV 18
+set fmri(ortho15.18) 0
+
+# Orthogonalise EV 15 wrt EV 19
+set fmri(ortho15.19) 0
+
+# Orthogonalise EV 15 wrt EV 20
+set fmri(ortho15.20) 0
+
+# Orthogonalise EV 15 wrt EV 21
+set fmri(ortho15.21) 0
+
+# Orthogonalise EV 15 wrt EV 22
+set fmri(ortho15.22) 0
+
+# Orthogonalise EV 15 wrt EV 23
+set fmri(ortho15.23) 0
+
+# Orthogonalise EV 15 wrt EV 24
+set fmri(ortho15.24) 0
+
+# Orthogonalise EV 15 wrt EV 25
+set fmri(ortho15.25) 0
+
+# Orthogonalise EV 15 wrt EV 26
+set fmri(ortho15.26) 0
+
+# Orthogonalise EV 15 wrt EV 27
+set fmri(ortho15.27) 0
+
+# Orthogonalise EV 15 wrt EV 28
+set fmri(ortho15.28) 0
+
+# Orthogonalise EV 15 wrt EV 29
+set fmri(ortho15.29) 0
+
+# Orthogonalise EV 15 wrt EV 30
+set fmri(ortho15.30) 0
+
+# Orthogonalise EV 15 wrt EV 31
+set fmri(ortho15.31) 0
+
+# Orthogonalise EV 15 wrt EV 32
+set fmri(ortho15.32) 0
+
+# Orthogonalise EV 15 wrt EV 33
+set fmri(ortho15.33) 0
+
+# Orthogonalise EV 15 wrt EV 34
+set fmri(ortho15.34) 0
+
+# Orthogonalise EV 15 wrt EV 35
+set fmri(ortho15.35) 0
+
+# Orthogonalise EV 15 wrt EV 36
+set fmri(ortho15.36) 0
+
+# Orthogonalise EV 15 wrt EV 37
+set fmri(ortho15.37) 0
+
+# Orthogonalise EV 15 wrt EV 38
+set fmri(ortho15.38) 0
+
+# Orthogonalise EV 15 wrt EV 39
+set fmri(ortho15.39) 0
+
+# Orthogonalise EV 15 wrt EV 40
+set fmri(ortho15.40) 0
+
+# EV 16 title
+set fmri(evtitle16) "B-D-rew"
+
+# Basic waveform shape (EV 16)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape16) 3
+
+# Convolution (EV 16)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve16) 2
+
+# Convolve phase (EV 16)
+set fmri(convolve_phase16) 0
+
+# Apply temporal filtering (EV 16)
+set fmri(tempfilt_yn16) 1
+
+# Add temporal derivative (EV 16)
+set fmri(deriv_yn16) 1
+
+# Custom EV file (EV 16)
+set fmri(custom16) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_B_D_reward.txt"
+
+# Gamma sigma (EV 16)
+set fmri(gammasigma16) 3
+
+# Gamma delay (EV 16)
+set fmri(gammadelay16) 6
+
+# Orthogonalise EV 16 wrt EV 0
+set fmri(ortho16.0) 0
+
+# Orthogonalise EV 16 wrt EV 1
+set fmri(ortho16.1) 0
+
+# Orthogonalise EV 16 wrt EV 2
+set fmri(ortho16.2) 0
+
+# Orthogonalise EV 16 wrt EV 3
+set fmri(ortho16.3) 0
+
+# Orthogonalise EV 16 wrt EV 4
+set fmri(ortho16.4) 0
+
+# Orthogonalise EV 16 wrt EV 5
+set fmri(ortho16.5) 0
+
+# Orthogonalise EV 16 wrt EV 6
+set fmri(ortho16.6) 0
+
+# Orthogonalise EV 16 wrt EV 7
+set fmri(ortho16.7) 0
+
+# Orthogonalise EV 16 wrt EV 8
+set fmri(ortho16.8) 0
+
+# Orthogonalise EV 16 wrt EV 9
+set fmri(ortho16.9) 0
+
+# Orthogonalise EV 16 wrt EV 10
+set fmri(ortho16.10) 0
+
+# Orthogonalise EV 16 wrt EV 11
+set fmri(ortho16.11) 0
+
+# Orthogonalise EV 16 wrt EV 12
+set fmri(ortho16.12) 0
+
+# Orthogonalise EV 16 wrt EV 13
+set fmri(ortho16.13) 0
+
+# Orthogonalise EV 16 wrt EV 14
+set fmri(ortho16.14) 0
+
+# Orthogonalise EV 16 wrt EV 15
+set fmri(ortho16.15) 0
+
+# Orthogonalise EV 16 wrt EV 16
+set fmri(ortho16.16) 0
+
+# Orthogonalise EV 16 wrt EV 17
+set fmri(ortho16.17) 0
+
+# Orthogonalise EV 16 wrt EV 18
+set fmri(ortho16.18) 0
+
+# Orthogonalise EV 16 wrt EV 19
+set fmri(ortho16.19) 0
+
+# Orthogonalise EV 16 wrt EV 20
+set fmri(ortho16.20) 0
+
+# Orthogonalise EV 16 wrt EV 21
+set fmri(ortho16.21) 0
+
+# Orthogonalise EV 16 wrt EV 22
+set fmri(ortho16.22) 0
+
+# Orthogonalise EV 16 wrt EV 23
+set fmri(ortho16.23) 0
+
+# Orthogonalise EV 16 wrt EV 24
+set fmri(ortho16.24) 0
+
+# Orthogonalise EV 16 wrt EV 25
+set fmri(ortho16.25) 0
+
+# Orthogonalise EV 16 wrt EV 26
+set fmri(ortho16.26) 0
+
+# Orthogonalise EV 16 wrt EV 27
+set fmri(ortho16.27) 0
+
+# Orthogonalise EV 16 wrt EV 28
+set fmri(ortho16.28) 0
+
+# Orthogonalise EV 16 wrt EV 29
+set fmri(ortho16.29) 0
+
+# Orthogonalise EV 16 wrt EV 30
+set fmri(ortho16.30) 0
+
+# Orthogonalise EV 16 wrt EV 31
+set fmri(ortho16.31) 0
+
+# Orthogonalise EV 16 wrt EV 32
+set fmri(ortho16.32) 0
+
+# Orthogonalise EV 16 wrt EV 33
+set fmri(ortho16.33) 0
+
+# Orthogonalise EV 16 wrt EV 34
+set fmri(ortho16.34) 0
+
+# Orthogonalise EV 16 wrt EV 35
+set fmri(ortho16.35) 0
+
+# Orthogonalise EV 16 wrt EV 36
+set fmri(ortho16.36) 0
+
+# Orthogonalise EV 16 wrt EV 37
+set fmri(ortho16.37) 0
+
+# Orthogonalise EV 16 wrt EV 38
+set fmri(ortho16.38) 0
+
+# Orthogonalise EV 16 wrt EV 39
+set fmri(ortho16.39) 0
+
+# Orthogonalise EV 16 wrt EV 40
+set fmri(ortho16.40) 0
+
+# EV 17 title
+set fmri(evtitle17) "C-A-path"
+
+# Basic waveform shape (EV 17)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape17) 3
+
+# Convolution (EV 17)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve17) 2
+
+# Convolve phase (EV 17)
+set fmri(convolve_phase17) 0
+
+# Apply temporal filtering (EV 17)
+set fmri(tempfilt_yn17) 1
+
+# Add temporal derivative (EV 17)
+set fmri(deriv_yn17) 1
+
+# Custom EV file (EV 17)
+set fmri(custom17) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_C_A_subpath.txt"
+
+# Gamma sigma (EV 17)
+set fmri(gammasigma17) 3
+
+# Gamma delay (EV 17)
+set fmri(gammadelay17) 6
+
+# Orthogonalise EV 17 wrt EV 0
+set fmri(ortho17.0) 0
+
+# Orthogonalise EV 17 wrt EV 1
+set fmri(ortho17.1) 0
+
+# Orthogonalise EV 17 wrt EV 2
+set fmri(ortho17.2) 0
+
+# Orthogonalise EV 17 wrt EV 3
+set fmri(ortho17.3) 0
+
+# Orthogonalise EV 17 wrt EV 4
+set fmri(ortho17.4) 0
+
+# Orthogonalise EV 17 wrt EV 5
+set fmri(ortho17.5) 0
+
+# Orthogonalise EV 17 wrt EV 6
+set fmri(ortho17.6) 0
+
+# Orthogonalise EV 17 wrt EV 7
+set fmri(ortho17.7) 0
+
+# Orthogonalise EV 17 wrt EV 8
+set fmri(ortho17.8) 0
+
+# Orthogonalise EV 17 wrt EV 9
+set fmri(ortho17.9) 0
+
+# Orthogonalise EV 17 wrt EV 10
+set fmri(ortho17.10) 0
+
+# Orthogonalise EV 17 wrt EV 11
+set fmri(ortho17.11) 0
+
+# Orthogonalise EV 17 wrt EV 12
+set fmri(ortho17.12) 0
+
+# Orthogonalise EV 17 wrt EV 13
+set fmri(ortho17.13) 0
+
+# Orthogonalise EV 17 wrt EV 14
+set fmri(ortho17.14) 0
+
+# Orthogonalise EV 17 wrt EV 15
+set fmri(ortho17.15) 0
+
+# Orthogonalise EV 17 wrt EV 16
+set fmri(ortho17.16) 0
+
+# Orthogonalise EV 17 wrt EV 17
+set fmri(ortho17.17) 0
+
+# Orthogonalise EV 17 wrt EV 18
+set fmri(ortho17.18) 0
+
+# Orthogonalise EV 17 wrt EV 19
+set fmri(ortho17.19) 0
+
+# Orthogonalise EV 17 wrt EV 20
+set fmri(ortho17.20) 0
+
+# Orthogonalise EV 17 wrt EV 21
+set fmri(ortho17.21) 0
+
+# Orthogonalise EV 17 wrt EV 22
+set fmri(ortho17.22) 0
+
+# Orthogonalise EV 17 wrt EV 23
+set fmri(ortho17.23) 0
+
+# Orthogonalise EV 17 wrt EV 24
+set fmri(ortho17.24) 0
+
+# Orthogonalise EV 17 wrt EV 25
+set fmri(ortho17.25) 0
+
+# Orthogonalise EV 17 wrt EV 26
+set fmri(ortho17.26) 0
+
+# Orthogonalise EV 17 wrt EV 27
+set fmri(ortho17.27) 0
+
+# Orthogonalise EV 17 wrt EV 28
+set fmri(ortho17.28) 0
+
+# Orthogonalise EV 17 wrt EV 29
+set fmri(ortho17.29) 0
+
+# Orthogonalise EV 17 wrt EV 30
+set fmri(ortho17.30) 0
+
+# Orthogonalise EV 17 wrt EV 31
+set fmri(ortho17.31) 0
+
+# Orthogonalise EV 17 wrt EV 32
+set fmri(ortho17.32) 0
+
+# Orthogonalise EV 17 wrt EV 33
+set fmri(ortho17.33) 0
+
+# Orthogonalise EV 17 wrt EV 34
+set fmri(ortho17.34) 0
+
+# Orthogonalise EV 17 wrt EV 35
+set fmri(ortho17.35) 0
+
+# Orthogonalise EV 17 wrt EV 36
+set fmri(ortho17.36) 0
+
+# Orthogonalise EV 17 wrt EV 37
+set fmri(ortho17.37) 0
+
+# Orthogonalise EV 17 wrt EV 38
+set fmri(ortho17.38) 0
+
+# Orthogonalise EV 17 wrt EV 39
+set fmri(ortho17.39) 0
+
+# Orthogonalise EV 17 wrt EV 40
+set fmri(ortho17.40) 0
+
+# EV 18 title
+set fmri(evtitle18) "C-A-rew"
+
+# Basic waveform shape (EV 18)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape18) 3
+
+# Convolution (EV 18)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve18) 2
+
+# Convolve phase (EV 18)
+set fmri(convolve_phase18) 0
+
+# Apply temporal filtering (EV 18)
+set fmri(tempfilt_yn18) 1
+
+# Add temporal derivative (EV 18)
+set fmri(deriv_yn18) 1
+
+# Custom EV file (EV 18)
+set fmri(custom18) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_C_A_reward.txt"
+
+# Gamma sigma (EV 18)
+set fmri(gammasigma18) 3
+
+# Gamma delay (EV 18)
+set fmri(gammadelay18) 6
+
+# Orthogonalise EV 18 wrt EV 0
+set fmri(ortho18.0) 0
+
+# Orthogonalise EV 18 wrt EV 1
+set fmri(ortho18.1) 0
+
+# Orthogonalise EV 18 wrt EV 2
+set fmri(ortho18.2) 0
+
+# Orthogonalise EV 18 wrt EV 3
+set fmri(ortho18.3) 0
+
+# Orthogonalise EV 18 wrt EV 4
+set fmri(ortho18.4) 0
+
+# Orthogonalise EV 18 wrt EV 5
+set fmri(ortho18.5) 0
+
+# Orthogonalise EV 18 wrt EV 6
+set fmri(ortho18.6) 0
+
+# Orthogonalise EV 18 wrt EV 7
+set fmri(ortho18.7) 0
+
+# Orthogonalise EV 18 wrt EV 8
+set fmri(ortho18.8) 0
+
+# Orthogonalise EV 18 wrt EV 9
+set fmri(ortho18.9) 0
+
+# Orthogonalise EV 18 wrt EV 10
+set fmri(ortho18.10) 0
+
+# Orthogonalise EV 18 wrt EV 11
+set fmri(ortho18.11) 0
+
+# Orthogonalise EV 18 wrt EV 12
+set fmri(ortho18.12) 0
+
+# Orthogonalise EV 18 wrt EV 13
+set fmri(ortho18.13) 0
+
+# Orthogonalise EV 18 wrt EV 14
+set fmri(ortho18.14) 0
+
+# Orthogonalise EV 18 wrt EV 15
+set fmri(ortho18.15) 0
+
+# Orthogonalise EV 18 wrt EV 16
+set fmri(ortho18.16) 0
+
+# Orthogonalise EV 18 wrt EV 17
+set fmri(ortho18.17) 0
+
+# Orthogonalise EV 18 wrt EV 18
+set fmri(ortho18.18) 0
+
+# Orthogonalise EV 18 wrt EV 19
+set fmri(ortho18.19) 0
+
+# Orthogonalise EV 18 wrt EV 20
+set fmri(ortho18.20) 0
+
+# Orthogonalise EV 18 wrt EV 21
+set fmri(ortho18.21) 0
+
+# Orthogonalise EV 18 wrt EV 22
+set fmri(ortho18.22) 0
+
+# Orthogonalise EV 18 wrt EV 23
+set fmri(ortho18.23) 0
+
+# Orthogonalise EV 18 wrt EV 24
+set fmri(ortho18.24) 0
+
+# Orthogonalise EV 18 wrt EV 25
+set fmri(ortho18.25) 0
+
+# Orthogonalise EV 18 wrt EV 26
+set fmri(ortho18.26) 0
+
+# Orthogonalise EV 18 wrt EV 27
+set fmri(ortho18.27) 0
+
+# Orthogonalise EV 18 wrt EV 28
+set fmri(ortho18.28) 0
+
+# Orthogonalise EV 18 wrt EV 29
+set fmri(ortho18.29) 0
+
+# Orthogonalise EV 18 wrt EV 30
+set fmri(ortho18.30) 0
+
+# Orthogonalise EV 18 wrt EV 31
+set fmri(ortho18.31) 0
+
+# Orthogonalise EV 18 wrt EV 32
+set fmri(ortho18.32) 0
+
+# Orthogonalise EV 18 wrt EV 33
+set fmri(ortho18.33) 0
+
+# Orthogonalise EV 18 wrt EV 34
+set fmri(ortho18.34) 0
+
+# Orthogonalise EV 18 wrt EV 35
+set fmri(ortho18.35) 0
+
+# Orthogonalise EV 18 wrt EV 36
+set fmri(ortho18.36) 0
+
+# Orthogonalise EV 18 wrt EV 37
+set fmri(ortho18.37) 0
+
+# Orthogonalise EV 18 wrt EV 38
+set fmri(ortho18.38) 0
+
+# Orthogonalise EV 18 wrt EV 39
+set fmri(ortho18.39) 0
+
+# Orthogonalise EV 18 wrt EV 40
+set fmri(ortho18.40) 0
+
+# EV 19 title
+set fmri(evtitle19) "C-B-path"
+
+# Basic waveform shape (EV 19)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape19) 3
+
+# Convolution (EV 19)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve19) 2
+
+# Convolve phase (EV 19)
+set fmri(convolve_phase19) 0
+
+# Apply temporal filtering (EV 19)
+set fmri(tempfilt_yn19) 1
+
+# Add temporal derivative (EV 19)
+set fmri(deriv_yn19) 1
+
+# Custom EV file (EV 19)
+set fmri(custom19) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_C_B_subpath.txt"
+
+# Gamma sigma (EV 19)
+set fmri(gammasigma19) 3
+
+# Gamma delay (EV 19)
+set fmri(gammadelay19) 6
+
+# Orthogonalise EV 19 wrt EV 0
+set fmri(ortho19.0) 0
+
+# Orthogonalise EV 19 wrt EV 1
+set fmri(ortho19.1) 0
+
+# Orthogonalise EV 19 wrt EV 2
+set fmri(ortho19.2) 0
+
+# Orthogonalise EV 19 wrt EV 3
+set fmri(ortho19.3) 0
+
+# Orthogonalise EV 19 wrt EV 4
+set fmri(ortho19.4) 0
+
+# Orthogonalise EV 19 wrt EV 5
+set fmri(ortho19.5) 0
+
+# Orthogonalise EV 19 wrt EV 6
+set fmri(ortho19.6) 0
+
+# Orthogonalise EV 19 wrt EV 7
+set fmri(ortho19.7) 0
+
+# Orthogonalise EV 19 wrt EV 8
+set fmri(ortho19.8) 0
+
+# Orthogonalise EV 19 wrt EV 9
+set fmri(ortho19.9) 0
+
+# Orthogonalise EV 19 wrt EV 10
+set fmri(ortho19.10) 0
+
+# Orthogonalise EV 19 wrt EV 11
+set fmri(ortho19.11) 0
+
+# Orthogonalise EV 19 wrt EV 12
+set fmri(ortho19.12) 0
+
+# Orthogonalise EV 19 wrt EV 13
+set fmri(ortho19.13) 0
+
+# Orthogonalise EV 19 wrt EV 14
+set fmri(ortho19.14) 0
+
+# Orthogonalise EV 19 wrt EV 15
+set fmri(ortho19.15) 0
+
+# Orthogonalise EV 19 wrt EV 16
+set fmri(ortho19.16) 0
+
+# Orthogonalise EV 19 wrt EV 17
+set fmri(ortho19.17) 0
+
+# Orthogonalise EV 19 wrt EV 18
+set fmri(ortho19.18) 0
+
+# Orthogonalise EV 19 wrt EV 19
+set fmri(ortho19.19) 0
+
+# Orthogonalise EV 19 wrt EV 20
+set fmri(ortho19.20) 0
+
+# Orthogonalise EV 19 wrt EV 21
+set fmri(ortho19.21) 0
+
+# Orthogonalise EV 19 wrt EV 22
+set fmri(ortho19.22) 0
+
+# Orthogonalise EV 19 wrt EV 23
+set fmri(ortho19.23) 0
+
+# Orthogonalise EV 19 wrt EV 24
+set fmri(ortho19.24) 0
+
+# Orthogonalise EV 19 wrt EV 25
+set fmri(ortho19.25) 0
+
+# Orthogonalise EV 19 wrt EV 26
+set fmri(ortho19.26) 0
+
+# Orthogonalise EV 19 wrt EV 27
+set fmri(ortho19.27) 0
+
+# Orthogonalise EV 19 wrt EV 28
+set fmri(ortho19.28) 0
+
+# Orthogonalise EV 19 wrt EV 29
+set fmri(ortho19.29) 0
+
+# Orthogonalise EV 19 wrt EV 30
+set fmri(ortho19.30) 0
+
+# Orthogonalise EV 19 wrt EV 31
+set fmri(ortho19.31) 0
+
+# Orthogonalise EV 19 wrt EV 32
+set fmri(ortho19.32) 0
+
+# Orthogonalise EV 19 wrt EV 33
+set fmri(ortho19.33) 0
+
+# Orthogonalise EV 19 wrt EV 34
+set fmri(ortho19.34) 0
+
+# Orthogonalise EV 19 wrt EV 35
+set fmri(ortho19.35) 0
+
+# Orthogonalise EV 19 wrt EV 36
+set fmri(ortho19.36) 0
+
+# Orthogonalise EV 19 wrt EV 37
+set fmri(ortho19.37) 0
+
+# Orthogonalise EV 19 wrt EV 38
+set fmri(ortho19.38) 0
+
+# Orthogonalise EV 19 wrt EV 39
+set fmri(ortho19.39) 0
+
+# Orthogonalise EV 19 wrt EV 40
+set fmri(ortho19.40) 0
+
+# EV 20 title
+set fmri(evtitle20) "C-B-rew"
+
+# Basic waveform shape (EV 20)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape20) 3
+
+# Convolution (EV 20)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve20) 2
+
+# Convolve phase (EV 20)
+set fmri(convolve_phase20) 0
+
+# Apply temporal filtering (EV 20)
+set fmri(tempfilt_yn20) 1
+
+# Add temporal derivative (EV 20)
+set fmri(deriv_yn20) 1
+
+# Custom EV file (EV 20)
+set fmri(custom20) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_C_B_reward.txt"
+
+# Gamma sigma (EV 20)
+set fmri(gammasigma20) 3
+
+# Gamma delay (EV 20)
+set fmri(gammadelay20) 6
+
+# Orthogonalise EV 20 wrt EV 0
+set fmri(ortho20.0) 0
+
+# Orthogonalise EV 20 wrt EV 1
+set fmri(ortho20.1) 0
+
+# Orthogonalise EV 20 wrt EV 2
+set fmri(ortho20.2) 0
+
+# Orthogonalise EV 20 wrt EV 3
+set fmri(ortho20.3) 0
+
+# Orthogonalise EV 20 wrt EV 4
+set fmri(ortho20.4) 0
+
+# Orthogonalise EV 20 wrt EV 5
+set fmri(ortho20.5) 0
+
+# Orthogonalise EV 20 wrt EV 6
+set fmri(ortho20.6) 0
+
+# Orthogonalise EV 20 wrt EV 7
+set fmri(ortho20.7) 0
+
+# Orthogonalise EV 20 wrt EV 8
+set fmri(ortho20.8) 0
+
+# Orthogonalise EV 20 wrt EV 9
+set fmri(ortho20.9) 0
+
+# Orthogonalise EV 20 wrt EV 10
+set fmri(ortho20.10) 0
+
+# Orthogonalise EV 20 wrt EV 11
+set fmri(ortho20.11) 0
+
+# Orthogonalise EV 20 wrt EV 12
+set fmri(ortho20.12) 0
+
+# Orthogonalise EV 20 wrt EV 13
+set fmri(ortho20.13) 0
+
+# Orthogonalise EV 20 wrt EV 14
+set fmri(ortho20.14) 0
+
+# Orthogonalise EV 20 wrt EV 15
+set fmri(ortho20.15) 0
+
+# Orthogonalise EV 20 wrt EV 16
+set fmri(ortho20.16) 0
+
+# Orthogonalise EV 20 wrt EV 17
+set fmri(ortho20.17) 0
+
+# Orthogonalise EV 20 wrt EV 18
+set fmri(ortho20.18) 0
+
+# Orthogonalise EV 20 wrt EV 19
+set fmri(ortho20.19) 0
+
+# Orthogonalise EV 20 wrt EV 20
+set fmri(ortho20.20) 0
+
+# Orthogonalise EV 20 wrt EV 21
+set fmri(ortho20.21) 0
+
+# Orthogonalise EV 20 wrt EV 22
+set fmri(ortho20.22) 0
+
+# Orthogonalise EV 20 wrt EV 23
+set fmri(ortho20.23) 0
+
+# Orthogonalise EV 20 wrt EV 24
+set fmri(ortho20.24) 0
+
+# Orthogonalise EV 20 wrt EV 25
+set fmri(ortho20.25) 0
+
+# Orthogonalise EV 20 wrt EV 26
+set fmri(ortho20.26) 0
+
+# Orthogonalise EV 20 wrt EV 27
+set fmri(ortho20.27) 0
+
+# Orthogonalise EV 20 wrt EV 28
+set fmri(ortho20.28) 0
+
+# Orthogonalise EV 20 wrt EV 29
+set fmri(ortho20.29) 0
+
+# Orthogonalise EV 20 wrt EV 30
+set fmri(ortho20.30) 0
+
+# Orthogonalise EV 20 wrt EV 31
+set fmri(ortho20.31) 0
+
+# Orthogonalise EV 20 wrt EV 32
+set fmri(ortho20.32) 0
+
+# Orthogonalise EV 20 wrt EV 33
+set fmri(ortho20.33) 0
+
+# Orthogonalise EV 20 wrt EV 34
+set fmri(ortho20.34) 0
+
+# Orthogonalise EV 20 wrt EV 35
+set fmri(ortho20.35) 0
+
+# Orthogonalise EV 20 wrt EV 36
+set fmri(ortho20.36) 0
+
+# Orthogonalise EV 20 wrt EV 37
+set fmri(ortho20.37) 0
+
+# Orthogonalise EV 20 wrt EV 38
+set fmri(ortho20.38) 0
+
+# Orthogonalise EV 20 wrt EV 39
+set fmri(ortho20.39) 0
+
+# Orthogonalise EV 20 wrt EV 40
+set fmri(ortho20.40) 0
+
+# EV 21 title
+set fmri(evtitle21) "C-C-path"
+
+# Basic waveform shape (EV 21)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape21) 3
+
+# Convolution (EV 21)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve21) 2
+
+# Convolve phase (EV 21)
+set fmri(convolve_phase21) 0
+
+# Apply temporal filtering (EV 21)
+set fmri(tempfilt_yn21) 1
+
+# Add temporal derivative (EV 21)
+set fmri(deriv_yn21) 1
+
+# Custom EV file (EV 21)
+set fmri(custom21) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_C_C_subpath.txt"
+
+# Gamma sigma (EV 21)
+set fmri(gammasigma21) 3
+
+# Gamma delay (EV 21)
+set fmri(gammadelay21) 6
+
+# Orthogonalise EV 21 wrt EV 0
+set fmri(ortho21.0) 0
+
+# Orthogonalise EV 21 wrt EV 1
+set fmri(ortho21.1) 0
+
+# Orthogonalise EV 21 wrt EV 2
+set fmri(ortho21.2) 0
+
+# Orthogonalise EV 21 wrt EV 3
+set fmri(ortho21.3) 0
+
+# Orthogonalise EV 21 wrt EV 4
+set fmri(ortho21.4) 0
+
+# Orthogonalise EV 21 wrt EV 5
+set fmri(ortho21.5) 0
+
+# Orthogonalise EV 21 wrt EV 6
+set fmri(ortho21.6) 0
+
+# Orthogonalise EV 21 wrt EV 7
+set fmri(ortho21.7) 0
+
+# Orthogonalise EV 21 wrt EV 8
+set fmri(ortho21.8) 0
+
+# Orthogonalise EV 21 wrt EV 9
+set fmri(ortho21.9) 0
+
+# Orthogonalise EV 21 wrt EV 10
+set fmri(ortho21.10) 0
+
+# Orthogonalise EV 21 wrt EV 11
+set fmri(ortho21.11) 0
+
+# Orthogonalise EV 21 wrt EV 12
+set fmri(ortho21.12) 0
+
+# Orthogonalise EV 21 wrt EV 13
+set fmri(ortho21.13) 0
+
+# Orthogonalise EV 21 wrt EV 14
+set fmri(ortho21.14) 0
+
+# Orthogonalise EV 21 wrt EV 15
+set fmri(ortho21.15) 0
+
+# Orthogonalise EV 21 wrt EV 16
+set fmri(ortho21.16) 0
+
+# Orthogonalise EV 21 wrt EV 17
+set fmri(ortho21.17) 0
+
+# Orthogonalise EV 21 wrt EV 18
+set fmri(ortho21.18) 0
+
+# Orthogonalise EV 21 wrt EV 19
+set fmri(ortho21.19) 0
+
+# Orthogonalise EV 21 wrt EV 20
+set fmri(ortho21.20) 0
+
+# Orthogonalise EV 21 wrt EV 21
+set fmri(ortho21.21) 0
+
+# Orthogonalise EV 21 wrt EV 22
+set fmri(ortho21.22) 0
+
+# Orthogonalise EV 21 wrt EV 23
+set fmri(ortho21.23) 0
+
+# Orthogonalise EV 21 wrt EV 24
+set fmri(ortho21.24) 0
+
+# Orthogonalise EV 21 wrt EV 25
+set fmri(ortho21.25) 0
+
+# Orthogonalise EV 21 wrt EV 26
+set fmri(ortho21.26) 0
+
+# Orthogonalise EV 21 wrt EV 27
+set fmri(ortho21.27) 0
+
+# Orthogonalise EV 21 wrt EV 28
+set fmri(ortho21.28) 0
+
+# Orthogonalise EV 21 wrt EV 29
+set fmri(ortho21.29) 0
+
+# Orthogonalise EV 21 wrt EV 30
+set fmri(ortho21.30) 0
+
+# Orthogonalise EV 21 wrt EV 31
+set fmri(ortho21.31) 0
+
+# Orthogonalise EV 21 wrt EV 32
+set fmri(ortho21.32) 0
+
+# Orthogonalise EV 21 wrt EV 33
+set fmri(ortho21.33) 0
+
+# Orthogonalise EV 21 wrt EV 34
+set fmri(ortho21.34) 0
+
+# Orthogonalise EV 21 wrt EV 35
+set fmri(ortho21.35) 0
+
+# Orthogonalise EV 21 wrt EV 36
+set fmri(ortho21.36) 0
+
+# Orthogonalise EV 21 wrt EV 37
+set fmri(ortho21.37) 0
+
+# Orthogonalise EV 21 wrt EV 38
+set fmri(ortho21.38) 0
+
+# Orthogonalise EV 21 wrt EV 39
+set fmri(ortho21.39) 0
+
+# Orthogonalise EV 21 wrt EV 40
+set fmri(ortho21.40) 0
+
+# EV 22 title
+set fmri(evtitle22) "C-C-rew"
+
+# Basic waveform shape (EV 22)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape22) 3
+
+# Convolution (EV 22)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve22) 2
+
+# Convolve phase (EV 22)
+set fmri(convolve_phase22) 0
+
+# Apply temporal filtering (EV 22)
+set fmri(tempfilt_yn22) 1
+
+# Add temporal derivative (EV 22)
+set fmri(deriv_yn22) 1
+
+# Custom EV file (EV 22)
+set fmri(custom22) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_C_C_reward.txt"
+
+# Gamma sigma (EV 22)
+set fmri(gammasigma22) 3
+
+# Gamma delay (EV 22)
+set fmri(gammadelay22) 6
+
+# Orthogonalise EV 22 wrt EV 0
+set fmri(ortho22.0) 0
+
+# Orthogonalise EV 22 wrt EV 1
+set fmri(ortho22.1) 0
+
+# Orthogonalise EV 22 wrt EV 2
+set fmri(ortho22.2) 0
+
+# Orthogonalise EV 22 wrt EV 3
+set fmri(ortho22.3) 0
+
+# Orthogonalise EV 22 wrt EV 4
+set fmri(ortho22.4) 0
+
+# Orthogonalise EV 22 wrt EV 5
+set fmri(ortho22.5) 0
+
+# Orthogonalise EV 22 wrt EV 6
+set fmri(ortho22.6) 0
+
+# Orthogonalise EV 22 wrt EV 7
+set fmri(ortho22.7) 0
+
+# Orthogonalise EV 22 wrt EV 8
+set fmri(ortho22.8) 0
+
+# Orthogonalise EV 22 wrt EV 9
+set fmri(ortho22.9) 0
+
+# Orthogonalise EV 22 wrt EV 10
+set fmri(ortho22.10) 0
+
+# Orthogonalise EV 22 wrt EV 11
+set fmri(ortho22.11) 0
+
+# Orthogonalise EV 22 wrt EV 12
+set fmri(ortho22.12) 0
+
+# Orthogonalise EV 22 wrt EV 13
+set fmri(ortho22.13) 0
+
+# Orthogonalise EV 22 wrt EV 14
+set fmri(ortho22.14) 0
+
+# Orthogonalise EV 22 wrt EV 15
+set fmri(ortho22.15) 0
+
+# Orthogonalise EV 22 wrt EV 16
+set fmri(ortho22.16) 0
+
+# Orthogonalise EV 22 wrt EV 17
+set fmri(ortho22.17) 0
+
+# Orthogonalise EV 22 wrt EV 18
+set fmri(ortho22.18) 0
+
+# Orthogonalise EV 22 wrt EV 19
+set fmri(ortho22.19) 0
+
+# Orthogonalise EV 22 wrt EV 20
+set fmri(ortho22.20) 0
+
+# Orthogonalise EV 22 wrt EV 21
+set fmri(ortho22.21) 0
+
+# Orthogonalise EV 22 wrt EV 22
+set fmri(ortho22.22) 0
+
+# Orthogonalise EV 22 wrt EV 23
+set fmri(ortho22.23) 0
+
+# Orthogonalise EV 22 wrt EV 24
+set fmri(ortho22.24) 0
+
+# Orthogonalise EV 22 wrt EV 25
+set fmri(ortho22.25) 0
+
+# Orthogonalise EV 22 wrt EV 26
+set fmri(ortho22.26) 0
+
+# Orthogonalise EV 22 wrt EV 27
+set fmri(ortho22.27) 0
+
+# Orthogonalise EV 22 wrt EV 28
+set fmri(ortho22.28) 0
+
+# Orthogonalise EV 22 wrt EV 29
+set fmri(ortho22.29) 0
+
+# Orthogonalise EV 22 wrt EV 30
+set fmri(ortho22.30) 0
+
+# Orthogonalise EV 22 wrt EV 31
+set fmri(ortho22.31) 0
+
+# Orthogonalise EV 22 wrt EV 32
+set fmri(ortho22.32) 0
+
+# Orthogonalise EV 22 wrt EV 33
+set fmri(ortho22.33) 0
+
+# Orthogonalise EV 22 wrt EV 34
+set fmri(ortho22.34) 0
+
+# Orthogonalise EV 22 wrt EV 35
+set fmri(ortho22.35) 0
+
+# Orthogonalise EV 22 wrt EV 36
+set fmri(ortho22.36) 0
+
+# Orthogonalise EV 22 wrt EV 37
+set fmri(ortho22.37) 0
+
+# Orthogonalise EV 22 wrt EV 38
+set fmri(ortho22.38) 0
+
+# Orthogonalise EV 22 wrt EV 39
+set fmri(ortho22.39) 0
+
+# Orthogonalise EV 22 wrt EV 40
+set fmri(ortho22.40) 0
+
+# EV 23 title
+set fmri(evtitle23) "C-D-path"
+
+# Basic waveform shape (EV 23)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape23) 3
+
+# Convolution (EV 23)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve23) 2
+
+# Convolve phase (EV 23)
+set fmri(convolve_phase23) 0
+
+# Apply temporal filtering (EV 23)
+set fmri(tempfilt_yn23) 1
+
+# Add temporal derivative (EV 23)
+set fmri(deriv_yn23) 1
+
+# Custom EV file (EV 23)
+set fmri(custom23) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_C_D_subpath.txt"
+
+# Gamma sigma (EV 23)
+set fmri(gammasigma23) 3
+
+# Gamma delay (EV 23)
+set fmri(gammadelay23) 6
+
+# Orthogonalise EV 23 wrt EV 0
+set fmri(ortho23.0) 0
+
+# Orthogonalise EV 23 wrt EV 1
+set fmri(ortho23.1) 0
+
+# Orthogonalise EV 23 wrt EV 2
+set fmri(ortho23.2) 0
+
+# Orthogonalise EV 23 wrt EV 3
+set fmri(ortho23.3) 0
+
+# Orthogonalise EV 23 wrt EV 4
+set fmri(ortho23.4) 0
+
+# Orthogonalise EV 23 wrt EV 5
+set fmri(ortho23.5) 0
+
+# Orthogonalise EV 23 wrt EV 6
+set fmri(ortho23.6) 0
+
+# Orthogonalise EV 23 wrt EV 7
+set fmri(ortho23.7) 0
+
+# Orthogonalise EV 23 wrt EV 8
+set fmri(ortho23.8) 0
+
+# Orthogonalise EV 23 wrt EV 9
+set fmri(ortho23.9) 0
+
+# Orthogonalise EV 23 wrt EV 10
+set fmri(ortho23.10) 0
+
+# Orthogonalise EV 23 wrt EV 11
+set fmri(ortho23.11) 0
+
+# Orthogonalise EV 23 wrt EV 12
+set fmri(ortho23.12) 0
+
+# Orthogonalise EV 23 wrt EV 13
+set fmri(ortho23.13) 0
+
+# Orthogonalise EV 23 wrt EV 14
+set fmri(ortho23.14) 0
+
+# Orthogonalise EV 23 wrt EV 15
+set fmri(ortho23.15) 0
+
+# Orthogonalise EV 23 wrt EV 16
+set fmri(ortho23.16) 0
+
+# Orthogonalise EV 23 wrt EV 17
+set fmri(ortho23.17) 0
+
+# Orthogonalise EV 23 wrt EV 18
+set fmri(ortho23.18) 0
+
+# Orthogonalise EV 23 wrt EV 19
+set fmri(ortho23.19) 0
+
+# Orthogonalise EV 23 wrt EV 20
+set fmri(ortho23.20) 0
+
+# Orthogonalise EV 23 wrt EV 21
+set fmri(ortho23.21) 0
+
+# Orthogonalise EV 23 wrt EV 22
+set fmri(ortho23.22) 0
+
+# Orthogonalise EV 23 wrt EV 23
+set fmri(ortho23.23) 0
+
+# Orthogonalise EV 23 wrt EV 24
+set fmri(ortho23.24) 0
+
+# Orthogonalise EV 23 wrt EV 25
+set fmri(ortho23.25) 0
+
+# Orthogonalise EV 23 wrt EV 26
+set fmri(ortho23.26) 0
+
+# Orthogonalise EV 23 wrt EV 27
+set fmri(ortho23.27) 0
+
+# Orthogonalise EV 23 wrt EV 28
+set fmri(ortho23.28) 0
+
+# Orthogonalise EV 23 wrt EV 29
+set fmri(ortho23.29) 0
+
+# Orthogonalise EV 23 wrt EV 30
+set fmri(ortho23.30) 0
+
+# Orthogonalise EV 23 wrt EV 31
+set fmri(ortho23.31) 0
+
+# Orthogonalise EV 23 wrt EV 32
+set fmri(ortho23.32) 0
+
+# Orthogonalise EV 23 wrt EV 33
+set fmri(ortho23.33) 0
+
+# Orthogonalise EV 23 wrt EV 34
+set fmri(ortho23.34) 0
+
+# Orthogonalise EV 23 wrt EV 35
+set fmri(ortho23.35) 0
+
+# Orthogonalise EV 23 wrt EV 36
+set fmri(ortho23.36) 0
+
+# Orthogonalise EV 23 wrt EV 37
+set fmri(ortho23.37) 0
+
+# Orthogonalise EV 23 wrt EV 38
+set fmri(ortho23.38) 0
+
+# Orthogonalise EV 23 wrt EV 39
+set fmri(ortho23.39) 0
+
+# Orthogonalise EV 23 wrt EV 40
+set fmri(ortho23.40) 0
+
+# EV 24 title
+set fmri(evtitle24) "C-D_rew"
+
+# Basic waveform shape (EV 24)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape24) 3
+
+# Convolution (EV 24)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve24) 2
+
+# Convolve phase (EV 24)
+set fmri(convolve_phase24) 0
+
+# Apply temporal filtering (EV 24)
+set fmri(tempfilt_yn24) 1
+
+# Add temporal derivative (EV 24)
+set fmri(deriv_yn24) 1
+
+# Custom EV file (EV 24)
+set fmri(custom24) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_C_D_reward.txt"
+
+# Gamma sigma (EV 24)
+set fmri(gammasigma24) 3
+
+# Gamma delay (EV 24)
+set fmri(gammadelay24) 6
+
+# Orthogonalise EV 24 wrt EV 0
+set fmri(ortho24.0) 0
+
+# Orthogonalise EV 24 wrt EV 1
+set fmri(ortho24.1) 0
+
+# Orthogonalise EV 24 wrt EV 2
+set fmri(ortho24.2) 0
+
+# Orthogonalise EV 24 wrt EV 3
+set fmri(ortho24.3) 0
+
+# Orthogonalise EV 24 wrt EV 4
+set fmri(ortho24.4) 0
+
+# Orthogonalise EV 24 wrt EV 5
+set fmri(ortho24.5) 0
+
+# Orthogonalise EV 24 wrt EV 6
+set fmri(ortho24.6) 0
+
+# Orthogonalise EV 24 wrt EV 7
+set fmri(ortho24.7) 0
+
+# Orthogonalise EV 24 wrt EV 8
+set fmri(ortho24.8) 0
+
+# Orthogonalise EV 24 wrt EV 9
+set fmri(ortho24.9) 0
+
+# Orthogonalise EV 24 wrt EV 10
+set fmri(ortho24.10) 0
+
+# Orthogonalise EV 24 wrt EV 11
+set fmri(ortho24.11) 0
+
+# Orthogonalise EV 24 wrt EV 12
+set fmri(ortho24.12) 0
+
+# Orthogonalise EV 24 wrt EV 13
+set fmri(ortho24.13) 0
+
+# Orthogonalise EV 24 wrt EV 14
+set fmri(ortho24.14) 0
+
+# Orthogonalise EV 24 wrt EV 15
+set fmri(ortho24.15) 0
+
+# Orthogonalise EV 24 wrt EV 16
+set fmri(ortho24.16) 0
+
+# Orthogonalise EV 24 wrt EV 17
+set fmri(ortho24.17) 0
+
+# Orthogonalise EV 24 wrt EV 18
+set fmri(ortho24.18) 0
+
+# Orthogonalise EV 24 wrt EV 19
+set fmri(ortho24.19) 0
+
+# Orthogonalise EV 24 wrt EV 20
+set fmri(ortho24.20) 0
+
+# Orthogonalise EV 24 wrt EV 21
+set fmri(ortho24.21) 0
+
+# Orthogonalise EV 24 wrt EV 22
+set fmri(ortho24.22) 0
+
+# Orthogonalise EV 24 wrt EV 23
+set fmri(ortho24.23) 0
+
+# Orthogonalise EV 24 wrt EV 24
+set fmri(ortho24.24) 0
+
+# Orthogonalise EV 24 wrt EV 25
+set fmri(ortho24.25) 0
+
+# Orthogonalise EV 24 wrt EV 26
+set fmri(ortho24.26) 0
+
+# Orthogonalise EV 24 wrt EV 27
+set fmri(ortho24.27) 0
+
+# Orthogonalise EV 24 wrt EV 28
+set fmri(ortho24.28) 0
+
+# Orthogonalise EV 24 wrt EV 29
+set fmri(ortho24.29) 0
+
+# Orthogonalise EV 24 wrt EV 30
+set fmri(ortho24.30) 0
+
+# Orthogonalise EV 24 wrt EV 31
+set fmri(ortho24.31) 0
+
+# Orthogonalise EV 24 wrt EV 32
+set fmri(ortho24.32) 0
+
+# Orthogonalise EV 24 wrt EV 33
+set fmri(ortho24.33) 0
+
+# Orthogonalise EV 24 wrt EV 34
+set fmri(ortho24.34) 0
+
+# Orthogonalise EV 24 wrt EV 35
+set fmri(ortho24.35) 0
+
+# Orthogonalise EV 24 wrt EV 36
+set fmri(ortho24.36) 0
+
+# Orthogonalise EV 24 wrt EV 37
+set fmri(ortho24.37) 0
+
+# Orthogonalise EV 24 wrt EV 38
+set fmri(ortho24.38) 0
+
+# Orthogonalise EV 24 wrt EV 39
+set fmri(ortho24.39) 0
+
+# Orthogonalise EV 24 wrt EV 40
+set fmri(ortho24.40) 0
+
+# EV 25 title
+set fmri(evtitle25) "D-A-path"
+
+# Basic waveform shape (EV 25)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape25) 3
+
+# Convolution (EV 25)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve25) 2
+
+# Convolve phase (EV 25)
+set fmri(convolve_phase25) 0
+
+# Apply temporal filtering (EV 25)
+set fmri(tempfilt_yn25) 1
+
+# Add temporal derivative (EV 25)
+set fmri(deriv_yn25) 1
+
+# Custom EV file (EV 25)
+set fmri(custom25) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_D_A_subpath.txt"
+
+# Gamma sigma (EV 25)
+set fmri(gammasigma25) 3
+
+# Gamma delay (EV 25)
+set fmri(gammadelay25) 6
+
+# Orthogonalise EV 25 wrt EV 0
+set fmri(ortho25.0) 0
+
+# Orthogonalise EV 25 wrt EV 1
+set fmri(ortho25.1) 0
+
+# Orthogonalise EV 25 wrt EV 2
+set fmri(ortho25.2) 0
+
+# Orthogonalise EV 25 wrt EV 3
+set fmri(ortho25.3) 0
+
+# Orthogonalise EV 25 wrt EV 4
+set fmri(ortho25.4) 0
+
+# Orthogonalise EV 25 wrt EV 5
+set fmri(ortho25.5) 0
+
+# Orthogonalise EV 25 wrt EV 6
+set fmri(ortho25.6) 0
+
+# Orthogonalise EV 25 wrt EV 7
+set fmri(ortho25.7) 0
+
+# Orthogonalise EV 25 wrt EV 8
+set fmri(ortho25.8) 0
+
+# Orthogonalise EV 25 wrt EV 9
+set fmri(ortho25.9) 0
+
+# Orthogonalise EV 25 wrt EV 10
+set fmri(ortho25.10) 0
+
+# Orthogonalise EV 25 wrt EV 11
+set fmri(ortho25.11) 0
+
+# Orthogonalise EV 25 wrt EV 12
+set fmri(ortho25.12) 0
+
+# Orthogonalise EV 25 wrt EV 13
+set fmri(ortho25.13) 0
+
+# Orthogonalise EV 25 wrt EV 14
+set fmri(ortho25.14) 0
+
+# Orthogonalise EV 25 wrt EV 15
+set fmri(ortho25.15) 0
+
+# Orthogonalise EV 25 wrt EV 16
+set fmri(ortho25.16) 0
+
+# Orthogonalise EV 25 wrt EV 17
+set fmri(ortho25.17) 0
+
+# Orthogonalise EV 25 wrt EV 18
+set fmri(ortho25.18) 0
+
+# Orthogonalise EV 25 wrt EV 19
+set fmri(ortho25.19) 0
+
+# Orthogonalise EV 25 wrt EV 20
+set fmri(ortho25.20) 0
+
+# Orthogonalise EV 25 wrt EV 21
+set fmri(ortho25.21) 0
+
+# Orthogonalise EV 25 wrt EV 22
+set fmri(ortho25.22) 0
+
+# Orthogonalise EV 25 wrt EV 23
+set fmri(ortho25.23) 0
+
+# Orthogonalise EV 25 wrt EV 24
+set fmri(ortho25.24) 0
+
+# Orthogonalise EV 25 wrt EV 25
+set fmri(ortho25.25) 0
+
+# Orthogonalise EV 25 wrt EV 26
+set fmri(ortho25.26) 0
+
+# Orthogonalise EV 25 wrt EV 27
+set fmri(ortho25.27) 0
+
+# Orthogonalise EV 25 wrt EV 28
+set fmri(ortho25.28) 0
+
+# Orthogonalise EV 25 wrt EV 29
+set fmri(ortho25.29) 0
+
+# Orthogonalise EV 25 wrt EV 30
+set fmri(ortho25.30) 0
+
+# Orthogonalise EV 25 wrt EV 31
+set fmri(ortho25.31) 0
+
+# Orthogonalise EV 25 wrt EV 32
+set fmri(ortho25.32) 0
+
+# Orthogonalise EV 25 wrt EV 33
+set fmri(ortho25.33) 0
+
+# Orthogonalise EV 25 wrt EV 34
+set fmri(ortho25.34) 0
+
+# Orthogonalise EV 25 wrt EV 35
+set fmri(ortho25.35) 0
+
+# Orthogonalise EV 25 wrt EV 36
+set fmri(ortho25.36) 0
+
+# Orthogonalise EV 25 wrt EV 37
+set fmri(ortho25.37) 0
+
+# Orthogonalise EV 25 wrt EV 38
+set fmri(ortho25.38) 0
+
+# Orthogonalise EV 25 wrt EV 39
+set fmri(ortho25.39) 0
+
+# Orthogonalise EV 25 wrt EV 40
+set fmri(ortho25.40) 0
+
+# EV 26 title
+set fmri(evtitle26) "D-A-rew"
+
+# Basic waveform shape (EV 26)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape26) 3
+
+# Convolution (EV 26)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve26) 2
+
+# Convolve phase (EV 26)
+set fmri(convolve_phase26) 0
+
+# Apply temporal filtering (EV 26)
+set fmri(tempfilt_yn26) 1
+
+# Add temporal derivative (EV 26)
+set fmri(deriv_yn26) 1
+
+# Custom EV file (EV 26)
+set fmri(custom26) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_D_A_reward.txt"
+
+# Gamma sigma (EV 26)
+set fmri(gammasigma26) 3
+
+# Gamma delay (EV 26)
+set fmri(gammadelay26) 6
+
+# Orthogonalise EV 26 wrt EV 0
+set fmri(ortho26.0) 0
+
+# Orthogonalise EV 26 wrt EV 1
+set fmri(ortho26.1) 0
+
+# Orthogonalise EV 26 wrt EV 2
+set fmri(ortho26.2) 0
+
+# Orthogonalise EV 26 wrt EV 3
+set fmri(ortho26.3) 0
+
+# Orthogonalise EV 26 wrt EV 4
+set fmri(ortho26.4) 0
+
+# Orthogonalise EV 26 wrt EV 5
+set fmri(ortho26.5) 0
+
+# Orthogonalise EV 26 wrt EV 6
+set fmri(ortho26.6) 0
+
+# Orthogonalise EV 26 wrt EV 7
+set fmri(ortho26.7) 0
+
+# Orthogonalise EV 26 wrt EV 8
+set fmri(ortho26.8) 0
+
+# Orthogonalise EV 26 wrt EV 9
+set fmri(ortho26.9) 0
+
+# Orthogonalise EV 26 wrt EV 10
+set fmri(ortho26.10) 0
+
+# Orthogonalise EV 26 wrt EV 11
+set fmri(ortho26.11) 0
+
+# Orthogonalise EV 26 wrt EV 12
+set fmri(ortho26.12) 0
+
+# Orthogonalise EV 26 wrt EV 13
+set fmri(ortho26.13) 0
+
+# Orthogonalise EV 26 wrt EV 14
+set fmri(ortho26.14) 0
+
+# Orthogonalise EV 26 wrt EV 15
+set fmri(ortho26.15) 0
+
+# Orthogonalise EV 26 wrt EV 16
+set fmri(ortho26.16) 0
+
+# Orthogonalise EV 26 wrt EV 17
+set fmri(ortho26.17) 0
+
+# Orthogonalise EV 26 wrt EV 18
+set fmri(ortho26.18) 0
+
+# Orthogonalise EV 26 wrt EV 19
+set fmri(ortho26.19) 0
+
+# Orthogonalise EV 26 wrt EV 20
+set fmri(ortho26.20) 0
+
+# Orthogonalise EV 26 wrt EV 21
+set fmri(ortho26.21) 0
+
+# Orthogonalise EV 26 wrt EV 22
+set fmri(ortho26.22) 0
+
+# Orthogonalise EV 26 wrt EV 23
+set fmri(ortho26.23) 0
+
+# Orthogonalise EV 26 wrt EV 24
+set fmri(ortho26.24) 0
+
+# Orthogonalise EV 26 wrt EV 25
+set fmri(ortho26.25) 0
+
+# Orthogonalise EV 26 wrt EV 26
+set fmri(ortho26.26) 0
+
+# Orthogonalise EV 26 wrt EV 27
+set fmri(ortho26.27) 0
+
+# Orthogonalise EV 26 wrt EV 28
+set fmri(ortho26.28) 0
+
+# Orthogonalise EV 26 wrt EV 29
+set fmri(ortho26.29) 0
+
+# Orthogonalise EV 26 wrt EV 30
+set fmri(ortho26.30) 0
+
+# Orthogonalise EV 26 wrt EV 31
+set fmri(ortho26.31) 0
+
+# Orthogonalise EV 26 wrt EV 32
+set fmri(ortho26.32) 0
+
+# Orthogonalise EV 26 wrt EV 33
+set fmri(ortho26.33) 0
+
+# Orthogonalise EV 26 wrt EV 34
+set fmri(ortho26.34) 0
+
+# Orthogonalise EV 26 wrt EV 35
+set fmri(ortho26.35) 0
+
+# Orthogonalise EV 26 wrt EV 36
+set fmri(ortho26.36) 0
+
+# Orthogonalise EV 26 wrt EV 37
+set fmri(ortho26.37) 0
+
+# Orthogonalise EV 26 wrt EV 38
+set fmri(ortho26.38) 0
+
+# Orthogonalise EV 26 wrt EV 39
+set fmri(ortho26.39) 0
+
+# Orthogonalise EV 26 wrt EV 40
+set fmri(ortho26.40) 0
+
+# EV 27 title
+set fmri(evtitle27) "D-B-path"
+
+# Basic waveform shape (EV 27)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape27) 3
+
+# Convolution (EV 27)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve27) 2
+
+# Convolve phase (EV 27)
+set fmri(convolve_phase27) 0
+
+# Apply temporal filtering (EV 27)
+set fmri(tempfilt_yn27) 1
+
+# Add temporal derivative (EV 27)
+set fmri(deriv_yn27) 1
+
+# Custom EV file (EV 27)
+set fmri(custom27) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_D_B_subpath.txt"
+
+# Gamma sigma (EV 27)
+set fmri(gammasigma27) 3
+
+# Gamma delay (EV 27)
+set fmri(gammadelay27) 6
+
+# Orthogonalise EV 27 wrt EV 0
+set fmri(ortho27.0) 0
+
+# Orthogonalise EV 27 wrt EV 1
+set fmri(ortho27.1) 0
+
+# Orthogonalise EV 27 wrt EV 2
+set fmri(ortho27.2) 0
+
+# Orthogonalise EV 27 wrt EV 3
+set fmri(ortho27.3) 0
+
+# Orthogonalise EV 27 wrt EV 4
+set fmri(ortho27.4) 0
+
+# Orthogonalise EV 27 wrt EV 5
+set fmri(ortho27.5) 0
+
+# Orthogonalise EV 27 wrt EV 6
+set fmri(ortho27.6) 0
+
+# Orthogonalise EV 27 wrt EV 7
+set fmri(ortho27.7) 0
+
+# Orthogonalise EV 27 wrt EV 8
+set fmri(ortho27.8) 0
+
+# Orthogonalise EV 27 wrt EV 9
+set fmri(ortho27.9) 0
+
+# Orthogonalise EV 27 wrt EV 10
+set fmri(ortho27.10) 0
+
+# Orthogonalise EV 27 wrt EV 11
+set fmri(ortho27.11) 0
+
+# Orthogonalise EV 27 wrt EV 12
+set fmri(ortho27.12) 0
+
+# Orthogonalise EV 27 wrt EV 13
+set fmri(ortho27.13) 0
+
+# Orthogonalise EV 27 wrt EV 14
+set fmri(ortho27.14) 0
+
+# Orthogonalise EV 27 wrt EV 15
+set fmri(ortho27.15) 0
+
+# Orthogonalise EV 27 wrt EV 16
+set fmri(ortho27.16) 0
+
+# Orthogonalise EV 27 wrt EV 17
+set fmri(ortho27.17) 0
+
+# Orthogonalise EV 27 wrt EV 18
+set fmri(ortho27.18) 0
+
+# Orthogonalise EV 27 wrt EV 19
+set fmri(ortho27.19) 0
+
+# Orthogonalise EV 27 wrt EV 20
+set fmri(ortho27.20) 0
+
+# Orthogonalise EV 27 wrt EV 21
+set fmri(ortho27.21) 0
+
+# Orthogonalise EV 27 wrt EV 22
+set fmri(ortho27.22) 0
+
+# Orthogonalise EV 27 wrt EV 23
+set fmri(ortho27.23) 0
+
+# Orthogonalise EV 27 wrt EV 24
+set fmri(ortho27.24) 0
+
+# Orthogonalise EV 27 wrt EV 25
+set fmri(ortho27.25) 0
+
+# Orthogonalise EV 27 wrt EV 26
+set fmri(ortho27.26) 0
+
+# Orthogonalise EV 27 wrt EV 27
+set fmri(ortho27.27) 0
+
+# Orthogonalise EV 27 wrt EV 28
+set fmri(ortho27.28) 0
+
+# Orthogonalise EV 27 wrt EV 29
+set fmri(ortho27.29) 0
+
+# Orthogonalise EV 27 wrt EV 30
+set fmri(ortho27.30) 0
+
+# Orthogonalise EV 27 wrt EV 31
+set fmri(ortho27.31) 0
+
+# Orthogonalise EV 27 wrt EV 32
+set fmri(ortho27.32) 0
+
+# Orthogonalise EV 27 wrt EV 33
+set fmri(ortho27.33) 0
+
+# Orthogonalise EV 27 wrt EV 34
+set fmri(ortho27.34) 0
+
+# Orthogonalise EV 27 wrt EV 35
+set fmri(ortho27.35) 0
+
+# Orthogonalise EV 27 wrt EV 36
+set fmri(ortho27.36) 0
+
+# Orthogonalise EV 27 wrt EV 37
+set fmri(ortho27.37) 0
+
+# Orthogonalise EV 27 wrt EV 38
+set fmri(ortho27.38) 0
+
+# Orthogonalise EV 27 wrt EV 39
+set fmri(ortho27.39) 0
+
+# Orthogonalise EV 27 wrt EV 40
+set fmri(ortho27.40) 0
+
+# EV 28 title
+set fmri(evtitle28) "D-B-rew"
+
+# Basic waveform shape (EV 28)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape28) 3
+
+# Convolution (EV 28)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve28) 2
+
+# Convolve phase (EV 28)
+set fmri(convolve_phase28) 0
+
+# Apply temporal filtering (EV 28)
+set fmri(tempfilt_yn28) 1
+
+# Add temporal derivative (EV 28)
+set fmri(deriv_yn28) 1
+
+# Custom EV file (EV 28)
+set fmri(custom28) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_D_B_reward.txt"
+
+# Gamma sigma (EV 28)
+set fmri(gammasigma28) 3
+
+# Gamma delay (EV 28)
+set fmri(gammadelay28) 6
+
+# Orthogonalise EV 28 wrt EV 0
+set fmri(ortho28.0) 0
+
+# Orthogonalise EV 28 wrt EV 1
+set fmri(ortho28.1) 0
+
+# Orthogonalise EV 28 wrt EV 2
+set fmri(ortho28.2) 0
+
+# Orthogonalise EV 28 wrt EV 3
+set fmri(ortho28.3) 0
+
+# Orthogonalise EV 28 wrt EV 4
+set fmri(ortho28.4) 0
+
+# Orthogonalise EV 28 wrt EV 5
+set fmri(ortho28.5) 0
+
+# Orthogonalise EV 28 wrt EV 6
+set fmri(ortho28.6) 0
+
+# Orthogonalise EV 28 wrt EV 7
+set fmri(ortho28.7) 0
+
+# Orthogonalise EV 28 wrt EV 8
+set fmri(ortho28.8) 0
+
+# Orthogonalise EV 28 wrt EV 9
+set fmri(ortho28.9) 0
+
+# Orthogonalise EV 28 wrt EV 10
+set fmri(ortho28.10) 0
+
+# Orthogonalise EV 28 wrt EV 11
+set fmri(ortho28.11) 0
+
+# Orthogonalise EV 28 wrt EV 12
+set fmri(ortho28.12) 0
+
+# Orthogonalise EV 28 wrt EV 13
+set fmri(ortho28.13) 0
+
+# Orthogonalise EV 28 wrt EV 14
+set fmri(ortho28.14) 0
+
+# Orthogonalise EV 28 wrt EV 15
+set fmri(ortho28.15) 0
+
+# Orthogonalise EV 28 wrt EV 16
+set fmri(ortho28.16) 0
+
+# Orthogonalise EV 28 wrt EV 17
+set fmri(ortho28.17) 0
+
+# Orthogonalise EV 28 wrt EV 18
+set fmri(ortho28.18) 0
+
+# Orthogonalise EV 28 wrt EV 19
+set fmri(ortho28.19) 0
+
+# Orthogonalise EV 28 wrt EV 20
+set fmri(ortho28.20) 0
+
+# Orthogonalise EV 28 wrt EV 21
+set fmri(ortho28.21) 0
+
+# Orthogonalise EV 28 wrt EV 22
+set fmri(ortho28.22) 0
+
+# Orthogonalise EV 28 wrt EV 23
+set fmri(ortho28.23) 0
+
+# Orthogonalise EV 28 wrt EV 24
+set fmri(ortho28.24) 0
+
+# Orthogonalise EV 28 wrt EV 25
+set fmri(ortho28.25) 0
+
+# Orthogonalise EV 28 wrt EV 26
+set fmri(ortho28.26) 0
+
+# Orthogonalise EV 28 wrt EV 27
+set fmri(ortho28.27) 0
+
+# Orthogonalise EV 28 wrt EV 28
+set fmri(ortho28.28) 0
+
+# Orthogonalise EV 28 wrt EV 29
+set fmri(ortho28.29) 0
+
+# Orthogonalise EV 28 wrt EV 30
+set fmri(ortho28.30) 0
+
+# Orthogonalise EV 28 wrt EV 31
+set fmri(ortho28.31) 0
+
+# Orthogonalise EV 28 wrt EV 32
+set fmri(ortho28.32) 0
+
+# Orthogonalise EV 28 wrt EV 33
+set fmri(ortho28.33) 0
+
+# Orthogonalise EV 28 wrt EV 34
+set fmri(ortho28.34) 0
+
+# Orthogonalise EV 28 wrt EV 35
+set fmri(ortho28.35) 0
+
+# Orthogonalise EV 28 wrt EV 36
+set fmri(ortho28.36) 0
+
+# Orthogonalise EV 28 wrt EV 37
+set fmri(ortho28.37) 0
+
+# Orthogonalise EV 28 wrt EV 38
+set fmri(ortho28.38) 0
+
+# Orthogonalise EV 28 wrt EV 39
+set fmri(ortho28.39) 0
+
+# Orthogonalise EV 28 wrt EV 40
+set fmri(ortho28.40) 0
+
+# EV 29 title
+set fmri(evtitle29) "D-C-path"
+
+# Basic waveform shape (EV 29)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape29) 3
+
+# Convolution (EV 29)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve29) 2
+
+# Convolve phase (EV 29)
+set fmri(convolve_phase29) 0
+
+# Apply temporal filtering (EV 29)
+set fmri(tempfilt_yn29) 1
+
+# Add temporal derivative (EV 29)
+set fmri(deriv_yn29) 1
+
+# Custom EV file (EV 29)
+set fmri(custom29) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_D_C_subpath.txt"
+
+# Gamma sigma (EV 29)
+set fmri(gammasigma29) 3
+
+# Gamma delay (EV 29)
+set fmri(gammadelay29) 6
+
+# Orthogonalise EV 29 wrt EV 0
+set fmri(ortho29.0) 0
+
+# Orthogonalise EV 29 wrt EV 1
+set fmri(ortho29.1) 0
+
+# Orthogonalise EV 29 wrt EV 2
+set fmri(ortho29.2) 0
+
+# Orthogonalise EV 29 wrt EV 3
+set fmri(ortho29.3) 0
+
+# Orthogonalise EV 29 wrt EV 4
+set fmri(ortho29.4) 0
+
+# Orthogonalise EV 29 wrt EV 5
+set fmri(ortho29.5) 0
+
+# Orthogonalise EV 29 wrt EV 6
+set fmri(ortho29.6) 0
+
+# Orthogonalise EV 29 wrt EV 7
+set fmri(ortho29.7) 0
+
+# Orthogonalise EV 29 wrt EV 8
+set fmri(ortho29.8) 0
+
+# Orthogonalise EV 29 wrt EV 9
+set fmri(ortho29.9) 0
+
+# Orthogonalise EV 29 wrt EV 10
+set fmri(ortho29.10) 0
+
+# Orthogonalise EV 29 wrt EV 11
+set fmri(ortho29.11) 0
+
+# Orthogonalise EV 29 wrt EV 12
+set fmri(ortho29.12) 0
+
+# Orthogonalise EV 29 wrt EV 13
+set fmri(ortho29.13) 0
+
+# Orthogonalise EV 29 wrt EV 14
+set fmri(ortho29.14) 0
+
+# Orthogonalise EV 29 wrt EV 15
+set fmri(ortho29.15) 0
+
+# Orthogonalise EV 29 wrt EV 16
+set fmri(ortho29.16) 0
+
+# Orthogonalise EV 29 wrt EV 17
+set fmri(ortho29.17) 0
+
+# Orthogonalise EV 29 wrt EV 18
+set fmri(ortho29.18) 0
+
+# Orthogonalise EV 29 wrt EV 19
+set fmri(ortho29.19) 0
+
+# Orthogonalise EV 29 wrt EV 20
+set fmri(ortho29.20) 0
+
+# Orthogonalise EV 29 wrt EV 21
+set fmri(ortho29.21) 0
+
+# Orthogonalise EV 29 wrt EV 22
+set fmri(ortho29.22) 0
+
+# Orthogonalise EV 29 wrt EV 23
+set fmri(ortho29.23) 0
+
+# Orthogonalise EV 29 wrt EV 24
+set fmri(ortho29.24) 0
+
+# Orthogonalise EV 29 wrt EV 25
+set fmri(ortho29.25) 0
+
+# Orthogonalise EV 29 wrt EV 26
+set fmri(ortho29.26) 0
+
+# Orthogonalise EV 29 wrt EV 27
+set fmri(ortho29.27) 0
+
+# Orthogonalise EV 29 wrt EV 28
+set fmri(ortho29.28) 0
+
+# Orthogonalise EV 29 wrt EV 29
+set fmri(ortho29.29) 0
+
+# Orthogonalise EV 29 wrt EV 30
+set fmri(ortho29.30) 0
+
+# Orthogonalise EV 29 wrt EV 31
+set fmri(ortho29.31) 0
+
+# Orthogonalise EV 29 wrt EV 32
+set fmri(ortho29.32) 0
+
+# Orthogonalise EV 29 wrt EV 33
+set fmri(ortho29.33) 0
+
+# Orthogonalise EV 29 wrt EV 34
+set fmri(ortho29.34) 0
+
+# Orthogonalise EV 29 wrt EV 35
+set fmri(ortho29.35) 0
+
+# Orthogonalise EV 29 wrt EV 36
+set fmri(ortho29.36) 0
+
+# Orthogonalise EV 29 wrt EV 37
+set fmri(ortho29.37) 0
+
+# Orthogonalise EV 29 wrt EV 38
+set fmri(ortho29.38) 0
+
+# Orthogonalise EV 29 wrt EV 39
+set fmri(ortho29.39) 0
+
+# Orthogonalise EV 29 wrt EV 40
+set fmri(ortho29.40) 0
+
+# EV 30 title
+set fmri(evtitle30) "D-C-rew"
+
+# Basic waveform shape (EV 30)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape30) 3
+
+# Convolution (EV 30)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve30) 2
+
+# Convolve phase (EV 30)
+set fmri(convolve_phase30) 0
+
+# Apply temporal filtering (EV 30)
+set fmri(tempfilt_yn30) 1
+
+# Add temporal derivative (EV 30)
+set fmri(deriv_yn30) 1
+
+# Custom EV file (EV 30)
+set fmri(custom30) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_D_C_reward.txt"
+
+# Gamma sigma (EV 30)
+set fmri(gammasigma30) 3
+
+# Gamma delay (EV 30)
+set fmri(gammadelay30) 6
+
+# Orthogonalise EV 30 wrt EV 0
+set fmri(ortho30.0) 0
+
+# Orthogonalise EV 30 wrt EV 1
+set fmri(ortho30.1) 0
+
+# Orthogonalise EV 30 wrt EV 2
+set fmri(ortho30.2) 0
+
+# Orthogonalise EV 30 wrt EV 3
+set fmri(ortho30.3) 0
+
+# Orthogonalise EV 30 wrt EV 4
+set fmri(ortho30.4) 0
+
+# Orthogonalise EV 30 wrt EV 5
+set fmri(ortho30.5) 0
+
+# Orthogonalise EV 30 wrt EV 6
+set fmri(ortho30.6) 0
+
+# Orthogonalise EV 30 wrt EV 7
+set fmri(ortho30.7) 0
+
+# Orthogonalise EV 30 wrt EV 8
+set fmri(ortho30.8) 0
+
+# Orthogonalise EV 30 wrt EV 9
+set fmri(ortho30.9) 0
+
+# Orthogonalise EV 30 wrt EV 10
+set fmri(ortho30.10) 0
+
+# Orthogonalise EV 30 wrt EV 11
+set fmri(ortho30.11) 0
+
+# Orthogonalise EV 30 wrt EV 12
+set fmri(ortho30.12) 0
+
+# Orthogonalise EV 30 wrt EV 13
+set fmri(ortho30.13) 0
+
+# Orthogonalise EV 30 wrt EV 14
+set fmri(ortho30.14) 0
+
+# Orthogonalise EV 30 wrt EV 15
+set fmri(ortho30.15) 0
+
+# Orthogonalise EV 30 wrt EV 16
+set fmri(ortho30.16) 0
+
+# Orthogonalise EV 30 wrt EV 17
+set fmri(ortho30.17) 0
+
+# Orthogonalise EV 30 wrt EV 18
+set fmri(ortho30.18) 0
+
+# Orthogonalise EV 30 wrt EV 19
+set fmri(ortho30.19) 0
+
+# Orthogonalise EV 30 wrt EV 20
+set fmri(ortho30.20) 0
+
+# Orthogonalise EV 30 wrt EV 21
+set fmri(ortho30.21) 0
+
+# Orthogonalise EV 30 wrt EV 22
+set fmri(ortho30.22) 0
+
+# Orthogonalise EV 30 wrt EV 23
+set fmri(ortho30.23) 0
+
+# Orthogonalise EV 30 wrt EV 24
+set fmri(ortho30.24) 0
+
+# Orthogonalise EV 30 wrt EV 25
+set fmri(ortho30.25) 0
+
+# Orthogonalise EV 30 wrt EV 26
+set fmri(ortho30.26) 0
+
+# Orthogonalise EV 30 wrt EV 27
+set fmri(ortho30.27) 0
+
+# Orthogonalise EV 30 wrt EV 28
+set fmri(ortho30.28) 0
+
+# Orthogonalise EV 30 wrt EV 29
+set fmri(ortho30.29) 0
+
+# Orthogonalise EV 30 wrt EV 30
+set fmri(ortho30.30) 0
+
+# Orthogonalise EV 30 wrt EV 31
+set fmri(ortho30.31) 0
+
+# Orthogonalise EV 30 wrt EV 32
+set fmri(ortho30.32) 0
+
+# Orthogonalise EV 30 wrt EV 33
+set fmri(ortho30.33) 0
+
+# Orthogonalise EV 30 wrt EV 34
+set fmri(ortho30.34) 0
+
+# Orthogonalise EV 30 wrt EV 35
+set fmri(ortho30.35) 0
+
+# Orthogonalise EV 30 wrt EV 36
+set fmri(ortho30.36) 0
+
+# Orthogonalise EV 30 wrt EV 37
+set fmri(ortho30.37) 0
+
+# Orthogonalise EV 30 wrt EV 38
+set fmri(ortho30.38) 0
+
+# Orthogonalise EV 30 wrt EV 39
+set fmri(ortho30.39) 0
+
+# Orthogonalise EV 30 wrt EV 40
+set fmri(ortho30.40) 0
+
+# EV 31 title
+set fmri(evtitle31) "D-D-path"
+
+# Basic waveform shape (EV 31)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape31) 3
+
+# Convolution (EV 31)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve31) 2
+
+# Convolve phase (EV 31)
+set fmri(convolve_phase31) 0
+
+# Apply temporal filtering (EV 31)
+set fmri(tempfilt_yn31) 1
+
+# Add temporal derivative (EV 31)
+set fmri(deriv_yn31) 1
+
+# Custom EV file (EV 31)
+set fmri(custom31) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_D_D_subpath.txt"
+
+# Gamma sigma (EV 31)
+set fmri(gammasigma31) 3
+
+# Gamma delay (EV 31)
+set fmri(gammadelay31) 6
+
+# Orthogonalise EV 31 wrt EV 0
+set fmri(ortho31.0) 0
+
+# Orthogonalise EV 31 wrt EV 1
+set fmri(ortho31.1) 0
+
+# Orthogonalise EV 31 wrt EV 2
+set fmri(ortho31.2) 0
+
+# Orthogonalise EV 31 wrt EV 3
+set fmri(ortho31.3) 0
+
+# Orthogonalise EV 31 wrt EV 4
+set fmri(ortho31.4) 0
+
+# Orthogonalise EV 31 wrt EV 5
+set fmri(ortho31.5) 0
+
+# Orthogonalise EV 31 wrt EV 6
+set fmri(ortho31.6) 0
+
+# Orthogonalise EV 31 wrt EV 7
+set fmri(ortho31.7) 0
+
+# Orthogonalise EV 31 wrt EV 8
+set fmri(ortho31.8) 0
+
+# Orthogonalise EV 31 wrt EV 9
+set fmri(ortho31.9) 0
+
+# Orthogonalise EV 31 wrt EV 10
+set fmri(ortho31.10) 0
+
+# Orthogonalise EV 31 wrt EV 11
+set fmri(ortho31.11) 0
+
+# Orthogonalise EV 31 wrt EV 12
+set fmri(ortho31.12) 0
+
+# Orthogonalise EV 31 wrt EV 13
+set fmri(ortho31.13) 0
+
+# Orthogonalise EV 31 wrt EV 14
+set fmri(ortho31.14) 0
+
+# Orthogonalise EV 31 wrt EV 15
+set fmri(ortho31.15) 0
+
+# Orthogonalise EV 31 wrt EV 16
+set fmri(ortho31.16) 0
+
+# Orthogonalise EV 31 wrt EV 17
+set fmri(ortho31.17) 0
+
+# Orthogonalise EV 31 wrt EV 18
+set fmri(ortho31.18) 0
+
+# Orthogonalise EV 31 wrt EV 19
+set fmri(ortho31.19) 0
+
+# Orthogonalise EV 31 wrt EV 20
+set fmri(ortho31.20) 0
+
+# Orthogonalise EV 31 wrt EV 21
+set fmri(ortho31.21) 0
+
+# Orthogonalise EV 31 wrt EV 22
+set fmri(ortho31.22) 0
+
+# Orthogonalise EV 31 wrt EV 23
+set fmri(ortho31.23) 0
+
+# Orthogonalise EV 31 wrt EV 24
+set fmri(ortho31.24) 0
+
+# Orthogonalise EV 31 wrt EV 25
+set fmri(ortho31.25) 0
+
+# Orthogonalise EV 31 wrt EV 26
+set fmri(ortho31.26) 0
+
+# Orthogonalise EV 31 wrt EV 27
+set fmri(ortho31.27) 0
+
+# Orthogonalise EV 31 wrt EV 28
+set fmri(ortho31.28) 0
+
+# Orthogonalise EV 31 wrt EV 29
+set fmri(ortho31.29) 0
+
+# Orthogonalise EV 31 wrt EV 30
+set fmri(ortho31.30) 0
+
+# Orthogonalise EV 31 wrt EV 31
+set fmri(ortho31.31) 0
+
+# Orthogonalise EV 31 wrt EV 32
+set fmri(ortho31.32) 0
+
+# Orthogonalise EV 31 wrt EV 33
+set fmri(ortho31.33) 0
+
+# Orthogonalise EV 31 wrt EV 34
+set fmri(ortho31.34) 0
+
+# Orthogonalise EV 31 wrt EV 35
+set fmri(ortho31.35) 0
+
+# Orthogonalise EV 31 wrt EV 36
+set fmri(ortho31.36) 0
+
+# Orthogonalise EV 31 wrt EV 37
+set fmri(ortho31.37) 0
+
+# Orthogonalise EV 31 wrt EV 38
+set fmri(ortho31.38) 0
+
+# Orthogonalise EV 31 wrt EV 39
+set fmri(ortho31.39) 0
+
+# Orthogonalise EV 31 wrt EV 40
+set fmri(ortho31.40) 0
+
+# EV 32 title
+set fmri(evtitle32) "D-D-rew"
+
+# Basic waveform shape (EV 32)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape32) 3
+
+# Convolution (EV 32)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve32) 2
+
+# Convolve phase (EV 32)
+set fmri(convolve_phase32) 0
+
+# Apply temporal filtering (EV 32)
+set fmri(tempfilt_yn32) 1
+
+# Add temporal derivative (EV 32)
+set fmri(deriv_yn32) 1
+
+# Custom EV file (EV 32)
+set fmri(custom32) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_D_D_reward.txt"
+
+# Gamma sigma (EV 32)
+set fmri(gammasigma32) 3
+
+# Gamma delay (EV 32)
+set fmri(gammadelay32) 6
+
+# Orthogonalise EV 32 wrt EV 0
+set fmri(ortho32.0) 0
+
+# Orthogonalise EV 32 wrt EV 1
+set fmri(ortho32.1) 0
+
+# Orthogonalise EV 32 wrt EV 2
+set fmri(ortho32.2) 0
+
+# Orthogonalise EV 32 wrt EV 3
+set fmri(ortho32.3) 0
+
+# Orthogonalise EV 32 wrt EV 4
+set fmri(ortho32.4) 0
+
+# Orthogonalise EV 32 wrt EV 5
+set fmri(ortho32.5) 0
+
+# Orthogonalise EV 32 wrt EV 6
+set fmri(ortho32.6) 0
+
+# Orthogonalise EV 32 wrt EV 7
+set fmri(ortho32.7) 0
+
+# Orthogonalise EV 32 wrt EV 8
+set fmri(ortho32.8) 0
+
+# Orthogonalise EV 32 wrt EV 9
+set fmri(ortho32.9) 0
+
+# Orthogonalise EV 32 wrt EV 10
+set fmri(ortho32.10) 0
+
+# Orthogonalise EV 32 wrt EV 11
+set fmri(ortho32.11) 0
+
+# Orthogonalise EV 32 wrt EV 12
+set fmri(ortho32.12) 0
+
+# Orthogonalise EV 32 wrt EV 13
+set fmri(ortho32.13) 0
+
+# Orthogonalise EV 32 wrt EV 14
+set fmri(ortho32.14) 0
+
+# Orthogonalise EV 32 wrt EV 15
+set fmri(ortho32.15) 0
+
+# Orthogonalise EV 32 wrt EV 16
+set fmri(ortho32.16) 0
+
+# Orthogonalise EV 32 wrt EV 17
+set fmri(ortho32.17) 0
+
+# Orthogonalise EV 32 wrt EV 18
+set fmri(ortho32.18) 0
+
+# Orthogonalise EV 32 wrt EV 19
+set fmri(ortho32.19) 0
+
+# Orthogonalise EV 32 wrt EV 20
+set fmri(ortho32.20) 0
+
+# Orthogonalise EV 32 wrt EV 21
+set fmri(ortho32.21) 0
+
+# Orthogonalise EV 32 wrt EV 22
+set fmri(ortho32.22) 0
+
+# Orthogonalise EV 32 wrt EV 23
+set fmri(ortho32.23) 0
+
+# Orthogonalise EV 32 wrt EV 24
+set fmri(ortho32.24) 0
+
+# Orthogonalise EV 32 wrt EV 25
+set fmri(ortho32.25) 0
+
+# Orthogonalise EV 32 wrt EV 26
+set fmri(ortho32.26) 0
+
+# Orthogonalise EV 32 wrt EV 27
+set fmri(ortho32.27) 0
+
+# Orthogonalise EV 32 wrt EV 28
+set fmri(ortho32.28) 0
+
+# Orthogonalise EV 32 wrt EV 29
+set fmri(ortho32.29) 0
+
+# Orthogonalise EV 32 wrt EV 30
+set fmri(ortho32.30) 0
+
+# Orthogonalise EV 32 wrt EV 31
+set fmri(ortho32.31) 0
+
+# Orthogonalise EV 32 wrt EV 32
+set fmri(ortho32.32) 0
+
+# Orthogonalise EV 32 wrt EV 33
+set fmri(ortho32.33) 0
+
+# Orthogonalise EV 32 wrt EV 34
+set fmri(ortho32.34) 0
+
+# Orthogonalise EV 32 wrt EV 35
+set fmri(ortho32.35) 0
+
+# Orthogonalise EV 32 wrt EV 36
+set fmri(ortho32.36) 0
+
+# Orthogonalise EV 32 wrt EV 37
+set fmri(ortho32.37) 0
+
+# Orthogonalise EV 32 wrt EV 38
+set fmri(ortho32.38) 0
+
+# Orthogonalise EV 32 wrt EV 39
+set fmri(ortho32.39) 0
+
+# Orthogonalise EV 32 wrt EV 40
+set fmri(ortho32.40) 0
+
+# EV 33 title
+set fmri(evtitle33) "E-A-path"
+
+# Basic waveform shape (EV 33)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape33) 3
+
+# Convolution (EV 33)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve33) 2
+
+# Convolve phase (EV 33)
+set fmri(convolve_phase33) 0
+
+# Apply temporal filtering (EV 33)
+set fmri(tempfilt_yn33) 1
+
+# Add temporal derivative (EV 33)
+set fmri(deriv_yn33) 1
+
+# Custom EV file (EV 33)
+set fmri(custom33) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_E_A_subpath.txt"
+
+# Gamma sigma (EV 33)
+set fmri(gammasigma33) 3
+
+# Gamma delay (EV 33)
+set fmri(gammadelay33) 6
+
+# Orthogonalise EV 33 wrt EV 0
+set fmri(ortho33.0) 0
+
+# Orthogonalise EV 33 wrt EV 1
+set fmri(ortho33.1) 0
+
+# Orthogonalise EV 33 wrt EV 2
+set fmri(ortho33.2) 0
+
+# Orthogonalise EV 33 wrt EV 3
+set fmri(ortho33.3) 0
+
+# Orthogonalise EV 33 wrt EV 4
+set fmri(ortho33.4) 0
+
+# Orthogonalise EV 33 wrt EV 5
+set fmri(ortho33.5) 0
+
+# Orthogonalise EV 33 wrt EV 6
+set fmri(ortho33.6) 0
+
+# Orthogonalise EV 33 wrt EV 7
+set fmri(ortho33.7) 0
+
+# Orthogonalise EV 33 wrt EV 8
+set fmri(ortho33.8) 0
+
+# Orthogonalise EV 33 wrt EV 9
+set fmri(ortho33.9) 0
+
+# Orthogonalise EV 33 wrt EV 10
+set fmri(ortho33.10) 0
+
+# Orthogonalise EV 33 wrt EV 11
+set fmri(ortho33.11) 0
+
+# Orthogonalise EV 33 wrt EV 12
+set fmri(ortho33.12) 0
+
+# Orthogonalise EV 33 wrt EV 13
+set fmri(ortho33.13) 0
+
+# Orthogonalise EV 33 wrt EV 14
+set fmri(ortho33.14) 0
+
+# Orthogonalise EV 33 wrt EV 15
+set fmri(ortho33.15) 0
+
+# Orthogonalise EV 33 wrt EV 16
+set fmri(ortho33.16) 0
+
+# Orthogonalise EV 33 wrt EV 17
+set fmri(ortho33.17) 0
+
+# Orthogonalise EV 33 wrt EV 18
+set fmri(ortho33.18) 0
+
+# Orthogonalise EV 33 wrt EV 19
+set fmri(ortho33.19) 0
+
+# Orthogonalise EV 33 wrt EV 20
+set fmri(ortho33.20) 0
+
+# Orthogonalise EV 33 wrt EV 21
+set fmri(ortho33.21) 0
+
+# Orthogonalise EV 33 wrt EV 22
+set fmri(ortho33.22) 0
+
+# Orthogonalise EV 33 wrt EV 23
+set fmri(ortho33.23) 0
+
+# Orthogonalise EV 33 wrt EV 24
+set fmri(ortho33.24) 0
+
+# Orthogonalise EV 33 wrt EV 25
+set fmri(ortho33.25) 0
+
+# Orthogonalise EV 33 wrt EV 26
+set fmri(ortho33.26) 0
+
+# Orthogonalise EV 33 wrt EV 27
+set fmri(ortho33.27) 0
+
+# Orthogonalise EV 33 wrt EV 28
+set fmri(ortho33.28) 0
+
+# Orthogonalise EV 33 wrt EV 29
+set fmri(ortho33.29) 0
+
+# Orthogonalise EV 33 wrt EV 30
+set fmri(ortho33.30) 0
+
+# Orthogonalise EV 33 wrt EV 31
+set fmri(ortho33.31) 0
+
+# Orthogonalise EV 33 wrt EV 32
+set fmri(ortho33.32) 0
+
+# Orthogonalise EV 33 wrt EV 33
+set fmri(ortho33.33) 0
+
+# Orthogonalise EV 33 wrt EV 34
+set fmri(ortho33.34) 0
+
+# Orthogonalise EV 33 wrt EV 35
+set fmri(ortho33.35) 0
+
+# Orthogonalise EV 33 wrt EV 36
+set fmri(ortho33.36) 0
+
+# Orthogonalise EV 33 wrt EV 37
+set fmri(ortho33.37) 0
+
+# Orthogonalise EV 33 wrt EV 38
+set fmri(ortho33.38) 0
+
+# Orthogonalise EV 33 wrt EV 39
+set fmri(ortho33.39) 0
+
+# Orthogonalise EV 33 wrt EV 40
+set fmri(ortho33.40) 0
+
+# EV 34 title
+set fmri(evtitle34) "E-A-rew"
+
+# Basic waveform shape (EV 34)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape34) 3
+
+# Convolution (EV 34)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve34) 2
+
+# Convolve phase (EV 34)
+set fmri(convolve_phase34) 0
+
+# Apply temporal filtering (EV 34)
+set fmri(tempfilt_yn34) 1
+
+# Add temporal derivative (EV 34)
+set fmri(deriv_yn34) 1
+
+# Custom EV file (EV 34)
+set fmri(custom34) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_E_A_reward.txt"
+
+# Gamma sigma (EV 34)
+set fmri(gammasigma34) 3
+
+# Gamma delay (EV 34)
+set fmri(gammadelay34) 6
+
+# Orthogonalise EV 34 wrt EV 0
+set fmri(ortho34.0) 0
+
+# Orthogonalise EV 34 wrt EV 1
+set fmri(ortho34.1) 0
+
+# Orthogonalise EV 34 wrt EV 2
+set fmri(ortho34.2) 0
+
+# Orthogonalise EV 34 wrt EV 3
+set fmri(ortho34.3) 0
+
+# Orthogonalise EV 34 wrt EV 4
+set fmri(ortho34.4) 0
+
+# Orthogonalise EV 34 wrt EV 5
+set fmri(ortho34.5) 0
+
+# Orthogonalise EV 34 wrt EV 6
+set fmri(ortho34.6) 0
+
+# Orthogonalise EV 34 wrt EV 7
+set fmri(ortho34.7) 0
+
+# Orthogonalise EV 34 wrt EV 8
+set fmri(ortho34.8) 0
+
+# Orthogonalise EV 34 wrt EV 9
+set fmri(ortho34.9) 0
+
+# Orthogonalise EV 34 wrt EV 10
+set fmri(ortho34.10) 0
+
+# Orthogonalise EV 34 wrt EV 11
+set fmri(ortho34.11) 0
+
+# Orthogonalise EV 34 wrt EV 12
+set fmri(ortho34.12) 0
+
+# Orthogonalise EV 34 wrt EV 13
+set fmri(ortho34.13) 0
+
+# Orthogonalise EV 34 wrt EV 14
+set fmri(ortho34.14) 0
+
+# Orthogonalise EV 34 wrt EV 15
+set fmri(ortho34.15) 0
+
+# Orthogonalise EV 34 wrt EV 16
+set fmri(ortho34.16) 0
+
+# Orthogonalise EV 34 wrt EV 17
+set fmri(ortho34.17) 0
+
+# Orthogonalise EV 34 wrt EV 18
+set fmri(ortho34.18) 0
+
+# Orthogonalise EV 34 wrt EV 19
+set fmri(ortho34.19) 0
+
+# Orthogonalise EV 34 wrt EV 20
+set fmri(ortho34.20) 0
+
+# Orthogonalise EV 34 wrt EV 21
+set fmri(ortho34.21) 0
+
+# Orthogonalise EV 34 wrt EV 22
+set fmri(ortho34.22) 0
+
+# Orthogonalise EV 34 wrt EV 23
+set fmri(ortho34.23) 0
+
+# Orthogonalise EV 34 wrt EV 24
+set fmri(ortho34.24) 0
+
+# Orthogonalise EV 34 wrt EV 25
+set fmri(ortho34.25) 0
+
+# Orthogonalise EV 34 wrt EV 26
+set fmri(ortho34.26) 0
+
+# Orthogonalise EV 34 wrt EV 27
+set fmri(ortho34.27) 0
+
+# Orthogonalise EV 34 wrt EV 28
+set fmri(ortho34.28) 0
+
+# Orthogonalise EV 34 wrt EV 29
+set fmri(ortho34.29) 0
+
+# Orthogonalise EV 34 wrt EV 30
+set fmri(ortho34.30) 0
+
+# Orthogonalise EV 34 wrt EV 31
+set fmri(ortho34.31) 0
+
+# Orthogonalise EV 34 wrt EV 32
+set fmri(ortho34.32) 0
+
+# Orthogonalise EV 34 wrt EV 33
+set fmri(ortho34.33) 0
+
+# Orthogonalise EV 34 wrt EV 34
+set fmri(ortho34.34) 0
+
+# Orthogonalise EV 34 wrt EV 35
+set fmri(ortho34.35) 0
+
+# Orthogonalise EV 34 wrt EV 36
+set fmri(ortho34.36) 0
+
+# Orthogonalise EV 34 wrt EV 37
+set fmri(ortho34.37) 0
+
+# Orthogonalise EV 34 wrt EV 38
+set fmri(ortho34.38) 0
+
+# Orthogonalise EV 34 wrt EV 39
+set fmri(ortho34.39) 0
+
+# Orthogonalise EV 34 wrt EV 40
+set fmri(ortho34.40) 0
+
+# EV 35 title
+set fmri(evtitle35) "E-B-path"
+
+# Basic waveform shape (EV 35)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape35) 3
+
+# Convolution (EV 35)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve35) 2
+
+# Convolve phase (EV 35)
+set fmri(convolve_phase35) 0
+
+# Apply temporal filtering (EV 35)
+set fmri(tempfilt_yn35) 1
+
+# Add temporal derivative (EV 35)
+set fmri(deriv_yn35) 1
+
+# Custom EV file (EV 35)
+set fmri(custom35) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_E_B_subpath.txt"
+
+# Gamma sigma (EV 35)
+set fmri(gammasigma35) 3
+
+# Gamma delay (EV 35)
+set fmri(gammadelay35) 6
+
+# Orthogonalise EV 35 wrt EV 0
+set fmri(ortho35.0) 0
+
+# Orthogonalise EV 35 wrt EV 1
+set fmri(ortho35.1) 0
+
+# Orthogonalise EV 35 wrt EV 2
+set fmri(ortho35.2) 0
+
+# Orthogonalise EV 35 wrt EV 3
+set fmri(ortho35.3) 0
+
+# Orthogonalise EV 35 wrt EV 4
+set fmri(ortho35.4) 0
+
+# Orthogonalise EV 35 wrt EV 5
+set fmri(ortho35.5) 0
+
+# Orthogonalise EV 35 wrt EV 6
+set fmri(ortho35.6) 0
+
+# Orthogonalise EV 35 wrt EV 7
+set fmri(ortho35.7) 0
+
+# Orthogonalise EV 35 wrt EV 8
+set fmri(ortho35.8) 0
+
+# Orthogonalise EV 35 wrt EV 9
+set fmri(ortho35.9) 0
+
+# Orthogonalise EV 35 wrt EV 10
+set fmri(ortho35.10) 0
+
+# Orthogonalise EV 35 wrt EV 11
+set fmri(ortho35.11) 0
+
+# Orthogonalise EV 35 wrt EV 12
+set fmri(ortho35.12) 0
+
+# Orthogonalise EV 35 wrt EV 13
+set fmri(ortho35.13) 0
+
+# Orthogonalise EV 35 wrt EV 14
+set fmri(ortho35.14) 0
+
+# Orthogonalise EV 35 wrt EV 15
+set fmri(ortho35.15) 0
+
+# Orthogonalise EV 35 wrt EV 16
+set fmri(ortho35.16) 0
+
+# Orthogonalise EV 35 wrt EV 17
+set fmri(ortho35.17) 0
+
+# Orthogonalise EV 35 wrt EV 18
+set fmri(ortho35.18) 0
+
+# Orthogonalise EV 35 wrt EV 19
+set fmri(ortho35.19) 0
+
+# Orthogonalise EV 35 wrt EV 20
+set fmri(ortho35.20) 0
+
+# Orthogonalise EV 35 wrt EV 21
+set fmri(ortho35.21) 0
+
+# Orthogonalise EV 35 wrt EV 22
+set fmri(ortho35.22) 0
+
+# Orthogonalise EV 35 wrt EV 23
+set fmri(ortho35.23) 0
+
+# Orthogonalise EV 35 wrt EV 24
+set fmri(ortho35.24) 0
+
+# Orthogonalise EV 35 wrt EV 25
+set fmri(ortho35.25) 0
+
+# Orthogonalise EV 35 wrt EV 26
+set fmri(ortho35.26) 0
+
+# Orthogonalise EV 35 wrt EV 27
+set fmri(ortho35.27) 0
+
+# Orthogonalise EV 35 wrt EV 28
+set fmri(ortho35.28) 0
+
+# Orthogonalise EV 35 wrt EV 29
+set fmri(ortho35.29) 0
+
+# Orthogonalise EV 35 wrt EV 30
+set fmri(ortho35.30) 0
+
+# Orthogonalise EV 35 wrt EV 31
+set fmri(ortho35.31) 0
+
+# Orthogonalise EV 35 wrt EV 32
+set fmri(ortho35.32) 0
+
+# Orthogonalise EV 35 wrt EV 33
+set fmri(ortho35.33) 0
+
+# Orthogonalise EV 35 wrt EV 34
+set fmri(ortho35.34) 0
+
+# Orthogonalise EV 35 wrt EV 35
+set fmri(ortho35.35) 0
+
+# Orthogonalise EV 35 wrt EV 36
+set fmri(ortho35.36) 0
+
+# Orthogonalise EV 35 wrt EV 37
+set fmri(ortho35.37) 0
+
+# Orthogonalise EV 35 wrt EV 38
+set fmri(ortho35.38) 0
+
+# Orthogonalise EV 35 wrt EV 39
+set fmri(ortho35.39) 0
+
+# Orthogonalise EV 35 wrt EV 40
+set fmri(ortho35.40) 0
+
+# EV 36 title
+set fmri(evtitle36) "E-B-rew"
+
+# Basic waveform shape (EV 36)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape36) 3
+
+# Convolution (EV 36)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve36) 2
+
+# Convolve phase (EV 36)
+set fmri(convolve_phase36) 0
+
+# Apply temporal filtering (EV 36)
+set fmri(tempfilt_yn36) 1
+
+# Add temporal derivative (EV 36)
+set fmri(deriv_yn36) 1
+
+# Custom EV file (EV 36)
+set fmri(custom36) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_E_B_reward.txt"
+
+# Gamma sigma (EV 36)
+set fmri(gammasigma36) 3
+
+# Gamma delay (EV 36)
+set fmri(gammadelay36) 6
+
+# Orthogonalise EV 36 wrt EV 0
+set fmri(ortho36.0) 0
+
+# Orthogonalise EV 36 wrt EV 1
+set fmri(ortho36.1) 0
+
+# Orthogonalise EV 36 wrt EV 2
+set fmri(ortho36.2) 0
+
+# Orthogonalise EV 36 wrt EV 3
+set fmri(ortho36.3) 0
+
+# Orthogonalise EV 36 wrt EV 4
+set fmri(ortho36.4) 0
+
+# Orthogonalise EV 36 wrt EV 5
+set fmri(ortho36.5) 0
+
+# Orthogonalise EV 36 wrt EV 6
+set fmri(ortho36.6) 0
+
+# Orthogonalise EV 36 wrt EV 7
+set fmri(ortho36.7) 0
+
+# Orthogonalise EV 36 wrt EV 8
+set fmri(ortho36.8) 0
+
+# Orthogonalise EV 36 wrt EV 9
+set fmri(ortho36.9) 0
+
+# Orthogonalise EV 36 wrt EV 10
+set fmri(ortho36.10) 0
+
+# Orthogonalise EV 36 wrt EV 11
+set fmri(ortho36.11) 0
+
+# Orthogonalise EV 36 wrt EV 12
+set fmri(ortho36.12) 0
+
+# Orthogonalise EV 36 wrt EV 13
+set fmri(ortho36.13) 0
+
+# Orthogonalise EV 36 wrt EV 14
+set fmri(ortho36.14) 0
+
+# Orthogonalise EV 36 wrt EV 15
+set fmri(ortho36.15) 0
+
+# Orthogonalise EV 36 wrt EV 16
+set fmri(ortho36.16) 0
+
+# Orthogonalise EV 36 wrt EV 17
+set fmri(ortho36.17) 0
+
+# Orthogonalise EV 36 wrt EV 18
+set fmri(ortho36.18) 0
+
+# Orthogonalise EV 36 wrt EV 19
+set fmri(ortho36.19) 0
+
+# Orthogonalise EV 36 wrt EV 20
+set fmri(ortho36.20) 0
+
+# Orthogonalise EV 36 wrt EV 21
+set fmri(ortho36.21) 0
+
+# Orthogonalise EV 36 wrt EV 22
+set fmri(ortho36.22) 0
+
+# Orthogonalise EV 36 wrt EV 23
+set fmri(ortho36.23) 0
+
+# Orthogonalise EV 36 wrt EV 24
+set fmri(ortho36.24) 0
+
+# Orthogonalise EV 36 wrt EV 25
+set fmri(ortho36.25) 0
+
+# Orthogonalise EV 36 wrt EV 26
+set fmri(ortho36.26) 0
+
+# Orthogonalise EV 36 wrt EV 27
+set fmri(ortho36.27) 0
+
+# Orthogonalise EV 36 wrt EV 28
+set fmri(ortho36.28) 0
+
+# Orthogonalise EV 36 wrt EV 29
+set fmri(ortho36.29) 0
+
+# Orthogonalise EV 36 wrt EV 30
+set fmri(ortho36.30) 0
+
+# Orthogonalise EV 36 wrt EV 31
+set fmri(ortho36.31) 0
+
+# Orthogonalise EV 36 wrt EV 32
+set fmri(ortho36.32) 0
+
+# Orthogonalise EV 36 wrt EV 33
+set fmri(ortho36.33) 0
+
+# Orthogonalise EV 36 wrt EV 34
+set fmri(ortho36.34) 0
+
+# Orthogonalise EV 36 wrt EV 35
+set fmri(ortho36.35) 0
+
+# Orthogonalise EV 36 wrt EV 36
+set fmri(ortho36.36) 0
+
+# Orthogonalise EV 36 wrt EV 37
+set fmri(ortho36.37) 0
+
+# Orthogonalise EV 36 wrt EV 38
+set fmri(ortho36.38) 0
+
+# Orthogonalise EV 36 wrt EV 39
+set fmri(ortho36.39) 0
+
+# Orthogonalise EV 36 wrt EV 40
+set fmri(ortho36.40) 0
+
+# EV 37 title
+set fmri(evtitle37) "E-C-path"
+
+# Basic waveform shape (EV 37)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape37) 3
+
+# Convolution (EV 37)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve37) 2
+
+# Convolve phase (EV 37)
+set fmri(convolve_phase37) 0
+
+# Apply temporal filtering (EV 37)
+set fmri(tempfilt_yn37) 1
+
+# Add temporal derivative (EV 37)
+set fmri(deriv_yn37) 1
+
+# Custom EV file (EV 37)
+set fmri(custom37) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_E_C_subpath.txt"
+
+# Gamma sigma (EV 37)
+set fmri(gammasigma37) 3
+
+# Gamma delay (EV 37)
+set fmri(gammadelay37) 6
+
+# Orthogonalise EV 37 wrt EV 0
+set fmri(ortho37.0) 0
+
+# Orthogonalise EV 37 wrt EV 1
+set fmri(ortho37.1) 0
+
+# Orthogonalise EV 37 wrt EV 2
+set fmri(ortho37.2) 0
+
+# Orthogonalise EV 37 wrt EV 3
+set fmri(ortho37.3) 0
+
+# Orthogonalise EV 37 wrt EV 4
+set fmri(ortho37.4) 0
+
+# Orthogonalise EV 37 wrt EV 5
+set fmri(ortho37.5) 0
+
+# Orthogonalise EV 37 wrt EV 6
+set fmri(ortho37.6) 0
+
+# Orthogonalise EV 37 wrt EV 7
+set fmri(ortho37.7) 0
+
+# Orthogonalise EV 37 wrt EV 8
+set fmri(ortho37.8) 0
+
+# Orthogonalise EV 37 wrt EV 9
+set fmri(ortho37.9) 0
+
+# Orthogonalise EV 37 wrt EV 10
+set fmri(ortho37.10) 0
+
+# Orthogonalise EV 37 wrt EV 11
+set fmri(ortho37.11) 0
+
+# Orthogonalise EV 37 wrt EV 12
+set fmri(ortho37.12) 0
+
+# Orthogonalise EV 37 wrt EV 13
+set fmri(ortho37.13) 0
+
+# Orthogonalise EV 37 wrt EV 14
+set fmri(ortho37.14) 0
+
+# Orthogonalise EV 37 wrt EV 15
+set fmri(ortho37.15) 0
+
+# Orthogonalise EV 37 wrt EV 16
+set fmri(ortho37.16) 0
+
+# Orthogonalise EV 37 wrt EV 17
+set fmri(ortho37.17) 0
+
+# Orthogonalise EV 37 wrt EV 18
+set fmri(ortho37.18) 0
+
+# Orthogonalise EV 37 wrt EV 19
+set fmri(ortho37.19) 0
+
+# Orthogonalise EV 37 wrt EV 20
+set fmri(ortho37.20) 0
+
+# Orthogonalise EV 37 wrt EV 21
+set fmri(ortho37.21) 0
+
+# Orthogonalise EV 37 wrt EV 22
+set fmri(ortho37.22) 0
+
+# Orthogonalise EV 37 wrt EV 23
+set fmri(ortho37.23) 0
+
+# Orthogonalise EV 37 wrt EV 24
+set fmri(ortho37.24) 0
+
+# Orthogonalise EV 37 wrt EV 25
+set fmri(ortho37.25) 0
+
+# Orthogonalise EV 37 wrt EV 26
+set fmri(ortho37.26) 0
+
+# Orthogonalise EV 37 wrt EV 27
+set fmri(ortho37.27) 0
+
+# Orthogonalise EV 37 wrt EV 28
+set fmri(ortho37.28) 0
+
+# Orthogonalise EV 37 wrt EV 29
+set fmri(ortho37.29) 0
+
+# Orthogonalise EV 37 wrt EV 30
+set fmri(ortho37.30) 0
+
+# Orthogonalise EV 37 wrt EV 31
+set fmri(ortho37.31) 0
+
+# Orthogonalise EV 37 wrt EV 32
+set fmri(ortho37.32) 0
+
+# Orthogonalise EV 37 wrt EV 33
+set fmri(ortho37.33) 0
+
+# Orthogonalise EV 37 wrt EV 34
+set fmri(ortho37.34) 0
+
+# Orthogonalise EV 37 wrt EV 35
+set fmri(ortho37.35) 0
+
+# Orthogonalise EV 37 wrt EV 36
+set fmri(ortho37.36) 0
+
+# Orthogonalise EV 37 wrt EV 37
+set fmri(ortho37.37) 0
+
+# Orthogonalise EV 37 wrt EV 38
+set fmri(ortho37.38) 0
+
+# Orthogonalise EV 37 wrt EV 39
+set fmri(ortho37.39) 0
+
+# Orthogonalise EV 37 wrt EV 40
+set fmri(ortho37.40) 0
+
+# EV 38 title
+set fmri(evtitle38) "E-C-rew"
+
+# Basic waveform shape (EV 38)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape38) 3
+
+# Convolution (EV 38)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve38) 2
+
+# Convolve phase (EV 38)
+set fmri(convolve_phase38) 0
+
+# Apply temporal filtering (EV 38)
+set fmri(tempfilt_yn38) 1
+
+# Add temporal derivative (EV 38)
+set fmri(deriv_yn38) 1
+
+# Custom EV file (EV 38)
+set fmri(custom38) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_E_C_reward.txt"
+
+# Gamma sigma (EV 38)
+set fmri(gammasigma38) 3
+
+# Gamma delay (EV 38)
+set fmri(gammadelay38) 6
+
+# Orthogonalise EV 38 wrt EV 0
+set fmri(ortho38.0) 0
+
+# Orthogonalise EV 38 wrt EV 1
+set fmri(ortho38.1) 0
+
+# Orthogonalise EV 38 wrt EV 2
+set fmri(ortho38.2) 0
+
+# Orthogonalise EV 38 wrt EV 3
+set fmri(ortho38.3) 0
+
+# Orthogonalise EV 38 wrt EV 4
+set fmri(ortho38.4) 0
+
+# Orthogonalise EV 38 wrt EV 5
+set fmri(ortho38.5) 0
+
+# Orthogonalise EV 38 wrt EV 6
+set fmri(ortho38.6) 0
+
+# Orthogonalise EV 38 wrt EV 7
+set fmri(ortho38.7) 0
+
+# Orthogonalise EV 38 wrt EV 8
+set fmri(ortho38.8) 0
+
+# Orthogonalise EV 38 wrt EV 9
+set fmri(ortho38.9) 0
+
+# Orthogonalise EV 38 wrt EV 10
+set fmri(ortho38.10) 0
+
+# Orthogonalise EV 38 wrt EV 11
+set fmri(ortho38.11) 0
+
+# Orthogonalise EV 38 wrt EV 12
+set fmri(ortho38.12) 0
+
+# Orthogonalise EV 38 wrt EV 13
+set fmri(ortho38.13) 0
+
+# Orthogonalise EV 38 wrt EV 14
+set fmri(ortho38.14) 0
+
+# Orthogonalise EV 38 wrt EV 15
+set fmri(ortho38.15) 0
+
+# Orthogonalise EV 38 wrt EV 16
+set fmri(ortho38.16) 0
+
+# Orthogonalise EV 38 wrt EV 17
+set fmri(ortho38.17) 0
+
+# Orthogonalise EV 38 wrt EV 18
+set fmri(ortho38.18) 0
+
+# Orthogonalise EV 38 wrt EV 19
+set fmri(ortho38.19) 0
+
+# Orthogonalise EV 38 wrt EV 20
+set fmri(ortho38.20) 0
+
+# Orthogonalise EV 38 wrt EV 21
+set fmri(ortho38.21) 0
+
+# Orthogonalise EV 38 wrt EV 22
+set fmri(ortho38.22) 0
+
+# Orthogonalise EV 38 wrt EV 23
+set fmri(ortho38.23) 0
+
+# Orthogonalise EV 38 wrt EV 24
+set fmri(ortho38.24) 0
+
+# Orthogonalise EV 38 wrt EV 25
+set fmri(ortho38.25) 0
+
+# Orthogonalise EV 38 wrt EV 26
+set fmri(ortho38.26) 0
+
+# Orthogonalise EV 38 wrt EV 27
+set fmri(ortho38.27) 0
+
+# Orthogonalise EV 38 wrt EV 28
+set fmri(ortho38.28) 0
+
+# Orthogonalise EV 38 wrt EV 29
+set fmri(ortho38.29) 0
+
+# Orthogonalise EV 38 wrt EV 30
+set fmri(ortho38.30) 0
+
+# Orthogonalise EV 38 wrt EV 31
+set fmri(ortho38.31) 0
+
+# Orthogonalise EV 38 wrt EV 32
+set fmri(ortho38.32) 0
+
+# Orthogonalise EV 38 wrt EV 33
+set fmri(ortho38.33) 0
+
+# Orthogonalise EV 38 wrt EV 34
+set fmri(ortho38.34) 0
+
+# Orthogonalise EV 38 wrt EV 35
+set fmri(ortho38.35) 0
+
+# Orthogonalise EV 38 wrt EV 36
+set fmri(ortho38.36) 0
+
+# Orthogonalise EV 38 wrt EV 37
+set fmri(ortho38.37) 0
+
+# Orthogonalise EV 38 wrt EV 38
+set fmri(ortho38.38) 0
+
+# Orthogonalise EV 38 wrt EV 39
+set fmri(ortho38.39) 0
+
+# Orthogonalise EV 38 wrt EV 40
+set fmri(ortho38.40) 0
+
+# EV 39 title
+set fmri(evtitle39) "E-D-path"
+
+# Basic waveform shape (EV 39)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape39) 3
+
+# Convolution (EV 39)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve39) 2
+
+# Convolve phase (EV 39)
+set fmri(convolve_phase39) 0
+
+# Apply temporal filtering (EV 39)
+set fmri(tempfilt_yn39) 1
+
+# Add temporal derivative (EV 39)
+set fmri(deriv_yn39) 1
+
+# Custom EV file (EV 39)
+set fmri(custom39) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_E_D_subpath.txt"
+
+# Gamma sigma (EV 39)
+set fmri(gammasigma39) 3
+
+# Gamma delay (EV 39)
+set fmri(gammadelay39) 6
+
+# Orthogonalise EV 39 wrt EV 0
+set fmri(ortho39.0) 0
+
+# Orthogonalise EV 39 wrt EV 1
+set fmri(ortho39.1) 0
+
+# Orthogonalise EV 39 wrt EV 2
+set fmri(ortho39.2) 0
+
+# Orthogonalise EV 39 wrt EV 3
+set fmri(ortho39.3) 0
+
+# Orthogonalise EV 39 wrt EV 4
+set fmri(ortho39.4) 0
+
+# Orthogonalise EV 39 wrt EV 5
+set fmri(ortho39.5) 0
+
+# Orthogonalise EV 39 wrt EV 6
+set fmri(ortho39.6) 0
+
+# Orthogonalise EV 39 wrt EV 7
+set fmri(ortho39.7) 0
+
+# Orthogonalise EV 39 wrt EV 8
+set fmri(ortho39.8) 0
+
+# Orthogonalise EV 39 wrt EV 9
+set fmri(ortho39.9) 0
+
+# Orthogonalise EV 39 wrt EV 10
+set fmri(ortho39.10) 0
+
+# Orthogonalise EV 39 wrt EV 11
+set fmri(ortho39.11) 0
+
+# Orthogonalise EV 39 wrt EV 12
+set fmri(ortho39.12) 0
+
+# Orthogonalise EV 39 wrt EV 13
+set fmri(ortho39.13) 0
+
+# Orthogonalise EV 39 wrt EV 14
+set fmri(ortho39.14) 0
+
+# Orthogonalise EV 39 wrt EV 15
+set fmri(ortho39.15) 0
+
+# Orthogonalise EV 39 wrt EV 16
+set fmri(ortho39.16) 0
+
+# Orthogonalise EV 39 wrt EV 17
+set fmri(ortho39.17) 0
+
+# Orthogonalise EV 39 wrt EV 18
+set fmri(ortho39.18) 0
+
+# Orthogonalise EV 39 wrt EV 19
+set fmri(ortho39.19) 0
+
+# Orthogonalise EV 39 wrt EV 20
+set fmri(ortho39.20) 0
+
+# Orthogonalise EV 39 wrt EV 21
+set fmri(ortho39.21) 0
+
+# Orthogonalise EV 39 wrt EV 22
+set fmri(ortho39.22) 0
+
+# Orthogonalise EV 39 wrt EV 23
+set fmri(ortho39.23) 0
+
+# Orthogonalise EV 39 wrt EV 24
+set fmri(ortho39.24) 0
+
+# Orthogonalise EV 39 wrt EV 25
+set fmri(ortho39.25) 0
+
+# Orthogonalise EV 39 wrt EV 26
+set fmri(ortho39.26) 0
+
+# Orthogonalise EV 39 wrt EV 27
+set fmri(ortho39.27) 0
+
+# Orthogonalise EV 39 wrt EV 28
+set fmri(ortho39.28) 0
+
+# Orthogonalise EV 39 wrt EV 29
+set fmri(ortho39.29) 0
+
+# Orthogonalise EV 39 wrt EV 30
+set fmri(ortho39.30) 0
+
+# Orthogonalise EV 39 wrt EV 31
+set fmri(ortho39.31) 0
+
+# Orthogonalise EV 39 wrt EV 32
+set fmri(ortho39.32) 0
+
+# Orthogonalise EV 39 wrt EV 33
+set fmri(ortho39.33) 0
+
+# Orthogonalise EV 39 wrt EV 34
+set fmri(ortho39.34) 0
+
+# Orthogonalise EV 39 wrt EV 35
+set fmri(ortho39.35) 0
+
+# Orthogonalise EV 39 wrt EV 36
+set fmri(ortho39.36) 0
+
+# Orthogonalise EV 39 wrt EV 37
+set fmri(ortho39.37) 0
+
+# Orthogonalise EV 39 wrt EV 38
+set fmri(ortho39.38) 0
+
+# Orthogonalise EV 39 wrt EV 39
+set fmri(ortho39.39) 0
+
+# Orthogonalise EV 39 wrt EV 40
+set fmri(ortho39.40) 0
+
+# EV 40 title
+set fmri(evtitle40) "E-D-rew"
+
+# Basic waveform shape (EV 40)
+# 0 : Square
+# 1 : Sinusoid
+# 2 : Custom (1 entry per volume)
+# 3 : Custom (3 column format)
+# 4 : Interaction
+# 10 : Empty (all zeros)
+set fmri(shape40) 3
+
+# Convolution (EV 40)
+# 0 : None
+# 1 : Gaussian
+# 2 : Gamma
+# 3 : Double-Gamma HRF
+# 4 : Gamma basis functions
+# 5 : Sine basis functions
+# 6 : FIR basis functions
+# 8 : Alternate Double-Gamma
+set fmri(convolve40) 2
+
+# Convolve phase (EV 40)
+set fmri(convolve_phase40) 0
+
+# Apply temporal filtering (EV 40)
+set fmri(tempfilt_yn40) 1
+
+# Add temporal derivative (EV 40)
+set fmri(deriv_yn40) 1
+
+# Custom EV file (EV 40)
+set fmri(custom40) "/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs_combined/ev_E_D_reward.txt"
+
+# Gamma sigma (EV 40)
+set fmri(gammasigma40) 3
+
+# Gamma delay (EV 40)
+set fmri(gammadelay40) 6
+
+# Orthogonalise EV 40 wrt EV 0
+set fmri(ortho40.0) 0
+
+# Orthogonalise EV 40 wrt EV 1
+set fmri(ortho40.1) 0
+
+# Orthogonalise EV 40 wrt EV 2
+set fmri(ortho40.2) 0
+
+# Orthogonalise EV 40 wrt EV 3
+set fmri(ortho40.3) 0
+
+# Orthogonalise EV 40 wrt EV 4
+set fmri(ortho40.4) 0
+
+# Orthogonalise EV 40 wrt EV 5
+set fmri(ortho40.5) 0
+
+# Orthogonalise EV 40 wrt EV 6
+set fmri(ortho40.6) 0
+
+# Orthogonalise EV 40 wrt EV 7
+set fmri(ortho40.7) 0
+
+# Orthogonalise EV 40 wrt EV 8
+set fmri(ortho40.8) 0
+
+# Orthogonalise EV 40 wrt EV 9
+set fmri(ortho40.9) 0
+
+# Orthogonalise EV 40 wrt EV 10
+set fmri(ortho40.10) 0
+
+# Orthogonalise EV 40 wrt EV 11
+set fmri(ortho40.11) 0
+
+# Orthogonalise EV 40 wrt EV 12
+set fmri(ortho40.12) 0
+
+# Orthogonalise EV 40 wrt EV 13
+set fmri(ortho40.13) 0
+
+# Orthogonalise EV 40 wrt EV 14
+set fmri(ortho40.14) 0
+
+# Orthogonalise EV 40 wrt EV 15
+set fmri(ortho40.15) 0
+
+# Orthogonalise EV 40 wrt EV 16
+set fmri(ortho40.16) 0
+
+# Orthogonalise EV 40 wrt EV 17
+set fmri(ortho40.17) 0
+
+# Orthogonalise EV 40 wrt EV 18
+set fmri(ortho40.18) 0
+
+# Orthogonalise EV 40 wrt EV 19
+set fmri(ortho40.19) 0
+
+# Orthogonalise EV 40 wrt EV 20
+set fmri(ortho40.20) 0
+
+# Orthogonalise EV 40 wrt EV 21
+set fmri(ortho40.21) 0
+
+# Orthogonalise EV 40 wrt EV 22
+set fmri(ortho40.22) 0
+
+# Orthogonalise EV 40 wrt EV 23
+set fmri(ortho40.23) 0
+
+# Orthogonalise EV 40 wrt EV 24
+set fmri(ortho40.24) 0
+
+# Orthogonalise EV 40 wrt EV 25
+set fmri(ortho40.25) 0
+
+# Orthogonalise EV 40 wrt EV 26
+set fmri(ortho40.26) 0
+
+# Orthogonalise EV 40 wrt EV 27
+set fmri(ortho40.27) 0
+
+# Orthogonalise EV 40 wrt EV 28
+set fmri(ortho40.28) 0
+
+# Orthogonalise EV 40 wrt EV 29
+set fmri(ortho40.29) 0
+
+# Orthogonalise EV 40 wrt EV 30
+set fmri(ortho40.30) 0
+
+# Orthogonalise EV 40 wrt EV 31
+set fmri(ortho40.31) 0
+
+# Orthogonalise EV 40 wrt EV 32
+set fmri(ortho40.32) 0
+
+# Orthogonalise EV 40 wrt EV 33
+set fmri(ortho40.33) 0
+
+# Orthogonalise EV 40 wrt EV 34
+set fmri(ortho40.34) 0
+
+# Orthogonalise EV 40 wrt EV 35
+set fmri(ortho40.35) 0
+
+# Orthogonalise EV 40 wrt EV 36
+set fmri(ortho40.36) 0
+
+# Orthogonalise EV 40 wrt EV 37
+set fmri(ortho40.37) 0
+
+# Orthogonalise EV 40 wrt EV 38
+set fmri(ortho40.38) 0
+
+# Orthogonalise EV 40 wrt EV 39
+set fmri(ortho40.39) 0
+
+# Orthogonalise EV 40 wrt EV 40
+set fmri(ortho40.40) 0
+
+# Contrast & F-tests mode
+# real : control real EVs
+# orig : control original EVs
+set fmri(con_mode_old) orig
+set fmri(con_mode) orig
+
+# Display images for contrast_real 1
+set fmri(conpic_real.1) 1
+
+# Title for contrast_real 1
+set fmri(conname_real.1) "state_A"
+
+# Real contrast_real vector 1 element 1
+set fmri(con_real1.1) 1.0
+
+# Real contrast_real vector 1 element 2
+set fmri(con_real1.2) 0
+
+# Real contrast_real vector 1 element 3
+set fmri(con_real1.3) 1.0
+
+# Real contrast_real vector 1 element 4
+set fmri(con_real1.4) 0
+
+# Real contrast_real vector 1 element 5
+set fmri(con_real1.5) 0
+
+# Real contrast_real vector 1 element 6
+set fmri(con_real1.6) 0
+
+# Real contrast_real vector 1 element 7
+set fmri(con_real1.7) 0
+
+# Real contrast_real vector 1 element 8
+set fmri(con_real1.8) 0
+
+# Real contrast_real vector 1 element 9
+set fmri(con_real1.9) 0
+
+# Real contrast_real vector 1 element 10
+set fmri(con_real1.10) 0
+
+# Real contrast_real vector 1 element 11
+set fmri(con_real1.11) 0
+
+# Real contrast_real vector 1 element 12
+set fmri(con_real1.12) 0
+
+# Real contrast_real vector 1 element 13
+set fmri(con_real1.13) 0
+
+# Real contrast_real vector 1 element 14
+set fmri(con_real1.14) 0
+
+# Real contrast_real vector 1 element 15
+set fmri(con_real1.15) 0
+
+# Real contrast_real vector 1 element 16
+set fmri(con_real1.16) 0
+
+# Real contrast_real vector 1 element 17
+set fmri(con_real1.17) 1.0
+
+# Real contrast_real vector 1 element 18
+set fmri(con_real1.18) 0
+
+# Real contrast_real vector 1 element 19
+set fmri(con_real1.19) 1.0
+
+# Real contrast_real vector 1 element 20
+set fmri(con_real1.20) 0
+
+# Real contrast_real vector 1 element 21
+set fmri(con_real1.21) 0
+
+# Real contrast_real vector 1 element 22
+set fmri(con_real1.22) 0
+
+# Real contrast_real vector 1 element 23
+set fmri(con_real1.23) 0
+
+# Real contrast_real vector 1 element 24
+set fmri(con_real1.24) 0
+
+# Real contrast_real vector 1 element 25
+set fmri(con_real1.25) 0
+
+# Real contrast_real vector 1 element 26
+set fmri(con_real1.26) 0
+
+# Real contrast_real vector 1 element 27
+set fmri(con_real1.27) 0
+
+# Real contrast_real vector 1 element 28
+set fmri(con_real1.28) 0
+
+# Real contrast_real vector 1 element 29
+set fmri(con_real1.29) 0
+
+# Real contrast_real vector 1 element 30
+set fmri(con_real1.30) 0
+
+# Real contrast_real vector 1 element 31
+set fmri(con_real1.31) 0
+
+# Real contrast_real vector 1 element 32
+set fmri(con_real1.32) 0
+
+# Real contrast_real vector 1 element 33
+set fmri(con_real1.33) 1.0
+
+# Real contrast_real vector 1 element 34
+set fmri(con_real1.34) 0
+
+# Real contrast_real vector 1 element 35
+set fmri(con_real1.35) 1.0
+
+# Real contrast_real vector 1 element 36
+set fmri(con_real1.36) 0
+
+# Real contrast_real vector 1 element 37
+set fmri(con_real1.37) 0
+
+# Real contrast_real vector 1 element 38
+set fmri(con_real1.38) 0
+
+# Real contrast_real vector 1 element 39
+set fmri(con_real1.39) 0
+
+# Real contrast_real vector 1 element 40
+set fmri(con_real1.40) 0
+
+# Real contrast_real vector 1 element 41
+set fmri(con_real1.41) 0
+
+# Real contrast_real vector 1 element 42
+set fmri(con_real1.42) 0
+
+# Real contrast_real vector 1 element 43
+set fmri(con_real1.43) 0
+
+# Real contrast_real vector 1 element 44
+set fmri(con_real1.44) 0
+
+# Real contrast_real vector 1 element 45
+set fmri(con_real1.45) 0
+
+# Real contrast_real vector 1 element 46
+set fmri(con_real1.46) 0
+
+# Real contrast_real vector 1 element 47
+set fmri(con_real1.47) 0
+
+# Real contrast_real vector 1 element 48
+set fmri(con_real1.48) 0
+
+# Real contrast_real vector 1 element 49
+set fmri(con_real1.49) 1.0
+
+# Real contrast_real vector 1 element 50
+set fmri(con_real1.50) 0
+
+# Real contrast_real vector 1 element 51
+set fmri(con_real1.51) 1.0
+
+# Real contrast_real vector 1 element 52
+set fmri(con_real1.52) 0
+
+# Real contrast_real vector 1 element 53
+set fmri(con_real1.53) 0
+
+# Real contrast_real vector 1 element 54
+set fmri(con_real1.54) 0
+
+# Real contrast_real vector 1 element 55
+set fmri(con_real1.55) 0
+
+# Real contrast_real vector 1 element 56
+set fmri(con_real1.56) 0
+
+# Real contrast_real vector 1 element 57
+set fmri(con_real1.57) 0
+
+# Real contrast_real vector 1 element 58
+set fmri(con_real1.58) 0
+
+# Real contrast_real vector 1 element 59
+set fmri(con_real1.59) 0
+
+# Real contrast_real vector 1 element 60
+set fmri(con_real1.60) 0
+
+# Real contrast_real vector 1 element 61
+set fmri(con_real1.61) 0.0
+
+# Real contrast_real vector 1 element 62
+set fmri(con_real1.62) 0
+
+# Real contrast_real vector 1 element 63
+set fmri(con_real1.63) 0.0
+
+# Real contrast_real vector 1 element 64
+set fmri(con_real1.64) 0
+
+# Real contrast_real vector 1 element 65
+set fmri(con_real1.65) 1.0
+
+# Real contrast_real vector 1 element 66
+set fmri(con_real1.66) 0
+
+# Real contrast_real vector 1 element 67
+set fmri(con_real1.67) 1.0
+
+# Real contrast_real vector 1 element 68
+set fmri(con_real1.68) 0
+
+# Real contrast_real vector 1 element 69
+set fmri(con_real1.69) 0
+
+# Real contrast_real vector 1 element 70
+set fmri(con_real1.70) 0
+
+# Real contrast_real vector 1 element 71
+set fmri(con_real1.71) 0
+
+# Real contrast_real vector 1 element 72
+set fmri(con_real1.72) 0
+
+# Real contrast_real vector 1 element 73
+set fmri(con_real1.73) 0
+
+# Real contrast_real vector 1 element 74
+set fmri(con_real1.74) 0
+
+# Real contrast_real vector 1 element 75
+set fmri(con_real1.75) 0
+
+# Real contrast_real vector 1 element 76
+set fmri(con_real1.76) 0
+
+# Real contrast_real vector 1 element 77
+set fmri(con_real1.77) 0
+
+# Real contrast_real vector 1 element 78
+set fmri(con_real1.78) 0
+
+# Real contrast_real vector 1 element 79
+set fmri(con_real1.79) 0
+
+# Real contrast_real vector 1 element 80
+set fmri(con_real1.80) 0
+
+# Display images for contrast_real 2
+set fmri(conpic_real.2) 1
+
+# Title for contrast_real 2
+set fmri(conname_real.2) "state_B"
+
+# Real contrast_real vector 2 element 1
+set fmri(con_real2.1) 0
+
+# Real contrast_real vector 2 element 2
+set fmri(con_real2.2) 0
+
+# Real contrast_real vector 2 element 3
+set fmri(con_real2.3) 0
+
+# Real contrast_real vector 2 element 4
+set fmri(con_real2.4) 0
+
+# Real contrast_real vector 2 element 5
+set fmri(con_real2.5) 1.0
+
+# Real contrast_real vector 2 element 6
+set fmri(con_real2.6) 0
+
+# Real contrast_real vector 2 element 7
+set fmri(con_real2.7) 1.0
+
+# Real contrast_real vector 2 element 8
+set fmri(con_real2.8) 0
+
+# Real contrast_real vector 2 element 9
+set fmri(con_real2.9) 0
+
+# Real contrast_real vector 2 element 10
+set fmri(con_real2.10) 0
+
+# Real contrast_real vector 2 element 11
+set fmri(con_real2.11) 0
+
+# Real contrast_real vector 2 element 12
+set fmri(con_real2.12) 0
+
+# Real contrast_real vector 2 element 13
+set fmri(con_real2.13) 0
+
+# Real contrast_real vector 2 element 14
+set fmri(con_real2.14) 0
+
+# Real contrast_real vector 2 element 15
+set fmri(con_real2.15) 0
+
+# Real contrast_real vector 2 element 16
+set fmri(con_real2.16) 0
+
+# Real contrast_real vector 2 element 17
+set fmri(con_real2.17) 0
+
+# Real contrast_real vector 2 element 18
+set fmri(con_real2.18) 0
+
+# Real contrast_real vector 2 element 19
+set fmri(con_real2.19) 0
+
+# Real contrast_real vector 2 element 20
+set fmri(con_real2.20) 0
+
+# Real contrast_real vector 2 element 21
+set fmri(con_real2.21) 1.0
+
+# Real contrast_real vector 2 element 22
+set fmri(con_real2.22) 0
+
+# Real contrast_real vector 2 element 23
+set fmri(con_real2.23) 1.0
+
+# Real contrast_real vector 2 element 24
+set fmri(con_real2.24) 0
+
+# Real contrast_real vector 2 element 25
+set fmri(con_real2.25) 0
+
+# Real contrast_real vector 2 element 26
+set fmri(con_real2.26) 0
+
+# Real contrast_real vector 2 element 27
+set fmri(con_real2.27) 0
+
+# Real contrast_real vector 2 element 28
+set fmri(con_real2.28) 0
+
+# Real contrast_real vector 2 element 29
+set fmri(con_real2.29) 0
+
+# Real contrast_real vector 2 element 30
+set fmri(con_real2.30) 0
+
+# Real contrast_real vector 2 element 31
+set fmri(con_real2.31) 0
+
+# Real contrast_real vector 2 element 32
+set fmri(con_real2.32) 0
+
+# Real contrast_real vector 2 element 33
+set fmri(con_real2.33) 0
+
+# Real contrast_real vector 2 element 34
+set fmri(con_real2.34) 0
+
+# Real contrast_real vector 2 element 35
+set fmri(con_real2.35) 0
+
+# Real contrast_real vector 2 element 36
+set fmri(con_real2.36) 0
+
+# Real contrast_real vector 2 element 37
+set fmri(con_real2.37) 1.0
+
+# Real contrast_real vector 2 element 38
+set fmri(con_real2.38) 0
+
+# Real contrast_real vector 2 element 39
+set fmri(con_real2.39) 1.0
+
+# Real contrast_real vector 2 element 40
+set fmri(con_real2.40) 0
+
+# Real contrast_real vector 2 element 41
+set fmri(con_real2.41) 0
+
+# Real contrast_real vector 2 element 42
+set fmri(con_real2.42) 0
+
+# Real contrast_real vector 2 element 43
+set fmri(con_real2.43) 0
+
+# Real contrast_real vector 2 element 44
+set fmri(con_real2.44) 0
+
+# Real contrast_real vector 2 element 45
+set fmri(con_real2.45) 0
+
+# Real contrast_real vector 2 element 46
+set fmri(con_real2.46) 0
+
+# Real contrast_real vector 2 element 47
+set fmri(con_real2.47) 0
+
+# Real contrast_real vector 2 element 48
+set fmri(con_real2.48) 0
+
+# Real contrast_real vector 2 element 49
+set fmri(con_real2.49) 0
+
+# Real contrast_real vector 2 element 50
+set fmri(con_real2.50) 0
+
+# Real contrast_real vector 2 element 51
+set fmri(con_real2.51) 0
+
+# Real contrast_real vector 2 element 52
+set fmri(con_real2.52) 0
+
+# Real contrast_real vector 2 element 53
+set fmri(con_real2.53) 1.0
+
+# Real contrast_real vector 2 element 54
+set fmri(con_real2.54) 0
+
+# Real contrast_real vector 2 element 55
+set fmri(con_real2.55) 1.0
+
+# Real contrast_real vector 2 element 56
+set fmri(con_real2.56) 0
+
+# Real contrast_real vector 2 element 57
+set fmri(con_real2.57) 0
+
+# Real contrast_real vector 2 element 58
+set fmri(con_real2.58) 0
+
+# Real contrast_real vector 2 element 59
+set fmri(con_real2.59) 0
+
+# Real contrast_real vector 2 element 60
+set fmri(con_real2.60) 0
+
+# Real contrast_real vector 2 element 61
+set fmri(con_real2.61) 0
+
+# Real contrast_real vector 2 element 62
+set fmri(con_real2.62) 0
+
+# Real contrast_real vector 2 element 63
+set fmri(con_real2.63) 0
+
+# Real contrast_real vector 2 element 64
+set fmri(con_real2.64) 0
+
+# Real contrast_real vector 2 element 65
+set fmri(con_real2.65) 0.0
+
+# Real contrast_real vector 2 element 66
+set fmri(con_real2.66) 0
+
+# Real contrast_real vector 2 element 67
+set fmri(con_real2.67) 0.0
+
+# Real contrast_real vector 2 element 68
+set fmri(con_real2.68) 0
+
+# Real contrast_real vector 2 element 69
+set fmri(con_real2.69) 1.0
+
+# Real contrast_real vector 2 element 70
+set fmri(con_real2.70) 0
+
+# Real contrast_real vector 2 element 71
+set fmri(con_real2.71) 1.0
+
+# Real contrast_real vector 2 element 72
+set fmri(con_real2.72) 0
+
+# Real contrast_real vector 2 element 73
+set fmri(con_real2.73) 0
+
+# Real contrast_real vector 2 element 74
+set fmri(con_real2.74) 0
+
+# Real contrast_real vector 2 element 75
+set fmri(con_real2.75) 0
+
+# Real contrast_real vector 2 element 76
+set fmri(con_real2.76) 0
+
+# Real contrast_real vector 2 element 77
+set fmri(con_real2.77) 0
+
+# Real contrast_real vector 2 element 78
+set fmri(con_real2.78) 0
+
+# Real contrast_real vector 2 element 79
+set fmri(con_real2.79) 0
+
+# Real contrast_real vector 2 element 80
+set fmri(con_real2.80) 0
+
+# Display images for contrast_real 3
+set fmri(conpic_real.3) 1
+
+# Title for contrast_real 3
+set fmri(conname_real.3) "state_C"
+
+# Real contrast_real vector 3 element 1
+set fmri(con_real3.1) 0
+
+# Real contrast_real vector 3 element 2
+set fmri(con_real3.2) 0
+
+# Real contrast_real vector 3 element 3
+set fmri(con_real3.3) 0
+
+# Real contrast_real vector 3 element 4
+set fmri(con_real3.4) 0
+
+# Real contrast_real vector 3 element 5
+set fmri(con_real3.5) 0
+
+# Real contrast_real vector 3 element 6
+set fmri(con_real3.6) 0
+
+# Real contrast_real vector 3 element 7
+set fmri(con_real3.7) 0
+
+# Real contrast_real vector 3 element 8
+set fmri(con_real3.8) 0
+
+# Real contrast_real vector 3 element 9
+set fmri(con_real3.9) 1.0
+
+# Real contrast_real vector 3 element 10
+set fmri(con_real3.10) 0
+
+# Real contrast_real vector 3 element 11
+set fmri(con_real3.11) 1.0
+
+# Real contrast_real vector 3 element 12
+set fmri(con_real3.12) 0
+
+# Real contrast_real vector 3 element 13
+set fmri(con_real3.13) 0
+
+# Real contrast_real vector 3 element 14
+set fmri(con_real3.14) 0
+
+# Real contrast_real vector 3 element 15
+set fmri(con_real3.15) 0
+
+# Real contrast_real vector 3 element 16
+set fmri(con_real3.16) 0
+
+# Real contrast_real vector 3 element 17
+set fmri(con_real3.17) 0
+
+# Real contrast_real vector 3 element 18
+set fmri(con_real3.18) 0
+
+# Real contrast_real vector 3 element 19
+set fmri(con_real3.19) 0
+
+# Real contrast_real vector 3 element 20
+set fmri(con_real3.20) 0
+
+# Real contrast_real vector 3 element 21
+set fmri(con_real3.21) 0
+
+# Real contrast_real vector 3 element 22
+set fmri(con_real3.22) 0
+
+# Real contrast_real vector 3 element 23
+set fmri(con_real3.23) 0
+
+# Real contrast_real vector 3 element 24
+set fmri(con_real3.24) 0
+
+# Real contrast_real vector 3 element 25
+set fmri(con_real3.25) 1.0
+
+# Real contrast_real vector 3 element 26
+set fmri(con_real3.26) 0
+
+# Real contrast_real vector 3 element 27
+set fmri(con_real3.27) 1.0
+
+# Real contrast_real vector 3 element 28
+set fmri(con_real3.28) 0
+
+# Real contrast_real vector 3 element 29
+set fmri(con_real3.29) 0
+
+# Real contrast_real vector 3 element 30
+set fmri(con_real3.30) 0
+
+# Real contrast_real vector 3 element 31
+set fmri(con_real3.31) 0
+
+# Real contrast_real vector 3 element 32
+set fmri(con_real3.32) 0
+
+# Real contrast_real vector 3 element 33
+set fmri(con_real3.33) 0
+
+# Real contrast_real vector 3 element 34
+set fmri(con_real3.34) 0
+
+# Real contrast_real vector 3 element 35
+set fmri(con_real3.35) 0
+
+# Real contrast_real vector 3 element 36
+set fmri(con_real3.36) 0
+
+# Real contrast_real vector 3 element 37
+set fmri(con_real3.37) 0
+
+# Real contrast_real vector 3 element 38
+set fmri(con_real3.38) 0
+
+# Real contrast_real vector 3 element 39
+set fmri(con_real3.39) 0
+
+# Real contrast_real vector 3 element 40
+set fmri(con_real3.40) 0
+
+# Real contrast_real vector 3 element 41
+set fmri(con_real3.41) 1.0
+
+# Real contrast_real vector 3 element 42
+set fmri(con_real3.42) 0
+
+# Real contrast_real vector 3 element 43
+set fmri(con_real3.43) 1.0
+
+# Real contrast_real vector 3 element 44
+set fmri(con_real3.44) 0
+
+# Real contrast_real vector 3 element 45
+set fmri(con_real3.45) 0
+
+# Real contrast_real vector 3 element 46
+set fmri(con_real3.46) 0
+
+# Real contrast_real vector 3 element 47
+set fmri(con_real3.47) 0
+
+# Real contrast_real vector 3 element 48
+set fmri(con_real3.48) 0
+
+# Real contrast_real vector 3 element 49
+set fmri(con_real3.49) 0
+
+# Real contrast_real vector 3 element 50
+set fmri(con_real3.50) 0
+
+# Real contrast_real vector 3 element 51
+set fmri(con_real3.51) 0
+
+# Real contrast_real vector 3 element 52
+set fmri(con_real3.52) 0
+
+# Real contrast_real vector 3 element 53
+set fmri(con_real3.53) 0
+
+# Real contrast_real vector 3 element 54
+set fmri(con_real3.54) 0
+
+# Real contrast_real vector 3 element 55
+set fmri(con_real3.55) 0
+
+# Real contrast_real vector 3 element 56
+set fmri(con_real3.56) 0
+
+# Real contrast_real vector 3 element 57
+set fmri(con_real3.57) 1.0
+
+# Real contrast_real vector 3 element 58
+set fmri(con_real3.58) 0
+
+# Real contrast_real vector 3 element 59
+set fmri(con_real3.59) 1.0
+
+# Real contrast_real vector 3 element 60
+set fmri(con_real3.60) 0
+
+# Real contrast_real vector 3 element 61
+set fmri(con_real3.61) 0
+
+# Real contrast_real vector 3 element 62
+set fmri(con_real3.62) 0
+
+# Real contrast_real vector 3 element 63
+set fmri(con_real3.63) 0
+
+# Real contrast_real vector 3 element 64
+set fmri(con_real3.64) 0
+
+# Real contrast_real vector 3 element 65
+set fmri(con_real3.65) 0
+
+# Real contrast_real vector 3 element 66
+set fmri(con_real3.66) 0
+
+# Real contrast_real vector 3 element 67
+set fmri(con_real3.67) 0
+
+# Real contrast_real vector 3 element 68
+set fmri(con_real3.68) 0
+
+# Real contrast_real vector 3 element 69
+set fmri(con_real3.69) 0.0
+
+# Real contrast_real vector 3 element 70
+set fmri(con_real3.70) 0
+
+# Real contrast_real vector 3 element 71
+set fmri(con_real3.71) 0.0
+
+# Real contrast_real vector 3 element 72
+set fmri(con_real3.72) 0
+
+# Real contrast_real vector 3 element 73
+set fmri(con_real3.73) 1.0
+
+# Real contrast_real vector 3 element 74
+set fmri(con_real3.74) 0
+
+# Real contrast_real vector 3 element 75
+set fmri(con_real3.75) 1.0
+
+# Real contrast_real vector 3 element 76
+set fmri(con_real3.76) 0
+
+# Real contrast_real vector 3 element 77
+set fmri(con_real3.77) 0
+
+# Real contrast_real vector 3 element 78
+set fmri(con_real3.78) 0
+
+# Real contrast_real vector 3 element 79
+set fmri(con_real3.79) 0
+
+# Real contrast_real vector 3 element 80
+set fmri(con_real3.80) 0
+
+# Display images for contrast_real 4
+set fmri(conpic_real.4) 1
+
+# Title for contrast_real 4
+set fmri(conname_real.4) "state_D"
+
+# Real contrast_real vector 4 element 1
+set fmri(con_real4.1) 0
+
+# Real contrast_real vector 4 element 2
+set fmri(con_real4.2) 0
+
+# Real contrast_real vector 4 element 3
+set fmri(con_real4.3) 0
+
+# Real contrast_real vector 4 element 4
+set fmri(con_real4.4) 0
+
+# Real contrast_real vector 4 element 5
+set fmri(con_real4.5) 0
+
+# Real contrast_real vector 4 element 6
+set fmri(con_real4.6) 0
+
+# Real contrast_real vector 4 element 7
+set fmri(con_real4.7) 0
+
+# Real contrast_real vector 4 element 8
+set fmri(con_real4.8) 0
+
+# Real contrast_real vector 4 element 9
+set fmri(con_real4.9) 0
+
+# Real contrast_real vector 4 element 10
+set fmri(con_real4.10) 0
+
+# Real contrast_real vector 4 element 11
+set fmri(con_real4.11) 0
+
+# Real contrast_real vector 4 element 12
+set fmri(con_real4.12) 0
+
+# Real contrast_real vector 4 element 13
+set fmri(con_real4.13) 1.0
+
+# Real contrast_real vector 4 element 14
+set fmri(con_real4.14) 0
+
+# Real contrast_real vector 4 element 15
+set fmri(con_real4.15) 1.0
+
+# Real contrast_real vector 4 element 16
+set fmri(con_real4.16) 0
+
+# Real contrast_real vector 4 element 17
+set fmri(con_real4.17) 0
+
+# Real contrast_real vector 4 element 18
+set fmri(con_real4.18) 0
+
+# Real contrast_real vector 4 element 19
+set fmri(con_real4.19) 0
+
+# Real contrast_real vector 4 element 20
+set fmri(con_real4.20) 0
+
+# Real contrast_real vector 4 element 21
+set fmri(con_real4.21) 0
+
+# Real contrast_real vector 4 element 22
+set fmri(con_real4.22) 0
+
+# Real contrast_real vector 4 element 23
+set fmri(con_real4.23) 0
+
+# Real contrast_real vector 4 element 24
+set fmri(con_real4.24) 0
+
+# Real contrast_real vector 4 element 25
+set fmri(con_real4.25) 0
+
+# Real contrast_real vector 4 element 26
+set fmri(con_real4.26) 0
+
+# Real contrast_real vector 4 element 27
+set fmri(con_real4.27) 0
+
+# Real contrast_real vector 4 element 28
+set fmri(con_real4.28) 0
+
+# Real contrast_real vector 4 element 29
+set fmri(con_real4.29) 1.0
+
+# Real contrast_real vector 4 element 30
+set fmri(con_real4.30) 0
+
+# Real contrast_real vector 4 element 31
+set fmri(con_real4.31) 1.0
+
+# Real contrast_real vector 4 element 32
+set fmri(con_real4.32) 0
+
+# Real contrast_real vector 4 element 33
+set fmri(con_real4.33) 0
+
+# Real contrast_real vector 4 element 34
+set fmri(con_real4.34) 0
+
+# Real contrast_real vector 4 element 35
+set fmri(con_real4.35) 0
+
+# Real contrast_real vector 4 element 36
+set fmri(con_real4.36) 0
+
+# Real contrast_real vector 4 element 37
+set fmri(con_real4.37) 0
+
+# Real contrast_real vector 4 element 38
+set fmri(con_real4.38) 0
+
+# Real contrast_real vector 4 element 39
+set fmri(con_real4.39) 0
+
+# Real contrast_real vector 4 element 40
+set fmri(con_real4.40) 0
+
+# Real contrast_real vector 4 element 41
+set fmri(con_real4.41) 0
+
+# Real contrast_real vector 4 element 42
+set fmri(con_real4.42) 0
+
+# Real contrast_real vector 4 element 43
+set fmri(con_real4.43) 0
+
+# Real contrast_real vector 4 element 44
+set fmri(con_real4.44) 0
+
+# Real contrast_real vector 4 element 45
+set fmri(con_real4.45) 1.0
+
+# Real contrast_real vector 4 element 46
+set fmri(con_real4.46) 0
+
+# Real contrast_real vector 4 element 47
+set fmri(con_real4.47) 1.0
+
+# Real contrast_real vector 4 element 48
+set fmri(con_real4.48) 0
+
+# Real contrast_real vector 4 element 49
+set fmri(con_real4.49) 0
+
+# Real contrast_real vector 4 element 50
+set fmri(con_real4.50) 0
+
+# Real contrast_real vector 4 element 51
+set fmri(con_real4.51) 0
+
+# Real contrast_real vector 4 element 52
+set fmri(con_real4.52) 0
+
+# Real contrast_real vector 4 element 53
+set fmri(con_real4.53) 0
+
+# Real contrast_real vector 4 element 54
+set fmri(con_real4.54) 0
+
+# Real contrast_real vector 4 element 55
+set fmri(con_real4.55) 0
+
+# Real contrast_real vector 4 element 56
+set fmri(con_real4.56) 0
+
+# Real contrast_real vector 4 element 57
+set fmri(con_real4.57) 0
+
+# Real contrast_real vector 4 element 58
+set fmri(con_real4.58) 0
+
+# Real contrast_real vector 4 element 59
+set fmri(con_real4.59) 0
+
+# Real contrast_real vector 4 element 60
+set fmri(con_real4.60) 0
+
+# Real contrast_real vector 4 element 61
+set fmri(con_real4.61) 1.0
+
+# Real contrast_real vector 4 element 62
+set fmri(con_real4.62) 0
+
+# Real contrast_real vector 4 element 63
+set fmri(con_real4.63) 1.0
+
+# Real contrast_real vector 4 element 64
+set fmri(con_real4.64) 0
+
+# Real contrast_real vector 4 element 65
+set fmri(con_real4.65) 0
+
+# Real contrast_real vector 4 element 66
+set fmri(con_real4.66) 0
+
+# Real contrast_real vector 4 element 67
+set fmri(con_real4.67) 0
+
+# Real contrast_real vector 4 element 68
+set fmri(con_real4.68) 0
+
+# Real contrast_real vector 4 element 69
+set fmri(con_real4.69) 0
+
+# Real contrast_real vector 4 element 70
+set fmri(con_real4.70) 0
+
+# Real contrast_real vector 4 element 71
+set fmri(con_real4.71) 0
+
+# Real contrast_real vector 4 element 72
+set fmri(con_real4.72) 0
+
+# Real contrast_real vector 4 element 73
+set fmri(con_real4.73) 0.0
+
+# Real contrast_real vector 4 element 74
+set fmri(con_real4.74) 0
+
+# Real contrast_real vector 4 element 75
+set fmri(con_real4.75) 0.0
+
+# Real contrast_real vector 4 element 76
+set fmri(con_real4.76) 0
+
+# Real contrast_real vector 4 element 77
+set fmri(con_real4.77) 1.0
+
+# Real contrast_real vector 4 element 78
+set fmri(con_real4.78) 0
+
+# Real contrast_real vector 4 element 79
+set fmri(con_real4.79) 1.0
+
+# Real contrast_real vector 4 element 80
+set fmri(con_real4.80) 0
+
+# Display images for contrast_real 5
+set fmri(conpic_real.5) 1
+
+# Title for contrast_real 5
+set fmri(conname_real.5) "rewards"
+
+# Real contrast_real vector 5 element 1
+set fmri(con_real5.1) 0
+
+# Real contrast_real vector 5 element 2
+set fmri(con_real5.2) 0
+
+# Real contrast_real vector 5 element 3
+set fmri(con_real5.3) 1.0
+
+# Real contrast_real vector 5 element 4
+set fmri(con_real5.4) 0
+
+# Real contrast_real vector 5 element 5
+set fmri(con_real5.5) 0
+
+# Real contrast_real vector 5 element 6
+set fmri(con_real5.6) 0
+
+# Real contrast_real vector 5 element 7
+set fmri(con_real5.7) 1.0
+
+# Real contrast_real vector 5 element 8
+set fmri(con_real5.8) 0
+
+# Real contrast_real vector 5 element 9
+set fmri(con_real5.9) 0
+
+# Real contrast_real vector 5 element 10
+set fmri(con_real5.10) 0
+
+# Real contrast_real vector 5 element 11
+set fmri(con_real5.11) 1.0
+
+# Real contrast_real vector 5 element 12
+set fmri(con_real5.12) 0
+
+# Real contrast_real vector 5 element 13
+set fmri(con_real5.13) 0
+
+# Real contrast_real vector 5 element 14
+set fmri(con_real5.14) 0
+
+# Real contrast_real vector 5 element 15
+set fmri(con_real5.15) 1.0
+
+# Real contrast_real vector 5 element 16
+set fmri(con_real5.16) 0
+
+# Real contrast_real vector 5 element 17
+set fmri(con_real5.17) 0
+
+# Real contrast_real vector 5 element 18
+set fmri(con_real5.18) 0
+
+# Real contrast_real vector 5 element 19
+set fmri(con_real5.19) 1.0
+
+# Real contrast_real vector 5 element 20
+set fmri(con_real5.20) 0
+
+# Real contrast_real vector 5 element 21
+set fmri(con_real5.21) 0
+
+# Real contrast_real vector 5 element 22
+set fmri(con_real5.22) 0
+
+# Real contrast_real vector 5 element 23
+set fmri(con_real5.23) 1.0
+
+# Real contrast_real vector 5 element 24
+set fmri(con_real5.24) 0
+
+# Real contrast_real vector 5 element 25
+set fmri(con_real5.25) 0
+
+# Real contrast_real vector 5 element 26
+set fmri(con_real5.26) 0
+
+# Real contrast_real vector 5 element 27
+set fmri(con_real5.27) 1.0
+
+# Real contrast_real vector 5 element 28
+set fmri(con_real5.28) 0
+
+# Real contrast_real vector 5 element 29
+set fmri(con_real5.29) 0
+
+# Real contrast_real vector 5 element 30
+set fmri(con_real5.30) 0
+
+# Real contrast_real vector 5 element 31
+set fmri(con_real5.31) 1.0
+
+# Real contrast_real vector 5 element 32
+set fmri(con_real5.32) 0
+
+# Real contrast_real vector 5 element 33
+set fmri(con_real5.33) 0
+
+# Real contrast_real vector 5 element 34
+set fmri(con_real5.34) 0
+
+# Real contrast_real vector 5 element 35
+set fmri(con_real5.35) 1.0
+
+# Real contrast_real vector 5 element 36
+set fmri(con_real5.36) 0
+
+# Real contrast_real vector 5 element 37
+set fmri(con_real5.37) 0
+
+# Real contrast_real vector 5 element 38
+set fmri(con_real5.38) 0
+
+# Real contrast_real vector 5 element 39
+set fmri(con_real5.39) 1.0
+
+# Real contrast_real vector 5 element 40
+set fmri(con_real5.40) 0
+
+# Real contrast_real vector 5 element 41
+set fmri(con_real5.41) 0
+
+# Real contrast_real vector 5 element 42
+set fmri(con_real5.42) 0
+
+# Real contrast_real vector 5 element 43
+set fmri(con_real5.43) 1.0
+
+# Real contrast_real vector 5 element 44
+set fmri(con_real5.44) 0
+
+# Real contrast_real vector 5 element 45
+set fmri(con_real5.45) 0
+
+# Real contrast_real vector 5 element 46
+set fmri(con_real5.46) 0
+
+# Real contrast_real vector 5 element 47
+set fmri(con_real5.47) 1.0
+
+# Real contrast_real vector 5 element 48
+set fmri(con_real5.48) 0
+
+# Real contrast_real vector 5 element 49
+set fmri(con_real5.49) 0
+
+# Real contrast_real vector 5 element 50
+set fmri(con_real5.50) 0
+
+# Real contrast_real vector 5 element 51
+set fmri(con_real5.51) 1.0
+
+# Real contrast_real vector 5 element 52
+set fmri(con_real5.52) 0
+
+# Real contrast_real vector 5 element 53
+set fmri(con_real5.53) 0
+
+# Real contrast_real vector 5 element 54
+set fmri(con_real5.54) 0
+
+# Real contrast_real vector 5 element 55
+set fmri(con_real5.55) 1.0
+
+# Real contrast_real vector 5 element 56
+set fmri(con_real5.56) 0
+
+# Real contrast_real vector 5 element 57
+set fmri(con_real5.57) 0
+
+# Real contrast_real vector 5 element 58
+set fmri(con_real5.58) 0
+
+# Real contrast_real vector 5 element 59
+set fmri(con_real5.59) 1.0
+
+# Real contrast_real vector 5 element 60
+set fmri(con_real5.60) 0
+
+# Real contrast_real vector 5 element 61
+set fmri(con_real5.61) 0
+
+# Real contrast_real vector 5 element 62
+set fmri(con_real5.62) 0
+
+# Real contrast_real vector 5 element 63
+set fmri(con_real5.63) 1.0
+
+# Real contrast_real vector 5 element 64
+set fmri(con_real5.64) 0
+
+# Real contrast_real vector 5 element 65
+set fmri(con_real5.65) 0
+
+# Real contrast_real vector 5 element 66
+set fmri(con_real5.66) 0
+
+# Real contrast_real vector 5 element 67
+set fmri(con_real5.67) 1.0
+
+# Real contrast_real vector 5 element 68
+set fmri(con_real5.68) 0
+
+# Real contrast_real vector 5 element 69
+set fmri(con_real5.69) 0
+
+# Real contrast_real vector 5 element 70
+set fmri(con_real5.70) 0
+
+# Real contrast_real vector 5 element 71
+set fmri(con_real5.71) 1.0
+
+# Real contrast_real vector 5 element 72
+set fmri(con_real5.72) 0
+
+# Real contrast_real vector 5 element 73
+set fmri(con_real5.73) 0
+
+# Real contrast_real vector 5 element 74
+set fmri(con_real5.74) 0
+
+# Real contrast_real vector 5 element 75
+set fmri(con_real5.75) 1.0
+
+# Real contrast_real vector 5 element 76
+set fmri(con_real5.76) 0
+
+# Real contrast_real vector 5 element 77
+set fmri(con_real5.77) 0
+
+# Real contrast_real vector 5 element 78
+set fmri(con_real5.78) 0
+
+# Real contrast_real vector 5 element 79
+set fmri(con_real5.79) 1.0
+
+# Real contrast_real vector 5 element 80
+set fmri(con_real5.80) 0
+
+# Display images for contrast_real 6
+set fmri(conpic_real.6) 1
+
+# Title for contrast_real 6
+set fmri(conname_real.6) "paths"
+
+# Real contrast_real vector 6 element 1
+set fmri(con_real6.1) 1.0
+
+# Real contrast_real vector 6 element 2
+set fmri(con_real6.2) 0
+
+# Real contrast_real vector 6 element 3
+set fmri(con_real6.3) 0
+
+# Real contrast_real vector 6 element 4
+set fmri(con_real6.4) 0
+
+# Real contrast_real vector 6 element 5
+set fmri(con_real6.5) 1.0
+
+# Real contrast_real vector 6 element 6
+set fmri(con_real6.6) 0
+
+# Real contrast_real vector 6 element 7
+set fmri(con_real6.7) 0
+
+# Real contrast_real vector 6 element 8
+set fmri(con_real6.8) 0
+
+# Real contrast_real vector 6 element 9
+set fmri(con_real6.9) 1.0
+
+# Real contrast_real vector 6 element 10
+set fmri(con_real6.10) 0
+
+# Real contrast_real vector 6 element 11
+set fmri(con_real6.11) 0
+
+# Real contrast_real vector 6 element 12
+set fmri(con_real6.12) 0
+
+# Real contrast_real vector 6 element 13
+set fmri(con_real6.13) 1.0
+
+# Real contrast_real vector 6 element 14
+set fmri(con_real6.14) 0
+
+# Real contrast_real vector 6 element 15
+set fmri(con_real6.15) 0
+
+# Real contrast_real vector 6 element 16
+set fmri(con_real6.16) 0
+
+# Real contrast_real vector 6 element 17
+set fmri(con_real6.17) 1.0
+
+# Real contrast_real vector 6 element 18
+set fmri(con_real6.18) 0
+
+# Real contrast_real vector 6 element 19
+set fmri(con_real6.19) 0
+
+# Real contrast_real vector 6 element 20
+set fmri(con_real6.20) 0
+
+# Real contrast_real vector 6 element 21
+set fmri(con_real6.21) 1.0
+
+# Real contrast_real vector 6 element 22
+set fmri(con_real6.22) 0
+
+# Real contrast_real vector 6 element 23
+set fmri(con_real6.23) 0
+
+# Real contrast_real vector 6 element 24
+set fmri(con_real6.24) 0
+
+# Real contrast_real vector 6 element 25
+set fmri(con_real6.25) 1.0
+
+# Real contrast_real vector 6 element 26
+set fmri(con_real6.26) 0
+
+# Real contrast_real vector 6 element 27
+set fmri(con_real6.27) 0
+
+# Real contrast_real vector 6 element 28
+set fmri(con_real6.28) 0
+
+# Real contrast_real vector 6 element 29
+set fmri(con_real6.29) 1.0
+
+# Real contrast_real vector 6 element 30
+set fmri(con_real6.30) 0
+
+# Real contrast_real vector 6 element 31
+set fmri(con_real6.31) 0
+
+# Real contrast_real vector 6 element 32
+set fmri(con_real6.32) 0
+
+# Real contrast_real vector 6 element 33
+set fmri(con_real6.33) 1.0
+
+# Real contrast_real vector 6 element 34
+set fmri(con_real6.34) 0
+
+# Real contrast_real vector 6 element 35
+set fmri(con_real6.35) 0
+
+# Real contrast_real vector 6 element 36
+set fmri(con_real6.36) 0
+
+# Real contrast_real vector 6 element 37
+set fmri(con_real6.37) 1.0
+
+# Real contrast_real vector 6 element 38
+set fmri(con_real6.38) 0
+
+# Real contrast_real vector 6 element 39
+set fmri(con_real6.39) 0
+
+# Real contrast_real vector 6 element 40
+set fmri(con_real6.40) 0
+
+# Real contrast_real vector 6 element 41
+set fmri(con_real6.41) 1.0
+
+# Real contrast_real vector 6 element 42
+set fmri(con_real6.42) 0
+
+# Real contrast_real vector 6 element 43
+set fmri(con_real6.43) 0
+
+# Real contrast_real vector 6 element 44
+set fmri(con_real6.44) 0
+
+# Real contrast_real vector 6 element 45
+set fmri(con_real6.45) 1.0
+
+# Real contrast_real vector 6 element 46
+set fmri(con_real6.46) 0
+
+# Real contrast_real vector 6 element 47
+set fmri(con_real6.47) 0
+
+# Real contrast_real vector 6 element 48
+set fmri(con_real6.48) 0
+
+# Real contrast_real vector 6 element 49
+set fmri(con_real6.49) 1.0
+
+# Real contrast_real vector 6 element 50
+set fmri(con_real6.50) 0
+
+# Real contrast_real vector 6 element 51
+set fmri(con_real6.51) 0
+
+# Real contrast_real vector 6 element 52
+set fmri(con_real6.52) 0
+
+# Real contrast_real vector 6 element 53
+set fmri(con_real6.53) 1.0
+
+# Real contrast_real vector 6 element 54
+set fmri(con_real6.54) 0
+
+# Real contrast_real vector 6 element 55
+set fmri(con_real6.55) 0
+
+# Real contrast_real vector 6 element 56
+set fmri(con_real6.56) 0
+
+# Real contrast_real vector 6 element 57
+set fmri(con_real6.57) 1.0
+
+# Real contrast_real vector 6 element 58
+set fmri(con_real6.58) 0
+
+# Real contrast_real vector 6 element 59
+set fmri(con_real6.59) 0
+
+# Real contrast_real vector 6 element 60
+set fmri(con_real6.60) 0
+
+# Real contrast_real vector 6 element 61
+set fmri(con_real6.61) 1.0
+
+# Real contrast_real vector 6 element 62
+set fmri(con_real6.62) 0
+
+# Real contrast_real vector 6 element 63
+set fmri(con_real6.63) 0
+
+# Real contrast_real vector 6 element 64
+set fmri(con_real6.64) 0
+
+# Real contrast_real vector 6 element 65
+set fmri(con_real6.65) 1.0
+
+# Real contrast_real vector 6 element 66
+set fmri(con_real6.66) 0
+
+# Real contrast_real vector 6 element 67
+set fmri(con_real6.67) 0
+
+# Real contrast_real vector 6 element 68
+set fmri(con_real6.68) 0
+
+# Real contrast_real vector 6 element 69
+set fmri(con_real6.69) 1.0
+
+# Real contrast_real vector 6 element 70
+set fmri(con_real6.70) 0
+
+# Real contrast_real vector 6 element 71
+set fmri(con_real6.71) 0
+
+# Real contrast_real vector 6 element 72
+set fmri(con_real6.72) 0
+
+# Real contrast_real vector 6 element 73
+set fmri(con_real6.73) 1.0
+
+# Real contrast_real vector 6 element 74
+set fmri(con_real6.74) 0
+
+# Real contrast_real vector 6 element 75
+set fmri(con_real6.75) 0
+
+# Real contrast_real vector 6 element 76
+set fmri(con_real6.76) 0
+
+# Real contrast_real vector 6 element 77
+set fmri(con_real6.77) 1.0
+
+# Real contrast_real vector 6 element 78
+set fmri(con_real6.78) 0
+
+# Real contrast_real vector 6 element 79
+set fmri(con_real6.79) 0
+
+# Real contrast_real vector 6 element 80
+set fmri(con_real6.80) 0
+
+# Display images for contrast_orig 1
+set fmri(conpic_orig.1) 1
+
+# Title for contrast_orig 1
+set fmri(conname_orig.1) "state_A"
+
+# Real contrast_orig vector 1 element 1
+set fmri(con_orig1.1) 1.0
+
+# Real contrast_orig vector 1 element 2
+set fmri(con_orig1.2) 1.0
+
+# Real contrast_orig vector 1 element 3
+set fmri(con_orig1.3) 0
+
+# Real contrast_orig vector 1 element 4
+set fmri(con_orig1.4) 0
+
+# Real contrast_orig vector 1 element 5
+set fmri(con_orig1.5) 0
+
+# Real contrast_orig vector 1 element 6
+set fmri(con_orig1.6) 0
+
+# Real contrast_orig vector 1 element 7
+set fmri(con_orig1.7) 0
+
+# Real contrast_orig vector 1 element 8
+set fmri(con_orig1.8) 0
+
+# Real contrast_orig vector 1 element 9
+set fmri(con_orig1.9) 1.0
+
+# Real contrast_orig vector 1 element 10
+set fmri(con_orig1.10) 1.0
+
+# Real contrast_orig vector 1 element 11
+set fmri(con_orig1.11) 0
+
+# Real contrast_orig vector 1 element 12
+set fmri(con_orig1.12) 0
+
+# Real contrast_orig vector 1 element 13
+set fmri(con_orig1.13) 0
+
+# Real contrast_orig vector 1 element 14
+set fmri(con_orig1.14) 0
+
+# Real contrast_orig vector 1 element 15
+set fmri(con_orig1.15) 0
+
+# Real contrast_orig vector 1 element 16
+set fmri(con_orig1.16) 0
+
+# Real contrast_orig vector 1 element 17
+set fmri(con_orig1.17) 1.0
+
+# Real contrast_orig vector 1 element 18
+set fmri(con_orig1.18) 1.0
+
+# Real contrast_orig vector 1 element 19
+set fmri(con_orig1.19) 0
+
+# Real contrast_orig vector 1 element 20
+set fmri(con_orig1.20) 0
+
+# Real contrast_orig vector 1 element 21
+set fmri(con_orig1.21) 0
+
+# Real contrast_orig vector 1 element 22
+set fmri(con_orig1.22) 0
+
+# Real contrast_orig vector 1 element 23
+set fmri(con_orig1.23) 0
+
+# Real contrast_orig vector 1 element 24
+set fmri(con_orig1.24) 0
+
+# Real contrast_orig vector 1 element 25
+set fmri(con_orig1.25) 1.0
+
+# Real contrast_orig vector 1 element 26
+set fmri(con_orig1.26) 1.0
+
+# Real contrast_orig vector 1 element 27
+set fmri(con_orig1.27) 0
+
+# Real contrast_orig vector 1 element 28
+set fmri(con_orig1.28) 0
+
+# Real contrast_orig vector 1 element 29
+set fmri(con_orig1.29) 0
+
+# Real contrast_orig vector 1 element 30
+set fmri(con_orig1.30) 0
+
+# Real contrast_orig vector 1 element 31
+set fmri(con_orig1.31) 0.0
+
+# Real contrast_orig vector 1 element 32
+set fmri(con_orig1.32) 0.0
+
+# Real contrast_orig vector 1 element 33
+set fmri(con_orig1.33) 1.0
+
+# Real contrast_orig vector 1 element 34
+set fmri(con_orig1.34) 1.0
+
+# Real contrast_orig vector 1 element 35
+set fmri(con_orig1.35) 0
+
+# Real contrast_orig vector 1 element 36
+set fmri(con_orig1.36) 0
+
+# Real contrast_orig vector 1 element 37
+set fmri(con_orig1.37) 0
+
+# Real contrast_orig vector 1 element 38
+set fmri(con_orig1.38) 0
+
+# Real contrast_orig vector 1 element 39
+set fmri(con_orig1.39) 0
+
+# Real contrast_orig vector 1 element 40
+set fmri(con_orig1.40) 0
+
+# Display images for contrast_orig 2
+set fmri(conpic_orig.2) 1
+
+# Title for contrast_orig 2
+set fmri(conname_orig.2) "state_B"
+
+# Real contrast_orig vector 2 element 1
+set fmri(con_orig2.1) 0
+
+# Real contrast_orig vector 2 element 2
+set fmri(con_orig2.2) 0
+
+# Real contrast_orig vector 2 element 3
+set fmri(con_orig2.3) 1.0
+
+# Real contrast_orig vector 2 element 4
+set fmri(con_orig2.4) 1.0
+
+# Real contrast_orig vector 2 element 5
+set fmri(con_orig2.5) 0
+
+# Real contrast_orig vector 2 element 6
+set fmri(con_orig2.6) 0
+
+# Real contrast_orig vector 2 element 7
+set fmri(con_orig2.7) 0
+
+# Real contrast_orig vector 2 element 8
+set fmri(con_orig2.8) 0
+
+# Real contrast_orig vector 2 element 9
+set fmri(con_orig2.9) 0
+
+# Real contrast_orig vector 2 element 10
+set fmri(con_orig2.10) 0
+
+# Real contrast_orig vector 2 element 11
+set fmri(con_orig2.11) 1.0
+
+# Real contrast_orig vector 2 element 12
+set fmri(con_orig2.12) 1.0
+
+# Real contrast_orig vector 2 element 13
+set fmri(con_orig2.13) 0
+
+# Real contrast_orig vector 2 element 14
+set fmri(con_orig2.14) 0
+
+# Real contrast_orig vector 2 element 15
+set fmri(con_orig2.15) 0
+
+# Real contrast_orig vector 2 element 16
+set fmri(con_orig2.16) 0
+
+# Real contrast_orig vector 2 element 17
+set fmri(con_orig2.17) 0
+
+# Real contrast_orig vector 2 element 18
+set fmri(con_orig2.18) 0
+
+# Real contrast_orig vector 2 element 19
+set fmri(con_orig2.19) 1.0
+
+# Real contrast_orig vector 2 element 20
+set fmri(con_orig2.20) 1.0
+
+# Real contrast_orig vector 2 element 21
+set fmri(con_orig2.21) 0
+
+# Real contrast_orig vector 2 element 22
+set fmri(con_orig2.22) 0
+
+# Real contrast_orig vector 2 element 23
+set fmri(con_orig2.23) 0
+
+# Real contrast_orig vector 2 element 24
+set fmri(con_orig2.24) 0
+
+# Real contrast_orig vector 2 element 25
+set fmri(con_orig2.25) 0
+
+# Real contrast_orig vector 2 element 26
+set fmri(con_orig2.26) 0
+
+# Real contrast_orig vector 2 element 27
+set fmri(con_orig2.27) 1.0
+
+# Real contrast_orig vector 2 element 28
+set fmri(con_orig2.28) 1.0
+
+# Real contrast_orig vector 2 element 29
+set fmri(con_orig2.29) 0
+
+# Real contrast_orig vector 2 element 30
+set fmri(con_orig2.30) 0
+
+# Real contrast_orig vector 2 element 31
+set fmri(con_orig2.31) 0
+
+# Real contrast_orig vector 2 element 32
+set fmri(con_orig2.32) 0
+
+# Real contrast_orig vector 2 element 33
+set fmri(con_orig2.33) 0.0
+
+# Real contrast_orig vector 2 element 34
+set fmri(con_orig2.34) 0.0
+
+# Real contrast_orig vector 2 element 35
+set fmri(con_orig2.35) 1.0
+
+# Real contrast_orig vector 2 element 36
+set fmri(con_orig2.36) 1.0
+
+# Real contrast_orig vector 2 element 37
+set fmri(con_orig2.37) 0
+
+# Real contrast_orig vector 2 element 38
+set fmri(con_orig2.38) 0
+
+# Real contrast_orig vector 2 element 39
+set fmri(con_orig2.39) 0
+
+# Real contrast_orig vector 2 element 40
+set fmri(con_orig2.40) 0
+
+# Display images for contrast_orig 3
+set fmri(conpic_orig.3) 1
+
+# Title for contrast_orig 3
+set fmri(conname_orig.3) "state_C"
+
+# Real contrast_orig vector 3 element 1
+set fmri(con_orig3.1) 0
+
+# Real contrast_orig vector 3 element 2
+set fmri(con_orig3.2) 0
+
+# Real contrast_orig vector 3 element 3
+set fmri(con_orig3.3) 0
+
+# Real contrast_orig vector 3 element 4
+set fmri(con_orig3.4) 0
+
+# Real contrast_orig vector 3 element 5
+set fmri(con_orig3.5) 1.0
+
+# Real contrast_orig vector 3 element 6
+set fmri(con_orig3.6) 1.0
+
+# Real contrast_orig vector 3 element 7
+set fmri(con_orig3.7) 0
+
+# Real contrast_orig vector 3 element 8
+set fmri(con_orig3.8) 0
+
+# Real contrast_orig vector 3 element 9
+set fmri(con_orig3.9) 0
+
+# Real contrast_orig vector 3 element 10
+set fmri(con_orig3.10) 0
+
+# Real contrast_orig vector 3 element 11
+set fmri(con_orig3.11) 0
+
+# Real contrast_orig vector 3 element 12
+set fmri(con_orig3.12) 0
+
+# Real contrast_orig vector 3 element 13
+set fmri(con_orig3.13) 1.0
+
+# Real contrast_orig vector 3 element 14
+set fmri(con_orig3.14) 1.0
+
+# Real contrast_orig vector 3 element 15
+set fmri(con_orig3.15) 0
+
+# Real contrast_orig vector 3 element 16
+set fmri(con_orig3.16) 0
+
+# Real contrast_orig vector 3 element 17
+set fmri(con_orig3.17) 0
+
+# Real contrast_orig vector 3 element 18
+set fmri(con_orig3.18) 0
+
+# Real contrast_orig vector 3 element 19
+set fmri(con_orig3.19) 0
+
+# Real contrast_orig vector 3 element 20
+set fmri(con_orig3.20) 0
+
+# Real contrast_orig vector 3 element 21
+set fmri(con_orig3.21) 1.0
+
+# Real contrast_orig vector 3 element 22
+set fmri(con_orig3.22) 1.0
+
+# Real contrast_orig vector 3 element 23
+set fmri(con_orig3.23) 0
+
+# Real contrast_orig vector 3 element 24
+set fmri(con_orig3.24) 0
+
+# Real contrast_orig vector 3 element 25
+set fmri(con_orig3.25) 0
+
+# Real contrast_orig vector 3 element 26
+set fmri(con_orig3.26) 0
+
+# Real contrast_orig vector 3 element 27
+set fmri(con_orig3.27) 0
+
+# Real contrast_orig vector 3 element 28
+set fmri(con_orig3.28) 0
+
+# Real contrast_orig vector 3 element 29
+set fmri(con_orig3.29) 1.0
+
+# Real contrast_orig vector 3 element 30
+set fmri(con_orig3.30) 1.0
+
+# Real contrast_orig vector 3 element 31
+set fmri(con_orig3.31) 0
+
+# Real contrast_orig vector 3 element 32
+set fmri(con_orig3.32) 0
+
+# Real contrast_orig vector 3 element 33
+set fmri(con_orig3.33) 0
+
+# Real contrast_orig vector 3 element 34
+set fmri(con_orig3.34) 0
+
+# Real contrast_orig vector 3 element 35
+set fmri(con_orig3.35) 0.0
+
+# Real contrast_orig vector 3 element 36
+set fmri(con_orig3.36) 0.0
+
+# Real contrast_orig vector 3 element 37
+set fmri(con_orig3.37) 1.0
+
+# Real contrast_orig vector 3 element 38
+set fmri(con_orig3.38) 1.0
+
+# Real contrast_orig vector 3 element 39
+set fmri(con_orig3.39) 0
+
+# Real contrast_orig vector 3 element 40
+set fmri(con_orig3.40) 0
+
+# Display images for contrast_orig 4
+set fmri(conpic_orig.4) 1
+
+# Title for contrast_orig 4
+set fmri(conname_orig.4) "state_D"
+
+# Real contrast_orig vector 4 element 1
+set fmri(con_orig4.1) 0
+
+# Real contrast_orig vector 4 element 2
+set fmri(con_orig4.2) 0
+
+# Real contrast_orig vector 4 element 3
+set fmri(con_orig4.3) 0
+
+# Real contrast_orig vector 4 element 4
+set fmri(con_orig4.4) 0
+
+# Real contrast_orig vector 4 element 5
+set fmri(con_orig4.5) 0
+
+# Real contrast_orig vector 4 element 6
+set fmri(con_orig4.6) 0
+
+# Real contrast_orig vector 4 element 7
+set fmri(con_orig4.7) 1.0
+
+# Real contrast_orig vector 4 element 8
+set fmri(con_orig4.8) 1.0
+
+# Real contrast_orig vector 4 element 9
+set fmri(con_orig4.9) 0
+
+# Real contrast_orig vector 4 element 10
+set fmri(con_orig4.10) 0
+
+# Real contrast_orig vector 4 element 11
+set fmri(con_orig4.11) 0
+
+# Real contrast_orig vector 4 element 12
+set fmri(con_orig4.12) 0
+
+# Real contrast_orig vector 4 element 13
+set fmri(con_orig4.13) 0
+
+# Real contrast_orig vector 4 element 14
+set fmri(con_orig4.14) 0
+
+# Real contrast_orig vector 4 element 15
+set fmri(con_orig4.15) 1.0
+
+# Real contrast_orig vector 4 element 16
+set fmri(con_orig4.16) 1.0
+
+# Real contrast_orig vector 4 element 17
+set fmri(con_orig4.17) 0
+
+# Real contrast_orig vector 4 element 18
+set fmri(con_orig4.18) 0
+
+# Real contrast_orig vector 4 element 19
+set fmri(con_orig4.19) 0
+
+# Real contrast_orig vector 4 element 20
+set fmri(con_orig4.20) 0
+
+# Real contrast_orig vector 4 element 21
+set fmri(con_orig4.21) 0
+
+# Real contrast_orig vector 4 element 22
+set fmri(con_orig4.22) 0
+
+# Real contrast_orig vector 4 element 23
+set fmri(con_orig4.23) 1.0
+
+# Real contrast_orig vector 4 element 24
+set fmri(con_orig4.24) 1.0
+
+# Real contrast_orig vector 4 element 25
+set fmri(con_orig4.25) 0
+
+# Real contrast_orig vector 4 element 26
+set fmri(con_orig4.26) 0
+
+# Real contrast_orig vector 4 element 27
+set fmri(con_orig4.27) 0
+
+# Real contrast_orig vector 4 element 28
+set fmri(con_orig4.28) 0
+
+# Real contrast_orig vector 4 element 29
+set fmri(con_orig4.29) 0
+
+# Real contrast_orig vector 4 element 30
+set fmri(con_orig4.30) 0
+
+# Real contrast_orig vector 4 element 31
+set fmri(con_orig4.31) 1.0
+
+# Real contrast_orig vector 4 element 32
+set fmri(con_orig4.32) 1.0
+
+# Real contrast_orig vector 4 element 33
+set fmri(con_orig4.33) 0
+
+# Real contrast_orig vector 4 element 34
+set fmri(con_orig4.34) 0
+
+# Real contrast_orig vector 4 element 35
+set fmri(con_orig4.35) 0
+
+# Real contrast_orig vector 4 element 36
+set fmri(con_orig4.36) 0
+
+# Real contrast_orig vector 4 element 37
+set fmri(con_orig4.37) 0.0
+
+# Real contrast_orig vector 4 element 38
+set fmri(con_orig4.38) 0.0
+
+# Real contrast_orig vector 4 element 39
+set fmri(con_orig4.39) 1.0
+
+# Real contrast_orig vector 4 element 40
+set fmri(con_orig4.40) 1.0
+
+# Display images for contrast_orig 5
+set fmri(conpic_orig.5) 1
+
+# Title for contrast_orig 5
+set fmri(conname_orig.5) "rewards"
+
+# Real contrast_orig vector 5 element 1
+set fmri(con_orig5.1) 0
+
+# Real contrast_orig vector 5 element 2
+set fmri(con_orig5.2) 1.0
+
+# Real contrast_orig vector 5 element 3
+set fmri(con_orig5.3) 0
+
+# Real contrast_orig vector 5 element 4
+set fmri(con_orig5.4) 1.0
+
+# Real contrast_orig vector 5 element 5
+set fmri(con_orig5.5) 0
+
+# Real contrast_orig vector 5 element 6
+set fmri(con_orig5.6) 1.0
+
+# Real contrast_orig vector 5 element 7
+set fmri(con_orig5.7) 0
+
+# Real contrast_orig vector 5 element 8
+set fmri(con_orig5.8) 1.0
+
+# Real contrast_orig vector 5 element 9
+set fmri(con_orig5.9) 0
+
+# Real contrast_orig vector 5 element 10
+set fmri(con_orig5.10) 1.0
+
+# Real contrast_orig vector 5 element 11
+set fmri(con_orig5.11) 0
+
+# Real contrast_orig vector 5 element 12
+set fmri(con_orig5.12) 1.0
+
+# Real contrast_orig vector 5 element 13
+set fmri(con_orig5.13) 0
+
+# Real contrast_orig vector 5 element 14
+set fmri(con_orig5.14) 1.0
+
+# Real contrast_orig vector 5 element 15
+set fmri(con_orig5.15) 0
+
+# Real contrast_orig vector 5 element 16
+set fmri(con_orig5.16) 1.0
+
+# Real contrast_orig vector 5 element 17
+set fmri(con_orig5.17) 0
+
+# Real contrast_orig vector 5 element 18
+set fmri(con_orig5.18) 1.0
+
+# Real contrast_orig vector 5 element 19
+set fmri(con_orig5.19) 0
+
+# Real contrast_orig vector 5 element 20
+set fmri(con_orig5.20) 1.0
+
+# Real contrast_orig vector 5 element 21
+set fmri(con_orig5.21) 0
+
+# Real contrast_orig vector 5 element 22
+set fmri(con_orig5.22) 1.0
+
+# Real contrast_orig vector 5 element 23
+set fmri(con_orig5.23) 0
+
+# Real contrast_orig vector 5 element 24
+set fmri(con_orig5.24) 1.0
+
+# Real contrast_orig vector 5 element 25
+set fmri(con_orig5.25) 0
+
+# Real contrast_orig vector 5 element 26
+set fmri(con_orig5.26) 1.0
+
+# Real contrast_orig vector 5 element 27
+set fmri(con_orig5.27) 0
+
+# Real contrast_orig vector 5 element 28
+set fmri(con_orig5.28) 1.0
+
+# Real contrast_orig vector 5 element 29
+set fmri(con_orig5.29) 0
+
+# Real contrast_orig vector 5 element 30
+set fmri(con_orig5.30) 1.0
+
+# Real contrast_orig vector 5 element 31
+set fmri(con_orig5.31) 0
+
+# Real contrast_orig vector 5 element 32
+set fmri(con_orig5.32) 1.0
+
+# Real contrast_orig vector 5 element 33
+set fmri(con_orig5.33) 0
+
+# Real contrast_orig vector 5 element 34
+set fmri(con_orig5.34) 1.0
+
+# Real contrast_orig vector 5 element 35
+set fmri(con_orig5.35) 0
+
+# Real contrast_orig vector 5 element 36
+set fmri(con_orig5.36) 1.0
+
+# Real contrast_orig vector 5 element 37
+set fmri(con_orig5.37) 0
+
+# Real contrast_orig vector 5 element 38
+set fmri(con_orig5.38) 1.0
+
+# Real contrast_orig vector 5 element 39
+set fmri(con_orig5.39) 0
+
+# Real contrast_orig vector 5 element 40
+set fmri(con_orig5.40) 1.0
+
+# Display images for contrast_orig 6
+set fmri(conpic_orig.6) 1
+
+# Title for contrast_orig 6
+set fmri(conname_orig.6) "paths"
+
+# Real contrast_orig vector 6 element 1
+set fmri(con_orig6.1) 1.0
+
+# Real contrast_orig vector 6 element 2
+set fmri(con_orig6.2) 0
+
+# Real contrast_orig vector 6 element 3
+set fmri(con_orig6.3) 1.0
+
+# Real contrast_orig vector 6 element 4
+set fmri(con_orig6.4) 0
+
+# Real contrast_orig vector 6 element 5
+set fmri(con_orig6.5) 1.0
+
+# Real contrast_orig vector 6 element 6
+set fmri(con_orig6.6) 0
+
+# Real contrast_orig vector 6 element 7
+set fmri(con_orig6.7) 1.0
+
+# Real contrast_orig vector 6 element 8
+set fmri(con_orig6.8) 0
+
+# Real contrast_orig vector 6 element 9
+set fmri(con_orig6.9) 1.0
+
+# Real contrast_orig vector 6 element 10
+set fmri(con_orig6.10) 0
+
+# Real contrast_orig vector 6 element 11
+set fmri(con_orig6.11) 1.0
+
+# Real contrast_orig vector 6 element 12
+set fmri(con_orig6.12) 0
+
+# Real contrast_orig vector 6 element 13
+set fmri(con_orig6.13) 1.0
+
+# Real contrast_orig vector 6 element 14
+set fmri(con_orig6.14) 0
+
+# Real contrast_orig vector 6 element 15
+set fmri(con_orig6.15) 1.0
+
+# Real contrast_orig vector 6 element 16
+set fmri(con_orig6.16) 0
+
+# Real contrast_orig vector 6 element 17
+set fmri(con_orig6.17) 1.0
+
+# Real contrast_orig vector 6 element 18
+set fmri(con_orig6.18) 0
+
+# Real contrast_orig vector 6 element 19
+set fmri(con_orig6.19) 1.0
+
+# Real contrast_orig vector 6 element 20
+set fmri(con_orig6.20) 0
+
+# Real contrast_orig vector 6 element 21
+set fmri(con_orig6.21) 1.0
+
+# Real contrast_orig vector 6 element 22
+set fmri(con_orig6.22) 0
+
+# Real contrast_orig vector 6 element 23
+set fmri(con_orig6.23) 1.0
+
+# Real contrast_orig vector 6 element 24
+set fmri(con_orig6.24) 0
+
+# Real contrast_orig vector 6 element 25
+set fmri(con_orig6.25) 1.0
+
+# Real contrast_orig vector 6 element 26
+set fmri(con_orig6.26) 0
+
+# Real contrast_orig vector 6 element 27
+set fmri(con_orig6.27) 1.0
+
+# Real contrast_orig vector 6 element 28
+set fmri(con_orig6.28) 0
+
+# Real contrast_orig vector 6 element 29
+set fmri(con_orig6.29) 1.0
+
+# Real contrast_orig vector 6 element 30
+set fmri(con_orig6.30) 0
+
+# Real contrast_orig vector 6 element 31
+set fmri(con_orig6.31) 1.0
+
+# Real contrast_orig vector 6 element 32
+set fmri(con_orig6.32) 0
+
+# Real contrast_orig vector 6 element 33
+set fmri(con_orig6.33) 1.0
+
+# Real contrast_orig vector 6 element 34
+set fmri(con_orig6.34) 0
+
+# Real contrast_orig vector 6 element 35
+set fmri(con_orig6.35) 1.0
+
+# Real contrast_orig vector 6 element 36
+set fmri(con_orig6.36) 0
+
+# Real contrast_orig vector 6 element 37
+set fmri(con_orig6.37) 1.0
+
+# Real contrast_orig vector 6 element 38
+set fmri(con_orig6.38) 0
+
+# Real contrast_orig vector 6 element 39
+set fmri(con_orig6.39) 1.0
+
+# Real contrast_orig vector 6 element 40
+set fmri(con_orig6.40) 0
+
+# Contrast masking - use >0 instead of thresholding?
+set fmri(conmask_zerothresh_yn) 0
+
+# Mask real contrast/F-test 1 with real contrast/F-test 2?
+set fmri(conmask1_2) 0
+
+# Mask real contrast/F-test 1 with real contrast/F-test 3?
+set fmri(conmask1_3) 0
+
+# Mask real contrast/F-test 1 with real contrast/F-test 4?
+set fmri(conmask1_4) 0
+
+# Mask real contrast/F-test 1 with real contrast/F-test 5?
+set fmri(conmask1_5) 0
+
+# Mask real contrast/F-test 1 with real contrast/F-test 6?
+set fmri(conmask1_6) 0
+
+# Mask real contrast/F-test 2 with real contrast/F-test 1?
+set fmri(conmask2_1) 0
+
+# Mask real contrast/F-test 2 with real contrast/F-test 3?
+set fmri(conmask2_3) 0
+
+# Mask real contrast/F-test 2 with real contrast/F-test 4?
+set fmri(conmask2_4) 0
+
+# Mask real contrast/F-test 2 with real contrast/F-test 5?
+set fmri(conmask2_5) 0
+
+# Mask real contrast/F-test 2 with real contrast/F-test 6?
+set fmri(conmask2_6) 0
+
+# Mask real contrast/F-test 3 with real contrast/F-test 1?
+set fmri(conmask3_1) 0
+
+# Mask real contrast/F-test 3 with real contrast/F-test 2?
+set fmri(conmask3_2) 0
+
+# Mask real contrast/F-test 3 with real contrast/F-test 4?
+set fmri(conmask3_4) 0
+
+# Mask real contrast/F-test 3 with real contrast/F-test 5?
+set fmri(conmask3_5) 0
+
+# Mask real contrast/F-test 3 with real contrast/F-test 6?
+set fmri(conmask3_6) 0
+
+# Mask real contrast/F-test 4 with real contrast/F-test 1?
+set fmri(conmask4_1) 0
+
+# Mask real contrast/F-test 4 with real contrast/F-test 2?
+set fmri(conmask4_2) 0
+
+# Mask real contrast/F-test 4 with real contrast/F-test 3?
+set fmri(conmask4_3) 0
+
+# Mask real contrast/F-test 4 with real contrast/F-test 5?
+set fmri(conmask4_5) 0
+
+# Mask real contrast/F-test 4 with real contrast/F-test 6?
+set fmri(conmask4_6) 0
+
+# Mask real contrast/F-test 5 with real contrast/F-test 1?
+set fmri(conmask5_1) 0
+
+# Mask real contrast/F-test 5 with real contrast/F-test 2?
+set fmri(conmask5_2) 0
+
+# Mask real contrast/F-test 5 with real contrast/F-test 3?
+set fmri(conmask5_3) 0
+
+# Mask real contrast/F-test 5 with real contrast/F-test 4?
+set fmri(conmask5_4) 0
+
+# Mask real contrast/F-test 5 with real contrast/F-test 6?
+set fmri(conmask5_6) 0
+
+# Mask real contrast/F-test 6 with real contrast/F-test 1?
+set fmri(conmask6_1) 0
+
+# Mask real contrast/F-test 6 with real contrast/F-test 2?
+set fmri(conmask6_2) 0
+
+# Mask real contrast/F-test 6 with real contrast/F-test 3?
+set fmri(conmask6_3) 0
+
+# Mask real contrast/F-test 6 with real contrast/F-test 4?
+set fmri(conmask6_4) 0
+
+# Mask real contrast/F-test 6 with real contrast/F-test 5?
+set fmri(conmask6_5) 0
+
+# Do contrast masking at all?
+set fmri(conmask1_1) 0
+
+##########################################################
+# Now options that don't appear in the GUI
+
+# Alternative (to BETting) mask image
+set fmri(alternative_mask) ""
+
+# Initial structural space registration initialisation transform
+set fmri(init_initial_highres) ""
+
+# Structural space registration initialisation transform
+set fmri(init_highres) ""
+
+# Standard space registration initialisation transform
+set fmri(init_standard) ""
+
+# For full FEAT analysis: overwrite existing .feat output dir?
+set fmri(overwrite_yn) 0

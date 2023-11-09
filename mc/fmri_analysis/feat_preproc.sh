@@ -1,8 +1,9 @@
 #this script runs the preprocessing from FEAT based on an .fsf file
 #for the first pilot scan 
 
+# Command line argument 1/1: subject tag
+subjects=$1
 
-subjects="01"
 # Set scratch directory for execution on server
 scratchDir="/home/fs0/xpsy1114/scratch/data"
 analysisDir="/home/fs0/xpsy1114/scratch/analysis"

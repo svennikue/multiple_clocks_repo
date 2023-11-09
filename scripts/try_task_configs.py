@@ -23,7 +23,7 @@ import numpy as np
 # Section 1
 # to get task configurations that are dissimilar between 0-angle-neurons and 
 # clocks.
-section_one_one = 0  #0-angle and clocks
+section_one_one = 1  #0-angle and clocks
 section_one_two = 0 # plotting 0-angle and clocks
 section_one_three = 0 # 0-angle and clocks, convolved with HRF
 section_one_four = 0 # plotting 0-angle and clocks, convolved with HRF
@@ -62,7 +62,7 @@ if section_one_one == 1:
     for count in range(perms):
         reward_coords = mc.simulation.grid.create_grid(plot = False)
         reshaped_visited_fields, all_stepnums = mc.simulation.grid.walk_paths(reward_coords, plotting = False)
-        
+        import pdb; pdb.set_trace()
         # section 2.2
         steps_in_ms = 15
         clocksm, neuroncl, clocks_over_time = mc.simulation.predictions.set_clocks_bytime_one_neurone(reshaped_visited_fields, all_stepnums, 3, steps_in_ms)

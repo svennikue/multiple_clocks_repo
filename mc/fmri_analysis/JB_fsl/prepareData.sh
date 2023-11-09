@@ -31,6 +31,9 @@ bet $scratchDir/sub-$subjectTag/anat/sub-${subjectTag}_T1W.nii.gz $anatDir/sub-$
 # But also copy original structural file, including the head: non-linear registration looks for that file with the same filename as the beted file, minus _brain
 cp $scratchDir/sub-$subjectTag/anat/sub-${subjectTag}_T1W.nii.gz $anatDir/sub-${subjectTag}_T1W.nii.gz
 
+
+
+
 # Construct fieldmap directory for derived file
 fmapDir=$scratchDir/derivatives/sub-$subjectTag/fmap
 # And create directory for derived fieldmap files

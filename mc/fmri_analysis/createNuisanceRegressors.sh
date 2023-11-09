@@ -6,6 +6,8 @@ subjects="01"
 scratchDir="/home/fs0/xpsy1114/scratch/data"
 toolboxDir="/home/fs0/xpsy1114/scratch/analysis"
 homeDir="/home/fs0/xpsy1114"
+
+task_halves=("01" "02")
 # If this is not called on the server, but on a laptop:
 if [ ! -d $scratchDir ]; then
   scratchDir="/Users/xpsy1114/Documents/projects/multiple_clocks/data"
@@ -28,50 +30,50 @@ for subjectTag in "${subjects[@]}"; do
     # this has to be 01 and 02. Adjust in the future!
 
     # create a loop from here to the end (marked as well)
-    
-    preprocDir=$derivDir/func/preproc_clean_01.feat
-    # Construct directory for nuisance regressors
-    nuisanceDir=$derivDir/func/nuisance_01
-    # Remove if already exists
-    rm -rf $nuisanceDir
-    # And create nuisance regressor directory
-    mkdir -p $nuisanceDir
+    for task_half in "${task_halves[@]}"; do
+        preprocDir=$derivDir/func/preproc_clean_${task_half}.feat
+        # Construct directory for nuisance regressors
+        nuisanceDir=$derivDir/func/nuisance_${task_half}
+        # Remove if already exists
+        rm -rf $nuisanceDir
+        # And create nuisance regressor directory
+        mkdir -p $nuisanceDir
 
-    # Generate matrix of motion outlier regressors; don't rerun motion correction
-    fsl_motion_outliers -i $preprocDir/filtered_func_data.nii.gz -o $nuisanceDir/motionOutliers.txt -p $nuisanceDir/motionOutliers.png --nomoco
+        echo this is the nuisance dir $nuisanceDir
 
-    # Make folder for segmentation
-    mkdir $nuisanceDir/segmentation
+        # Generate matrix of motion outlier regressors; don't rerun motion correction
+        fsl_motion_outliers -i $preprocDir/filtered_func_data.nii.gz -o $nuisanceDir/motionOutliers.txt -p $nuisanceDir/motionOutliers.png --nomoco
 
-    # Do segmentation of structural file with FAST
-    fast --channels=1 --type=1 --class=3 --out=$nuisanceDir/segmentation/segm $derivDir/anat/sub-${subjectTag}_T1W_brain.nii.gz
+        # Make folder for segmentationß
+        mkdir $nuisanceDir/segmentation
 
-    # Transform CSF mask in structural space to functional space
-    flirt -in $nuisanceDir/segmentation/segm_pve_0.nii.gz -ref $preprocDir/example_func.nii.gz -applyxfm -init $preprocDir/reg/highres2example_func.mat -out $nuisanceDir/segmentation/CSF_func.nii.gz
+        # Do segmentation of structural file with FAST
+        fast --channels=1 --type=1 --class=3 --out=$nuisanceDir/segmentation/segm $derivDir/anat/sub-${subjectTag}_T1W_brain.nii.gz
 
-    # Transform bounding box in standard space to functional space
-    flirt -in $scratchDir/masks/vent_mask.nii.gz -ref $preprocDir/example_func.nii.gz -applyxfm -init $preprocDir/reg/standard2example_func.mat -out $nuisanceDir/segmentation/CSF_bb.nii.gz
+        # Transform CSF mask in structural space to functional space
+        flirt -in $nuisanceDir/segmentation/segm_pve_0.nii.gz -ref $preprocDir/example_func.nii.gz -applyxfm -init $preprocDir/reg/highres2example_func.mat -out $nuisanceDir/segmentation/CSF_func.nii.gz
 
-    # Do thresholding and erosion to get mask that only contains CSF
-    fslmaths $nuisanceDir/segmentation/CSF_func.nii.gz -mul $nuisanceDir/segmentation/CSF_bb.nii.gz -thr 0.9 -kernel sphere 2 -ero $nuisanceDir/segmentation/CSF_mask.nii.gz
+        # Transform bounding box in standard space to functional space
+        flirt -in $scratchDir/masks/vent_mask.nii.gz -ref $preprocDir/example_func.nii.gz -applyxfm -init $preprocDir/reg/standard2example_func.mat -out $nuisanceDir/segmentation/CSF_bb.nii.gz
 
-    # Extract values from functional in CSF
-    fslmeants -i $preprocDir/filtered_func_data.nii.gz -o $nuisanceDir/CSFsignal.txt -m $nuisanceDir/segmentation/CSF_mask.nii.gz
+        # Do thresholding and erosion to get mask that only contains CSF
+        fslmaths $nuisanceDir/segmentation/CSF_func.nii.gz -mul $nuisanceDir/segmentation/CSF_bb.nii.gz -thr 0.9 -kernel sphere 2 -ero $nuisanceDir/segmentation/CSF_mask.nii.gz
 
-    # Matlab code to combine nuisance regressors, and include motion regressor derivatives
-    matlabCode="motion = load(fullfile('${preprocDir}','mc','prefiltered_func_data_mcf.par'));
-    motionDerivs = [zeros(1,size(motion,2)); diff(motion)];
-    motionOutliers = load(fullfile('${nuisanceDir}','motionOutliers.txt'));
-    CSF = load(fullfile('${nuisanceDir}','CSFsignal.txt'));
-    allNuisanceRegressors = [motion motionDerivs motionOutliers CSF];
-    dlmwrite(fullfile('${nuisanceDir}','combined.txt'), allNuisanceRegressors, 'delimiter','\t');"
+        # Extract values from functional in CSF
+        fslmeants -i $preprocDir/filtered_func_data.nii.gz -o $nuisanceDir/CSFsignal.txt -m $nuisanceDir/segmentation/CSF_mask.nii.gz
 
-    # Write matlab code to temporary .m file
-    echo $matlabCode > $nuisanceDir/combine.m
+        # Matlab code to combine nuisance regressors, and include motion regressor derivatives
+        matlabCode="motion = load(fullfile('${preprocDir}','mc','prefiltered_func_data_mcf.par'));
+        motionDerivs = [zeros(1,size(motion,2)); diff(motion)];
+        motionOutliers = load(fullfile('${nuisanceDir}','motionOutliers.txt'));
+        CSF = load(fullfile('${nuisanceDir}','CSFsignal.txt'));
+        allNuisanceRegressors = [motion motionDerivs motionOutliers CSF];
+        dlmwrite(fullfile('${nuisanceDir}','combined.txt'), allNuisanceRegressors, 'delimiter','\t');"
 
-    # Run matlab code
-    matlab -nodisplay -nosplash \< $nuisanceDir/combine.m
+        # Write matlab code to temporary .m file
+        echo $matlabCode > $nuisanceDir/combine.m
 
-    # close a loop here
-
+        # Run matlab code
+        matlab -nodisplay -nosplash \< $nuisanceDir/combine.m
+    done
 done

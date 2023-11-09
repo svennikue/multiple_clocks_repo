@@ -1133,6 +1133,8 @@ def load_ephys_data(Data_folder):
         a_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
         a_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
         a_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
+    
+    import pdb; pdb.set_trace()
     mouse_a["locations"] = a_locations
     mouse_a["neurons"] = a_neurons
     mouse_a["timings"] = a_timings

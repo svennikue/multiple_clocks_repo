@@ -40,8 +40,10 @@ function generateGLM(templateFile, inputFolder)
         contrastFields = {};
     end
     
+    % I don't think I want any contrasts. Set to 0 for now.
     % Set M: number of contrasts
-    M = N + length(contrastFields);
+    % M = N + length(contrastFields);
+    M = 0
     
     % Make list of name-value pairs that need to be updated with in original template file
     updateEntries = {'evs_orig', num2str(N); 'evs_real', num2str(2*N); 'ncon_orig', num2str(M); 'ncon_real', num2str(M)};
