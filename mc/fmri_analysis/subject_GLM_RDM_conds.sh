@@ -1,5 +1,7 @@
 #!/bin/sh
 # Run subject-level GLM on preprocessed functional data
+#
+# bash subject_GLM_RDM_conds.sh 01 04
 
 # Command line argument 1/2: subject tag
 subjects=$1
@@ -67,6 +69,7 @@ for subjectTag in "${subjects[@]}"; do
         else
           echo "ERROR: EV Folder does not exists!"
         fi
+
 
 
         # NOT SURE IF I NEED A CONTRAST FILE!!

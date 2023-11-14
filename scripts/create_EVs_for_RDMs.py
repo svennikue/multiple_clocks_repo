@@ -18,12 +18,11 @@ import matplotlib.pyplot as plt
 
 # import pdb; pdb.set_trace()
 
-subjects = ['sub-01']
-plotting = False
+subjects = ['sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06']
 version = '04' # GLM number
 # to debug
-task_halves = ['2']
-# task_halves = ['1', '2']
+#task_halves = ['1']
+task_halves = ['1', '2']
 locationEVs = True
 time_binEVs = False
 plotting = True
@@ -40,7 +39,7 @@ for sub in subjects:
         elif time_binEVs:
             EV_folder = f'/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/func/EVs_{version}_pt0{task_half}/'
         if not os.path.exists(EV_folder):
-            os.mkdir(EV_folder)
+            os.makedirs(EV_folder)
     
         df = pd.read_csv(data_dir + f"{file}.csv")
         df_all = pd.read_csv(data_dir+file_all)
@@ -236,126 +235,7 @@ for sub in subjects:
             loc_nine_on, loc_nine_dur, loc_nine_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_nine, coord_y_nine)
             loc_nine_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_nine_on, loc_nine_dur, loc_nine_mag, 'loc_nine_EV', EV_folder, first_TR_at)
             mc.analyse.analyse_MRI_behav.check_for_nan(loc_nine_EV)
-            
-            
-            
-            
-            
-            # # # Location EVs.
-            # loc_two_dur = []
-            # loc_two_on = []
-            # loc_two = df[(df['curr_loc_x'] == 0) & (df['curr_loc_y'] == -0.29)]
-            # for index in loc_two.index:
-            #     if index > 0:  # Check if the index is valid (not the first row)
-            #         start = df.at[index - 1, 't_step_press_global']  # Extract 'goal' value from index-1
-            #         duration = df.at[index, 't_step_press_global'] - start
-            #         loc_two_on.append(start)
-            #         loc_two_dur.append(duration)
-            # loc_two_mag = np.ones(len(loc_two_on))
-            # loc_two_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_two_on, loc_two_dur, loc_two_mag, 'loc_two_EV', EV_folder, first_TR_at)
-            # mc.analyse.analyse_MRI_behav.check_for_nan(loc_two_EV)
-                    
-            # # # Location EVs.
-            # loc_three_dur = []
-            # loc_three_on = []
-            # loc_three = df[(df['curr_loc_x'] == 0.21) & (df['curr_loc_y'] == -0.29)]
-            # for index in loc_three.index:
-            #     if index > 0:  # Check if the index is valid (not the first row)
-            #         start = df.at[index - 1, 't_step_press_global']  # Extract 'goal' value from index-1
-            #         duration = df.at[index, 't_step_press_global'] - start
-            #         loc_three_on.append(start)
-            #         loc_three_dur.append(duration)
-            # loc_three_mag = np.ones(len(loc_three_on))
-            # loc_three_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_three_on, loc_three_dur, loc_three_mag, 'loc_three_EV', EV_folder, first_TR_at)
-            # mc.analyse.analyse_MRI_behav.check_for_nan(loc_three_EV)       
-                    
-            # # # Location EVs.
-            # loc_four_dur = []
-            # loc_four_on = []
-            # loc_four = df[(df['curr_loc_x'] == - 0.21) & (df['curr_loc_y'] == 0)]
-            # for index in loc_four.index:
-            #     if index > 0:  # Check if the index is valid (not the first row)
-            #         start = df.at[index - 1, 't_step_press_global']  # Extract 'goal' value from index-1
-            #         duration = df.at[index, 't_step_press_global'] - start
-            #         loc_four_on.append(start)
-            #         loc_four_dur.append(duration)
-            # loc_four_mag = np.ones(len(loc_four_on))
-            # loc_four_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_four_on, loc_four_dur, loc_four_mag, 'loc_four_EV', EV_folder, first_TR_at)
-            # mc.analyse.analyse_MRI_behav.check_for_nan(loc_four_EV)      
-                    
-            # # # Location EVs.
-            # loc_five_dur = []
-            # loc_five_on = []
-            # loc_five = df[(df['curr_loc_x'] == 0) & (df['curr_loc_y'] == 0)]
-            # for index in loc_five.index:
-            #     if index > 0:  # Check if the index is valid (not the first row)
-            #         start = df.at[index - 1, 't_step_press_global']  # Extract 'goal' value from index-1
-            #         duration = df.at[index, 't_step_press_global'] - start
-            #         loc_five_on.append(start)
-            #         loc_five_dur.append(duration)
-            # loc_five_mag = np.ones(len(loc_five_on))
-            # loc_five_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_five_on, loc_five_dur, loc_five_mag, 'loc_five_EV', EV_folder, first_TR_at)
-            # mc.analyse.analyse_MRI_behav.check_for_nan(loc_five_EV)       
-                    
-            # # # Location EVs.
-            # loc_six_dur = []
-            # loc_six_on = []
-            # loc_six = df[(df['curr_loc_x'] == 0.21) & (df['curr_loc_y'] == 0)]
-            # for index in loc_six.index:
-            #     if index > 0:  # Check if the index is valid (not the first row)
-            #         start = df.at[index - 1, 't_step_press_global']  # Extract 'goal' value from index-1
-            #         duration = df.at[index, 't_step_press_global'] - start
-            #         loc_six_on.append(start)
-            #         loc_six_dur.append(duration)
-            # loc_six_mag = np.ones(len(loc_six_on))
-            # loc_six_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_six_on, loc_six_dur, loc_six_mag, 'loc_six_EV', EV_folder, first_TR_at)
-            # mc.analyse.analyse_MRI_behav.check_for_nan(loc_six_EV)       
-                    
-            # # # Location EVs.
-            # loc_seven_dur = []
-            # loc_seven_on = []
-            # loc_seven = df[(df['curr_loc_x'] == -0.21) & (df['curr_loc_y'] == 0.29)]
-            # for index in loc_seven.index:
-            #     if index > 0:  # Check if the index is valid (not the first row)
-            #         start = df.at[index - 1, 't_step_press_global']  # Extract 'goal' value from index-1
-            #         duration = df.at[index, 't_step_press_global'] - start
-            #         loc_seven_on.append(start)
-            #         loc_seven_dur.append(duration)
-            # loc_seven_mag = np.ones(len(loc_seven_on))
-            # loc_seven_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_seven_on, loc_seven_dur, loc_seven_mag, 'loc_seven_EV', EV_folder, first_TR_at)
-            # mc.analyse.analyse_MRI_behav.check_for_nan(loc_seven_EV)        
-                    
-            # # # Location EVs.
-            # loc_eight_dur = []
-            # loc_eight_on = []
-            # loc_eight = df[(df['curr_loc_x'] == 0) & (df['curr_loc_y'] == 0.29)]
-            # for index in loc_eight.index:
-            #     if index > 0:  # Check if the index is valid (not the first row)
-            #         start = df.at[index - 1, 't_step_press_global']  # Extract 'goal' value from index-1
-            #         duration = df.at[index, 't_step_press_global'] - start
-            #         loc_eight_on.append(start)
-            #         loc_eight_dur.append(duration)
-            # loc_eight_mag = np.ones(len(loc_eight_on))
-            # loc_eight_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_eight_on, loc_eight_dur, loc_eight_mag, 'loc_eight_EV', EV_folder, first_TR_at)
-            # mc.analyse.analyse_MRI_behav.check_for_nan(loc_eight_EV)        
-                    
-            
-            # # # Location EVs.
-            # loc_nine_dur = []
-            # loc_nine_on = []
-            # loc_nine = df[(df['curr_loc_x'] == 0.21) & (df['curr_loc_y'] == 0.29)]
-            # for index in loc_nine.index:
-            #     if index > 0:  # Check if the index is valid (not the first row)
-            #         start = df.at[index - 1, 't_step_press_global']  # Extract 'goal' value from index-1
-            #         duration = df.at[index, 't_step_press_global'] - start
-            #         loc_nine_on.append(start)
-            #         loc_nine_dur.append(duration)
-            # loc_nine_mag = np.ones(len(loc_nine_on))
-            # loc_nine_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_nine_on, loc_nine_dur, loc_nine_mag, 'loc_nine_EV', EV_folder, first_TR_at)
-            # mc.analyse.analyse_MRI_behav.check_for_nan(loc_nine_EV)
-            
-        
-            
+
         
         if time_binEVs:
             # identify where the next task begins by iterating through the DataFrame 
@@ -404,7 +284,7 @@ for sub in subjects:
             # actually, C1 forward = C2 backward. For now, don't put together
             task_names = df['task_config'].dropna().unique().tolist()
             state_names = df['state'].dropna().unique().tolist()
-            task_EV_dic = {}
+            taskEV_dic = {}
             for i, task in enumerate(task_names):
                 for s, state in enumerate(state_names):
                     EV_subpathname_onset = f"{task}_{state}_subpath_onset"
@@ -414,21 +294,21 @@ for sub in subjects:
                     
                     partial_df = df[((df['task_config'] == task) & (df['state'] == state))]
                     
-                    task_EV_dic[EV_subpathname_onset] = partial_df['subpath_onset'].dropna().to_list()
-                    task_EV_dic[EV_subpathname_dur] = partial_df['subpath_dur_without_rew'].dropna().to_list()
+                    taskEV_dic[EV_subpathname_onset] = partial_df['subpath_onset'].dropna().to_list()
+                    taskEV_dic[EV_subpathname_dur] = partial_df['subpath_dur_without_rew'].dropna().to_list()
                     
-                    task_EV_dic[EV_rewardname_onset] = partial_df['reward_onset'].dropna().to_list()
-                    task_EV_dic[EV_rewardname_dur] = partial_df['reward_duration'].dropna().to_list()
+                    taskEV_dic[EV_rewardname_onset] = partial_df['reward_onset'].dropna().to_list()
+                    taskEV_dic[EV_rewardname_dur] = partial_df['reward_duration'].dropna().to_list()
                     
                 
             
             
             for i, task in enumerate(task_names):
                 for s, state in enumerate(state_names):
-                    mag_subpath = np.ones(len(task_EV_dic[f"{task}_{state}_subpath_onset"]))
-                    subpath_EV = mc.analyse.analyse_MRI_behav.create_EV(task_EV_dic[f"{task}_{state}_subpath_onset"], task_EV_dic[f"{task}_{state}_subpath_dur"], mag_subpath, f"{task}_{state}_subpath", EV_folder, first_TR_at)
-                    mag_reward = np.ones(len(task_EV_dic[f"{task}_{state}_reward_onset"]))
-                    reward_EV = mc.analyse.analyse_MRI_behav.create_EV(task_EV_dic[f"{task}_{state}_reward_onset"], task_EV_dic[f"{task}_{state}_reward_dur"], mag_reward, f"{task}_{state}_reward", EV_folder, first_TR_at)
+                    mag_subpath = np.ones(len(taskEV_dic[f"{task}_{state}_subpath_onset"]))
+                    subpath_EV = mc.analyse.analyse_MRI_behav.create_EV(taskEV_dic[f"{task}_{state}_subpath_onset"], taskEV_dic[f"{task}_{state}_subpath_dur"], mag_subpath, f"{task}_{state}_subpath", EV_folder, first_TR_at)
+                    mag_reward = np.ones(len(taskEV_dic[f"{task}_{state}_reward_onset"]))
+                    reward_EV = mc.analyse.analyse_MRI_behav.create_EV(taskEV_dic[f"{task}_{state}_reward_onset"], taskEV_dic[f"{task}_{state}_reward_dur"], mag_reward, f"{task}_{state}_reward", EV_folder, first_TR_at)
                     mc.analyse.analyse_MRI_behav.check_for_nan(reward_EV)
                     mc.analyse.analyse_MRI_behav.check_for_nan(subpath_EV)
                     

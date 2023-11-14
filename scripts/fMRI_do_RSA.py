@@ -57,6 +57,7 @@ subjects = ['sub-01']
 task_halves = ['1', '2']
 RDM_version = '01'
 no_RDM_conditions = 80
+save_all = False
 # careful this still doesnt work in row 74 for the pattern thingy
 
 for sub in subjects:
@@ -137,7 +138,7 @@ for sub in subjects:
         
         # CONTINUE HERE!!
         # also double check glm_04!! pt 2 looks a bit weird????
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         
         # Get RDMs
         
@@ -317,114 +318,129 @@ for sub in subjects:
         
         
 
+        #import pdb; pdb.set_trace() 
         
-        # Mathias says that with a combined model, I need to first fit, then estimate.
-        # or I write my own thing.
-        # write my own eval function
+        # # Mathias says that with a combined model, I need to first fit, then estimate.
+        # # or I write my own thing.
+        # # write my own eval function
         
-        # CAREFUL!! I am not sure if this is fitting the data pitting the models against each other...
-        def my_eval(model, data):
-              "Handle one voxel, copy the code that exists already for the neural data"
-              return model.fit(data)
+        # # CAREFUL!! I am not sure if this is fitting the data pitting the models against each other...
+        # def my_eval(model, data):
+        #       "Handle one voxel, copy the code that exists already for the neural data"
+        #       return model.fit_regress(data)
           
             
-        # combined model
-        clocks_midn_states_RDM = rsatoolbox.rdm.concat(clocks_RDM, midnight_RDM, state_RDM)
-        clocks_midn_states_model = rsatoolbox.model.ModelWeighted('clocks_midn_states_RDM', clocks_midn_states_RDM)
-        results_clocks_midn_states_model = Parallel(n_jobs=3)(delayed(my_eval)(clocks_midn_states_model, d) for d in data_RDM)
+        # # combined model
+        # clocks_midn_states_RDM = rsatoolbox.rdm.concat(clocks_RDM, midnight_RDM, state_RDM)
+        # clocks_midn_states_model = rsatoolbox.model.ModelWeighted('clocks_midn_states_RDM', clocks_midn_states_RDM)
+        # results_clocks_midn_states_model = Parallel(n_jobs=3)(delayed(my_eval)(clocks_midn_states_model, d) for d in data_RDM)
         
-        x, y, z = mask.shape
-        RDM_brain_cl_midn_st_clocks = np.zeros([x*y*z])
-        RDM_brain_cl_midn_st_clocks[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0] for vox in results_clocks_midn_states_model]
-        RDM_brain_cl_midn_st_clocks = RDM_brain_cl_midn_st_clocks.reshape([x,y,z])
+        # x, y, z = mask.shape
+        # RDM_brain_cl_midn_st_clocks = np.zeros([x*y*z])
+        # RDM_brain_cl_midn_st_clocks[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0] for vox in results_clocks_midn_states_model]
+        # RDM_brain_cl_midn_st_clocks = RDM_brain_cl_midn_st_clocks.reshape([x,y,z])
         
-        RDM_brain_cl_midn_st_midn = np.zeros([x*y*z])
-        RDM_brain_cl_midn_st_midn[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[1] for vox in results_clocks_midn_states_model]
-        RDM_brain_cl_midn_st_midn = RDM_brain_cl_midn_st_midn.reshape([x,y,z])
+        # RDM_brain_cl_midn_st_midn = np.zeros([x*y*z])
+        # RDM_brain_cl_midn_st_midn[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[1] for vox in results_clocks_midn_states_model]
+        # RDM_brain_cl_midn_st_midn = RDM_brain_cl_midn_st_midn.reshape([x,y,z])
         
-        RDM_brain_cl_midn_st_state = np.zeros([x*y*z])
-        RDM_brain_cl_midn_st_state[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[2] for vox in results_clocks_midn_states_model]
-        RDM_brain_cl_midn_st_state = RDM_brain_cl_midn_st_state.reshape([x,y,z])
-        
-
-        
+        # RDM_brain_cl_midn_st_state = np.zeros([x*y*z])
+        # RDM_brain_cl_midn_st_state[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[2] for vox in results_clocks_midn_states_model]
+        # RDM_brain_cl_midn_st_state = RDM_brain_cl_midn_st_state.reshape([x,y,z])
         
 
         
-            
-        # Test with this:
-        results = [my_eval(models, x) for x in sl_RDM]
         
-        # When it works, use this:
-        results = Parallel(n_jobs=n_jobs)(delayed(my_eval)( models, x, ) for x in sl_RDM)
+
         
-        
+        # # use something like 
+        # results_reg = mc.simulation.RDMs.GLM_RDMs(RSM_neurons, regressors, mask_within, no_tasks = len(task_configs), plotting= False)
+        # # to get my own model fitting/ evaluation
         
         
+        # GLM_RDMs(data_matrix, regressor_dict, mask_within = True, no_tasks = None, t_val = True, plotting = False)
         
-        results = [my_evla(models, x) for x in sl_RDM]
+        # ################ 
+        # # this is a bit of a scratchbook rn inbetween here 
+        # # Test with this:
+        # results = [my_eval(models, x) for x in sl_RDM]
         
-        
-        combo_RDM = rsatoolbox.rdm.concat(clocks_RDM, state_RDM)
-        combo_model = rsatoolbox.model.ModelWeighted('combined_model', combo_RDM)
-        
-        def my_eval(model, data):
-            # print('fitting 1 sl')
-            return model.fit(data)        
-        
-        results_combo = Parallel(n_jobs=3)(delayed(my_eval)(combo_model, d) for d in data_RDM)
-        
-        searchlight_fit = combo_model.fit(data_RDM[0])
+        # # When it works, use this:
+        # results = Parallel(n_jobs=n_jobs)(delayed(my_eval)( models, x, ) for x in sl_RDM)
         
         
-        eval_results_combo = evaluate_models_searchlight(data_RDM, combo_model, eval_fixed, method='spearman', n_jobs=3)
-        eval_results_combo = evaluate_models_searchlight(data_RDM, combo_model, rsatoolbox.model.fitter.fit_regress, method='spearman', n_jobs=3)
-        
-        rsatoolbox.fitter.fit_regress 
         
         
+        
+        # results = [my_evla(models, x) for x in sl_RDM]
+        
+        
+        # combo_RDM = rsatoolbox.rdm.concat(clocks_RDM, state_RDM)
+        # combo_model = rsatoolbox.model.ModelWeighted('combined_model', combo_RDM)
+        
+        # def my_eval(model, data):
+        #     # print('fitting 1 sl')
+        #     return model.fit(data)        
+        
+        # results_combo = Parallel(n_jobs=3)(delayed(my_eval)(combo_model, d) for d in data_RDM)
+        
+        # searchlight_fit = combo_model.fit(data_RDM[0])
+        
+        
+        # eval_results_combo = evaluate_models_searchlight(data_RDM, combo_model, eval_fixed, method='spearman', n_jobs=3)
+        # eval_results_combo = evaluate_models_searchlight(data_RDM, combo_model, rsatoolbox.model.fitter.fit_regress, method='spearman', n_jobs=3)
+        
+        # rsatoolbox.fitter.fit_regress 
+        
+        
+        
+        
+        
+        
+        ############################################
         
         # Last part: SAFE THE RESULTS!!
-        ref_img = load_img(f"{fmri_data_dir}/{file}")
-        affine_matrix = ref_img.affine
-        if not os.path.exists(f"{data_dir}/func/RSA_{RDM_version}/results/"):
-            os.makedirs(f"{data_dir}/func/RSA_{RDM_version}/results/")
+        if save_all:
+            ref_img = load_img(f"{fmri_data_dir}/{file}")
+            affine_matrix = ref_img.affine
+            if not os.path.exists(f"{data_dir}/func/RSA_{RDM_version}/results/"):
+                os.makedirs(f"{data_dir}/func/RSA_{RDM_version}/results/")
+                
+                
+            loc_nifti = nib.Nifti1Image(RDM_brain_loc, affine=affine_matrix)
+            loc_file = f"{data_dir}/func/RSA_{RDM_version}/results/loc_model_RDM_0{task_half}.nii.gz"
             
+            phase_nifti = nib.Nifti1Image(RDM_brain_phase, affine=affine_matrix)
+            phase_file = f"{data_dir}/func/RSA_{RDM_version}/results/phase_model_RDM_0{task_half}.nii.gz"
             
-        loc_nifti = nib.Nifti1Image(RDM_brain_loc, affine=affine_matrix)
-        loc_file = f"{data_dir}/func/RSA_{RDM_version}/results/loc_model_RDM_0{task_half}.nii.gz"
-        
-        phase_nifti = nib.Nifti1Image(RDM_brain_phase, affine=affine_matrix)
-        phase_file = f"{data_dir}/func/RSA_{RDM_version}/results/phase_model_RDM_0{task_half}.nii.gz"
-        
-        midnigth_nifti = nib.Nifti1Image(RDM_brain_midnight, affine=affine_matrix)
-        midnight_file = f"{data_dir}/func/RSA_{RDM_version}/results/midnight_model_RDM_0{task_half}.nii.gz"
-        
-        clocks_nifti = nib.Nifti1Image(RDM_brain_clocks, affine=affine_matrix)
-        clocks_file = f"{data_dir}/func/RSA_{RDM_version}/results/clocks_model_RDM_0{task_half}.nii.gz"
-        
-        state_nifti = nib.Nifti1Image(RDM_brain_state, affine=affine_matrix)
-        state_file = f"{data_dir}/func/RSA_{RDM_version}/results/state_model_RDM_0{task_half}.nii.gz"
-        
-        combo_state_nifti = nib.Nifti1Image(RDM_brain_cl_midn_st_state, affine=affine_matrix)
-        combo_state_file = f"{data_dir}/func/RSA_{RDM_version}/results/combo_RDM_state_0{task_half}.nii.gz"
-        
-        combo_midn_nifti = nib.Nifti1Image(RDM_brain_cl_midn_st_midn, affine=affine_matrix)
-        combo_midn_file = f"{data_dir}/func/RSA_{RDM_version}/results/combo_RDM_midn_0{task_half}.nii.gz"
-        
-        combo_clocks_nifti = nib.Nifti1Image(RDM_brain_cl_midn_st_clocks, affine=affine_matrix)
-        combo_clocks_file = f"{data_dir}/func/RSA_{RDM_version}/results/combo_RDM_clocks_0{task_half}.nii.gz"
-        
-        # Save the NIfTI image to the 
-        nib.save(loc_nifti, loc_file)
-        nib.save(phase_nifti, phase_file)
-        nib.save(midnigth_nifti, midnight_file)
-        nib.save(clocks_nifti, clocks_file)
-        nib.save(state_nifti, state_file)
-        
-        nib.save(combo_clocks_nifti, combo_clocks_file)
-        nib.save(combo_midn_nifti, combo_midn_file)
-        nib.save(combo_state_nifti, combo_state_file)
+            midnigth_nifti = nib.Nifti1Image(RDM_brain_midnight, affine=affine_matrix)
+            midnight_file = f"{data_dir}/func/RSA_{RDM_version}/results/midnight_model_RDM_0{task_half}.nii.gz"
+            
+            clocks_nifti = nib.Nifti1Image(RDM_brain_clocks, affine=affine_matrix)
+            clocks_file = f"{data_dir}/func/RSA_{RDM_version}/results/clocks_model_RDM_0{task_half}.nii.gz"
+            
+            state_nifti = nib.Nifti1Image(RDM_brain_state, affine=affine_matrix)
+            state_file = f"{data_dir}/func/RSA_{RDM_version}/results/state_model_RDM_0{task_half}.nii.gz"
+            
+            # combo_state_nifti = nib.Nifti1Image(RDM_brain_cl_midn_st_state, affine=affine_matrix)
+            # combo_state_file = f"{data_dir}/func/RSA_{RDM_version}/results/combo_RDM_state_0{task_half}.nii.gz"
+            
+            # combo_midn_nifti = nib.Nifti1Image(RDM_brain_cl_midn_st_midn, affine=affine_matrix)
+            # combo_midn_file = f"{data_dir}/func/RSA_{RDM_version}/results/combo_RDM_midn_0{task_half}.nii.gz"
+            
+            # combo_clocks_nifti = nib.Nifti1Image(RDM_brain_cl_midn_st_clocks, affine=affine_matrix)
+            # combo_clocks_file = f"{data_dir}/func/RSA_{RDM_version}/results/combo_RDM_clocks_0{task_half}.nii.gz"
+            
+            # Save the NIfTI image to the 
+            nib.save(loc_nifti, loc_file)
+            nib.save(phase_nifti, phase_file)
+            nib.save(midnigth_nifti, midnight_file)
+            nib.save(clocks_nifti, clocks_file)
+            nib.save(state_nifti, state_file)
+            
+            # nib.save(combo_clocks_nifti, combo_clocks_file)
+            # nib.save(combo_midn_nifti, combo_midn_file)
+            # nib.save(combo_state_nifti, combo_state_file)
 
         # KEEP MAYBE
         # plt.figure()
