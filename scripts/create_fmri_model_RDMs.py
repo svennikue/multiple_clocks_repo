@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 subjects = ['sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06']
 task_halves = ['1', '2']
 no_bins_per_state = 2
-plotting = False
+fmriplotting = False
 RDM_version = '01'
 
 for sub in subjects:
@@ -41,6 +41,9 @@ for sub in subjects:
         # do the same for the task_config 
         df['task_config'] = df['task_config'].fillna(method='ffill')
         df['repeat'] = df['repeat'].fillna(method='ffill')
+        
+        # CAREFUL!! DOES THIS SCRIPT DIFFERENTIATE BETWEEN BACKW AND FORW???
+        df['config_type'] = df['task_config'] + '_' + df['type']
         
         # don't do the state thing and instead use it to know when a new repeat starts. ignore these ones, only include steps!
         #df['state'] = df['state'].fillna(method = 'bfill')

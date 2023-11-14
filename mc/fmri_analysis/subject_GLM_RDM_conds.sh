@@ -70,27 +70,8 @@ for subjectTag in "${subjects[@]}"; do
           echo "ERROR: EV Folder does not exists!"
         fi
 
-
-
-        # NOT SURE IF I NEED A CONTRAST FILE!!
-        # dont think so actually
-        # Copy in the contrasts json file to the EV directory
-        # cp $homeDir/Analysis/Templates/contrasts_${version}.json $funcDir/EVs_${version}/contrasts.json
-        # delete everything with contrasts!
-        # DONT THINK I NEED THIS.
-        # Create participant-specific matlab script that calls the function to generate EVs and GLM template - use wrapper trick to pass arguments to matlab function. 
-        # Note that the inputFile = subjectTag, inputFolder = version, and separateBlocks = block in encodingGenerateEVs.m
-        # cat $analysisDir/generateGLMWrapper.m | sed "s:templateFile:\'$analysisDir/templates/GLM_design.fsf\':g" | sed "s:inputFolder:\'$funcDir/EVs_${version}_pt${task_half}\':g" > $funcDir/sub-${subjectTag}_generateEVs_${version}_pt${task_half}.m
-
-    
-        # Add analysis folder matlab path so subject script can call matlab function
-        # export MATLABPATH=$homeDir/Analysis
-
-        # Execute participant-specific matlab scripts to generate GLM
-        # matlab -nodisplay -nosplash \< $funcDir/sub-${subjectTag}_generateEVs_${version}_pt${task_half}.m
-        
-
-        # OK I WILL DO THIS DIFFERENTLY. I'LL RECYCLE MY FSF FILE WITH BASH.
+        # I want to additionally create a mask that I will then use as a searchlight mask for each task_half.
+        bet $funcDir/preproc_clean_${task_half}.feat/example_func.nii.gz mask_pt0${task_half}.nii.gz -m -f 0.3
 
         # Get number of volumes from fslinfo and some bash tricks
         numVols=$(fslval $funcDir/preproc_clean_${task_half}.feat/filtered_func_data.nii.gz dim4)

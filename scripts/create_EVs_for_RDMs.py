@@ -23,9 +23,12 @@ version = '04' # GLM number
 # to debug
 #task_halves = ['1']
 task_halves = ['1', '2']
-locationEVs = True
-time_binEVs = False
-plotting = True
+locationEVs = False
+
+# NEXT DOUBLE CHECK THESE
+# THEY ARE NOT SPLIT YET BY BACKW FORW!!
+time_binEVs = True
+plotting = False
 
 for sub in subjects:
     for task_half in task_halves:
@@ -82,6 +85,9 @@ for sub in subjects:
         df['round_no'] = df['round_no'].fillna(method='ffill')
         # do the same for the task_config 
         df['task_config'] = df['task_config'].fillna(method='ffill')
+        
+        df['config_type'] = df['task_config'] + '_' + df['type']
+                    
         
         # import pdb; pdb.set_trace()
         # create a new column in which you plot how long ever subpath takes (with rew)
@@ -173,14 +179,8 @@ for sub in subjects:
         
         
         if locationEVs:
-            # SIMETHING DOESNT WORK HERE!!! CHECK
-            
-            
             # # Location EVs.
-            # CAREFUL! There is still an error here: bc the reward locations are repeated in the df. 
-            # first prepare the df such that this doesnt happen!
-            # also, the reward rows are structured in a slightly different way in t_step_press_global!
-            # so, first prepare the df.
+
             coord_x_one = -0.21
             coord_y_one = -0.29
             loc_one_on, loc_one_dur, loc_one_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_one, coord_y_one)
@@ -282,7 +282,17 @@ for sub in subjects:
             
             # now. I need 8 regressors per task (e.g. C1). I have 5 * 2 tasks.
             # actually, C1 forward = C2 backward. For now, don't put together
-            task_names = df['task_config'].dropna().unique().tolist()
+            
+            # look at to check if its really the same task. df['config_type']
+            # probably
+            
+            task_names = df['config_type'].dropna().unique().tolist()
+            
+            # check if that works??
+            # task_names = df['task_config'].dropna().unique().tolist()
+            
+            # I want 80 EVs!!
+            
             state_names = df['state'].dropna().unique().tolist()
             taskEV_dic = {}
             for i, task in enumerate(task_names):
@@ -292,7 +302,8 @@ for sub in subjects:
                     EV_rewardname_onset = f"{task}_{state}_reward_onset"
                     EV_rewardname_dur = f"{task}_{state}_reward_dur"
                     
-                    partial_df = df[((df['task_config'] == task) & (df['state'] == state))]
+                    partial_df = df[((df['config_type'] == task) & (df['state'] == state))]
+                    #partial_df = df[((df['task_config'] == task) & (df['state'] == state))]
                     
                     taskEV_dic[EV_subpathname_onset] = partial_df['subpath_onset'].dropna().to_list()
                     taskEV_dic[EV_subpathname_dur] = partial_df['subpath_dur_without_rew'].dropna().to_list()
@@ -301,8 +312,6 @@ for sub in subjects:
                     taskEV_dic[EV_rewardname_dur] = partial_df['reward_duration'].dropna().to_list()
                     
                 
-            
-            
             for i, task in enumerate(task_names):
                 for s, state in enumerate(state_names):
                     mag_subpath = np.ones(len(taskEV_dic[f"{task}_{state}_subpath_onset"]))
@@ -311,59 +320,67 @@ for sub in subjects:
                     reward_EV = mc.analyse.analyse_MRI_behav.create_EV(taskEV_dic[f"{task}_{state}_reward_onset"], taskEV_dic[f"{task}_{state}_reward_dur"], mag_reward, f"{task}_{state}_reward", EV_folder, first_TR_at)
                     mc.analyse.analyse_MRI_behav.check_for_nan(reward_EV)
                     mc.analyse.analyse_MRI_behav.check_for_nan(subpath_EV)
-                    
-            # lastly, create EVs where the backwards and forwards task are together in one EV (i.e. 10 repeats per task, 10 tasks)
-            # I put a backwards version of the reversed (A1 = orig, A2 = reversed) in the same task.
-            # they thus did the same order twice within the task halfes. Thus, all A can be same EV
-            # eg:
-                # A2 backw = -0.21 0.29, -0.21 -0.29, 0 0, 0.21 0.29 
-                # A1 forw = -0.21 0.29, -0.21 -0.29, 0 0, 0.21 0.29
-                # B1 forw = -0.21 0.29, 0.21 -0.29, -0.21 0.29, 0 -0.29
-                # B2 back = -0.21 0.29, 0.21 -0.29, -0.21 0.29, 0 -0.29
-                
-            EV_folder_combined = f'/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/func/EVs_combined_{version}_pt0{task_half}/'
-            if not os.path.exists(EV_folder_combined):
-                os.mkdir(EV_folder_combined)
-                
-            df_all = pd.read_csv(data_dir+file_all)
             
-            # I want to remove the variants: C1 forw = C2 backw
-            # careful, this is another level. I don't compare the actual reward order.
-            # todo: that would be more elegant
-            unique_letters = set()  # To track unique letters
-            tasks_backw_forw = []
-            for item in task_names:
-                letter = ''.join(filter(str.isalpha, item))  # Remove numbers from the string
-                if letter not in unique_letters:
-                    unique_letters.add(letter)
-                    tasks_backw_forw.append(letter)
+            if 'C2_forw_A_reward_dur' in taskEV_dic:
+                print(f"Now done with {sub} and task half {task_half}. Made {len(taskEV_dic)/2} EVs, each with length {len(taskEV_dic['C2_forw_A_reward_dur'])}")       
+            elif 'C1_forw_A_reward_dur' in taskEV_dic:
+                print(f"Now done with {sub} and task half {task_half}. Made {len(taskEV_dic)/2} EVs, each with length {len(taskEV_dic['C1_forw_A_reward_dur'])}")       
             
-            #import pdb; pdb.set_trace()
-            taskEV_combined_dic = {}
-            for i, task in enumerate(tasks_backw_forw):
-                for s, state in enumerate(state_names):
-                    EV_subpathname_onset = f"{task}_{state}_subpath_onset"
-                    EV_subpathname_dur = f"{task}_{state}_subpath_dur"
-                    EV_rewardname_onset = f"{task}_{state}_reward_onset"
-                    EV_rewardname_dur = f"{task}_{state}_reward_dur"
+            # I don't want combined ones.
+            
+            # # lastly, create EVs where the backwards and forwards task are together in one EV (i.e. 10 repeats per task, 10 tasks)
+            # # I put a backwards version of the reversed (A1 = orig, A2 = reversed) in the same task.
+            # # they thus did the same order twice within the task halfes. Thus, all A can be same EV
+            # # eg:
+            #     # A2 backw = -0.21 0.29, -0.21 -0.29, 0 0, 0.21 0.29 
+            #     # A1 forw = -0.21 0.29, -0.21 -0.29, 0 0, 0.21 0.29
+            #     # B1 forw = -0.21 0.29, 0.21 -0.29, -0.21 0.29, 0 -0.29
+            #     # B2 back = -0.21 0.29, 0.21 -0.29, -0.21 0.29, 0 -0.29
+                
+            # EV_folder_combined = f'/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/func/EVs_combined_{version}_pt0{task_half}/'
+            # if not os.path.exists(EV_folder_combined):
+            #     os.mkdir(EV_folder_combined)
+                
+            # df_all = pd.read_csv(data_dir+file_all)
+            
+            # # I want to remove the variants: C1 forw = C2 backw
+            # # careful, this is another level. I don't compare the actual reward order.
+            # # todo: that would be more elegant
+            # unique_letters = set()  # To track unique letters
+            # tasks_backw_forw = []
+            # for item in task_names:
+            #     letter = ''.join(filter(str.isalpha, item))  # Remove numbers from the string
+            #     if letter not in unique_letters:
+            #         unique_letters.add(letter)
+            #         tasks_backw_forw.append(letter)
+            
+            # #import pdb; pdb.set_trace()
+            # taskEV_combined_dic = {}
+            # for i, task in enumerate(tasks_backw_forw):
+            #     for s, state in enumerate(state_names):
+            #         EV_subpathname_onset = f"{task}_{state}_subpath_onset"
+            #         EV_subpathname_dur = f"{task}_{state}_subpath_dur"
+            #         EV_rewardname_onset = f"{task}_{state}_reward_onset"
+            #         EV_rewardname_dur = f"{task}_{state}_reward_dur"
                     
-                    partial_df = df[((df['task_config'].str.contains(task)) & (df['state'] == state))]
+            #         # partial_df = df[((df['task_config'].str.contains(task)) & (df['state'] == state))]
+            #         partial_df = df[((df['config_type'].str.contains(task)) & (df['state'] == state))]
                     
-                    taskEV_combined_dic[EV_subpathname_onset] = partial_df['subpath_onset'].dropna().to_list()
-                    taskEV_combined_dic[EV_subpathname_dur] = partial_df['subpath_dur_without_rew'].dropna().to_list()
+            #         taskEV_combined_dic[EV_subpathname_onset] = partial_df['subpath_onset'].dropna().to_list()
+            #         taskEV_combined_dic[EV_subpathname_dur] = partial_df['subpath_dur_without_rew'].dropna().to_list()
                     
-                    taskEV_combined_dic[EV_rewardname_onset] = partial_df['reward_onset'].dropna().to_list()
-                    taskEV_combined_dic[EV_rewardname_dur] = partial_df['reward_duration'].dropna().to_list()
+            #         taskEV_combined_dic[EV_rewardname_onset] = partial_df['reward_onset'].dropna().to_list()
+            #         taskEV_combined_dic[EV_rewardname_dur] = partial_df['reward_duration'].dropna().to_list()
                     
     
-            for i, task in enumerate(tasks_backw_forw):
-                for s, state in enumerate(state_names):
-                    mag_subpath = np.ones(len(taskEV_combined_dic[f"{task}_{state}_subpath_onset"]))
-                    subpath_comb_EV = mc.analyse.analyse_MRI_behav.create_EV(taskEV_combined_dic[f"{task}_{state}_subpath_onset"], taskEV_combined_dic[f"{task}_{state}_subpath_dur"], mag_subpath, f"{task}_{state}_subpath", EV_folder_combined, first_TR_at)
-                    mag_reward = np.ones(len(taskEV_combined_dic[f"{task}_{state}_reward_onset"]))
-                    reward_comb_EV = mc.analyse.analyse_MRI_behav.create_EV(taskEV_combined_dic[f"{task}_{state}_reward_onset"], taskEV_combined_dic[f"{task}_{state}_reward_dur"], mag_reward, f"{task}_{state}_reward", EV_folder_combined, first_TR_at)
-                    mc.analyse.analyse_MRI_behav.check_for_nan(subpath_comb_EV)
-                    mc.analyse.analyse_MRI_behav.check_for_nan(reward_comb_EV)
+            # for i, task in enumerate(tasks_backw_forw):
+            #     for s, state in enumerate(state_names):
+            #         mag_subpath = np.ones(len(taskEV_combined_dic[f"{task}_{state}_subpath_onset"]))
+            #         subpath_comb_EV = mc.analyse.analyse_MRI_behav.create_EV(taskEV_combined_dic[f"{task}_{state}_subpath_onset"], taskEV_combined_dic[f"{task}_{state}_subpath_dur"], mag_subpath, f"{task}_{state}_subpath", EV_folder_combined, first_TR_at)
+            #         mag_reward = np.ones(len(taskEV_combined_dic[f"{task}_{state}_reward_onset"]))
+            #         reward_comb_EV = mc.analyse.analyse_MRI_behav.create_EV(taskEV_combined_dic[f"{task}_{state}_reward_onset"], taskEV_combined_dic[f"{task}_{state}_reward_dur"], mag_reward, f"{task}_{state}_reward", EV_folder_combined, first_TR_at)
+            #         mc.analyse.analyse_MRI_behav.check_for_nan(subpath_comb_EV)
+            #         mc.analyse.analyse_MRI_behav.check_for_nan(reward_comb_EV)
             
         if plotting == True:
             # create a list of all EV variables
