@@ -42,8 +42,7 @@ def jitter(expected_step_no):
     return(stepsizes)
 
 
-    
-    
+
     # plotting how I draw the randomly jittered steps
     
     # # first randomly sample from a gamma distribution
@@ -97,6 +96,7 @@ def create_EV(onset, duration, magnitude, name, folder, TR_at_sec):
     regressor_matrix[:,0] = [(time - TR_at_sec) for time in onset]
     regressor_matrix[:,1] = duration
     regressor_matrix[:,2] = magnitude
+    # import pdb; pdb.set_trace()
     np.savetxt(str(folder) + 'ev_' + str(name) + '.txt', regressor_matrix, delimiter="    ", fmt='%f')
     return regressor_matrix
 
@@ -123,9 +123,7 @@ def transform_coord(coord, is_x = False, is_y = False):
 
 
 
-
-
-
+# use to check if the EV making went wrong
 def check_for_nan(array):
     if np.isnan(array).any():
         print(f"Careful! There are Nans in {array}. Pausing script")
@@ -135,13 +133,8 @@ def check_for_nan(array):
 
 def make_loc_EV(dataframe, x_coord, y_coord):
     # import pdb; pdb.set_trace()
-    
-    
-    # SOMETHIGN IS STILL GOING WRONG!!!
-    # WHY DO I STILL HAVE NANS???
-    
+
     skip_next = False
-    
     loc_dur = []
     loc_on = []
     loc_df = dataframe[(dataframe['curr_loc_x'] == x_coord) & (dataframe['curr_loc_y'] == y_coord)]
@@ -152,20 +145,38 @@ def make_loc_EV(dataframe, x_coord, y_coord):
                 skip_next = False
                 continue
             # next, check if it's a row with a reward that has started within a task
-            if np.isnan(dataframe.at[index, 't_step_press_global']):
-                if index+1 < len(dataframe):
+            if not np.isnan(dataframe.at[index,'rew_loc_x']): # if this is a reward field.
+                if index+2 < len(dataframe):
                     if dataframe.at[index, 'task_config'] == dataframe.at[index+1, 'task_config']:
-                        # if it is, consider the reward start as start
                         start = dataframe.at[index, 't_reward_start'] 
+                        # if its within the same task config, compute duration like so
                         duration = dataframe.at[index + 1, 't_step_press_global'] - start
                     elif dataframe.at[index, 'task_config'] != dataframe.at[index+1, 'task_config']:
                         start = dataframe.at[index, 't_reward_start'] 
+                        # if its not within same task config, take reward afterwait to compute duration
                         duration = dataframe.at[index, 't_reward_afterwait'] - start
                 else:
                     # if this is the last row, then ignore- this is where the task stopped.
                     continue
                 
-                    
+            
+            
+            if np.isnan(dataframe.at[index, 't_step_press_global']):
+                # first check if this is where the task stopped, or if the next reward is where the task stopped.
+                # ignore these as they are not complete.
+                if index+2 < len(dataframe):
+                    if dataframe.at[index, 'task_config'] == dataframe.at[index+1, 'task_config']:
+                        start = dataframe.at[index, 't_reward_start'] 
+                        # if its within the same task config, compute duration like so
+                        duration = dataframe.at[index + 1, 't_step_press_global'] - start
+                    elif dataframe.at[index, 'task_config'] != dataframe.at[index+1, 'task_config']:
+                        start = dataframe.at[index, 't_reward_start'] 
+                        # if its not within same task config, take reward afterwait to compute duration
+                        duration = dataframe.at[index, 't_reward_afterwait'] - start
+                else:
+                    # if this is the last row, then ignore- this is where the task stopped.
+                    continue
+              
                 loc_on.append(start)
                 loc_dur.append(duration)
                 # and then skip the next row
@@ -179,8 +190,7 @@ def make_loc_EV(dataframe, x_coord, y_coord):
                     start = dataframe.at[index - 1, 't_step_press_global']  # Extract 'goal' value from index-1
                 duration = dataframe.at[index, 't_step_press_global'] - start
                 loc_on.append(start)
-                loc_dur.append(duration)
-                
+                loc_dur.append(duration)            
     loc_mag = np.ones(len(loc_on))
     
     return(loc_on,loc_dur, loc_mag)

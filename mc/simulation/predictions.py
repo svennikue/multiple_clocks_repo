@@ -167,7 +167,7 @@ def many_configs_loop(loop_no, which_matrix):
     return average_matrix
 
 
-def create_x_regressors_per_state_simulation(walked_path, step_per_subpath, time_per_step,no_regs_per_state, grid_size = 3):
+def create_x_regressors_per_state_simulation(walked_path, step_per_subpath, time_per_step ,no_regs_per_state, grid_size = 3):
     # import pdb; pdb.set_trace()
     # first test if bins are smaller than time_per_step
     if time_per_step < no_regs_per_state:
@@ -217,6 +217,30 @@ def create_x_regressors_per_state(walked_path, subpath_timings, step_no, no_regs
                 regressors[nth_part+(count_paths*no_regs_per_state), cols_to_fill_previous + time_per_state_in_nth_part_cum[nth_part-1]: cols_to_fill_previous + time_per_state_in_nth_part_cum[nth_part]] = 1
         cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
     return regressors
+
+
+# CREATE A NEW, MORE FLEXIBLE ONE FOR MY FMRI DATA.
+def create_regressors_flexi(walked_path, subpath_timings, step_no, no_regs_per_state):
+    # import pdb; pdb.set_trace()
+    n_states = len(step_no)
+    regressors = np.zeros([n_states*no_regs_per_state, len(walked_path)])
+    cols_to_fill_previous = 0
+    for count_paths, (pathlength) in enumerate(step_no):
+        # identify subpaths
+        curr_path = walked_path[subpath_timings[count_paths]:subpath_timings[count_paths+1]]
+        cols_to_fill = len(curr_path)
+        # create a string that tells me how many columns are one nth of a state
+        time_per_state_in_nth_part = ([cols_to_fill // no_regs_per_state + (1 if x < cols_to_fill % no_regs_per_state else 0) for x in range (no_regs_per_state)])
+        time_per_state_in_nth_part_cum = np.cumsum(time_per_state_in_nth_part)
+        for nth_part in range(0, no_regs_per_state):
+            if nth_part == 0:
+                regressors[nth_part+(count_paths*no_regs_per_state), cols_to_fill_previous+ 0: cols_to_fill_previous+ time_per_state_in_nth_part_cum[nth_part]] = 1   
+            else:
+                regressors[nth_part+(count_paths*no_regs_per_state), cols_to_fill_previous + time_per_state_in_nth_part_cum[nth_part-1]: cols_to_fill_previous + time_per_state_in_nth_part_cum[nth_part]] = 1
+        cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
+    return regressors
+
+
 
 
 def create_regressors_per_state_phase_ephys(walked_path, subpath_timings, step_no, grid_size = 3, phases=3, plotting = False, field_no_given = None, ax = None):
@@ -1628,7 +1652,8 @@ def set_clocks_ephys(walked_path, reward_fields, grid_size = 3, phases = 3, plot
     clock_neurons = np.zeros([no_neurons,n_columns])
     for i in range(0,len(clock_neurons[0])):
         clock_neurons[neuron_vector[i],i]= int(1)
-
+    
+    
     for i, field in enumerate(walked_path):
         # now loop!!!
         # exception for first field.
@@ -1842,9 +1867,15 @@ def set_location_ephys(walked_path, reward_fields, grid_size = 3, plotting = Fal
 ############# fMRI MODELS ###################
 ##############################################
 
+
+# WHY DO I USE THIS ONE??? COMPARE WITH SET_CONTINUOUS_MODELS_EPHYS
+
 # to create the model RDMs.
 def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, plot = False):
-    
+    # THERE IS SOMETHING WRONG WITH THE STEPS STILL.
+    # I COUNT 1 STEP LESS THAN THE PATH
+    # BUT IT DOESNT REACH THE FINAL GOAL LOCATION.
+    # INSTEAD, DONT COUNT THE FIRST LOC
 
     # import pdb; pdb.set_trace()
     cumsumsteps = np.cumsum(step_number)
@@ -1905,15 +1936,40 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     #     plt.plot(x, neuron_state_functions[neuron].pdf(x))
 
         
-    import pdb; pdb.set_trace() 
+    # import pdb; pdb.set_trace() 
     # cumsumsteps = np.cumsum(step_number)
     # this time, do it per subpath.
+    
+    # import pdb; pdb.set_trace()
+    
     for count_paths, pathlength in enumerate(step_number):
-        # first step: divide into subpaths
-        if count_paths == 0:
-            curr_path = walked_path[0:cumsumsteps[0]]
-        elif count_paths > 0:
-            curr_path = walked_path[cumsumsteps[count_paths-1]:cumsumsteps[count_paths]]
+        # first step: divide into subpath
+        # GET THIS RIGHT!!!
+        # path is [[2, 2], [2, 1], [2, 0], [1, 0], [0, 0], [1, 0], [2, 0], [2, 1], [1, 1], [0, 1], [0, 2], [0, 1], [1, 1], [2, 1], [2, 2]]
+        # rewards are [[0, 0], [2, 0], [0, 1], [2, 2]]
+        
+        # so subpaths have to be
+        # IGNORE FIRST INE SINCE IT IS PART OF LAST ONE!
+        # [2, 1], [2, 0], [1, 0], [0, 0] -> walked_path[1:5]
+        # [1, 0], [2, 0] -> walked_path[5:7]
+        # [2, 1], [1, 1], [0, 1] ->  walked_path[7:10]
+        # [0, 2], [0, 1], [1, 1], [2, 1], [2, 2] -> walked_path[10:15]
+        # walked_path[cumsumsteps[i]+1 : cumsumsteps[i+1]+1]
+        # add a 0 to cumsumsteps: 0,4,6,9,14 -> 
+        # cumsumsteps are 4,6,9,14
+        step_index = np.insert(cumsumsteps, 0, 0)
+        curr_path = walked_path[step_index[count_paths]+1 : step_index[count_paths+1]+1]
+        
+        
+        
+        
+        
+        # if count_paths == 0:
+        #     # I only look at where one is walking. so the first step
+        #     # is the location that counts: NOT the starting one.
+        #     curr_path = walked_path[1:cumsumsteps[0]+1]
+        # elif count_paths > 0:
+        #     curr_path = walked_path[cumsumsteps[count_paths-1]:cumsumsteps[count_paths]]
         
         # SO THIS IS THE BIGGEST THING RN: HOW DO I DEAL WITH THE TIMINGS???
         # AAAAh i think I know why: I only need the timebinning later! :)
@@ -2043,14 +2099,15 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     # for subpath in subpath_timings:
     #     plt.axvline(subpath, color='white', ls='dashed')
     # import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     if plot == True:
-        mc.simulation.predictions.plot_without_legends(loc_model, titlestring='Location_model', timings_curr_run = timings_per_step)
-        mc.simulation.predictions.plot_without_legends(phas_model, titlestring='Phase Model', timings_curr_run = timings_per_step)
-        mc.simulation.predictions.plot_without_legends(stat_model, titlestring='State Model',timings_curr_run = timings_per_step)
-        mc.simulation.predictions.plot_without_legends(midn_model, titlestring='Midnight Model', timings_curr_run = timings_per_step)
-        mc.simulation.predictions.plot_without_legends(clo_model, titlestring='Musicbox model',timings_curr_run = timings_per_step)
-        mc.simulation.predictions.plot_without_legends(phas_stat, titlestring='One ring of musicbox', timings_curr_run = timings_per_step)
-        
+        mc.simulation.predictions.plot_without_legends(loc_model, titlestring='Location_model')
+        mc.simulation.predictions.plot_without_legends(phas_model, titlestring='Phase Model')
+        mc.simulation.predictions.plot_without_legends(stat_model, titlestring='State Model')
+        mc.simulation.predictions.plot_without_legends(midn_model, titlestring='Midnight Model')
+        mc.simulation.predictions.plot_without_legends(clo_model, titlestring='Musicbox model')
+        mc.simulation.predictions.plot_without_legends(phas_stat, titlestring='One ring of musicbox')
+
     return loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat
 
 

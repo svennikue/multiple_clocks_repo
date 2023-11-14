@@ -1,5 +1,6 @@
 #!/bin/sh
 # Run subject-level GLM on preprocessed functional data
+# e.g. bash subject_GLM_loc_press.sh 01 05
 
 # Command line argument 1/2: subject tag
 subjects=$1
@@ -13,8 +14,8 @@ toolboxDir="/home/fs0/xpsy1114/scratch/analysis"
 homeDir="/home/fs0/xpsy1114"
 analysisDir="${scratchDir}/analysis"
 
-task_halves=("02")
-#task_halves=("01" "02")
+#task_halves=("02")
+task_halves=("01" "02")
 # If this is not called on the server, but on a laptop:
 if [ ! -d $scratchDir ]; then
   scratchDir="/Users/xpsy1114/Documents/projects/multiple_clocks/data"
@@ -111,7 +112,7 @@ for subjectTag in "${subjects[@]}"; do
         # Take preprocessing template, replace subject id and number of volumes with current values, update output directory, update scratch directory, and save to new file
         # cat $homeDir/Analysis/Templates/glm_subject_${version}_pt${task_half}.fsf | sed "s/s01id01/$subjectTag/g" | sed "s/glm.feat/glm_${version}_pt${task_half}.feat/g" | sed "s:/EVs/:/EVs_${version}_pt${task_half}/:g" | sed "s/1670/${numVols}/g" | sed "s:/Volumes/Scratch_jacobb:${scratchDir}:g" | sed "s:/home/fs0/jacobb/scratch:${scratchDir}:g" > $funcDir/sub-${subjectTag}_design_glm_${version}.fsf
 
-        cat ${analysisDir}/templates/loc_press.fsf | sed "s:/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-01/func/preproc_clean_01:${funcDir}/preproc_clean_${task_half}:g" | sed "s/1246648320/${numVoxels}/g" |sed "s/1670/${numVols}/g" | sed "s:/Users/xpsy1114/fsl:${fslDir}:g" | sed "s/sub-01/sub-$subjectTag/g" | sed "s:/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs:${EV_dir}:g" | sed "s:/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-01/func/glm_02.feat:${glmDir}:g" | sed "s:/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-01/func/nuisance_01/combined.txt:${nuisanceFile}:g" > $funcDir/sub-${subjectTag}_design_glm_${version}_pt${task_half}.fsf
+        cat ${analysisDir}/templates/loc_press.fsf | sed "s:/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-01/func/preproc_clean_01:${funcDir}/preproc_clean_${task_half}:g" | sed "s/1246648320/${numVoxels}/g" |sed "s/1670/${numVols}/g" | sed "s:/Users/xpsy1114/fsl:${fslDir}:g" | sed "s/sub-01/sub-$subjectTag/g" | sed "s:/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs:${EV_dir}:g" | sed "s:/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-01/func/glm_05_pt01:${glmDir}:g" | sed "s:/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-01/func/nuisance_01/combined.txt:${nuisanceFile}:g" > $funcDir/sub-${subjectTag}_design_glm_${version}_pt${task_half}.fsf
 
         # cat ${analysisDir}/templates/my_RDM_GLM_v2.fsf | sed "s:/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-01/func/preproc_clean_01:${funcDir}/preproc_clean_${task_half}:g" | sed "s/1246648320/${numVoxels}/g" |sed "s/1670/${numVols}/g" | sed "s:/Users/xpsy1114/fsl:${fslDir}:g" | sed "s/sub-01/sub-$subjectTag/g" | sed "s:/Users/xpsy1114/Documents/projects/multiple_clocks/output/sub-01_fmri_pt1_EVs:${EV_dir}:g" | sed "s:/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-01/func/glm_02.feat:${glmDir}:g" | sed "s:/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-01/func/nuisance_01/combined.txt:${nuisanceFile}:g" > $funcDir/sub-${subjectTag}_design_glm_${version}_pt${task_half}.fsf
         
