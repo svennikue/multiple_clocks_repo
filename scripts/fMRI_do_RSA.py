@@ -16,38 +16,13 @@ import nibabel as nib
 import os
 import re
 from rsatoolbox.inference import eval_fixed
-from rsatoolbox.model import ModelFixed
 import rsatoolbox.rdm as rsr
 import rsatoolbox.data as rsd
 import rsatoolbox
-from nilearn.image import resample_to_img
 from rsatoolbox.util.searchlight import get_volume_searchlight, get_searchlight_RDMs, evaluate_models_searchlight
-from rsatoolbox.util.searchlight import get_volume_searchlight
-from rsatoolbox.data.dataset import Dataset
 from nilearn.image import load_img
-from nilearn.masking import compute_brain_mask
-from nilearn import plotting
-from rsatoolbox.rdm.calc import calc_rdm
-from rsatoolbox.rdm import RDMs
-import pickle
-# from rich.progress import track
-from os import path, makedirs
-#import fire
-from nilearn.glm.contrasts import expression_to_contrast_vector, compute_contrast
 from joblib import Parallel, delayed
-
-import numpy as np
 import matplotlib.pyplot as plt
-from nilearn.image import new_img_like
-import pandas as pd
-import nibabel as nib
-import seaborn as sns
-from nilearn import plotting
-from rsatoolbox.inference import eval_fixed
-from rsatoolbox.model import ModelFixed
-from rsatoolbox.rdm import RDMs
-from glob import glob
-from rsatoolbox.util.searchlight import get_volume_searchlight, get_searchlight_RDMs, evaluate_models_searchlight
 
 
 import mc
@@ -60,8 +35,15 @@ task_halves = ['1', '2']
 RDM_version = '01'
 no_RDM_conditions = 80
 save_all = False
-# careful this still doesnt work in row 74 for the pattern thingy
 
+
+def my_eval(model, data):
+      "Handle one voxel, copy the code that exists already for the neural data"
+      X = sm.add_constant(model.rdm.transpose());
+      Y = data.dissimilarities.transpose();
+      est = sm.OLS(Y, X).fit()
+      return est.tvalues[1:], est.params[1:]
+          
 for sub in subjects:
     data_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}"
     RDM_dir = f"{data_dir}/beh/RDMs_{RDM_version}"
@@ -74,25 +56,17 @@ for sub in subjects:
         
         
         # Prepare searchlight positions
-        mask = load_img(f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/func/mask_0{task_half}_mask.nii.gz")
+        mask = load_img(f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/func/mask_pt0{task_half}_mask.nii.gz")
         mask = mask.get_fdata()
         
-        # ok for some reason this doenst work
-        # CONTINUE HERE!!!
-        # resample the 
-        # resampled_image = resample_to_img(mask, ref_img)
-        
-        
-        # this doesnt work with spyder.
-        # plotting.view_img(mask, cmap='gray', title='Brain Mask')
-        # I am a bit skeptical how this works in 3d but the searchlight thingy only 
-        # works in 2d 
+        # creating the searchlights
         centers, neighbors = get_volume_searchlight(mask, radius=3, threshold=0.5)
         
         
-        pe_path = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-01/func/glm_04_pt0{task_half}.feat/stats"
         
         # Loop through files in the folder
+        pe_path = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-01/func/glm_04_pt0{task_half}.feat/stats"
+        
         # define the naming conventions in this folder
         pes_I_want = re.compile(r'^pe([1-9]|[1-7][0-9]|80)\.nii\.gz$')
         # List all files in the folder
@@ -120,34 +94,24 @@ for sub in subjects:
         # only one pattern per image
         image_value = np.arange(len(image_paths))
         
-        # CONTINUE HERE!!
-        # also double check glm_04!! pt 2 looks a bit weird????
-        # import pdb; pdb.set_trace()
         
+        #
         # Get RDMs
-        
-        # this should give me a file whitch len(centers) amount of searchlights that have len(neighbours) amount of voxels each
-        # centers is probably the index in which data_RDM_file_2d is divided. 
-        
-        # this is a collection of objects: 
+        # this should give me a file whitch len(centers) amount of searchlights that have (80*(80-1)/2 voxels each)
         data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, image_value, method='correlation')
         
-        # then load the data RDMs.
-        # for some reason, rsatoolbox wants its objects and not my matrices.
-        # location_data_RDM = np.load(os.path.join(RDM_dir, f"RSM_location_{sub}_fmri_pt{task_half}.npy"))
-        # clocks_data_RDM = np.load(os.path.join(RDM_dir, f"RSM_clock_{sub}_fmri_pt{task_half}.npy"))
-        # midnight_data_RDM = np.load(os.path.join(RDM_dir, f"RSM_midnight_{sub}_fmri_pt{task_half}.npy"))
-        # phase_data_RDM = np.load(os.path.join(RDM_dir, f"RSM_phase_{sub}_fmri_pt{task_half}.npy"))
-        state_data_RDM = np.load(os.path.join(RDM_dir, f"RSM_state_{sub}_fmri_pt{task_half}.npy"))
+        import pdb; pdb.set_trace()
         
-        # load the data files in case I want to use these instead.
+        # then load the data RDMs.
+        # load the data files I created.
         location_data = np.load(os.path.join(RDM_dir, f"data_location_{sub}_fmri_pt{task_half}.npy"))
         clocks_data = np.load(os.path.join(RDM_dir, f"data_clock_{sub}_fmri_pt{task_half}.npy"))
         midnight_data = np.load(os.path.join(RDM_dir, f"data_midnight_{sub}_fmri_pt{task_half}.npy"))
         phase_data = np.load(os.path.join(RDM_dir, f"data_phase_{sub}_fmri_pt{task_half}.npy"))
         state_data = np.load(os.path.join(RDM_dir, f"data_state_{sub}_fmri_pt{task_half}.npy"))
         
-        # first, create the RDMs from the model files (model_data)
+        # then create model RDMs.
+        # location RDM
         location_data = location_data.transpose()
         nCond = location_data.shape[0]
         nVox = location_data.shape[1]
@@ -175,9 +139,7 @@ for sub in subjects:
         RDM_brain_loc = RDM_brain_loc.reshape([x, y, z])
         
         
-        
-        # do the same with the clocks.
-        # first, create the RDMs from the clocks model files (clocks_data)
+        # clock RDM
         clocks_data = clocks_data.transpose()
         nCond = clocks_data.shape[0]
         nVox = clocks_data.shape[1]
@@ -206,8 +168,7 @@ for sub in subjects:
         RDM_brain_clocks = RDM_brain_clocks.reshape([x, y, z])
         
         
-        # then do the same with the midnight model.
-        # first, create midnight_data RDM
+        # midnight RDM
         midnight_data = midnight_data.transpose()
         nCond = midnight_data.shape[0]
         nVox = midnight_data.shape[1]
@@ -236,8 +197,7 @@ for sub in subjects:
         
         
 
-        # phase_data
-        # create the phase RDM object
+        # phase_RDM
         phase_data = phase_data.transpose()
         nCond = phase_data.shape[0]
         nVox = phase_data.shape[1]
@@ -256,7 +216,6 @@ for sub in subjects:
         phase_model = rsatoolbox.model.ModelFixed('phase_model_only', phase_RDM)
         predict_phase = phase_model.predict()
         
-        
         # compute phase RSA
         eval_results_phase = evaluate_models_searchlight(data_RDM, phase_model, eval_fixed, method='spearman', n_jobs=3)
         # get the evaulation score for each voxel
@@ -269,9 +228,7 @@ for sub in subjects:
         RDM_brain_phase = RDM_brain_phase.reshape([x, y, z])
         
         
-        
-        # state_data
-        # create the state RDM object
+        # state RDM
         state_data = state_data.transpose()
         nCond =  state_data.shape[0]
         nVox = state_data.shape[1]
@@ -312,86 +269,85 @@ for sub in subjects:
         overlap_corr_model_RDMs['clocks_with_state'] = np.corrcoef(clocks_RDM.dissimilarities, state_RDM.dissimilarities)[1][0]
         overlap_corr_model_RDMs['clocks_with_phase'] = np.corrcoef(clocks_RDM.dissimilarities, phase_RDM.dissimilarities)[1][0]
         overlap_corr_model_RDMs['state_with_phase'] = np.corrcoef(state_RDM.dissimilarities, phase_RDM.dissimilarities)[1][0]
-        # ignore this upper triangle for now
-        # loc_model = ModelFixed('Location RDM', upper_tri(location_data_RDM))
         
         
-
-        #import pdb; pdb.set_trace() 
-        
-        # CAREFUL!! I am not sure if this is fitting the data pitting the models against each other...
-        def my_eval(model, data):
-              "Handle one voxel, copy the code that exists already for the neural data"
-              X = sm.add_constant(model.rdm.transpose());
-              Y = data.dissimilarities.transpose();
-              est = sm.OLS(Y, X).fit()
-              return est.tvalues[1:], est.params[1:]
-          
-            
-        # combined model
+        # combined model 1
+        # clocks, midnight and state.
         clocks_midn_states_RDM = rsatoolbox.rdm.concat(clocks_RDM, midnight_RDM, state_RDM)
         clocks_midn_states_model = rsatoolbox.model.ModelWeighted('clocks_midn_states_RDM', clocks_midn_states_RDM)
-        results_clocks_midn_states_model = Parallel(n_jobs=3)(delayed(my_eval)(clocks_midn_states_model, d) for d in tqdm(data_RDM, desc='bla'))
+        results_clocks_midn_states_model = Parallel(n_jobs=3)(delayed(my_eval)(clocks_midn_states_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model 1'))
         
         x, y, z = mask.shape
-        RDM_brain_cl_midn_st_clocks = np.zeros([x*y*z])
-        RDM_brain_cl_midn_st_clocks[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0] for vox in results_clocks_midn_states_model]
-        RDM_brain_cl_midn_st_clocks = RDM_brain_cl_midn_st_clocks.reshape([x,y,z])
+        # first, t-values for visualisation
+        t_RDM_brain_cl_midn_st_clocks = np.zeros([x*y*z])
+        t_RDM_brain_cl_midn_st_clocks[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][0] for vox in results_clocks_midn_states_model]
+        t_RDM_brain_cl_midn_st_clocks = t_RDM_brain_cl_midn_st_clocks.reshape([x,y,z])
         
-        RDM_brain_cl_midn_st_midn = np.zeros([x*y*z])
-        RDM_brain_cl_midn_st_midn[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[1] for vox in results_clocks_midn_states_model]
-        RDM_brain_cl_midn_st_midn = RDM_brain_cl_midn_st_midn.reshape([x,y,z])
+        t_RDM_brain_cl_midn_st_midn = np.zeros([x*y*z])
+        t_RDM_brain_cl_midn_st_midn[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][1] for vox in results_clocks_midn_states_model]
+        t_RDM_brain_cl_midn_st_midn = t_RDM_brain_cl_midn_st_midn.reshape([x,y,z])
         
-        RDM_brain_cl_midn_st_state = np.zeros([x*y*z])
-        RDM_brain_cl_midn_st_state[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[2] for vox in results_clocks_midn_states_model]
-        RDM_brain_cl_midn_st_state = RDM_brain_cl_midn_st_state.reshape([x,y,z])
+        t_RDM_brain_cl_midn_st_state = np.zeros([x*y*z])
+        t_RDM_brain_cl_midn_st_state[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][2] for vox in results_clocks_midn_states_model]
+        t_RDM_brain_cl_midn_st_state = t_RDM_brain_cl_midn_st_state.reshape([x,y,z])
+        # second, betas for group-stats
+        b_RDM_brain_cl_midn_st_clocks = np.zeros([x*y*z])
+        b_RDM_brain_cl_midn_st_clocks[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][0] for vox in results_clocks_midn_states_model]
+        b_RDM_brain_cl_midn_st_clocks = t_RDM_brain_cl_midn_st_clocks.reshape([x,y,z])
         
+        b_RDM_brain_cl_midn_st_midn = np.zeros([x*y*z])
+        b_RDM_brain_cl_midn_st_midn[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][1] for vox in results_clocks_midn_states_model]
+        b_RDM_brain_cl_midn_st_midn = t_RDM_brain_cl_midn_st_midn.reshape([x,y,z])
+        
+        b_RDM_brain_cl_midn_st_state = np.zeros([x*y*z])
+        b_RDM_brain_cl_midn_st_state[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][2] for vox in results_clocks_midn_states_model]
+        b_RDM_brain_cl_midn_st_state = b_RDM_brain_cl_midn_st_state.reshape([x,y,z])
+        
+        
+        
+        # combined model 2
+        # clocks, midnight, state and location.
+        clocks_midn_states_loc_RDM = rsatoolbox.rdm.concat(clocks_RDM, midnight_RDM, state_RDM, loc_RDM)
+        clocks_midn_states_loc_model = rsatoolbox.model.ModelWeighted('clocks_midn_states_RDM', clocks_midn_states_loc_RDM)
+        # the first is t, the second beta. [est.tvalues[1:], est.params[1:]]
+        results_clocks_midn_states_loc_model = Parallel(n_jobs=3)(delayed(my_eval)(clocks_midn_states_loc_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model 2'))
+        
+        # save t-vals for visualization
+        x, y, z = mask.shape
+        t_RDM_brain_cl_midn_st_loc_clocks = np.zeros([x*y*z])
+        t_RDM_brain_cl_midn_st_loc_clocks[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][0] for vox in results_clocks_midn_states_loc_model]
+        t_RDM_brain_cl_midn_st_loc_clocks = t_RDM_brain_cl_midn_st_loc_clocks.reshape([x,y,z])
+        
+        t_RDM_brain_cl_midn_st_loc_midn = np.zeros([x*y*z])
+        t_RDM_brain_cl_midn_st_loc_midn[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][1] for vox in results_clocks_midn_states_loc_model]
+        t_RDM_brain_cl_midn_st_loc_midn = t_RDM_brain_cl_midn_st_loc_midn.reshape([x,y,z])
+        
+        t_RDM_brain_cl_midn_st_loc_state = np.zeros([x*y*z])
+        t_RDM_brain_cl_midn_st_loc_state[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][2] for vox in results_clocks_midn_states_loc_model]
+        t_RDM_brain_cl_midn_st_loc_state = t_RDM_brain_cl_midn_st_loc_state.reshape([x,y,z])
+        
+        t_RDM_brain_cl_midn_st_loc_loc = np.zeros([x*y*z])
+        t_RDM_brain_cl_midn_st_loc_loc[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][2] for vox in results_clocks_midn_states_loc_model]
+        t_RDM_brain_cl_midn_st_loc_loc = t_RDM_brain_cl_midn_st_loc_loc.reshape([x,y,z])
+        
+        # save betas for group stats
+        b_RDM_brain_cl_midn_st_loc_clocks = np.zeros([x*y*z])
+        b_RDM_brain_cl_midn_st_loc_clocks[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[1][0] for vox in results_clocks_midn_states_loc_model]
+        b_RDM_brain_cl_midn_st_loc_clocks = b_RDM_brain_cl_midn_st_loc_clocks.reshape([x,y,z])
+        
+        b_RDM_brain_cl_midn_st_loc_midn = np.zeros([x*y*z])
+        b_RDM_brain_cl_midn_st_loc_midn[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[1][1] for vox in results_clocks_midn_states_loc_model]
+        b_RDM_brain_cl_midn_st_loc_midn = b_RDM_brain_cl_midn_st_loc_midn.reshape([x,y,z])
+        
+        b_RDM_brain_cl_midn_st_loc_state = np.zeros([x*y*z])
+        b_RDM_brain_cl_midn_st_loc_state[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[1][2] for vox in results_clocks_midn_states_loc_model]
+        b_RDM_brain_cl_midn_st_loc_state = b_RDM_brain_cl_midn_st_loc_state.reshape([x,y,z])
+        
+        b_RDM_brain_cl_midn_st_loc_loc = np.zeros([x*y*z])
+        b_RDM_brain_cl_midn_st_loc_loc[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[1][2] for vox in results_clocks_midn_states_loc_model]
+        b_RDM_brain_cl_midn_st_loc_loc = b_RDM_brain_cl_midn_st_loc_loc.reshape([x,y,z])
 
-        
-        
 
-        
-        # # use something like 
-        # results_reg = mc.simulation.RDMs.GLM_RDMs(RSM_neurons, regressors, mask_within, no_tasks = len(task_configs), plotting= False)
-        # # to get my own model fitting/ evaluation
-        
-        
-        # GLM_RDMs(data_matrix, regressor_dict, mask_within = True, no_tasks = None, t_val = True, plotting = False)
-        
-        # ################ 
-        # # this is a bit of a scratchbook rn inbetween here 
-        # # Test with this:
-        # results = [my_eval(models, x) for x in sl_RDM]
-        
-        # # When it works, use this:
-        # results = Parallel(n_jobs=n_jobs)(delayed(my_eval)( models, x, ) for x in sl_RDM)
-        
-        
-        
-        
-        
-        # results = [my_evla(models, x) for x in sl_RDM]
-        
-        
-        # combo_RDM = rsatoolbox.rdm.concat(clocks_RDM, state_RDM)
-        # combo_model = rsatoolbox.model.ModelWeighted('combined_model', combo_RDM)
-        
-        # def my_eval(model, data):
-        #     # print('fitting 1 sl')
-        #     return model.fit(data)        
-        
-        # results_combo = Parallel(n_jobs=3)(delayed(my_eval)(combo_model, d) for d in data_RDM)
-        
-        # searchlight_fit = combo_model.fit(data_RDM[0])
-        
-        
-        # eval_results_combo = evaluate_models_searchlight(data_RDM, combo_model, eval_fixed, method='spearman', n_jobs=3)
-        # eval_results_combo = evaluate_models_searchlight(data_RDM, combo_model, rsatoolbox.model.fitter.fit_regress, method='spearman', n_jobs=3)
-        
-        # rsatoolbox.fitter.fit_regress 
-        
-        
-        
         
         
         
@@ -436,9 +392,75 @@ for sub in subjects:
             nib.save(clocks_nifti, clocks_file)
             nib.save(state_nifti, state_file)
             
+            # # combo model 1
+            # nib.save(b_combo_clmidst_clocks_nifti, b_combo_clmidst_clocks_file)
+            # nib.save(t_combo_clmidst_clocks_nifti, t_combo_clmidst_clocks_file)
+
+            
+            # # combo model 2
+            # nib.save(t_combo_clmidstloc_clocks_nifti, t_combo_clmidstloc_clocks_file)
+            # nib.save(b_combo_clmidstloc_clock_nifti, t_combo_clmidstloc_clock_file)
+            
+            # nib.save(t_combo_clmidstloc_mid_nifti, t_combo_clmidstloc_mid_file)
+            # nib.save(b_combo_clmidstloc_mid_nifti, b_combo_clmidstloc_mid_file)
+            
+            # nib.save(b_combo_clmidstloc_state_nifti, b_combo_clmidstloc_state_file)
+            # nib.save(t_combo_clmidstloc_state_nifti, t_combo_clmidstloc_state_file)
+            
+            # nib.save(t_combo_clmidstloc_loc_nifti, t_combo_clmidstloc_loc_file)
+            # nib.save(b_combo_clmidstloc_loc_nifti, b_combo_clmidstloc_loc_file)
+            
+            
             # nib.save(combo_clocks_nifti, combo_clocks_file)
             # nib.save(combo_midn_nifti, combo_midn_file)
             # nib.save(combo_state_nifti, combo_state_file)
+
+        # KEEP MAYBE
+        # plt.figure()
+        # sns.histplot(eval_score)
+        # plt.title('Distributions of correlations', size=18)
+        # plt.ylabel('Occurance', size=18)
+        # plt.xlabel('Spearmann correlation', size=18)
+        # sns.despine()
+        # plt.show()
+        
+        
+        
+        
+        # DELETE 
+        
+        # lets plot the voxels above the 99th percentile
+        # threshold = np.percentile(eval_score, 99)
+        # plot_img = new_img_like(ref_img, RDM_brain)
+        
+        # # define this
+        # import matplotlib.colors
+        # def RDMcolormapObject(direction=1):
+        #     """
+        #     Returns a matplotlib color map object for RSA and brain plotting
+        #     """
+        #     if direction == 0:
+        #         cs = ['yellow', 'red', 'gray', 'turquoise', 'blue']
+        #     elif direction == 1:
+        #         cs = ['blue', 'turquoise', 'gray', 'red', 'yellow']
+        #     else:
+        #         raise ValueError('Direction needs to be 0 or 1')
+        #     cmap = matplotlib.colors.LinearSegmentedColormap.from_list("", cs)
+        #     return cmap
+
+
+        # cmap = RDMcolormapObject()
+        
+        # coords = range(-20, 40, 5)
+        # fig = plt.figure(figsize=(12, 3))
+        
+        # display = plotting.plot_stat_map(
+        #         plot_img, colorbar=True, cut_coords=coords,threshold=threshold,
+        #         display_mode='z', draw_cross=False, figure=fig,
+        #         title=f'Animal model evaluation', cmap=cmap,
+        #         black_bg=False, annotate=False)
+        # plt.show()
+
 
 
 

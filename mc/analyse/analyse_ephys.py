@@ -18,7 +18,9 @@ import numpy as np
 import mc
 from matplotlib import pyplot as plt
 import scipy
-    
+import colormaps as cmaps
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import textwrap
 
 def reg_per_task_config(task_configs, locations_all, neurons, timings_all, contrast_m, mouse_recday, continuous = True, no_bins_per_state = 0):
     # import pdb; pdb.set_trace()
@@ -171,7 +173,7 @@ def reg_per_task_config(task_configs, locations_all, neurons, timings_all, contr
 
 
 
-def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_all, contrast_m,  mouse_recday, contrast_split = None, continuous = True, no_bins_per_state = 0, split_by_phase = 1, number_phase_neurons = 3, mask_within = True):
+def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_all, contrast_m,  mouse_recday, contrast_split = None, continuous = True, no_bins_per_state = 0, split_by_phase = 1, number_phase_neurons = 3, mask_within = True, plotting = False):
     #import pdb; pdb.set_trace()
     
     # first, find out which is the largest shared trial number between all task configs
@@ -192,6 +194,9 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
     tvals_per_trial = np.zeros((min_trialno,1+len(contrast_m[0])))
     contrast_results = np.zeros((min_trialno, len(contrast_m)))
     
+    coefficients_per_trial_only_clo = np.zeros((min_trialno,1))
+    tvals_per_trial_only_cl = np.zeros((min_trialno,2))
+    
     if split_by_phase == 1:
         phase_split = ['early', 'mid', 'late']
         coefficients_per_trial_split = np.zeros((len(phase_split), min_trialno,len(contrast_split[0])))
@@ -207,7 +212,7 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
             run_no = -1*(no_trial_in_each_task + 1)
             # run_no = no_trial_in_each_task
             
-            trajectory, timings_curr_run, index_make_step, step_number, curr_neurons = mc.simulation.analyse_ephys.prep_ephys_per_trial(timings_all, locations_all, run_no, task_no, task_config, neurons)
+            trajectory, timings_curr_run, index_make_step, step_number, curr_neurons = mc.analyse.analyse_ephys.prep_ephys_per_trial(timings_all, locations_all, run_no, task_no, task_config, neurons)
                     
             if continuous == True:
                 location_model, phase_model, state_model, midnight_model, clocks_model, phase_state_model = mc.simulation.predictions.set_continous_models_ephys(trajectory, timings_curr_run, index_make_step, step_number, no_phase_neurons= number_phase_neurons)
@@ -243,7 +248,9 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
                 midnight_model= mc.simulation.predictions.transform_data_to_betas(midnight_model, regs_phase_state_run)
                 location_model = mc.simulation.predictions.transform_data_to_betas(location_model, regs_phase_state_run)
                 phase_model = mc.simulation.predictions.transform_data_to_betas(phase_model, regs_phase_state_run)
-            
+                state_model = mc.simulation.predictions.transform_data_to_betas(state_model, regs_phase_state_run)
+     
+                
             # these need to be concatenated for each run and task
             if task_no == 0:
             #if task_no == 0 and trial_no == 0:
@@ -252,6 +259,7 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
                 midnight_between = midnight_model.copy()
                 location_between = location_model.copy()
                 phase_between = phase_model.copy()
+                state_between = state_model.copy()
                 # # check if I want to split by phase.
                 if split_by_phase == 1:
                     phase_separation = mc.simulation.predictions.set_phase_model_ephys(trajectory, timings_curr_run, index_make_step, step_number)
@@ -263,6 +271,7 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
                 midnight_between = np.concatenate((midnight_between, midnight_model), axis = 1)
                 location_between = np.concatenate((location_between, location_model), axis = 1)
                 phase_between = np.concatenate((phase_between,phase_model), axis = 1)
+                state_between = np.concatenate((state_between, state_model), axis = 1)
                 # # check if I want to split by phase.
                 if split_by_phase == 1:
                     phase_separation_temp = mc.simulation.predictions.set_phase_model_ephys(trajectory, timings_curr_run, index_make_step, step_number)
@@ -278,7 +287,7 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
         RSM_clock = mc.simulation.RDMs.within_task_RDM(clocks_between, plotting = False, titlestring = 'Clock RDM')
         RSM_midnight = mc.simulation.RDMs.within_task_RDM(midnight_between, plotting = False, titlestring = 'Midnight RDM')
         RSM_phase = mc.simulation.RDMs.within_task_RDM(phase_between, plotting = False, titlestring = 'Phase RDM')
-    
+        RSM_state = mc.simulation.RDMs.within_task_RDM(state_between, plotting = False, titlestring= 'State RDM')
         # now create the data RDM
         RSM_neurons = mc.simulation.RDMs.within_task_RDM(neurons_between, plotting = False, titlestring = 'Data RDM')
     
@@ -288,8 +297,13 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
         regressors['midnight']=RSM_midnight
         regressors['phase']=RSM_phase
         regressors['location']=RSM_location
+        regressors['state'] = RSM_state\
+            
+        
         results_reg = mc.simulation.RDMs.GLM_RDMs(RSM_neurons, regressors, mask_within, no_tasks = len(task_configs), plotting= False)
         
+        only_clock_dict = {'clocks': regressors['clocks']}
+        only_clocks_reg = mc.simulation.RDMs.GLM_RDMs(RSM_neurons, only_clock_dict, mask_within, no_tasks = len(task_configs), plotting= False)
         
         
         # similarities_kendall = {}
@@ -305,13 +319,50 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
         #         curr_corr = f"{curr_RSM_one}_with_{curr_RSM_two}"
         #         temp_corr = mc.simulation.RDMs.corr_matrices_pearson(regressors[curr_RSM_one], regressors[curr_RSM_two], no_tasks = task_no, mask_within= True, exclude_diag=True)
         #         similarities_exclude_autocorr[curr_corr] = temp_corr[0,1]
-         
-        
-        for RDM in regressors:
-            plt.figure();
-            plt.imshow(regressors[RDM])
-            
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
+        if plotting:
+            regressors['data'] = RSM_neurons
+            for RDM in regressors:
+                fig, ax = plt.subplots(figsize=(5,4))
+                cmap = cmaps.fall; # also nice: bamako, oslo
+                # Set the upper triangle to be empty
+                corr_mat = regressors[RDM]
+                corr_mat[np.triu_indices(280, k=1)] = np.nan
+                im = ax.imshow(corr_mat, cmap=cmap, interpolation = 'none', aspect = 'equal'); 
+                for i in range(39,280,40):
+                    ax.axhline(i, color='white', linewidth=1)
+                    ax.axvline(i, color='white', linewidth=1)
+                    
+                # #Add a colorbar to the right of the plot with a colormap toolbox
+                # divider = make_axes_locatable(ax)
+                # cax = divider.append_axes("right", size="5%", pad=0.1)
+                # cbar = fig.colorbar(im, cax=cax)
+                # cbar.set_label('Correlation', rotation=270, labelpad=15)
+                
+                # Set x-axis and y-axis ticks and labels
+                ticks = np.arange(20, 281, 40)
+                ax.set_xticks(ticks)
+                ax.set_yticks(ticks)
+                ax.set_xticklabels(['Task {}'.format(i // 40 + 1) for i in ticks], rotation=45, ha = 'right', fontsize=16)
+                ax.set_yticklabels(['Task {}'.format(i // 40 + 1) for i in ticks], fontsize=16)
+                
+                # Set axis labels and title
+                ax.set_title(f"Model RDM for {RDM} model", fontsize=18)
+                
+                # Adjust the appearance of ticks and grid lines
+                ax.grid(False)
+                
+                # Adjust the layout to prevent cutoff of labels and colorbar
+                plt.tight_layout()
+                fig.savefig(f"/Users/xpsy1114/Documents/projects/multiple_clocks/output/Model_RDM_{RDM}_between_tasks_1mouse.png", dpi=300, bbox_inches='tight')
+                fig.savefig(f"/Users/xpsy1114/Documents/projects/multiple_clocks/output/Model_RDM_{RDM}_between_tasks_1mouse.tiff", dpi=300, bbox_inches='tight')
+                
+            # in the end, remove data from the dict again!
+            del regressors['data']
+                
+                
+                
+        # import pdb; pdb.set_trace()
         
         sim_exclude_autocorr_ephys = {}
         for i, curr_RSM_one in enumerate(regressors):
@@ -327,6 +378,12 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
         tvals_per_trial[no_trial_in_each_task]= results_reg['t_vals']
         coefficients_per_trial[no_trial_in_each_task] = results_reg['coefs']
         labels_regs.append(results_reg['label_regs'])
+        
+
+        tvals_per_trial_only_cl[no_trial_in_each_task]= only_clocks_reg['t_vals']
+        coefficients_per_trial_only_clo[no_trial_in_each_task] = only_clocks_reg['coefs']
+
+        
         # print(f" Computed betas for run {trial_no} of task {task_config}")
         
         # then compute contrasts
@@ -413,6 +470,10 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
     result["contrast_results"] = contrast_results
     result["t-values"] = tvals_per_trial
     result["labels"] = labels_regs
+    result["t-vals_only_clock"] = tvals_per_trial_only_cl
+    result["coeffs_only_clock"] = coefficients_per_trial_only_clo
+
+
     if split_by_phase == True:
         result["split_coef_per_trial"] = coefficients_per_trial_split
         result["split_contrasts"] = contrast_results_split
@@ -825,7 +886,7 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
 
 # with this one, I want to compare different models and find the optimal output for my analysis.
 def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_recday, plotting = False, continuous = True, no_bins_per_state = 3, number_phase_neurons = 3, mask_within = True, split_by_phase = True):
-    #import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     # this is now all  based on creating an average across runs first.
     
     # find out which is the largest shared trial number between all task configs
@@ -839,7 +900,7 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
         for task_no, task_config in enumerate(task_configs):
             # to take the final runs not the first ones.
             run_no = -1*(no_trial_in_each_task + 1)
-            trajectory, timings_curr_run, index_make_step, step_number, curr_neurons = mc.simulation.analyse_ephys.prep_ephys_per_trial(timings_all, locations_all, run_no, task_no, task_config, neurons)
+            trajectory, timings_curr_run, index_make_step, step_number, curr_neurons = mc.analyse.analyse_ephys.prep_ephys_per_trial(timings_all, locations_all, run_no, task_no, task_config, neurons)
             
             if continuous == False:
                 location_model = mc.simulation.predictions.set_location_raw_ephys(trajectory, step_time = 1, grid_size=3, plotting = False, field_no_given= 1)
@@ -874,7 +935,8 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
             midnight_phase_state= mc.simulation.predictions.transform_data_to_betas(midnight_model, regs_phase_state_run)
             location_phase_state = mc.simulation.predictions.transform_data_to_betas(location_model, regs_phase_state_run)
             phase_phase_state = mc.simulation.predictions.transform_data_to_betas(phase_model, regs_phase_state_run)
-
+            state_phase_state = mc.simulation.predictions.transform_data_to_betas(state_model, regs_phase_state_run)
+            
  
             
             # these need to be concatenated for each run and task
@@ -885,6 +947,7 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
                 midnight_between = midnight_phase_state.copy()
                 location_between = location_phase_state.copy()
                 phase_between = phase_phase_state.copy()
+                state_between = state_phase_state.copy()
                 if split_by_phase:
                     phase_separation = mc.simulation.predictions.set_phase_model_ephys(trajectory, timings_curr_run, index_make_step, step_number)
                     phase_separation = np.round(mc.simulation.predictions.transform_data_to_betas(phase_separation, regs_phase_state_run))
@@ -894,6 +957,7 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
                 midnight_between = np.concatenate((midnight_between, midnight_phase_state), axis = 1)
                 location_between = np.concatenate((location_between, location_phase_state), axis = 1)
                 phase_between = np.concatenate((phase_between,phase_phase_state), axis = 1)
+                state_between = np.concatenate((state_between, state_phase_state), axis = 1)
                 if split_by_phase == 1:
                     phase_separation_temp = mc.simulation.predictions.set_phase_model_ephys(trajectory, timings_curr_run, index_make_step, step_number)
                     phase_separation_temp = np.round(mc.simulation.predictions.transform_data_to_betas(phase_separation_temp, regs_phase_state_run))
@@ -908,6 +972,7 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
             sum_midnight_between = midnight_between.copy()
             sum_phase_between = phase_between.copy()
             sum_neurons_between = neurons_between.copy()
+            sum_state_between = state_between.copy()
             if split_by_phase:
                 sum_phase_separation = phase_separation.copy()
         if no_trial_in_each_task > 0:
@@ -916,6 +981,7 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
             sum_midnight_between = sum_midnight_between.copy() + midnight_between.copy()
             sum_phase_between = sum_phase_between.copy() + phase_between.copy()
             sum_neurons_between = sum_neurons_between.copy() + neurons_between.copy()
+            sum_state_between = sum_state_between.copy() + state_between.copy()
             if split_by_phase:
                 sum_phase_separation = sum_phase_separation.copy() + phase_separation.copy()
         
@@ -925,6 +991,7 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
     ave_midnight_between = sum_midnight_between/no_trial_in_each_task
     ave_phase_between = sum_phase_between/no_trial_in_each_task
     ave_neurons_between = sum_neurons_between/no_trial_in_each_task
+    ave_state_between = sum_state_between/no_trial_in_each_task
     
     if split_by_phase:
         ave_phase_separation = sum_phase_separation/no_trial_in_each_task
@@ -933,14 +1000,18 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
         early_mask = np.where(ave_phase_separation[0,:] == max_val)[0]
         mid_mask = np.where(ave_phase_separation[1,:] == max_val)[0]
         late_mask = np.where(ave_phase_separation[2,:] == max_val)[0]
-  
+    
+    # import pdb; pdb.set_trace()
     if plotting == True:
         # plot the averaged simulated and cleaned data
-        mc.simulation.predictions.plot_without_legends(ave_location_between, titlestring= 'location average', intervalline= 4*no_bins_per_state)
-        mc.simulation.predictions.plot_without_legends(ave_clocks_between, titlestring= 'clock average', intervalline= 4*no_bins_per_state)
-        mc.simulation.predictions.plot_without_legends(ave_midnight_between, titlestring= 'midnight average', intervalline= 4*no_bins_per_state)
-        mc.simulation.predictions.plot_without_legends(ave_phase_between, titlestring= 'phase average', intervalline= 4*no_bins_per_state)
-        mc.simulation.predictions.plot_without_legends(ave_neurons_between, titlestring= 'neuron average', intervalline= 4*no_bins_per_state)
+        mc.simulation.predictions.plot_without_legends(ave_location_between, titlestring= 'Location model, averaged across runs in mouse a', intervalline= 4*no_bins_per_state, saving_file='/Users/xpsy1114/Documents/projects/multiple_clocks/output/')
+        mc.simulation.predictions.plot_without_legends(ave_clocks_between, titlestring= 'Schema model, averaged across runs in mouse a', intervalline= 4*no_bins_per_state, saving_file='/Users/xpsy1114/Documents/projects/multiple_clocks/output/')
+        mc.simulation.predictions.plot_without_legends(ave_midnight_between, titlestring= 'Partial schema model, averaged across runs in mouse a', intervalline= 4*no_bins_per_state, saving_file='/Users/xpsy1114/Documents/projects/multiple_clocks/output/')
+        mc.simulation.predictions.plot_without_legends(ave_phase_between, titlestring= 'Task progress model, averaged across runs in mouse a', intervalline= 4*no_bins_per_state, saving_file='/Users/xpsy1114/Documents/projects/multiple_clocks/output/')
+        mc.simulation.predictions.plot_without_legends(ave_neurons_between, titlestring= 'Recorded neurons, averaged across runs in mouse a', intervalline= 4*no_bins_per_state, saving_file='/Users/xpsy1114/Documents/projects/multiple_clocks/output/')
+        mc.simulation.predictions.plot_without_legends(ave_state_between, titlestring= 'State model, averaged across runs in mouse a', intervalline= 4*no_bins_per_state, saving_file='/Users/xpsy1114/Documents/projects/multiple_clocks/output/')
+        
+    
     
         RSM_location_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_location_between, plotting = True, titlestring = 'Between tasks Location RSM, 12*12, averaged over runs', intervalline= 4*no_bins_per_state)
         RSM_clock_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_clocks_between, plotting = True, titlestring = 'Between tasks Musicbox RSM, 12*12, averaged over runs', intervalline= 4*no_bins_per_state)
@@ -982,6 +1053,9 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
         RSM_midnight_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_midnight_between, plotting = False)
         RSM_phase_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_phase_between, plotting = False)
         RSM_neurons_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_neurons_between, plotting = False)
+        RSM_state_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_state_between, plotting = False)
+        
+        
         
         if split_by_phase:
             # for each phase separately
@@ -1008,6 +1082,7 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
     regressors['midnight']=RSM_midnight_betas_ave
     regressors['phase']=RSM_phase_betas_ave
     regressors['location']=RSM_location_betas_ave
+    regressors['stat']=RSM_state_betas_ave
     results_normal = mc.simulation.RDMs.GLM_RDMs(RSM_neurons_betas_ave, regressors, mask_within, no_tasks = len(task_configs), plotting= True)
     
     # collect all values in a results table which I then output in the end.
@@ -1058,7 +1133,7 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
         result_dict["reord_coefs"] = results_reord['coefs']
         result_dict["reord_t-vals"] = results_reord['t_vals']
         
-    import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
     # # LITTLE REGRESSION PLAYAROUND
     # # this is a regression where I put all early phases of all tasks behind each other
     # # then all mid phases of each tasks, etc; and then do the regression.
@@ -1134,7 +1209,7 @@ def load_ephys_data(Data_folder):
         a_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
         a_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
     
-    import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
     mouse_a["locations"] = a_locations
     mouse_a["neurons"] = a_neurons
     mouse_a["timings"] = a_timings
@@ -1526,23 +1601,35 @@ def prep_ephys_per_trial(timings_all, locations_all, no_trial_in_each_task, task
 ### PLOTTING FUNCTIONS #####
 ############################
 
-def plotting_hist_scat(data_list, label_string_list, label_tick_list, title_string):
+def plotting_hist_scat(data_list, label_string_list, label_tick_list, title_string, save_fig = False):
     # import pdb; pdb.set_trace()
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(8,6))
     ax.boxplot(data_list)
     sigma = 0.08
     mu = 0.01
+    cmap = plt.get_cmap('Pastel1')
     for index, contrast in enumerate(data_list):
         noise = np.ones(len(data_list[index])) + sigma * np.random.randn(len(data_list[index])) + mu
         data_to_plot = contrast.copy()
         for i, elem in enumerate(data_to_plot):
             data_to_plot[i] = elem +noise[index]     
-        ax.scatter(noise+index, data_to_plot)
+        ax.scatter(noise+index, data_to_plot, cmap=cmap, marker='o', s=100, edgecolors = 'black', linewidth = 1)
+    
     ax.set_xticks(label_tick_list)
     plt.xticks(rotation = 45)
-    ax.set_xticklabels(label_string_list)
-    plt.axhline(0, color='grey', ls='dashed')
+    ax.set_xticklabels(label_string_list, fontsize = 18)
+    plt.axhline(0, color='grey', ls='dashed', linewidth = 1)
     plt.title(title_string)
+    
+    # Customize grid lines
+    ax.grid(True, linestyle='--', alpha=0.7)
+    
+    # Adjust the layout
+    plt.tight_layout()
+    
+    if save_fig:
+        fig.savefig(f"{save_fig}{title_string}.png", dpi=300, bbox_inches='tight')
+        fig.savefig(f"{save_fig}{title_string}.tiff", dpi=300, bbox_inches='tight')
     
     
 

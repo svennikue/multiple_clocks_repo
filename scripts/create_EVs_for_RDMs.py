@@ -18,16 +18,17 @@ import matplotlib.pyplot as plt
 
 # import pdb; pdb.set_trace()
 
-subjects = ['sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06']
+#subjects = ['sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06']
+subjects = ['sub-03']
 version = '04' # GLM number
 # to debug
 #task_halves = ['1']
 task_halves = ['1', '2']
-locationEVs = False
+locationEVs = True
 
 # NEXT DOUBLE CHECK THESE
 # THEY ARE NOT SPLIT YET BY BACKW FORW!!
-time_binEVs = True
+time_binEVs = False
 plotting = False
 
 for sub in subjects:
@@ -142,6 +143,7 @@ for sub in subjects:
         # double check which value here is the correct one!!!
         first_TR_at = df_all.at[index_first_TRs[0], 'time_scanner_prompt_end']
     
+        import pdb; pdb.set_trace()
      
         # # button press EVs.
         # for button press EVs I need to add the entries in nav_key_task.rt to 

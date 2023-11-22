@@ -1,7 +1,8 @@
 #!/bin/sh
 # Produce nuisance regressors to get rid of motion artefacts: motion outliers and CSF time series
+# submit like bash createNuisanceRegressors.sh ("02" "03" "04" "05 "06") 
 
-subjects="01"
+subjects=$1
 # Set scratch directory for execution on server
 scratchDir="/home/fs0/xpsy1114/scratch/data"
 toolboxDir="/home/fs0/xpsy1114/scratch/analysis"

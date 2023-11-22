@@ -33,7 +33,11 @@ def within_task_RDM(activation_matrix, ax=None, plotting = False, titlestring = 
         # "distance (which is the Euclidean distance measured after linearly recoding the space so as to whiten the noise)."
     # RDM = np.ones((len(RSM), len(RSM)))
     # RDM = RDM - RSM
-    if plotting == True:       
+    if plotting == True: 
+        
+        
+        
+        
         if ax is None:
             plt.figure()
             ax = plt.axes()   
@@ -335,7 +339,7 @@ def lin_reg_RDMs(data_matrix, regressor_one_matrix, regressor_two_matrix = None,
     
 
 def GLM_RDMs(data_matrix, regressor_dict, mask_within = True, no_tasks = None, t_val = True, plotting = False):
-    # import pdb; pdb.set_trace()
+    
     if mask_within == True:
         within_task_mask = np.kron(np.eye(no_tasks), np.ones((int(np.round(len(data_matrix)/no_tasks)), int(np.round(len(data_matrix)/no_tasks)))))
         
@@ -372,13 +376,27 @@ def GLM_RDMs(data_matrix, regressor_dict, mask_within = True, no_tasks = None, t
     # get rid of all nans, equally for data and regressors.
     
     diag_array_data = data_matrix[np.tril_indices(dimension , -1)]
-    X_cleaned = np.empty((len(X),len(diag_array_data[~np.isnan(diag_array_data)])))
-    for i, row in enumerate(X):
-        X_cleaned[i] = row[~np.isnan(diag_array_data)]
+    
+    
+    if len(X) > 10:
+        # this means that there is only one regressor
+        X = np.array(X)
+        X_cleaned = np.empty(len(diag_array_data[~np.isnan(diag_array_data)]))
+        X_cleaned = X[~np.isnan(diag_array_data)]
+    else:      
+        X_cleaned = np.empty((len(X),len(diag_array_data[~np.isnan(diag_array_data)])))
+        for i, row in enumerate(X):
+            X_cleaned[i] = row[~np.isnan(diag_array_data)]
+            
+            
     diag_array_data = diag_array_data[~np.isnan(diag_array_data)]
     
+    # import pdb; pdb.set_trace()
     x_cl_reshaped = np.transpose(X_cleaned)
-    regression_results = LinearRegression().fit(x_cl_reshaped, diag_array_data)
+    if len(X) > 10: 
+        regression_results = LinearRegression().fit(x_cl_reshaped.reshape(-1, 1), diag_array_data)
+    else:
+        regression_results = LinearRegression().fit(x_cl_reshaped, diag_array_data)
     results = {}
     results['coefs'] = regression_results.coef_
     results['label_regs'] = reg_labels

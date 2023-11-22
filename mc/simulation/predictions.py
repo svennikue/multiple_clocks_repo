@@ -49,6 +49,7 @@ import mc
 import scipy.signal
 from matplotlib.patches import Circle
 import scipy
+import colormaps as cmaps
 from sklearn.linear_model import LinearRegression
 import scipy
 from sklearn.linear_model import LinearRegression
@@ -2124,14 +2125,28 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
 #
 # PART 4: PLOTTING
 # create functions to plot the matrices
+import textwrap
 
-def plot_without_legends(any_matrix, titlestring = None, prediction = None,  hrf = None, grid_size = None, step_time = None, reward_no = None, perms = None, intervalline = None, timings_curr_run = None):
+def plot_without_legends(any_matrix, titlestring = None, prediction = None,  hrf = None, grid_size = None, step_time = None, reward_no = None, perms = None, intervalline = None, timings_curr_run = None, saving_file = None):
     #import pdb; pdb.set_trace()
-    fig, ax = plt.subplots()
-    plt.imshow(any_matrix, aspect = 'auto', interpolation= 'none') 
-    ax.xlabel = 'neural activity over some timescale'
-    ax.ylabel = 'neurons'
-    plt.title(f'{titlestring}')
+    fig, ax = plt.subplots(figsize=(5,4))
+    cmap = plt.get_cmap('fall')
+    
+    plt.imshow(any_matrix, aspect = 'auto', interpolation= 'none', cmap=cmap) 
+
+
+    # Create a wrapped title with a maximum of 20 characters per line
+    title = f"{titlestring}"
+    wrapped_title = '\n'.join(textwrap.wrap(title, width=20))
+    # Set the wrapped title with larger font size
+    ax.set_title(wrapped_title, fontsize=18)
+
+
+
+    ax.set_ylabel('simulated neurons', fontsize = 16)
+    ax.set_ylabel('neural activity across tasks', fontsize = 16)
+    
+    
     if hrf:
         hrf_set = '_hrf=' + str(hrf)
     if grid_size:
@@ -2146,9 +2161,23 @@ def plot_without_legends(any_matrix, titlestring = None, prediction = None,  hrf
             plt.axvline(interval, color = 'white', ls = 'dashed')
     elif intervalline:
         intervalline = int(intervalline)
-        for interval in range(0, len(any_matrix[0]), intervalline):
-            plt.axvline(interval, color='white', ls='dashed')
+        for interval in range(intervalline-1, len(any_matrix[0])-1, intervalline):
+            ax.axvline(interval, color='white', linewidth=1)
             
+        # Set x-axis and y-axis ticks and labels with 45-degree rotation
+        ticks = np.arange((intervalline/2), (len(any_matrix[0])+1), intervalline)
+        ax.set_xticks(ticks)
+        ax.set_xticklabels(['Task {}'.format(int(i) // 40 + 1) for i in ticks], rotation=45, ha='right', fontsize = 16)
+        ax.grid(False)
+
+    plt.tight_layout()
+    
+    if saving_file:
+        fig.savefig(f"{saving_file}{titlestring}.png", dpi=300, bbox_inches='tight')
+        fig.savefig(f"{saving_file}{titlestring}.tiff", dpi=300, bbox_inches='tight')
+
+        
+    
     # if 'perms' in locals():
     #     perm_set = '_' + str(perms) + '_perms'
     #     plt.title('settings:_' + prediction + hrf_set + grid_set + time_set + rew_set + perm_set)
