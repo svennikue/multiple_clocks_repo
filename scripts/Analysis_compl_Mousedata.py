@@ -104,13 +104,14 @@ mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], mouse_a_clean["neu
 
 if do_per_run == True:
     # cleaned datasat
-    a_reg_per_run = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], mouse_a_clean["neurons"], mouse_a_clean["timings"], contrast_matrix, mouse_a_clean["recday"], contrast_split= contrast_split_by_phase ,continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
+    a_reg_per_run = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], mouse_a_clean["neurons"], mouse_a_clean["timings"], contrast_matrix, mouse_a_clean["recday"], contrast_split= contrast_split_by_phase ,continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True,plotting=False)
                                       
 else:    
     # cleaned datasat
     a_reg_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], mouse_a_clean["neurons"], mouse_a_clean["timings"], mouse_a_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
 
 
+#import pdb; pdb.set_trace()
 
 # whole dataset
 # a_reg_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_a["rewards_configs"], mouse_a["locations"], mouse_a["neurons"], mouse_a["timings"], mouse_a["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
@@ -140,6 +141,7 @@ if do_neuron_subset == True:
                
     # a_midn_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], midnight_neurons, mouse_a_clean["timings"], mouse_a_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
     # a_clocks_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], clock_neurons, mouse_a_clean["timings"], mouse_a_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
+
 
 
 if save:
@@ -622,7 +624,7 @@ for mouse_res in all_results:
 #label_string_list_comp = ['all_clocks', 'all_midn', 'all_phas', 'all_loc', 'mid_clocks', 'mid_midn', 'mid_phas', 'mid_loc']
 
 data_to_plot = [data_normal_all_clocks_t, data_normal_all_midn_t, data_normal_all_phas_t, data_normal_all_loc_t, data_normal_all_state_t]
-label_string_list_plot = ['clocks', 'midnight', 'phase', 'location', 'state']
+label_string_list_plot = ['Schema', 'Partial Schema', 'Subgoal-Progress', 'Location', 'State']
 label_tick_list_plot = [1,2,3,4,5]
 title_string_plot = 'tvals per complete mouse dataset, regression with 5 models, across tasks, averaged over runs'
 

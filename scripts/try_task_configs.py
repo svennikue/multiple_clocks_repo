@@ -47,7 +47,7 @@ section_four_one = 0
 section_five_one = 0
 
 ## section 6: now actually prepare the fMRI experiment.
-section_six_one = 1
+section_six_one = 0
 
 
 ##############################

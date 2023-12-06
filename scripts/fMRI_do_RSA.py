@@ -9,7 +9,7 @@ create fMRI data RDMs
 @author: xpsy1114
 """
 
-import statsmodels.api as sm
+
 from tqdm import tqdm
 import numpy as np
 import nibabel as nib
@@ -28,34 +28,34 @@ import matplotlib.pyplot as plt
 import mc
 import matplotlib.pyplot as plt
 
-# import pdb; pdb.set_trace()
+
 
 subjects = ['sub-01']
 task_halves = ['1', '2']
-RDM_version = '01'
+RDM_version = '02' # just for safety. 02 is for the report.
 no_RDM_conditions = 80
 save_all = False
 
-
-def my_eval(model, data):
-      "Handle one voxel, copy the code that exists already for the neural data"
-      X = sm.add_constant(model.rdm.transpose());
-      Y = data.dissimilarities.transpose();
-      est = sm.OLS(Y, X).fit()
-      return est.tvalues[1:], est.params[1:]
-          
+# TODO FOR SERVER
+# make all paths relative and adjust to both laptop and server!!
+      
 for sub in subjects:
     data_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}"
     RDM_dir = f"{data_dir}/beh/RDMs_{RDM_version}"
     for task_half in task_halves:
+        # load the relevant pre-processed task-half
+        # note: i'd ideally would like to do this within one big file. 
         fmri_data_dir = f"{data_dir}/func/preproc_clean_0{task_half}.feat"
+        
+        # also get a reference one just for the correct dimensions
         file = "example_func.nii.gz"
         ref_img = load_img(f"{fmri_data_dir}/{file}")
         x, y, z = ref_img.get_fdata().shape
-        ref_img = ref_img.get_fdata()
+        # ref_img = ref_img.get_fdata() #
         
         
         # Prepare searchlight positions
+        # chang this on the server to {sub}_T1_biascorr_brain_mask.nii.gz
         mask = load_img(f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/func/mask_pt0{task_half}_mask.nii.gz")
         mask = mask.get_fdata()
         
@@ -65,34 +65,89 @@ for sub in subjects:
         
         
         # Loop through files in the folder
+        # glm_04 is the one with nuisance and motion regressors as well as button press
         pe_path = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-01/func/glm_04_pt0{task_half}.feat/stats"
         
         # define the naming conventions in this folder
         pes_I_want = re.compile(r'^pe([1-9]|[1-7][0-9]|80)\.nii\.gz$')
         # List all files in the folder
         files_in_pe_folder = os.listdir(pe_path)
+       
         
-        # loop over all images
-        data_RDM_file = np.zeros((no_RDM_conditions, x, y, z))
+        # Loop through the files and read in only those that are regressors I want e.g. pe01 - pe80
+        data_RDM_file = [None] * no_RDM_conditions  # Initialize a list
         
-        # Loop through the files and read in only those that match the pattern
-        image_paths = []
-        i = 0
+        # to check later
+        image_paths = [None] * no_RDM_conditions
+        
         for filename in files_in_pe_folder:
-            if pes_I_want.match(filename):
+            match = pes_I_want.match(filename)
+            if match:
                 file_path = os.path.join(pe_path, filename)
-                image_paths.append(os.path.join(file_path, filename))  # Get the full file path
-                data_RDM_file[i] = nib.load(file_path).get_fdata()
-                i += 1
+                numeric_value = int(match.group(1)) - 1  # Extract the numeric value and convert to an index
+                image_paths[numeric_value] = file_path  # save path to check if everything went fine later
+                data_RDM_file[numeric_value] = nib.load(file_path).get_fdata()
+    
+        # Convert the list to a NumPy array
+        data_RDM_file = np.array(data_RDM_file)
+        for elem in image_paths:
+            print(elem)
         
-            
+        
+        # NEXT THING TO CHECK: WHY ARENT THERE FORW. BACKW. EVs???
+        
+        import pdb; pdb.set_trace()
+        # # create a dummy-file for the RDM conditions
+        # data_RDM_file = np.zeros((no_RDM_conditions, x, y, z))
+        
+        # # Loop through the files and read in only those that are regressors I want e.g. pe01 - pe80
+        # image_paths = []
+        # i = 0
+        # for filename in files_in_pe_folder:
+        #     if pes_I_want.match(filename):
+        #         file_path = os.path.join(pe_path, filename)
+        #         image_paths.append(os.path.join(file_path, filename))  # Get the full file path
+        #         data_RDM_file[i] = nib.load(file_path).get_fdata()
+        #         i += 1
+        
+        
+        
+
+        
         # STEP 2: get RDM for each voxel
         # reshape data so we have n_observastions x n_voxels
         data_RDM_file_2d = data_RDM_file.reshape([data_RDM_file.shape[0], -1])
         data_RDM_file_2d = np.nan_to_num(data_RDM_file_2d) # now this is 80timepoints x 746.496 voxels
         
+        
+        
+        
+        # as a test, save this matrix and then also save the 3d-2d one.
+        
+        # affine_matrix = ref_img.affine
+        
+        # original_shape = data_RDM_file.shape
+        # data_RDM_file_backto3d = data_RDM_file_2d.reshape(original_shape)
+        # data_RDM_file_backto3d_nifti1 = nib.Nifti1Image(data_RDM_file_backto3d[0], affine = affine_matrix)
+        # nib.save(data_RDM_file_backto3d_nifti1, f"{fmri_data_dir}/data_RDM_file_backto3d_nifti1.nii.gz")
+        
+        # data_RDM_file_nifti1 = nib.Nifti1Image(data_RDM_file[0], affine = affine_matrix)
+        # nib.save(data_RDM_file_nifti1, f"{fmri_data_dir}/data_RDM_file_nifti1.nii.gz")
+        
+        # data_RDM_file_backto3d_nifti10 = nib.Nifti1Image(data_RDM_file_backto3d[10], affine = affine_matrix)
+        # nib.save(data_RDM_file_backto3d_nifti10, f"{fmri_data_dir}/data_RDM_file_backto3d_nifti10.nii.gz")
+        
+        # data_RDM_file_nifti10 = nib.Nifti1Image(data_RDM_file[10], affine = affine_matrix)
+        # nib.save(data_RDM_file_nifti10, f"{fmri_data_dir}/data_RDM_file_nifti10.nii.gz")
+        
+        
+        
+        # import pdb; pdb.set_trace()  
+        
+        
+        
         # only one pattern per image
-        image_value = np.arange(len(image_paths))
+        image_value = np.arange(len(no_RDM_conditions))
         
         
         #
@@ -100,7 +155,7 @@ for sub in subjects:
         # this should give me a file whitch len(centers) amount of searchlights that have (80*(80-1)/2 voxels each)
         data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, image_value, method='correlation')
         
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         
         # then load the data RDMs.
         # load the data files I created.
@@ -109,6 +164,13 @@ for sub in subjects:
         midnight_data = np.load(os.path.join(RDM_dir, f"data_midnight_{sub}_fmri_pt{task_half}.npy"))
         phase_data = np.load(os.path.join(RDM_dir, f"data_phase_{sub}_fmri_pt{task_half}.npy"))
         state_data = np.load(os.path.join(RDM_dir, f"data_state_{sub}_fmri_pt{task_half}.npy"))
+        
+
+        # ref_img = load_img(f"{fmri_data_dir}/{file}")
+
+        
+        
+        
         
         # then create model RDMs.
         # location RDM
@@ -137,6 +199,11 @@ for sub in subjects:
         RDM_brain_loc = np.zeros([x*y*z])
         RDM_brain_loc[list(data_RDM.rdm_descriptors['voxel_index'])] = eval_score_loc
         RDM_brain_loc = RDM_brain_loc.reshape([x, y, z])
+        
+        # now do the same with my version as well so I can interpret the numbers.
+        RDM_my_loc = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(loc_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in loc model'))
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_loc, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}+/results", file_name= f"my_loc_{task_half}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        
         
         
         # clock RDM
@@ -167,6 +234,9 @@ for sub in subjects:
         RDM_brain_clocks[list(data_RDM.rdm_descriptors['voxel_index'])] = eval_score_clocks
         RDM_brain_clocks = RDM_brain_clocks.reshape([x, y, z])
         
+        # now do the same with my version as well so I can interpret the numbers.
+        RDM_my_clock = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(clocks_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in clock model'))
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_clock, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}+/results", file_name= f"my_clock_{task_half}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
         
         # midnight RDM
         midnight_data = midnight_data.transpose()
@@ -194,6 +264,10 @@ for sub in subjects:
         RDM_brain_midnight = np.zeros([x*y*z])
         RDM_brain_midnight[list(data_RDM.rdm_descriptors['voxel_index'])] = eval_score_midnight
         RDM_brain_midnight = RDM_brain_midnight.reshape([x, y, z])
+        
+        # now do the same with my version as well so I can interpret the numbers.
+        RDM_my_midn = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(midnight_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in  midnight model'))
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_midn, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}+/results", file_name= f"my_midn_{task_half}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
         
         
 
@@ -227,6 +301,12 @@ for sub in subjects:
         RDM_brain_phase[list(data_RDM.rdm_descriptors['voxel_index'])] = eval_score_phase
         RDM_brain_phase = RDM_brain_phase.reshape([x, y, z])
         
+        # now do the same with my version as well so I can interpret the numbers.
+        RDM_my_phase = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(phase_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in phase model'))
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_phase, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}+/results", file_name= f"my_phase_{task_half}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        
+        
+        
         
         # state RDM
         state_data = state_data.transpose()
@@ -255,6 +335,10 @@ for sub in subjects:
         RDM_brain_state = np.zeros([x*y*z])
         RDM_brain_state[list(data_RDM.rdm_descriptors['voxel_index'])] = eval_score_state
         RDM_brain_state = RDM_brain_state.reshape([x, y, z])
+        # now do the same with my version as well so I can interpret the numbers.
+        RDM_my_state = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(state_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in state model'))
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_state, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}+/results", file_name= f"my_state_{task_half}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        
         
         
         # create a dictionary which shows how much model RDMs overlap
@@ -275,145 +359,247 @@ for sub in subjects:
         # clocks, midnight and state.
         clocks_midn_states_RDM = rsatoolbox.rdm.concat(clocks_RDM, midnight_RDM, state_RDM)
         clocks_midn_states_model = rsatoolbox.model.ModelWeighted('clocks_midn_states_RDM', clocks_midn_states_RDM)
-        results_clocks_midn_states_model = Parallel(n_jobs=3)(delayed(my_eval)(clocks_midn_states_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model 1'))
-        
-        x, y, z = mask.shape
-        # first, t-values for visualisation
-        t_RDM_brain_cl_midn_st_clocks = np.zeros([x*y*z])
-        t_RDM_brain_cl_midn_st_clocks[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][0] for vox in results_clocks_midn_states_model]
-        t_RDM_brain_cl_midn_st_clocks = t_RDM_brain_cl_midn_st_clocks.reshape([x,y,z])
-        
-        t_RDM_brain_cl_midn_st_midn = np.zeros([x*y*z])
-        t_RDM_brain_cl_midn_st_midn[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][1] for vox in results_clocks_midn_states_model]
-        t_RDM_brain_cl_midn_st_midn = t_RDM_brain_cl_midn_st_midn.reshape([x,y,z])
-        
-        t_RDM_brain_cl_midn_st_state = np.zeros([x*y*z])
-        t_RDM_brain_cl_midn_st_state[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][2] for vox in results_clocks_midn_states_model]
-        t_RDM_brain_cl_midn_st_state = t_RDM_brain_cl_midn_st_state.reshape([x,y,z])
-        # second, betas for group-stats
-        b_RDM_brain_cl_midn_st_clocks = np.zeros([x*y*z])
-        b_RDM_brain_cl_midn_st_clocks[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][0] for vox in results_clocks_midn_states_model]
-        b_RDM_brain_cl_midn_st_clocks = t_RDM_brain_cl_midn_st_clocks.reshape([x,y,z])
-        
-        b_RDM_brain_cl_midn_st_midn = np.zeros([x*y*z])
-        b_RDM_brain_cl_midn_st_midn[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][1] for vox in results_clocks_midn_states_model]
-        b_RDM_brain_cl_midn_st_midn = t_RDM_brain_cl_midn_st_midn.reshape([x,y,z])
-        
-        b_RDM_brain_cl_midn_st_state = np.zeros([x*y*z])
-        b_RDM_brain_cl_midn_st_state[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][2] for vox in results_clocks_midn_states_model]
-        b_RDM_brain_cl_midn_st_state = b_RDM_brain_cl_midn_st_state.reshape([x,y,z])
+        results_clocks_midn_states_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(clocks_midn_states_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model 1'))
         
         
         
         # combined model 2
-        # clocks, midnight, state and location.
-        clocks_midn_states_loc_RDM = rsatoolbox.rdm.concat(clocks_RDM, midnight_RDM, state_RDM, loc_RDM)
-        clocks_midn_states_loc_model = rsatoolbox.model.ModelWeighted('clocks_midn_states_RDM', clocks_midn_states_loc_RDM)
+        # clocks, midnight, state, phase and location.
+        clocks_midn_states_loc_ph_RDM = rsatoolbox.rdm.concat(clocks_RDM, midnight_RDM, state_RDM, loc_RDM, phase_RDM)
+        clocks_midn_states_loc_ph_model = rsatoolbox.model.ModelWeighted('clocks_midn_states_RDM', clocks_midn_states_loc_ph_RDM)
         # the first is t, the second beta. [est.tvalues[1:], est.params[1:]]
-        results_clocks_midn_states_loc_model = Parallel(n_jobs=3)(delayed(my_eval)(clocks_midn_states_loc_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model 2'))
+        results_clocks_midn_states_loc_ph_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(clocks_midn_states_loc_ph_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model 2'))
         
-        # save t-vals for visualization
-        x, y, z = mask.shape
-        t_RDM_brain_cl_midn_st_loc_clocks = np.zeros([x*y*z])
-        t_RDM_brain_cl_midn_st_loc_clocks[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][0] for vox in results_clocks_midn_states_loc_model]
-        t_RDM_brain_cl_midn_st_loc_clocks = t_RDM_brain_cl_midn_st_loc_clocks.reshape([x,y,z])
         
-        t_RDM_brain_cl_midn_st_loc_midn = np.zeros([x*y*z])
-        t_RDM_brain_cl_midn_st_loc_midn[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][1] for vox in results_clocks_midn_states_loc_model]
-        t_RDM_brain_cl_midn_st_loc_midn = t_RDM_brain_cl_midn_st_loc_midn.reshape([x,y,z])
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}/results", file_name= f"my_combo_clock_{task_half}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}/results", file_name= f"my_combo_midn_{task_half}", mask=mask, number_regr = 1, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}/results", file_name= f"my_combo_state_{task_half}", mask=mask, number_regr = 2, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}/results", file_name= f"my_combo_loc_{task_half}", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}/results", file_name= f"my_combo_phase_{task_half}", mask=mask, number_regr = 4, ref_image_for_affine_path=ref_img)
         
-        t_RDM_brain_cl_midn_st_loc_state = np.zeros([x*y*z])
-        t_RDM_brain_cl_midn_st_loc_state[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][2] for vox in results_clocks_midn_states_loc_model]
-        t_RDM_brain_cl_midn_st_loc_state = t_RDM_brain_cl_midn_st_loc_state.reshape([x,y,z])
         
-        t_RDM_brain_cl_midn_st_loc_loc = np.zeros([x*y*z])
-        t_RDM_brain_cl_midn_st_loc_loc[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][2] for vox in results_clocks_midn_states_loc_model]
-        t_RDM_brain_cl_midn_st_loc_loc = t_RDM_brain_cl_midn_st_loc_loc.reshape([x,y,z])
         
-        # save betas for group stats
-        b_RDM_brain_cl_midn_st_loc_clocks = np.zeros([x*y*z])
-        b_RDM_brain_cl_midn_st_loc_clocks[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[1][0] for vox in results_clocks_midn_states_loc_model]
-        b_RDM_brain_cl_midn_st_loc_clocks = b_RDM_brain_cl_midn_st_loc_clocks.reshape([x,y,z])
+        # # save the first single models 
+        # t_RDM_my_loc = np.zeros([x*y*z])
+        # t_RDM_my_loc[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][0] for vox in RDM_my_loc]
+        # t_RDM_my_loc = t_RDM_my_loc.reshape([x,y,z])
+        # b_RDM_my_loc = np.zeros([x*y*z])
+        # b_RDM_my_loc[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[1][0] for vox in RDM_my_loc]
+        # b_RDM_my_loc = b_RDM_my_loc.reshape([x,y,z])
+        # p_RDM_my_loc = np.zeros([x*y*z])
+        # p_RDM_my_loc[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[2][0] for vox in RDM_my_loc]
+        # p_RDM_my_loc = p_RDM_my_loc.reshape([x,y,z])
         
-        b_RDM_brain_cl_midn_st_loc_midn = np.zeros([x*y*z])
-        b_RDM_brain_cl_midn_st_loc_midn[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[1][1] for vox in results_clocks_midn_states_loc_model]
-        b_RDM_brain_cl_midn_st_loc_midn = b_RDM_brain_cl_midn_st_loc_midn.reshape([x,y,z])
         
-        b_RDM_brain_cl_midn_st_loc_state = np.zeros([x*y*z])
-        b_RDM_brain_cl_midn_st_loc_state[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[1][2] for vox in results_clocks_midn_states_loc_model]
-        b_RDM_brain_cl_midn_st_loc_state = b_RDM_brain_cl_midn_st_loc_state.reshape([x,y,z])
         
-        b_RDM_brain_cl_midn_st_loc_loc = np.zeros([x*y*z])
-        b_RDM_brain_cl_midn_st_loc_loc[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[1][2] for vox in results_clocks_midn_states_loc_model]
-        b_RDM_brain_cl_midn_st_loc_loc = b_RDM_brain_cl_midn_st_loc_loc.reshape([x,y,z])
+        # x, y, z = mask.shape
+        # # first, t-values for visualisation
+        # t_RDM_brain_cl_midn_st_clocks = np.zeros([x*y*z])
+        # t_RDM_brain_cl_midn_st_clocks[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][0] for vox in results_clocks_midn_states_model]
+        # t_RDM_brain_cl_midn_st_clocks = t_RDM_brain_cl_midn_st_clocks.reshape([x,y,z])
+        
+        # t_RDM_brain_cl_midn_st_midn = np.zeros([x*y*z])
+        # t_RDM_brain_cl_midn_st_midn[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][1] for vox in results_clocks_midn_states_model]
+        # t_RDM_brain_cl_midn_st_midn = t_RDM_brain_cl_midn_st_midn.reshape([x,y,z])
+        
+        # t_RDM_brain_cl_midn_st_state = np.zeros([x*y*z])
+        # t_RDM_brain_cl_midn_st_state[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][2] for vox in results_clocks_midn_states_model]
+        # t_RDM_brain_cl_midn_st_state = t_RDM_brain_cl_midn_st_state.reshape([x,y,z])
+        # # second, betas for group-stats
+        # b_RDM_brain_cl_midn_st_clocks = np.zeros([x*y*z])
+        # b_RDM_brain_cl_midn_st_clocks[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][0] for vox in results_clocks_midn_states_model]
+        # b_RDM_brain_cl_midn_st_clocks = t_RDM_brain_cl_midn_st_clocks.reshape([x,y,z])
+        
+        # b_RDM_brain_cl_midn_st_midn = np.zeros([x*y*z])
+        # b_RDM_brain_cl_midn_st_midn[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][1] for vox in results_clocks_midn_states_model]
+        # b_RDM_brain_cl_midn_st_midn = t_RDM_brain_cl_midn_st_midn.reshape([x,y,z])
+        
+        # b_RDM_brain_cl_midn_st_state = np.zeros([x*y*z])
+        # b_RDM_brain_cl_midn_st_state[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][2] for vox in results_clocks_midn_states_model]
+        # b_RDM_brain_cl_midn_st_state = b_RDM_brain_cl_midn_st_state.reshape([x,y,z])
+        
+        
+        
+        # # combined model 2
+        # # clocks, midnight, state, phase and location.
+        # clocks_midn_states_loc_ph_RDM = rsatoolbox.rdm.concat(clocks_RDM, midnight_RDM, state_RDM, loc_RDM, phase_RDM)
+        # clocks_midn_states_loc_ph_model = rsatoolbox.model.ModelWeighted('clocks_midn_states_RDM', clocks_midn_states_loc_ph_RDM)
+        # # the first is t, the second beta. [est.tvalues[1:], est.params[1:]]
+        # results_clocks_midn_states_loc_ph_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(clocks_midn_states_loc_ph_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model 2'))
+        
+        # # save t-vals for visualization
+        # x, y, z = mask.shape
+        # t_RDM_brain_cl_midn_st_loc_ph_clocks = np.zeros([x*y*z])
+        # t_RDM_brain_cl_midn_st_loc_ph_clocks[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][0] for vox in results_clocks_midn_states_loc_ph_model]
+        # t_RDM_brain_cl_midn_st_loc_ph_clocks = t_RDM_brain_cl_midn_st_loc_ph_clocks.reshape([x,y,z])
+        
+        # t_RDM_brain_cl_midn_st_loc_ph_midn = np.zeros([x*y*z])
+        # t_RDM_brain_cl_midn_st_loc_ph_midn[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][1] for vox in results_clocks_midn_states_loc_ph_model]
+        # t_RDM_brain_cl_midn_st_loc_ph_midn = t_RDM_brain_cl_midn_st_loc_ph_midn.reshape([x,y,z])
+        
+        # t_RDM_brain_cl_midn_st_loc_ph_state = np.zeros([x*y*z])
+        # t_RDM_brain_cl_midn_st_loc_ph_state[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][2] for vox in results_clocks_midn_states_loc_ph_model]
+        # t_RDM_brain_cl_midn_st_loc_ph_state = t_RDM_brain_cl_midn_st_loc_ph_state.reshape([x,y,z])
+        
+        # t_RDM_brain_cl_midn_st_loc_ph_loc = np.zeros([x*y*z])
+        # t_RDM_brain_cl_midn_st_loc_ph_loc[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][3] for vox in results_clocks_midn_states_loc_ph_model]
+        # t_RDM_brain_cl_midn_st_loc_ph_loc = t_RDM_brain_cl_midn_st_loc_ph_loc.reshape([x,y,z])
+        
+        # t_RDM_brain_cl_midn_st_loc_ph_phase = np.zeros([x*y*z])
+        # t_RDM_brain_cl_midn_st_loc_ph_phase[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0][4] for vox in results_clocks_midn_states_loc_ph_model]
+        # t_RDM_brain_cl_midn_st_loc_ph_phase = t_RDM_brain_cl_midn_st_loc_ph_phase.reshape([x,y,z])
+        
+        
+        # # save betas for group stats
+        # b_RDM_brain_cl_midn_st_loc_ph_clocks = np.zeros([x*y*z])
+        # b_RDM_brain_cl_midn_st_loc_ph_clocks[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[1][0] for vox in results_clocks_midn_states_loc_ph_model]
+        # b_RDM_brain_cl_midn_st_loc_ph_clocks = b_RDM_brain_cl_midn_st_loc_ph_clocks.reshape([x,y,z])
+        
+        # b_RDM_brain_cl_midn_st_loc_ph_midn = np.zeros([x*y*z])
+        # b_RDM_brain_cl_midn_st_loc_ph_midn[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[1][1] for vox in results_clocks_midn_states_loc_ph_model]
+        # b_RDM_brain_cl_midn_st_loc_ph_midn = b_RDM_brain_cl_midn_st_loc_ph_midn.reshape([x,y,z])
+        
+        # b_RDM_brain_cl_midn_st_loc_ph_state = np.zeros([x*y*z])
+        # b_RDM_brain_cl_midn_st_loc_ph_state[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[1][2] for vox in results_clocks_midn_states_loc_ph_model]
+        # b_RDM_brain_cl_midn_st_loc_ph_state = b_RDM_brain_cl_midn_st_loc_ph_state.reshape([x,y,z])
+        
+        # b_RDM_brain_cl_midn_st_loc_ph_loc = np.zeros([x*y*z])
+        # b_RDM_brain_cl_midn_st_loc_ph_loc[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[1][3] for vox in results_clocks_midn_states_loc_ph_model]
+        # b_RDM_brain_cl_midn_st_loc_ph_loc = b_RDM_brain_cl_midn_st_loc_ph_loc.reshape([x,y,z])
 
+        # b_RDM_brain_cl_midn_st_loc_ph_phase = np.zeros([x*y*z])
+        # b_RDM_brain_cl_midn_st_loc_ph_phase[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[1][4] for vox in results_clocks_midn_states_loc_ph_model]
+        # b_RDM_brain_cl_midn_st_loc_ph_phase = b_RDM_brain_cl_midn_st_loc_ph_phase.reshape([x,y,z])
+        
+        
+        # # save p-vals for interpretation
+        # p_RDM_brain_cl_midn_st_loc_ph_clocks = np.zeros([x*y*z])
+        # p_RDM_brain_cl_midn_st_loc_ph_clocks[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[2][0] for vox in results_clocks_midn_states_loc_ph_model]
+        # p_RDM_brain_cl_midn_st_loc_ph_clocks = p_RDM_brain_cl_midn_st_loc_ph_clocks.reshape([x,y,z])
+        
+        # p_RDM_brain_cl_midn_st_loc_ph_midn = np.zeros([x*y*z])
+        # p_RDM_brain_cl_midn_st_loc_ph_midn[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[2][1] for vox in results_clocks_midn_states_loc_ph_model]
+        # p_RDM_brain_cl_midn_st_loc_ph_midn = p_RDM_brain_cl_midn_st_loc_ph_midn.reshape([x,y,z])
+        
+        # p_RDM_brain_cl_midn_st_loc_ph_state = np.zeros([x*y*z])
+        # p_RDM_brain_cl_midn_st_loc_ph_state[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[2][2] for vox in results_clocks_midn_states_loc_ph_model]
+        # p_RDM_brain_cl_midn_st_loc_ph_state = p_RDM_brain_cl_midn_st_loc_ph_state.reshape([x,y,z])
+        
+        # p_RDM_brain_cl_midn_st_loc_ph_loc = np.zeros([x*y*z])
+        # p_RDM_brain_cl_midn_st_loc_ph_loc[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[2][3] for vox in results_clocks_midn_states_loc_ph_model]
+        # p_RDM_brain_cl_midn_st_loc_ph_loc = p_RDM_brain_cl_midn_st_loc_ph_loc.reshape([x,y,z])
 
+        # p_RDM_brain_cl_midn_st_loc_ph_phase = np.zeros([x*y*z])
+        # p_RDM_brain_cl_midn_st_loc_ph_phase[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[2][4] for vox in results_clocks_midn_states_loc_ph_model]
+        # p_RDM_brain_cl_midn_st_loc_ph_phase = p_RDM_brain_cl_midn_st_loc_ph_phase.reshape([x,y,z])
         
         
         
-        ############################################
+
+            
+            
+            
         
-        # Last part: SAFE THE RESULTS!!
-        if save_all:
-            ref_img = load_img(f"{fmri_data_dir}/{file}")
-            affine_matrix = ref_img.affine
-            if not os.path.exists(f"{data_dir}/func/RSA_{RDM_version}/results/"):
-                os.makedirs(f"{data_dir}/func/RSA_{RDM_version}/results/")
+        # ############################################
+        
+        # # Last part: SAFE THE RESULTS!!
+        # if save_all:
+        #     ref_img = load_img(f"{fmri_data_dir}/{file}")
+        #     affine_matrix = ref_img.affine
+        #     if not os.path.exists(f"{data_dir}/func/RSA_{RDM_version}+/results/"):
+        #         os.makedirs(f"{data_dir}/func/RSA_{RDM_version}+/results/")
                 
                 
-            loc_nifti = nib.Nifti1Image(RDM_brain_loc, affine=affine_matrix)
-            loc_file = f"{data_dir}/func/RSA_{RDM_version}/results/loc_model_RDM_0{task_half}.nii.gz"
+        #     loc_nifti = nib.Nifti1Image(RDM_brain_loc, affine=affine_matrix)
+        #     loc_file = f"{data_dir}/func/RSA_{RDM_version}+/results/loc_model_RDM_0{task_half}.nii.gz"
             
-            phase_nifti = nib.Nifti1Image(RDM_brain_phase, affine=affine_matrix)
-            phase_file = f"{data_dir}/func/RSA_{RDM_version}/results/phase_model_RDM_0{task_half}.nii.gz"
+        #     phase_nifti = nib.Nifti1Image(RDM_brain_phase, affine=affine_matrix)
+        #     phase_file = f"{data_dir}/func/RSA_{RDM_version}+/results/phase_model_RDM_0{task_half}.nii.gz"
             
-            midnigth_nifti = nib.Nifti1Image(RDM_brain_midnight, affine=affine_matrix)
-            midnight_file = f"{data_dir}/func/RSA_{RDM_version}/results/midnight_model_RDM_0{task_half}.nii.gz"
+        #     midnigth_nifti = nib.Nifti1Image(RDM_brain_midnight, affine=affine_matrix)
+        #     midnight_file = f"{data_dir}/func/RSA_{RDM_version}+/results/midnight_model_RDM_0{task_half}.nii.gz"
             
-            clocks_nifti = nib.Nifti1Image(RDM_brain_clocks, affine=affine_matrix)
-            clocks_file = f"{data_dir}/func/RSA_{RDM_version}/results/clocks_model_RDM_0{task_half}.nii.gz"
+        #     clocks_nifti = nib.Nifti1Image(RDM_brain_clocks, affine=affine_matrix)
+        #     clocks_file = f"{data_dir}/func/RSA_{RDM_version}+/results/clocks_model_RDM_0{task_half}.nii.gz"
             
-            state_nifti = nib.Nifti1Image(RDM_brain_state, affine=affine_matrix)
-            state_file = f"{data_dir}/func/RSA_{RDM_version}/results/state_model_RDM_0{task_half}.nii.gz"
+        #     state_nifti = nib.Nifti1Image(RDM_brain_state, affine=affine_matrix)
+        #     state_file = f"{data_dir}/func/RSA_{RDM_version}+/results/state_model_RDM_0{task_half}.nii.gz"
             
-            # combo_state_nifti = nib.Nifti1Image(RDM_brain_cl_midn_st_state, affine=affine_matrix)
-            # combo_state_file = f"{data_dir}/func/RSA_{RDM_version}/results/combo_RDM_state_0{task_half}.nii.gz"
+        #     # combo_state_nifti = nib.Nifti1Image(RDM_brain_cl_midn_st_state, affine=affine_matrix)
+        #     # combo_state_file = f"{data_dir}/func/RSA_{RDM_version}/results/combo_RDM_state_0{task_half}.nii.gz"
             
-            # combo_midn_nifti = nib.Nifti1Image(RDM_brain_cl_midn_st_midn, affine=affine_matrix)
-            # combo_midn_file = f"{data_dir}/func/RSA_{RDM_version}/results/combo_RDM_midn_0{task_half}.nii.gz"
+        #     # combo_midn_nifti = nib.Nifti1Image(RDM_brain_cl_midn_st_midn, affine=affine_matrix)
+        #     # combo_midn_file = f"{data_dir}/func/RSA_{RDM_version}/results/combo_RDM_midn_0{task_half}.nii.gz"
             
-            # combo_clocks_nifti = nib.Nifti1Image(RDM_brain_cl_midn_st_clocks, affine=affine_matrix)
-            # combo_clocks_file = f"{data_dir}/func/RSA_{RDM_version}/results/combo_RDM_clocks_0{task_half}.nii.gz"
+        #     # combo_clocks_nifti = nib.Nifti1Image(RDM_brain_cl_midn_st_clocks, affine=affine_matrix)
+        #     # combo_clocks_file = f"{data_dir}/func/RSA_{RDM_version}/results/combo_RDM_clocks_0{task_half}.nii.gz"
             
-            # Save the NIfTI image to the 
-            nib.save(loc_nifti, loc_file)
-            nib.save(phase_nifti, phase_file)
-            nib.save(midnigth_nifti, midnight_file)
-            nib.save(clocks_nifti, clocks_file)
-            nib.save(state_nifti, state_file)
+        #     t_combo_clmidstlocph_clocks_nifti = nib.Nifti1Image(t_RDM_brain_cl_midn_st_loc_ph_clocks, affine=affine_matrix)
+        #     t_combo_clmidstlocph_clocks_file = f"{data_dir}/func/RSA_{RDM_version}+/results/t_combo_clmidstlocph_clocks_0{task_half}.nii.gz"
             
-            # # combo model 1
-            # nib.save(b_combo_clmidst_clocks_nifti, b_combo_clmidst_clocks_file)
-            # nib.save(t_combo_clmidst_clocks_nifti, t_combo_clmidst_clocks_file)
+        #     t_combo_clmidstlocph_midn_nifti = nib.Nifti1Image(t_RDM_brain_cl_midn_st_loc_ph_midn, affine=affine_matrix)
+        #     t_combo_clmidstlocph_midn_file = f"{data_dir}/func/RSA_{RDM_version}+/results/t_combo_clmidstlocph_midn_0{task_half}.nii.gz"
+            
+        #     t_combo_clmidstlocph_state_nifti = nib.Nifti1Image(t_RDM_brain_cl_midn_st_loc_ph_state, affine=affine_matrix)
+        #     t_combo_clmidstlocph_state_file = f"{data_dir}/func/RSA_{RDM_version}+/results/t_combo_clmidstlocph_state_0{task_half}.nii.gz"
+            
+        #     t_combo_clmidstlocph_loc_nifti = nib.Nifti1Image(t_RDM_brain_cl_midn_st_loc_ph_loc, affine=affine_matrix)
+        #     t_combo_clmidstlocph_loc_file = f"{data_dir}/func/RSA_{RDM_version}+/results/t_combo_clmidstlocph_loc_0{task_half}.nii.gz"
+            
+        #     t_combo_clmidstlocph_phase_nifti = nib.Nifti1Image(t_RDM_brain_cl_midn_st_loc_ph_phase, affine=affine_matrix)
+        #     t_combo_clmidstlocph_phase_file = f"{data_dir}/func/RSA_{RDM_version}+/results/t_combo_clmidstlocph_phase_0{task_half}.nii.gz"
+            
+            
+        #     b_combo_clmidstlocph_clocks_nifti = nib.Nifti1Image(b_RDM_brain_cl_midn_st_loc_ph_clocks, affine=affine_matrix)
+        #     b_combo_clmidstlocph_clocks_file = f"{data_dir}/func/RSA_{RDM_version}+/results/b_combo_clmidstlocph_clocks_0{task_half}.nii.gz"
+            
+        #     b_combo_clmidstlocph_midn_nifti = nib.Nifti1Image(b_RDM_brain_cl_midn_st_loc_ph_midn, affine=affine_matrix)
+        #     b_combo_clmidstlocph_midn_file = f"{data_dir}/func/RSA_{RDM_version}+/results/b_combo_clmidstlocph_midn_0{task_half}.nii.gz"
+            
+        #     b_combo_clmidstlocph_state_nifti = nib.Nifti1Image(b_RDM_brain_cl_midn_st_loc_ph_state, affine=affine_matrix)
+        #     b_combo_clmidstlocph_state_file = f"{data_dir}/func/RSA_{RDM_version}+/results/b_combo_clmidstlocph_state_0{task_half}.nii.gz"
+            
+        #     b_combo_clmidstlocph_loc_nifti = nib.Nifti1Image(b_RDM_brain_cl_midn_st_loc_ph_loc, affine=affine_matrix)
+        #     b_combo_clmidstlocph_loc_file = f"{data_dir}/func/RSA_{RDM_version}+/results/b_combo_clmidstlocph_loc_0{task_half}.nii.gz"
+            
+        #     b_combo_clmidstlocph_phase_nifti = nib.Nifti1Image(b_RDM_brain_cl_midn_st_loc_ph_phase, affine=affine_matrix)
+        #     b_combo_clmidstlocph_phase_file = f"{data_dir}/func/RSA_{RDM_version}+/results/b_combo_clmidstlocph_phase_0{task_half}.nii.gz"
+            
 
             
-            # # combo model 2
-            # nib.save(t_combo_clmidstloc_clocks_nifti, t_combo_clmidstloc_clocks_file)
-            # nib.save(b_combo_clmidstloc_clock_nifti, t_combo_clmidstloc_clock_file)
-            
-            # nib.save(t_combo_clmidstloc_mid_nifti, t_combo_clmidstloc_mid_file)
-            # nib.save(b_combo_clmidstloc_mid_nifti, b_combo_clmidstloc_mid_file)
-            
-            # nib.save(b_combo_clmidstloc_state_nifti, b_combo_clmidstloc_state_file)
-            # nib.save(t_combo_clmidstloc_state_nifti, t_combo_clmidstloc_state_file)
-            
-            # nib.save(t_combo_clmidstloc_loc_nifti, t_combo_clmidstloc_loc_file)
-            # nib.save(b_combo_clmidstloc_loc_nifti, b_combo_clmidstloc_loc_file)
             
             
-            # nib.save(combo_clocks_nifti, combo_clocks_file)
-            # nib.save(combo_midn_nifti, combo_midn_file)
-            # nib.save(combo_state_nifti, combo_state_file)
+        #     # Save the NIfTI image to the 
+        #     nib.save(loc_nifti, loc_file)
+        #     nib.save(phase_nifti, phase_file)
+        #     nib.save(midnigth_nifti, midnight_file)
+        #     nib.save(clocks_nifti, clocks_file)
+        #     nib.save(state_nifti, state_file)
+            
+        #     # # combo model 1
+        #     # nib.save(b_combo_clmidst_clocks_nifti, b_combo_clmidst_clocks_file)
+        #     # nib.save(t_combo_clmidst_clocks_nifti, t_combo_clmidst_clocks_file)
+
+            
+        #     # combo model 2
+        #     nib.save(t_combo_clmidstlocph_clocks_nifti, t_combo_clmidstlocph_clocks_file)
+        #     nib.save(b_combo_clmidstlocph_clocks_nifti, b_combo_clmidstlocph_clocks_file)
+            
+        #     nib.save(t_combo_clmidstlocph_midn_nifti, t_combo_clmidstlocph_midn_file)
+        #     nib.save(b_combo_clmidstlocph_midn_nifti, b_combo_clmidstlocph_midn_file)
+            
+        #     nib.save(b_combo_clmidstlocph_state_nifti, b_combo_clmidstlocph_state_file)
+        #     nib.save(t_combo_clmidstlocph_state_nifti, t_combo_clmidstlocph_state_file)
+            
+        #     nib.save(t_combo_clmidstlocph_loc_nifti, t_combo_clmidstlocph_loc_file)
+        #     nib.save(b_combo_clmidstlocph_loc_nifti, b_combo_clmidstlocph_loc_file)
+            
+        #     nib.save(t_combo_clmidstlocph_phase_nifti, t_combo_clmidstlocph_phase_file)
+        #     nib.save(b_combo_clmidstlocph_phase_nifti, b_combo_clmidstlocph_phase_file)
+            
+        #     #nib.save(combo_clocks_nifti, combo_clocks_file)
+        #     #nib.save(combo_midn_nifti, combo_midn_file)
+        #     #nib.save(combo_state_nifti, combo_state_file)
 
         # KEEP MAYBE
         # plt.figure()

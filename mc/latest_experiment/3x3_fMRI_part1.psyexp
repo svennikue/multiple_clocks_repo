@@ -25,9 +25,9 @@
     <Param val="False" valType="bool" updates="None" name="Show mouse"/>
     <Param val="norm" valType="str" updates="None" name="Units"/>
     <Param val="" valType="str" updates="None" name="Use version"/>
-    <Param val="[1920, 1440]" valType="list" updates="None" name="Window size (pixels)"/>
+    <Param val="[1333,1000]" valType="list" updates="None" name="Window size (pixels)"/>
     <Param val="avg" valType="str" updates="None" name="blendMode"/>
-    <Param val="$[0,0,0]" valType="color" updates="None" name="color"/>
+    <Param val="0.7412, 0.4431, 0.0588" valType="color" updates="None" name="color"/>
     <Param val="rgb" valType="str" updates="None" name="colorSpace"/>
     <Param val="100.1.1.1" valType="str" updates="None" name="elAddress"/>
     <Param val="FILTER_LEVEL_2" valType="str" updates="None" name="elDataFiltering"/>
@@ -39,7 +39,7 @@
     <Param val="False" valType="bool" updates="None" name="elSimMode"/>
     <Param val="RIGHT_EYE" valType="str" updates="None" name="elTrackEyes"/>
     <Param val="PUPIL_CR_TRACKING" valType="str" updates="None" name="elTrackingMode"/>
-    <Param val="3x3_practice_v3" valType="str" updates="None" name="expName"/>
+    <Param val="3x3_fMRI_part1" valType="str" updates="None" name="expName"/>
     <Param val="on Sync" valType="str" updates="None" name="exportHTML"/>
     <Param val="None" valType="str" updates="None" name="eyetracker"/>
     <Param val="127.0.0.1" valType="str" updates="None" name="gpAddress"/>
@@ -69,8 +69,8 @@
         <Param val="" valType="extendedCode" updates="constant" name="Before JS Experiment"/>
         <Param val="op_rewB = 0&amp;#10;op_rewA = 0&amp;#10;op_rewC = 0&amp;#10;op_rewD = 0" valType="extendedCode" updates="constant" name="Begin Experiment"/>
         <Param val="op_rewB = 0;&amp;#10;op_rewA = 0;&amp;#10;op_rewC = 0;&amp;#10;op_rewD = 0;&amp;#10;" valType="extendedCode" updates="constant" name="Begin JS Experiment"/>
-        <Param val="time_start = globalClock.getTime();&amp;#10;op_rewB = 0;&amp;#10;op_rewA = 0;&amp;#10;op_rewC = 0;&amp;#10;op_rewD = 0;&amp;#10;" valType="extendedCode" updates="constant" name="Begin JS Routine"/>
-        <Param val="time_start = globalClock.getTime()&amp;#10;&amp;#10;op_rewB = 0&amp;#10;op_rewA = 0&amp;#10;op_rewC = 0&amp;#10;op_rewD = 0" valType="extendedCode" updates="constant" name="Begin Routine"/>
+        <Param val="time_start = globalClock.getTime();&amp;#10;op_rewB = 0;&amp;#10;op_rewA = 0;&amp;#10;op_rewC = 0;&amp;#10;op_rewD = 0;&amp;#10;if ((type === &quot;backw&quot;)) {&amp;#10;    show_backwards_r = 1;&amp;#10;} else {&amp;#10;    if ((type === &quot;forw&quot;)) {&amp;#10;        show_backwards_r = 0;&amp;#10;    }&amp;#10;}&amp;#10;" valType="extendedCode" updates="constant" name="Begin JS Routine"/>
+        <Param val="time_start = globalClock.getTime()&amp;#10;&amp;#10;op_rewB = 0&amp;#10;op_rewA = 0&amp;#10;op_rewC = 0&amp;#10;op_rewD = 0&amp;#10;&amp;#10;&amp;#10;if type == 'backw':&amp;#10;    show_backwards_r = 1&amp;#10;elif type == 'forw':&amp;#10;    show_backwards_r = 0" valType="extendedCode" updates="constant" name="Begin Routine"/>
         <Param val="Auto-&gt;JS" valType="str" updates="None" name="Code Type"/>
         <Param val="t_curr = globalClock.getTime()&amp;#10;tim = t_curr - time_start&amp;#10;if tim &lt; 1.5:&amp;#10;    op_rewA = 1&amp;#10;if (tim &gt; 1.5) and (tim &lt; 3):&amp;#10;    op_rewB = 1&amp;#10;    op_rewA = 0&amp;#10;if (tim &gt; 3) and (tim &lt; 4.5):&amp;#10;    op_rewB = 0&amp;#10;    op_rewC = 1&amp;#10;if (tim &gt; 4.5) and (tim &lt; 6):&amp;#10;    op_rewC = 0&amp;#10;    op_rewD = 1&amp;#10;if (tim &gt; 6) and (tim &lt; 7):&amp;#10;    op_rewD = 0&amp;#10;    op_rewA = 1&amp;#10;if (tim &gt; 7) and (tim &lt; 8):&amp;#10;    op_rewB = 1&amp;#10;    op_rewA = 0&amp;#10;if (tim &gt; 8) and (tim &lt; 9):&amp;#10;    op_rewB = 0&amp;#10;    op_rewC = 1&amp;#10;if tim &gt; 9:&amp;#10;    op_rewC = 0&amp;#10;    op_rewD = 1" valType="extendedCode" updates="constant" name="Each Frame"/>
         <Param val="t_curr = globalClock.getTime();&amp;#10;tim = (t_curr - time_start);&amp;#10;if ((tim &lt; 1.5)) {&amp;#10;    op_rewA = 1;&amp;#10;}&amp;#10;if (((tim &gt; 1.5) &amp;&amp; (tim &lt; 3))) {&amp;#10;    op_rewB = 1;&amp;#10;    op_rewA = 0;&amp;#10;}&amp;#10;if (((tim &gt; 3) &amp;&amp; (tim &lt; 4.5))) {&amp;#10;    op_rewB = 0;&amp;#10;    op_rewC = 1;&amp;#10;}&amp;#10;if (((tim &gt; 4.5) &amp;&amp; (tim &lt; 6))) {&amp;#10;    op_rewC = 0;&amp;#10;    op_rewD = 1;&amp;#10;}&amp;#10;if (((tim &gt; 6) &amp;&amp; (tim &lt; 7))) {&amp;#10;    op_rewD = 0;&amp;#10;    op_rewA = 1;&amp;#10;}&amp;#10;if (((tim &gt; 7) &amp;&amp; (tim &lt; 8))) {&amp;#10;    op_rewB = 1;&amp;#10;    op_rewA = 0;&amp;#10;}&amp;#10;if (((tim &gt; 8) &amp;&amp; (tim &lt; 9))) {&amp;#10;    op_rewB = 0;&amp;#10;    op_rewC = 1;&amp;#10;}&amp;#10;if ((tim &gt; 9)) {&amp;#10;    op_rewC = 0;&amp;#10;    op_rewD = 1;&amp;#10;}&amp;#10;" valType="extendedCode" updates="constant" name="Each JS Frame"/>
@@ -103,7 +103,7 @@
         <Param val="time (s)" valType="str" updates="None" name="startType"/>
         <Param val="0.0" valType="code" updates="None" name="startVal"/>
         <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
-        <Param val="10." valType="code" updates="constant" name="stopVal"/>
+        <Param val="12" valType="code" updates="constant" name="stopVal"/>
         <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
         <Param val="128" valType="num" updates="constant" name="texture resolution"/>
         <Param val="from exp settings" valType="str" updates="None" name="units"/>
@@ -216,17 +216,42 @@
         <Param val="128" valType="num" updates="constant" name="texture resolution"/>
         <Param val="from exp settings" valType="str" updates="None" name="units"/>
       </ImageComponent>
+      <TextComponent name="warning_txt">
+        <Param val="black" valType="color" updates="constant" name="color"/>
+        <Param val="rgb" valType="str" updates="constant" name="colorSpace"/>
+        <Param val="1" valType="num" updates="constant" name="contrast"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="None" valType="str" updates="constant" name="flip"/>
+        <Param val="Open Sans" valType="str" updates="constant" name="font"/>
+        <Param val="LTR" valType="str" updates="None" name="languageStyle"/>
+        <Param val="0.1" valType="num" updates="constant" name="letterHeight"/>
+        <Param val="warning_txt" valType="code" updates="None" name="name"/>
+        <Param val="show_backwards_r" valType="num" updates="set every repeat" name="opacity"/>
+        <Param val="0" valType="num" updates="constant" name="ori"/>
+        <Param val="(-0.515, 0)" valType="list" updates="constant" name="pos"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="0.0" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="10" valType="code" updates="constant" name="stopVal"/>
+        <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
+        <Param val="You thought this was easy? Now find the gold in reversed order!" valType="str" updates="constant" name="text"/>
+        <Param val="from exp settings" valType="str" updates="None" name="units"/>
+        <Param val="0.38" valType="num" updates="constant" name="wrapWidth"/>
+      </TextComponent>
     </Routine>
     <Routine name="task">
       <CodeComponent name="task_code">
-        <Param val="# add another output table.&amp;#10;# Ensure that relative paths start from the same directory as this script&amp;#10;_thisDir = os.path.dirname(os.path.abspath(__file__))&amp;#10;# info about the experiment session&amp;#10;&amp;#10;expInfo = {'participant': '', 'session': '001'}&amp;#10;expInfo['date'] = data.getDateStr()  # add a simple timestamp&amp;#10;&amp;#10;result_name = filename = _thisDir + os.sep + u'data/%s_%s_%s' % (expInfo['participant'], expInfo['date'], 'results')&amp;#10;resultTbl = data.ExperimentHandler(name='musicbox_practice', version='',&amp;#10;    extraInfo=expInfo, runtimeInfo=None,&amp;#10;    originPath='C:\\Users\\behrenslab-fmrib\\Documents\\Psychopy\\musicbox\\experiment\\3x3_practice_v2.py',&amp;#10;    savePickle=True, saveWideText=True,&amp;#10;    dataFileName=result_name)" valType="extendedCode" updates="constant" name="Before Experiment"/>
+        <Param val="# add another output table.&amp;#10;# Ensure that relative paths start from the same directory as this script&amp;#10;_thisDir = os.path.dirname(os.path.abspath(__file__))&amp;#10;# info about the experiment session&amp;#10;&amp;#10;expInfo = {'participant': '', 'session': '001'}&amp;#10;expInfo['date'] = data.getDateStr()  # add a simple timestamp&amp;#10;&amp;#10;result_name = filename = _thisDir + os.sep + u'data/%s_%s_%s' % (expInfo['participant'], expInfo['date'], 'results')&amp;#10;resultTbl = data.ExperimentHandler(name='musicbox_practice', version='',&amp;#10;    extraInfo=expInfo, runtimeInfo=None,&amp;#10;    originPath='C:\\Users\\behrenslab-fmrib\\Documents\\Psychopy\\musicbox\\experiment\\3x3_practice_v2.py',&amp;#10;    savePickle=True, saveWideText=True,&amp;#10;    dataFileName=result_name)&amp;#10;    &amp;#10;    &amp;#10;# function to get a gamma-function jitter.&amp;#10;import numpy as np&amp;#10;def jitter(exp_step_no, mean_subpath_length, var_per_step=1.5):&amp;#10;    # first randomly sample from a gamma distribution&amp;#10;    subpath_length = np.random.standard_gamma(mean_subpath_length)&amp;#10;    while (subpath_length &lt; 3) or (subpath_length &gt; 12):&amp;#10;        subpath_length = np.random.standard_gamma(mean_subpath_length)&amp;#10;    # then make an array for each step + reward you expect to take&amp;#10;    step_size_dummy = np.random.randint(1, (exp_step_no+1)*var_per_step, size = exp_step_no + 1)&amp;#10;    # make the last one, the reward, twice as long as the average step size&amp;#10;    ave_step = np.mean(step_size_dummy[0:-1])&amp;#10;    step_size_dummy[-1] = ave_step * 2&amp;#10;    # then multiply the fraction of all step lenghts with the actual subpath length&amp;#10;    stepsizes = np.empty(exp_step_no + 1)&amp;#10;    for i in range(exp_step_no + 1):&amp;#10;        stepsizes[i] = (step_size_dummy[i]/(sum(step_size_dummy))) * subpath_length&amp;#10;    # stepsizes[-1] will be the reward length. If more steps than len(stepsizes[0:-1]), randomly sample.&amp;#10;    return stepsizes" valType="extendedCode" updates="constant" name="Before Experiment"/>
         <Param val="" valType="extendedCode" updates="constant" name="Before JS Experiment"/>
-        <Param val="from psychopy.core import wait as wait&amp;#10;import random &amp;#10;&amp;#10;states = ['A', 'B', 'C', 'D']&amp;#10;field_nos = ['','','','']&amp;#10;&amp;#10;rew_visible = 1&amp;#10;&amp;#10;printing = 'nothing happened yet'&amp;#10;print(printing)&amp;#10;&amp;#10;curr_x = 0&amp;#10;curr_y = 0" valType="extendedCode" updates="constant" name="Begin Experiment"/>
+        <Param val="from psychopy.core import wait as wait&amp;#10;import random &amp;#10;" valType="extendedCode" updates="constant" name="Begin Experiment"/>
         <Param val="import {wait as wait} from 'psychopy/core';&amp;#10;import * as random from 'random';&amp;#10;var curr_x, curr_y, field_nos, printing, rew_visible, states;&amp;#10;states = [&quot;A&quot;, &quot;B&quot;, &quot;C&quot;, &quot;D&quot;];&amp;#10;field_nos = [&quot;&quot;, &quot;&quot;, &quot;&quot;, &quot;&quot;];&amp;#10;curr_x = ((- 25) / 100);&amp;#10;curr_y = ((- 25) / 100);&amp;#10;rew_visible = 1;&amp;#10;printing = &quot;nothing happened yet&quot;;&amp;#10;console.log(printing);&amp;#10;" valType="extendedCode" updates="constant" name="Begin JS Experiment"/>
         <Param val="rew_visible = 0;&amp;#10;index_rew = [0, 0];&amp;#10;no_keys_pressed = [0];&amp;#10;nav_key.clearEvents();&amp;#10;loop_no = 0;&amp;#10;rew_x = [rew_x_A, rew_x_B, rew_x_C, rew_x_D];&amp;#10;rew_y = [rew_y_A, rew_y_B, rew_y_C, rew_y_D];&amp;#10;states = [&quot;A&quot;, &quot;B&quot;, &quot;C&quot;, &quot;D&quot;];&amp;#10;field_nos = [&quot;&quot;, &quot;&quot;, &quot;&quot;, &quot;&quot;];&amp;#10;msg = &quot;&quot;;&amp;#10;psychoJS.experiment.nextEntry();&amp;#10;psychoJS.experiment.addData(&quot;start_ABCD_game&quot;, globalClock.getTime());&amp;#10;states = [&quot;A&quot;, &quot;B&quot;, &quot;C&quot;, &quot;D&quot;];&amp;#10;field_nos = [&quot;&quot;, &quot;&quot;, &quot;&quot;, &quot;&quot;];&amp;#10;msg = &quot;&quot;;&amp;#10;interval = 0.05;&amp;#10;move_timer = [];&amp;#10;move_timer.push(globalClock.getTime());&amp;#10;move_counter = 0;&amp;#10;time_at_press = globalClock.getTime();&amp;#10;key1_press_trigger = 0;&amp;#10;key2_press_trigger = 0;&amp;#10;key3_press_trigger = 0;&amp;#10;key4_press_trigger = 0;&amp;#10;" valType="extendedCode" updates="constant" name="Begin JS Routine"/>
-        <Param val="rew_visible = 0&amp;#10;A_visible = 0&amp;#10;index_rew = [0,0]&amp;#10;no_keys_pressed = [0]&amp;#10;&amp;#10;# flush out all potentially recorded button press events&amp;#10;nav_key_task.clearEvents()&amp;#10;loop_no = 0&amp;#10;&amp;#10;rew_x = [rew_x_A, rew_x_B, rew_x_C, rew_x_D]&amp;#10;rew_y = [rew_y_A, rew_y_B, rew_y_C, rew_y_D]&amp;#10;print(f'these are the new reward locations: xABCD {rew_x}, yABCD {rew_y}')&amp;#10;&amp;#10;#rew_x = [75/100, 75/100, -75/100, 75/100]&amp;#10;#rew_y = [75/100, -75/100, -25/100, -25/100]&amp;#10;states = ['A', 'B', 'C', 'D']&amp;#10;field_nos = ['','','','']&amp;#10;msg = ''&amp;#10;&amp;#10;thisExp.nextEntry()&amp;#10;thisExp.addData('next_task', globalClock.getTime())&amp;#10;states = ['A', 'B', 'C', 'D']&amp;#10;field_nos = ['','','','']&amp;#10;msg = ''&amp;#10;resultTbl.nextEntry()&amp;#10;resultTbl.addData('next_task', globalClock.getTime())&amp;#10;resultTbl.addData('round_no', Round)&amp;#10;resultTbl.addLoop(rep_runs)  # add the loop to the experiment&amp;#10;&amp;#10;# i have 2000ms. every 10 ms, I want to move this thing.&amp;#10;# this means that I will move the thing 200 times.&amp;#10;&amp;#10;interval = 0.05&amp;#10;move_timer = []&amp;#10;move_timer.append(globalClock.getTime())&amp;#10;move_counter = 0&amp;#10;time_at_press = globalClock.getTime()&amp;#10;key1_press_trigger = 0&amp;#10;key2_press_trigger = 0&amp;#10;key3_press_trigger = 0&amp;#10;key4_press_trigger = 0&amp;#10;&amp;#10;progress_bar_on = 0&amp;#10;progress_timer = []&amp;#10;progress_timer.append(globalClock.getTime())&amp;#10;reward_waiting = random.uniform(2.2, 3.5)&amp;#10;" valType="extendedCode" updates="constant" name="Begin Routine"/>
+        <Param val="rew_visible = 0&amp;#10;A_visible = 0&amp;#10;index_rew = [0,0]&amp;#10;no_keys_pressed = [0]&amp;#10;&amp;#10;steps_taken_this_subpath = 0&amp;#10;&amp;#10;foot_disappear = 1&amp;#10;progress_disappear = 1&amp;#10;progress2_disappear = 1&amp;#10;&amp;#10;&amp;#10;# flush out all potentially recorded button press events&amp;#10;nav_key_task.clearEvents()&amp;#10;loop_no = 0&amp;#10;&amp;#10;if type == 'forw':&amp;#10;    rew_x = [rew_x_A, rew_x_B, rew_x_C, rew_x_D]&amp;#10;    rew_y = [rew_y_A, rew_y_B, rew_y_C, rew_y_D]&amp;#10;    curr_x = rew_x_D&amp;#10;    curr_y = rew_y_D&amp;#10;    all_exp_step_nos = [exp_step_DA, exp_step_AB, exp_step_BC, exp_step_CD]&amp;#10;    curr_exp_step_no = all_exp_step_nos[index_rew[-1]]&amp;#10;&amp;#10;elif type == 'backw':&amp;#10;    rew_x = [rew_x_D, rew_x_C, rew_x_B, rew_x_A]&amp;#10;    rew_y = [rew_y_D, rew_y_C, rew_y_B, rew_y_A]&amp;#10;    curr_x = rew_x_A&amp;#10;    curr_y = rew_y_A&amp;#10;    all_exp_step_nos = [exp_step_DA, exp_step_CD, exp_step_BC, exp_step_AB]&amp;#10;    curr_exp_step_no = all_exp_step_nos[index_rew[-1]]&amp;#10;    &amp;#10;&amp;#10;secs_per_step = jitter(curr_exp_step_no, 5.75, var_per_step=1.5)&amp;#10;&amp;#10;print(f'these are the new reward locations: xABCD {rew_x}, yABCD {rew_y}')&amp;#10;&amp;#10;&amp;#10;states = ['A', 'B', 'C', 'D']&amp;#10;field_nos = ['','','','']&amp;#10;msg = ''&amp;#10;&amp;#10;thisExp.nextEntry()&amp;#10;thisExp.addData('next_task', globalClock.getTime())&amp;#10;&amp;#10;resultTbl.nextEntry()&amp;#10;resultTbl.addData('next_task', globalClock.getTime())&amp;#10;resultTbl.addData('round_no', Round)&amp;#10;resultTbl.addData('task_config', Config)&amp;#10;&amp;#10;resultTbl.addLoop(rep_runs)  # add the loop to the experiment&amp;#10;&amp;#10;# i have 2000ms. every 10 ms, I want to move this thing.&amp;#10;# this means that I will move the thing 200 times.&amp;#10;&amp;#10;interval = 0.05&amp;#10;move_timer = []&amp;#10;move_timer.append(globalClock.getTime())&amp;#10;move_counter = 0&amp;#10;time_at_press = globalClock.getTime()&amp;#10;key1_press_trigger = 0&amp;#10;key2_press_trigger = 0&amp;#10;key3_press_trigger = 0&amp;#10;key4_press_trigger = 0&amp;#10;&amp;#10;progress_bar_on = 0&amp;#10;progress_timer = []&amp;#10;progress_timer.append(globalClock.getTime())&amp;#10;reward_waiting = random.uniform(1, 3)&amp;#10;" valType="extendedCode" updates="constant" name="Begin Routine"/>
         <Param val="Py" valType="str" updates="None" name="Code Type"/>
-        <Param val="loop_no += 1&amp;#10;#TRs = TR_count.getKeys(keyList = ['5'], clear = False)&amp;#10;#if len(TRs) &gt; 0:&amp;#10;#    print(TRs[-1].name)&amp;#10;&amp;#10;# first check if you have found the final reward.&amp;#10;if index_rew[-1] == len(states):&amp;#10;    reward_waiting = random.uniform(2.2, 3.5)&amp;#10;    print('now it should continue')&amp;#10;    wait(reward_waiting)&amp;#10;    break &amp;#10;&amp;#10;# activate these only if just starting or if a step has been made&amp;#10;if loop_no == 1: &amp;#10;    thisExp.addData('start_ABCD_screen', globalClock.getTime())&amp;#10;    resultTbl.addData('start_ABCD_screen', globalClock.getTime())&amp;#10;    #if len(TRs) &gt; 0:&amp;#10;        #thisExp.nextEntry()&amp;#10;        #thisExp.addData('first_task_TR', TRs[0].rt)&amp;#10;        #print(TRs.rt[0])&amp;#10;    curr_state = states[index_rew[-1]]&amp;#10;    curr_rew_x = rew_x[index_rew[-1]] &amp;#10;    curr_rew_y = rew_y[index_rew[-1]]&amp;#10;&amp;#10;&amp;#10;if (key1_press_trigger == 0) and (key2_press_trigger == 0) and (key3_press_trigger == 0) and (key4_press_trigger == 0):&amp;#10;    keys = nav_key_task.getKeys(keyList = ['1', '2', '3', '4'], clear = False)&amp;#10;    no_keys_pressed.append(len(keys))&amp;#10;&amp;#10;if len(keys) &gt; 0:&amp;#10;    # first check if you last found a reward. this means that you can't &amp;#10;    # react to key presses for a bit.&amp;#10;    if index_rew[-1] &gt; index_rew[-2]:&amp;#10;        # enter loop where you framewise increase the progress_height &amp;#10;        # until the reward_wait time is elapsed.&amp;#10;        if progress_bar_on == 0:&amp;#10;            reward_waiting = random.uniform(2.2, 3.5)&amp;#10;            last_height = height_progress&amp;#10;            time_rew_found = globalClock.getTime()&amp;#10;            progress_update = time_rew_found + interval&amp;#10;            progress_bar_on = 1&amp;#10;        if progress_timer[-1] &lt; time_rew_found+reward_waiting:&amp;#10;            progress_timer.append(globalClock.getTime())&amp;#10;            if progress_timer[-1] &gt;= progress_update:&amp;#10;                #it can be max 0.43 long. I have 3 repeats and 4 rews. &gt; increase by 0.035 each rew&amp;#10;                # I now have variable repeats. reps_per_run &amp;#10;                height_progress += ((0.41/(4*reps_per_run))/(reward_waiting/interval))&amp;#10;                progress_update += interval #increment by 100ms&amp;#10;        if progress_timer[-1] &gt;= time_rew_found+reward_waiting:&amp;#10;            height_progress = last_height + (0.41/(4*reps_per_run))&amp;#10;            progress_bar_on = 0&amp;#10;            print('done progress bar update')&amp;#10;            # and save that you made a step.&amp;#10;            thisExp.addData('t_reward_afterwait', globalClock.getTime())&amp;#10;            resultTbl.addData('t_reward_afterwait', globalClock.getTime())&amp;#10;            # and make it invisible again&amp;#10;            rew_visible = 0&amp;#10;            A_visible = 0&amp;#10;            # and add the same last value, so it wouldn't enter this loop again.&amp;#10;            index_rew.append(index_rew[-1])&amp;#10;            # and update the reward!! now off to find the next one.&amp;#10;            curr_state = states[index_rew[-1]]&amp;#10;            curr_rew_x = rew_x[index_rew[-1]] &amp;#10;            curr_rew_y = rew_y[index_rew[-1]]&amp;#10;            print(f'Reward found and waited! These should all be 0: key 1:{key1_press_trigger} key 2:{key2_press_trigger} key3:{key3_press_trigger} key 4:{key4_press_trigger}')&amp;#10;            print(f'this is current x: {curr_x}, reward x: {curr_rew_x}, and current y: {curr_y}, reward y: {curr_rew_y}.')&amp;#10;    # if you didnt last found a reward, you can check for key presses.   &amp;#10;    # then check if a new key has been pressed or if we are still updating the position.&amp;#10;    elif (no_keys_pressed[-1] &gt; no_keys_pressed[-2]) or (key1_press_trigger == 1) or (key2_press_trigger == 1) or (key3_press_trigger == 1) or (key4_press_trigger == 1):&amp;#10;        # check which key has been pressed&amp;#10;        #define how long the steps are supposed to be&amp;#10;        if (keys[-1].name == '1') or (key1_press_trigger == 1):&amp;#10;            if (curr_x&gt; -21/100):&amp;#10;                key1_press_trigger = 1&amp;#10;                if move_counter == 0:&amp;#10;                    last_x = curr_x&amp;#10;                    time_at_press = globalClock.getTime()&amp;#10;                    update_timer = time_at_press + interval&amp;#10;                    move_counter = 1&amp;#10;                    isi = random.uniform(1.5, 2.5)&amp;#10;                    thisExp.addData('length_step', isi)&amp;#10;                    resultTbl.addData('length_step', isi)&amp;#10;                    print(isi)&amp;#10;                if move_timer[-1] &lt; time_at_press+isi:&amp;#10;                    move_timer.append(globalClock.getTime())&amp;#10;                    if move_timer[-1] &gt;= update_timer:&amp;#10;                        curr_x -= ((21/100)/(isi/interval))&amp;#10;                        update_timer += interval #increment by 100ms&amp;#10;                        if curr_x &lt; -21/100:&amp;#10;                            curr_x = -21/100&amp;#10;                if move_timer[-1] &gt;= time_at_press+isi:&amp;#10;                    curr_x = last_x - 21/100&amp;#10;                    move_counter = 0&amp;#10;                    key1_press_trigger = 0&amp;#10;                    print('done moving 1')&amp;#10;                    print(f'this is current x: {curr_x}, reward x: {curr_rew_x}, and current y: {curr_y}, reward y: {curr_rew_y}.')&amp;#10;                    # and save that you made a step.&amp;#10;                    thisExp.nextEntry()&amp;#10;                    thisExp.addData('curr_loc_x', curr_x)&amp;#10;                    thisExp.addData('curr_loc_y', curr_y)&amp;#10;                    thisExp.addData('t_step_from_start_currrun', keys[-1].rt)&amp;#10;                    thisExp.addData('t_step_tglobal', globalClock.getTime())&amp;#10;                    resultTbl.nextEntry()&amp;#10;                    resultTbl.addData('curr_loc_x', curr_x)&amp;#10;                    resultTbl.addData('curr_loc_y', curr_y)&amp;#10;                    resultTbl.addData('curr_rew_x', curr_rew_x)&amp;#10;                    resultTbl.addData('curr_rew_y', curr_rew_y)&amp;#10;                    resultTbl.addData('t_step_since_curr_run', keys[-1].rt)&amp;#10;                    resultTbl.addData('t_step_tglobal', globalClock.getTime())&amp;#10;                    resultTbl.addData('repeat', rep_runs.thisRepN)&amp;#10;        # check which key has been pressed&amp;#10;        if (keys[-1].name == '2') or (key2_press_trigger == 1):&amp;#10;            if curr_y &lt; 29/100:&amp;#10;                key2_press_trigger = 1&amp;#10;                if move_counter == 0:&amp;#10;                    last_y = curr_y&amp;#10;                    time_at_press = globalClock.getTime()&amp;#10;                    update_timer = time_at_press + interval&amp;#10;                    move_counter = 1&amp;#10;                    isi = random.uniform(1.5, 2.5)&amp;#10;                    thisExp.addData('length_step', isi)&amp;#10;                    resultTbl.addData('length_step', isi)&amp;#10;                    print(isi)&amp;#10;                if move_timer[-1] &lt; time_at_press+isi:&amp;#10;                    move_timer.append(globalClock.getTime())&amp;#10;                    if move_timer[-1] &gt;= update_timer:&amp;#10;                        curr_y += ((29/100)/(isi/interval))&amp;#10;                        update_timer += interval #increment by 100ms&amp;#10;                        if curr_y &gt; 29/100:&amp;#10;                            curr_y = 29/100&amp;#10;                if move_timer[-1] &gt;= time_at_press+isi:&amp;#10;                    curr_y = last_y + 29/100&amp;#10;                    move_counter = 0&amp;#10;                    key2_press_trigger = 0&amp;#10;                    print('done moving 2')&amp;#10;                    print(f'this is current x: {curr_x}, reward x: {curr_rew_x}, and current y: {curr_y}, reward y: {curr_rew_y}.')&amp;#10;                    # and save that you made a step.&amp;#10;                    thisExp.nextEntry()&amp;#10;                    thisExp.addData('curr_loc_x', curr_x)&amp;#10;                    thisExp.addData('curr_loc_y', curr_y)&amp;#10;                    thisExp.addData('t_step_from_start_currrun', keys[-1].rt)&amp;#10;                    thisExp.addData('t_step_tglobal', globalClock.getTime())&amp;#10;                    resultTbl.nextEntry()&amp;#10;                    resultTbl.addData('curr_loc_x', curr_x)&amp;#10;                    resultTbl.addData('curr_loc_y', curr_y)&amp;#10;                    resultTbl.addData('curr_rew_x', curr_rew_x)&amp;#10;                    resultTbl.addData('curr_rew_y', curr_rew_y)&amp;#10;                    resultTbl.addData('t_step_since_curr_run', keys[-1].rt)&amp;#10;                    resultTbl.addData('t_step_tglobal', globalClock.getTime())&amp;#10;        # check which key had been pressed&amp;#10;        if (keys[-1].name == '3') or (key3_press_trigger == 1):&amp;#10;            if curr_y &gt; -29/100:&amp;#10;                key3_press_trigger = 1&amp;#10;                if move_counter == 0:&amp;#10;                    last_y = curr_y&amp;#10;                    time_at_press = globalClock.getTime()&amp;#10;                    update_timer = time_at_press + interval&amp;#10;                    move_counter = 1&amp;#10;                    isi = random.uniform(1.5, 2.5)&amp;#10;                    thisExp.addData('length_step', isi)&amp;#10;                    resultTbl.addData('length_step', isi)&amp;#10;                    print(isi)&amp;#10;                if move_timer[-1] &lt; time_at_press+isi:&amp;#10;                    move_timer.append(globalClock.getTime())&amp;#10;                    if move_timer[-1] &gt;= update_timer:&amp;#10;                        curr_y -= ((29/100)/(isi/interval))&amp;#10;                        update_timer += interval #increment by 100ms&amp;#10;                        if curr_y &lt; -29/100:&amp;#10;                            curr_y = -29/100&amp;#10;                if move_timer[-1] &gt;= time_at_press+isi:&amp;#10;                    curr_y = last_y - 29/100&amp;#10;                    move_counter = 0&amp;#10;                    key3_press_trigger = 0&amp;#10;                    print('done moving 3')&amp;#10;                    print(f'this is current x: {curr_x}, reward x: {curr_rew_x}, and current y: {curr_y}, reward y: {curr_rew_y}.')&amp;#10;                    # and save that you made a step.&amp;#10;                    thisExp.nextEntry()&amp;#10;                    thisExp.addData('curr_loc_x', curr_x)&amp;#10;                    thisExp.addData('curr_loc_y', curr_y)&amp;#10;                    thisExp.addData('t_step_from_start_currrun', keys[-1].rt)&amp;#10;                    thisExp.addData('t_step_tglobal', globalClock.getTime())&amp;#10;                    resultTbl.nextEntry()&amp;#10;                    resultTbl.addData('curr_loc_x', curr_x)&amp;#10;                    resultTbl.addData('curr_loc_y', curr_y)&amp;#10;                    resultTbl.addData('curr_rew_x', curr_rew_x)&amp;#10;                    resultTbl.addData('curr_rew_y', curr_rew_y)&amp;#10;                    resultTbl.addData('t_step_since_curr_run', keys[-1].rt)&amp;#10;                    resultTbl.addData('t_step_tglobal', globalClock.getTime())&amp;#10;        # check which keys have been pressed&amp;#10;        if (keys[-1].name == '4') or (key4_press_trigger == 1):&amp;#10;            if curr_x &lt; 21/100:&amp;#10;                key4_press_trigger = 1&amp;#10;                if move_counter == 0:&amp;#10;                    last_x = curr_x&amp;#10;                    time_at_press = globalClock.getTime()&amp;#10;                    update_timer = time_at_press + interval&amp;#10;                    move_counter = 1&amp;#10;                    isi = random.uniform(1.5, 2.5)&amp;#10;                    thisExp.addData('length_step', isi)&amp;#10;                    resultTbl.addData('length_step', isi)&amp;#10;                    print(isi)&amp;#10;                if move_timer[-1] &lt; time_at_press+isi:&amp;#10;                    move_timer.append(globalClock.getTime())&amp;#10;                    if move_timer[-1] &gt;= update_timer:&amp;#10;                        curr_x += ((21/100)/(isi/interval))&amp;#10;                        update_timer += interval #increment by 100ms&amp;#10;                        if curr_x &gt; 21/100:&amp;#10;                            curr_x = 21/100&amp;#10;                if move_timer[-1] &gt;= time_at_press+isi:&amp;#10;                    curr_x = last_x + 21/100&amp;#10;                    move_counter = 0&amp;#10;                    key4_press_trigger = 0&amp;#10;                    print('done moving 4')&amp;#10;                    print(f'this is current x: {curr_x}, reward x: {curr_rew_x}, and current y: {curr_y}, reward y: {curr_rew_y}.')&amp;#10;                    # and save that you made a step.&amp;#10;                    thisExp.nextEntry()&amp;#10;                    thisExp.addData('curr_loc_x', curr_x)&amp;#10;                    thisExp.addData('curr_loc_y', curr_y)&amp;#10;                    thisExp.addData('t_step_from_start_currrun', keys[-1].rt)&amp;#10;                    thisExp.addData('t_step_tglobal', globalClock.getTime())&amp;#10;                    resultTbl.nextEntry()&amp;#10;                    resultTbl.addData('curr_loc_x', curr_x)&amp;#10;                    resultTbl.addData('curr_loc_y', curr_y)&amp;#10;                    resultTbl.addData('curr_rew_x', curr_rew_x)&amp;#10;                    resultTbl.addData('curr_rew_y', curr_rew_y)&amp;#10;                    resultTbl.addData('t_step_since_curr_run', keys[-1].rt)&amp;#10;                    resultTbl.addData('t_step_tglobal', globalClock.getTime())&amp;#10;                    &amp;#10;        # then check if reward location and curr loc are the same&amp;#10;        if (curr_x == curr_rew_x) and (curr_y == curr_rew_y):&amp;#10;            # display something if it's A&amp;#10;            if (curr_rew_x == rew_x_A) and (curr_rew_y == rew_y_A):&amp;#10;                A_visible = 1&amp;#10;            # go to next reward&amp;#10;            index_rew.append(index_rew[-1]+1)&amp;#10;            print('found reward')&amp;#10;            # show the reward!&amp;#10;            rew_visible = 1&amp;#10;            thisExp.addData('rew_loc_x', curr_rew_x)&amp;#10;            thisExp.addData('rew_loc_y', curr_rew_y)&amp;#10;            thisExp.addData('t_reward_start', globalClock.getTime())&amp;#10;            thisExp.addData('reward_delay', reward_waiting)&amp;#10;            resultTbl.addData('rew_loc_x', curr_rew_x)&amp;#10;            resultTbl.addData('rew_loc_y', curr_rew_y)&amp;#10;            resultTbl.addData('t_reward_start', globalClock.getTime())&amp;#10;            resultTbl.addData('reward_delay', reward_waiting)&amp;#10;            progress1 = 0&amp;#10;&amp;#10;# check if the safety key has been pressed&amp;#10;safety_key = break_key.getKeys(keyList = ['0'], clear = False)&amp;#10;if len(safety_key) &gt; 0:&amp;#10;    curr_x = 0&amp;#10;    curr_y = 0&amp;#10;    &amp;#10;    &amp;#10;# then let everything update all the shapes." valType="extendedCode" updates="constant" name="Each Frame"/>
+        <Param val="loop_no += 1&amp;#10;#TRs = TR_count.getKeys(keyList = ['5'], clear = False)&amp;#10;#if len(TRs) &gt; 0:&amp;#10;#    print(TRs[-1].name)&amp;#10;&amp;#10;# first check if you have found the final reward.&amp;#10;if index_rew[-1] == len(states):&amp;#10;    # reward_waiting = random.uniform(1, 3)&amp;#10;    reward_waiting = secs_per_step[-1]&amp;#10;    thisExp.addData('reward_delay', reward_waiting)&amp;#10;    resultTbl.addData('reward_delay', reward_waiting)&amp;#10;    wait(reward_waiting)&amp;#10;    thisExp.addData('t_reward_afterwait', globalClock.getTime())&amp;#10;    resultTbl.addData('t_reward_afterwait', globalClock.getTime())&amp;#10;    break &amp;#10;&amp;#10;# activate these only if just starting or if a step has been made&amp;#10;if loop_no == 1: &amp;#10;    curr_state = states[index_rew[-1]]&amp;#10;    curr_rew_x = rew_x[index_rew[-1]] &amp;#10;    curr_rew_y = rew_y[index_rew[-1]]&amp;#10;    &amp;#10;    # create new jitter for the first subpath.&amp;#10;    curr_exp_step_no = all_exp_step_nos[index_rew[-1]]&amp;#10;    secs_per_step = jitter(curr_exp_step_no, 5.75, var_per_step=1)&amp;#10;    resultTbl.addData('jitters_subpath', secs_per_step)&amp;#10;    thisExp.addData('jitters_subpath', secs_per_step)&amp;#10;    &amp;#10;    thisExp.addData('start_ABCD_screen', globalClock.getTime())&amp;#10;    resultTbl.addData('start_ABCD_screen', globalClock.getTime())&amp;#10;    thisExp.addData('curr_loc_x', curr_x)&amp;#10;    thisExp.addData('curr_loc_y', curr_y)&amp;#10;    resultTbl.addData('curr_loc_x', curr_x)&amp;#10;    resultTbl.addData('curr_loc_y', curr_y)&amp;#10;    resultTbl.addData('curr_rew_x', curr_rew_x)&amp;#10;    resultTbl.addData('curr_rew_y', curr_rew_y)&amp;#10;    resultTbl.addData('repeat', rep_runs.thisRepN)&amp;#10;    resultTbl.addData('type', type)&amp;#10;    #if len(TRs) &gt; 0:&amp;#10;        #thisExp.nextEntry()&amp;#10;        #thisExp.addData('first_task_TR', TRs[0].rt)&amp;#10;        #print(TRs.rt[0])&amp;#10;&amp;#10;&amp;#10;&amp;#10;if (key1_press_trigger == 0) and (key2_press_trigger == 0) and (key3_press_trigger == 0) and (key4_press_trigger == 0) and (progress_bar_on == 0):&amp;#10;    keys = nav_key_task.getKeys(keyList = ['1', '2', '3', '4'], clear = False)&amp;#10;    no_keys_pressed.append(len(keys))&amp;#10;&amp;#10;if len(keys) &gt; 0:&amp;#10;    # first check if you last found a reward. this means that you can't &amp;#10;    # react to key presses for a bit.&amp;#10;    if index_rew[-1] &gt; index_rew[-2]:&amp;#10;        # enter loop where you framewise increase the progress_height &amp;#10;        # until the reward_wait time is elapsed.&amp;#10;        if progress_bar_on == 0:&amp;#10;            #reward_waiting = random.uniform(1,3)&amp;#10;            reward_waiting = secs_per_step[-1]&amp;#10;            thisExp.addData('reward_delay', reward_waiting)&amp;#10;            resultTbl.addData('reward_delay', reward_waiting)&amp;#10;            last_height = height_progress&amp;#10;            time_rew_found = globalClock.getTime()&amp;#10;            progress_update = time_rew_found + interval&amp;#10;            progress_bar_on = 1&amp;#10;        if progress_timer[-1] &lt; time_rew_found+reward_waiting:&amp;#10;            progress_timer.append(globalClock.getTime())&amp;#10;            if progress_timer[-1] &gt;= progress_update:&amp;#10;                #it can be max 0.43 long. I have 3 repeats and 4 rews. &gt; increase by 0.035 each rew&amp;#10;                # I now have variable repeats. reps_per_run &amp;#10;                height_progress += ((0.41/(4*reps_per_run))/(reward_waiting/interval))&amp;#10;                progress_update += interval #increment by 100ms&amp;#10;        if progress_timer[-1] &gt;= time_rew_found+reward_waiting:&amp;#10;            height_progress = last_height + (0.41/(4*reps_per_run))&amp;#10;            progress_bar_on = 0&amp;#10;            print('done progress bar update')&amp;#10;            # and save that you made a step.&amp;#10;            thisExp.addData('t_reward_afterwait', globalClock.getTime())&amp;#10;            resultTbl.addData('t_reward_afterwait', globalClock.getTime())&amp;#10;            # and make it invisible again&amp;#10;            rew_visible = 0&amp;#10;            A_visible = 0&amp;#10;            # and add the same last value, so it wouldn't enter this loop again.&amp;#10;            index_rew.append(index_rew[-1])&amp;#10;            # and update the reward!! now off to find the next one.&amp;#10;            curr_state = states[index_rew[-1]]&amp;#10;            curr_rew_x = rew_x[index_rew[-1]] &amp;#10;            curr_rew_y = rew_y[index_rew[-1]]&amp;#10;            &amp;#10;            # and move on to the next subpath_length! &amp;#10;            curr_exp_step_no = all_exp_step_nos[index_rew[-1]]&amp;#10;            secs_per_step = jitter(curr_exp_step_no, 5.75, var_per_step=1.5)&amp;#10;            steps_taken_this_subpath = 0&amp;#10;            resultTbl.addData('jitters_subpath', secs_per_step)&amp;#10;            thisExp.addData('jitters_subpath', secs_per_step)&amp;#10;            &amp;#10;            print(f'Reward found and waited! These should all be 0: key 1:{key1_press_trigger} key 2:{key2_press_trigger} key3:{key3_press_trigger} key 4:{key4_press_trigger}')&amp;#10;            print(f'this is current x: {curr_x}, reward x: {curr_rew_x}, and current y: {curr_y}, reward y: {curr_rew_y}.')&amp;#10;    # if you didnt last found a reward, you can check for key presses.   &amp;#10;    # then check if a new key has been pressed or if we are still updating the position.&amp;#10;    elif (no_keys_pressed[-1] &gt; no_keys_pressed[-2]) or (key1_press_trigger == 1) or (key2_press_trigger == 1) or (key3_press_trigger == 1) or (key4_press_trigger == 1):&amp;#10;        # check which key has been pressed&amp;#10;        #define how long the steps are supposed to be&amp;#10;        if (keys[-1].name == '1') or (key1_press_trigger == 1):&amp;#10;            if (curr_x&gt; -21/100):&amp;#10;                key1_press_trigger = 1&amp;#10;                if move_counter == 0:&amp;#10;                    last_x = curr_x&amp;#10;                    time_at_press = globalClock.getTime()&amp;#10;                    thisExp.addData('t_step_press_global', time_at_press)&amp;#10;                    resultTbl.addData('t_step_press_global', time_at_press)&amp;#10;                    thisExp.addData('t_step_press_curr_run', keys[-1].rt)&amp;#10;                    resultTbl.addData('t_step_press_curr_run', keys[-1].rt)&amp;#10;                    update_timer = time_at_press + interval&amp;#10;                    move_counter = 1&amp;#10;                    &amp;#10;                    if steps_taken_this_subpath &lt; curr_exp_step_no:&amp;#10;                        isi = secs_per_step[steps_taken_this_subpath]&amp;#10;                        steps_taken_this_subpath += 1&amp;#10;                        print(f'this subpath you took {steps_taken_this_subpath} steps and optimal stepno is {curr_exp_step_no}.')&amp;#10;                    else:&amp;#10;                        isi = random.uniform(0.6, 1.5)&amp;#10;                    &amp;#10;                    thisExp.nextEntry()&amp;#10;                    resultTbl.nextEntry()&amp;#10;                    thisExp.addData('length_step', isi)&amp;#10;                    resultTbl.addData('length_step', isi)&amp;#10;                    print(isi)&amp;#10;                if move_timer[-1] &lt; time_at_press+isi:&amp;#10;                    move_timer.append(globalClock.getTime())&amp;#10;                    if move_timer[-1] &gt;= update_timer:&amp;#10;                        curr_x -= ((21/100)/(isi/interval))&amp;#10;                        update_timer += interval #increment by 100ms&amp;#10;                        if curr_x &lt; -21/100:&amp;#10;                            curr_x = -21/100&amp;#10;                if move_timer[-1] &gt;= time_at_press+isi:&amp;#10;                    curr_x = last_x - 21/100&amp;#10;                    move_counter = 0&amp;#10;                    key1_press_trigger = 0&amp;#10;                    print('done moving 1')&amp;#10;                    print(f'this is current x: {curr_x}, reward x: {curr_rew_x}, and current y: {curr_y}, reward y: {curr_rew_y}.')&amp;#10;                    # and save that you made a step.&amp;#10;                    thisExp.addData('curr_loc_x', curr_x)&amp;#10;                    thisExp.addData('curr_loc_y', curr_y)&amp;#10;                    thisExp.addData('t_step_end_global', globalClock.getTime())&amp;#10;                    resultTbl.addData('curr_loc_x', curr_x)&amp;#10;                    resultTbl.addData('curr_loc_y', curr_y)&amp;#10;                    resultTbl.addData('curr_rew_x', curr_rew_x)&amp;#10;                    resultTbl.addData('curr_rew_y', curr_rew_y)&amp;#10;                    resultTbl.addData('t_step_end_global', globalClock.getTime())&amp;#10;                    resultTbl.addData('repeat', rep_runs.thisRepN)&amp;#10;                    resultTbl.addData('type', type)&amp;#10;                    resultTbl.addData('state', states[index_rew[-1]])&amp;#10;        # check which key has been pressed&amp;#10;        if (keys[-1].name == '2') or (key2_press_trigger == 1):&amp;#10;            if curr_y &lt; 29/100:&amp;#10;                key2_press_trigger = 1&amp;#10;                if move_counter == 0:&amp;#10;                    last_y = curr_y&amp;#10;                    time_at_press = globalClock.getTime()&amp;#10;                    thisExp.addData('t_step_press_global', time_at_press)&amp;#10;                    resultTbl.addData('t_step_press_global', time_at_press)&amp;#10;                    thisExp.addData('t_step_press_curr_run', keys[-1].rt)&amp;#10;                    resultTbl.addData('t_step_press_curr_run', keys[-1].rt)&amp;#10;                    update_timer = time_at_press + interval&amp;#10;                    move_counter = 1&amp;#10;                    if steps_taken_this_subpath &lt; curr_exp_step_no:&amp;#10;                        isi = secs_per_step[steps_taken_this_subpath]&amp;#10;                        steps_taken_this_subpath += 1&amp;#10;                        print(f'this subpath you took {steps_taken_this_subpath} steps, {curr_exp_step_no}.')&amp;#10;                    else:&amp;#10;                        isi = random.uniform(0.6, 1.5)&amp;#10;                        print(curr_exp_step_no)&amp;#10;                        &amp;#10;                    thisExp.nextEntry()&amp;#10;                    resultTbl.nextEntry()&amp;#10;                    thisExp.addData('length_step', isi)&amp;#10;                    resultTbl.addData('length_step', isi)&amp;#10;                    print(isi)&amp;#10;                if move_timer[-1] &lt; time_at_press+isi:&amp;#10;                    move_timer.append(globalClock.getTime())&amp;#10;                    if move_timer[-1] &gt;= update_timer:&amp;#10;                        curr_y += ((29/100)/(isi/interval))&amp;#10;                        update_timer += interval #increment by 100ms&amp;#10;                        if curr_y &gt; 29/100:&amp;#10;                            curr_y = 29/100&amp;#10;                if move_timer[-1] &gt;= time_at_press+isi:&amp;#10;                    curr_y = last_y + 29/100&amp;#10;                    move_counter = 0&amp;#10;                    key2_press_trigger = 0&amp;#10;                    print('done moving 2')&amp;#10;                    print(f'this is current x: {curr_x}, reward x: {curr_rew_x}, and current y: {curr_y}, reward y: {curr_rew_y}.')&amp;#10;                    # and save that you made a step.&amp;#10;                    thisExp.addData('curr_loc_x', curr_x)&amp;#10;                    thisExp.addData('curr_loc_y', curr_y)&amp;#10;                    thisExp.addData('t_step_end_global', globalClock.getTime())&amp;#10;                    resultTbl.addData('curr_loc_x', curr_x)&amp;#10;                    resultTbl.addData('curr_loc_y', curr_y)&amp;#10;                    resultTbl.addData('curr_rew_x', curr_rew_x)&amp;#10;                    resultTbl.addData('curr_rew_y', curr_rew_y)&amp;#10;                    resultTbl.addData('t_step_end_global', globalClock.getTime())&amp;#10;                    resultTbl.addData('type', type)&amp;#10;                    resultTbl.addData('state', states[index_rew[-1]])&amp;#10;        # check which key had been pressed&amp;#10;        if (keys[-1].name == '3') or (key3_press_trigger == 1):&amp;#10;            if curr_y &gt; -29/100:&amp;#10;                key3_press_trigger = 1&amp;#10;                if move_counter == 0:&amp;#10;                    last_y = curr_y&amp;#10;                    time_at_press = globalClock.getTime()&amp;#10;                    thisExp.addData('t_step_press_curr_run', keys[-1].rt)&amp;#10;                    resultTbl.addData('t_step_press_curr_run', keys[-1].rt)&amp;#10;                    thisExp.addData('t_step_press_global', time_at_press)&amp;#10;                    resultTbl.addData('t_step_press_global', time_at_press)&amp;#10;                    update_timer = time_at_press + interval&amp;#10;                    move_counter = 1&amp;#10;                    if steps_taken_this_subpath &lt; curr_exp_step_no:&amp;#10;                        isi = secs_per_step[steps_taken_this_subpath]&amp;#10;                        steps_taken_this_subpath += 1&amp;#10;                        print(f'this subpath you took {steps_taken_this_subpath} steps.')&amp;#10;                    else:&amp;#10;                        isi = random.uniform(0.6, 1.5)&amp;#10;                        &amp;#10;                    thisExp.nextEntry()&amp;#10;                    resultTbl.nextEntry()&amp;#10;                    thisExp.addData('length_step', isi)&amp;#10;                    resultTbl.addData('length_step', isi)&amp;#10;                    print(isi)&amp;#10;                if move_timer[-1] &lt; time_at_press+isi:&amp;#10;                    move_timer.append(globalClock.getTime())&amp;#10;                    if move_timer[-1] &gt;= update_timer:&amp;#10;                        curr_y -= ((29/100)/(isi/interval))&amp;#10;                        update_timer += interval #increment by 100ms&amp;#10;                        if curr_y &lt; -29/100:&amp;#10;                            curr_y = -29/100&amp;#10;                if move_timer[-1] &gt;= time_at_press+isi:&amp;#10;                    curr_y = last_y - 29/100&amp;#10;                    move_counter = 0&amp;#10;                    key3_press_trigger = 0&amp;#10;                    print('done moving 3')&amp;#10;                    print(f'this is current x: {curr_x}, reward x: {curr_rew_x}, and current y: {curr_y}, reward y: {curr_rew_y}.')&amp;#10;                    # and save that you made a step.&amp;#10;                    thisExp.addData('curr_loc_x', curr_x)&amp;#10;                    thisExp.addData('curr_loc_y', curr_y)&amp;#10;                    thisExp.addData('t_step_end_global', globalClock.getTime())&amp;#10;                    resultTbl.addData('curr_loc_x', curr_x)&amp;#10;                    resultTbl.addData('curr_loc_y', curr_y)&amp;#10;                    resultTbl.addData('curr_rew_x', curr_rew_x)&amp;#10;                    resultTbl.addData('curr_rew_y', curr_rew_y)&amp;#10;                    resultTbl.addData('t_step_end_global', globalClock.getTime())&amp;#10;                    resultTbl.addData('type', type)&amp;#10;                    resultTbl.addData('state', states[index_rew[-1]])&amp;#10;        # check which keys have been pressed&amp;#10;        if (keys[-1].name == '4') or (key4_press_trigger == 1):&amp;#10;            if curr_x &lt; 21/100:&amp;#10;                key4_press_trigger = 1&amp;#10;                if move_counter == 0:&amp;#10;                    last_x = curr_x&amp;#10;                    time_at_press = globalClock.getTime()&amp;#10;                    thisExp.addData('t_step_press_global', time_at_press)&amp;#10;                    resultTbl.addData('t_step_press_global', time_at_press)&amp;#10;                    thisExp.addData('t_step_press_curr_run', keys[-1].rt)&amp;#10;                    resultTbl.addData('t_step_press_curr_run', keys[-1].rt)&amp;#10;                    update_timer = time_at_press + interval&amp;#10;                    move_counter = 1&amp;#10;                    if steps_taken_this_subpath &lt; curr_exp_step_no:&amp;#10;                        isi = secs_per_step[steps_taken_this_subpath]&amp;#10;                        steps_taken_this_subpath += 1&amp;#10;                        print(f'this subpath you took {steps_taken_this_subpath} steps.')&amp;#10;                    else:&amp;#10;                        isi = random.uniform(0.6, 1.5)&amp;#10;&amp;#10;                    thisExp.nextEntry()&amp;#10;                    resultTbl.nextEntry()&amp;#10;                    thisExp.addData('length_step', isi)&amp;#10;                    resultTbl.addData('length_step', isi)&amp;#10;                    print(isi)&amp;#10;                if move_timer[-1] &lt; time_at_press+isi:&amp;#10;                    move_timer.append(globalClock.getTime())&amp;#10;                    if move_timer[-1] &gt;= update_timer:&amp;#10;                        curr_x += ((21/100)/(isi/interval))&amp;#10;                        update_timer += interval #increment by 100ms&amp;#10;                        if curr_x &gt; 21/100:&amp;#10;                            curr_x = 21/100&amp;#10;                if move_timer[-1] &gt;= time_at_press+isi:&amp;#10;                    curr_x = last_x + 21/100&amp;#10;                    move_counter = 0&amp;#10;                    key4_press_trigger = 0&amp;#10;                    print('done moving 4')&amp;#10;                    print(f'this is current x: {curr_x}, reward x: {curr_rew_x}, and current y: {curr_y}, reward y: {curr_rew_y}.')&amp;#10;                    # and save that you made a step.&amp;#10;                    thisExp.addData('curr_loc_x', curr_x)&amp;#10;                    thisExp.addData('curr_loc_y', curr_y)&amp;#10;                    thisExp.addData('t_step_end_global', globalClock.getTime())&amp;#10;                    resultTbl.addData('curr_loc_x', curr_x)&amp;#10;                    resultTbl.addData('curr_loc_y', curr_y)&amp;#10;                    resultTbl.addData('curr_rew_x', curr_rew_x)&amp;#10;                    resultTbl.addData('curr_rew_y', curr_rew_y)&amp;#10;                    resultTbl.addData('t_step_end_global', globalClock.getTime())&amp;#10;                    resultTbl.addData('type', type)&amp;#10;                    resultTbl.addData('state', states[index_rew[-1]])&amp;#10;        # then check if reward location and curr loc are the same&amp;#10;        if (curr_x == curr_rew_x) and (curr_y == curr_rew_y):&amp;#10;            # display something if it's A&amp;#10;            if index_rew[-1] == 0:&amp;#10;                A_visible = 1&amp;#10;            # go to next reward&amp;#10;            index_rew.append(index_rew[-1]+1)&amp;#10;            print('found reward')&amp;#10;            # show the reward!&amp;#10;            rew_visible = 1&amp;#10;            thisExp.addData('rew_loc_x', curr_rew_x)&amp;#10;            thisExp.addData('rew_loc_y', curr_rew_y)&amp;#10;            thisExp.addData('t_reward_start', globalClock.getTime())&amp;#10;            resultTbl.addData('rew_loc_x', curr_rew_x)&amp;#10;            resultTbl.addData('rew_loc_y', curr_rew_y)&amp;#10;            resultTbl.addData('t_reward_start', globalClock.getTime())&amp;#10;            progress1 = 0&amp;#10;            steps_taken_this_subpath = 0&amp;#10;&amp;#10;# check if the safety key has been pressed&amp;#10;safety_key = break_key.getKeys(keyList = ['0'], clear = False)&amp;#10;if len(safety_key) &gt; 0:&amp;#10;    curr_x = 0&amp;#10;    curr_y = 0&amp;#10;    &amp;#10;    &amp;#10;# then let everything update all the shapes." valType="extendedCode" updates="constant" name="Each Frame"/>
         <Param val="loop_no += 1;&amp;#10;if ((index_rew.slice((- 1))[0] === states.length)) {&amp;#10;    reward_waiting = random.uniform(2.2, 3.5);&amp;#10;    wait(reward_waiting);&amp;#10;    break;&amp;#10;}&amp;#10;if ((loop_no === 1)) {&amp;#10;    psychoJS.experiment.nextEntry();&amp;#10;    psychoJS.experiment.addData(&quot;start_finding_rewards&quot;, globalClock.getTime());&amp;#10;    curr_state = states[index_rew.slice((- 1))[0]];&amp;#10;    curr_rew_x = rew_x[index_rew.slice((- 1))[0]];&amp;#10;    curr_rew_y = rew_y[index_rew.slice((- 1))[0]];&amp;#10;}&amp;#10;isi = random.uniform(1.5, 2.5);&amp;#10;if (((((key1_press_trigger === 0) &amp;&amp; (key2_press_trigger === 0)) &amp;&amp; (key3_press_trigger === 0)) &amp;&amp; (key4_press_trigger === 0))) {&amp;#10;    keys = nav_key_task.getKeys({&quot;keyList&quot;: [&quot;1&quot;, &quot;2&quot;, &quot;3&quot;, &quot;4&quot;], &quot;clear&quot;: false});&amp;#10;    no_keys_pressed.push(keys.length);&amp;#10;}&amp;#10;if ((keys.length &gt; 0)) {&amp;#10;    if ((index_rew.slice((- 1))[0] &gt; index_rew.slice((- 2))[0])) {&amp;#10;        wait(2.5);&amp;#10;        msg = &quot;&quot;;&amp;#10;        psychoJS.experiment.addData(&quot;t_reward_afterwait&quot;, globalClock.getTime());&amp;#10;        rew_visible = 0;&amp;#10;        index_rew.push(index_rew.slice((- 1))[0]);&amp;#10;        curr_state = states[index_rew.slice((- 1))[0]];&amp;#10;        curr_rew_x = rew_x[index_rew.slice((- 1))[0]];&amp;#10;        curr_rew_y = rew_y[index_rew.slice((- 1))[0]];&amp;#10;        console.log(`Reward found and waited! These should all be 0: key 1:${key1_press_trigger} key 2:${key2_press_trigger} key3:${key3_press_trigger} key 4:${key4_press_trigger}`);&amp;#10;    }&amp;#10;    if ((((((no_keys_pressed.slice((- 1))[0] &gt; no_keys_pressed.slice((- 2))[0]) || (key1_press_trigger === 1)) || (key2_press_trigger === 1)) || (key3_press_trigger === 1)) || (key4_press_trigger === 1))) {&amp;#10;        if (((keys.slice((- 1))[0].name === &quot;1&quot;) || (key1_press_trigger === 1))) {&amp;#10;            if ((curr_x &gt; ((- 75) / 100))) {&amp;#10;                key1_press_trigger = 1;&amp;#10;                if ((move_counter === 0)) {&amp;#10;                    last_x = curr_x;&amp;#10;                    time_at_press = globalClock.getTime();&amp;#10;                    update_timer = (time_at_press + interval);&amp;#10;                    move_counter = 1;&amp;#10;                }&amp;#10;                if ((move_timer.slice((- 1))[0] &lt; (time_at_press + isi))) {&amp;#10;                    move_timer.push(globalClock.getTime());&amp;#10;                    if ((move_timer.slice((- 1))[0] &gt;= update_timer)) {&amp;#10;                        curr_x -= ((50 / 100) / (isi / interval));&amp;#10;                        update_timer += interval;&amp;#10;                    }&amp;#10;                } else {&amp;#10;                    if ((move_timer.slice((- 1))[0] &gt;= (time_at_press + isi))) {&amp;#10;                        curr_x = (last_x - (50 / 100));&amp;#10;                        move_counter = 0;&amp;#10;                        key1_press_trigger = 0;&amp;#10;                        console.log(&quot;done moving 1&quot;);&amp;#10;                        psychoJS.experiment.nextEntry();&amp;#10;                        psychoJS.experiment.addData(&quot;curr_loc_x&quot;, curr_x);&amp;#10;                        psychoJS.experiment.addData(&quot;curr_loc_y&quot;, curr_y);&amp;#10;                        psychoJS.experiment.addData(&quot;t_step_rt_key&quot;, keys.slice((- 1))[0].rt);&amp;#10;                        psychoJS.experiment.addData(&quot;t_step_tglobal&quot;, globalClock.getTime());&amp;#10;                        psychoJS.experiment.addData(&quot;last_step_delay&quot;, isi);&amp;#10;                    }&amp;#10;                }&amp;#10;            }&amp;#10;        }&amp;#10;        if (((keys.slice((- 1))[0].name === &quot;2&quot;) || (key2_press_trigger === 1))) {&amp;#10;            if ((curr_y &lt; (75 / 100))) {&amp;#10;                key2_press_trigger = 1;&amp;#10;                if ((move_counter === 0)) {&amp;#10;                    last_y = curr_y;&amp;#10;                    time_at_press = globalClock.getTime();&amp;#10;                    update_timer = (time_at_press + interval);&amp;#10;                    move_counter = 1;&amp;#10;                }&amp;#10;                if ((move_timer.slice((- 1))[0] &lt; (time_at_press + isi))) {&amp;#10;                    move_timer.push(globalClock.getTime());&amp;#10;                    if ((move_timer.slice((- 1))[0] &gt;= update_timer)) {&amp;#10;                        curr_y += ((50 / 100) / (isi / interval));&amp;#10;                        update_timer += interval;&amp;#10;                    }&amp;#10;                } else {&amp;#10;                    if ((move_timer.slice((- 1))[0] &gt;= (time_at_press + isi))) {&amp;#10;                        curr_y = (last_y + (50 / 100));&amp;#10;                        move_counter = 0;&amp;#10;                        key2_press_trigger = 0;&amp;#10;                        console.log(&quot;done moving 2&quot;);&amp;#10;                        psychoJS.experiment.nextEntry();&amp;#10;                        psychoJS.experiment.addData(&quot;curr_loc_x&quot;, curr_x);&amp;#10;                        psychoJS.experiment.addData(&quot;curr_loc_y&quot;, curr_y);&amp;#10;                        psychoJS.experiment.addData(&quot;t_step_rt_key&quot;, keys.slice((- 1))[0].rt);&amp;#10;                        psychoJS.experiment.addData(&quot;t_step_tglobal&quot;, globalClock.getTime());&amp;#10;                        psychoJS.experiment.addData(&quot;last_step_delay&quot;, isi);&amp;#10;                    }&amp;#10;                }&amp;#10;            }&amp;#10;        }&amp;#10;        if (((keys.slice((- 1))[0].name === &quot;3&quot;) || (key3_press_trigger === 1))) {&amp;#10;            if ((curr_y &gt; ((- 75) / 100))) {&amp;#10;                key3_press_trigger = 1;&amp;#10;                if ((move_counter === 0)) {&amp;#10;                    last_y = curr_y;&amp;#10;                    time_at_press = globalClock.getTime();&amp;#10;                    update_timer = (time_at_press + interval);&amp;#10;                    move_counter = 1;&amp;#10;                }&amp;#10;                if ((move_timer.slice((- 1))[0] &lt; (time_at_press + isi))) {&amp;#10;                    move_timer.push(globalClock.getTime());&amp;#10;                    if ((move_timer.slice((- 1))[0] &gt;= update_timer)) {&amp;#10;                        curr_y -= ((50 / 100) / (isi / interval));&amp;#10;                        update_timer += interval;&amp;#10;                    }&amp;#10;                } else {&amp;#10;                    if ((move_timer.slice((- 1))[0] &gt;= (time_at_press + isi))) {&amp;#10;                        curr_y = (last_y - (50 / 100));&amp;#10;                        move_counter = 0;&amp;#10;                        key3_press_trigger = 0;&amp;#10;                        console.log(&quot;done moving 3&quot;);&amp;#10;                        psychoJS.experiment.nextEntry();&amp;#10;                        psychoJS.experiment.addData(&quot;curr_loc_x&quot;, curr_x);&amp;#10;                        psychoJS.experiment.addData(&quot;curr_loc_y&quot;, curr_y);&amp;#10;                        psychoJS.experiment.addData(&quot;t_step_rt_key&quot;, keys.slice((- 1))[0].rt);&amp;#10;                        psychoJS.experiment.addData(&quot;t_step_tglobal&quot;, globalClock.getTime());&amp;#10;                        psychoJS.experiment.addData(&quot;last_step_delay&quot;, isi);&amp;#10;                    }&amp;#10;                }&amp;#10;            }&amp;#10;        }&amp;#10;        if (((keys.slice((- 1))[0].name === &quot;4&quot;) || (key4_press_trigger === 1))) {&amp;#10;            if ((curr_x &lt; (75 / 100))) {&amp;#10;                key4_press_trigger = 1;&amp;#10;                if ((move_counter === 0)) {&amp;#10;                    last_x = curr_x;&amp;#10;                    time_at_press = globalClock.getTime();&amp;#10;                    update_timer = (time_at_press + interval);&amp;#10;                    move_counter = 1;&amp;#10;                }&amp;#10;                if ((move_timer.slice((- 1))[0] &lt; (time_at_press + isi))) {&amp;#10;                    move_timer.push(globalClock.getTime());&amp;#10;                    if ((move_timer.slice((- 1))[0] &gt;= update_timer)) {&amp;#10;                        curr_x += ((50 / 100) / (isi / interval));&amp;#10;                        update_timer += interval;&amp;#10;                    }&amp;#10;                } else {&amp;#10;                    if ((move_timer.slice((- 1))[0] &gt;= (time_at_press + isi))) {&amp;#10;                        curr_x = (last_x + (50 / 100));&amp;#10;                        move_counter = 0;&amp;#10;                        key4_press_trigger = 0;&amp;#10;                        console.log(&quot;done moving 4&quot;);&amp;#10;                        psychoJS.experiment.nextEntry();&amp;#10;                        psychoJS.experiment.addData(&quot;curr_loc_x&quot;, curr_x);&amp;#10;                        psychoJS.experiment.addData(&quot;curr_loc_y&quot;, curr_y);&amp;#10;                        psychoJS.experiment.addData(&quot;t_step_rt_key&quot;, keys.slice((- 1))[0].rt);&amp;#10;                        psychoJS.experiment.addData(&quot;t_step_tglobal&quot;, globalClock.getTime());&amp;#10;                        psychoJS.experiment.addData(&quot;last_step_delay&quot;, isi);&amp;#10;                    }&amp;#10;                }&amp;#10;            }&amp;#10;        }&amp;#10;        if (((curr_x === curr_rew_x) &amp;&amp; (curr_y === curr_rew_y))) {&amp;#10;            index_rew.push((index_rew.slice((- 1))[0] + 1));&amp;#10;            console.log(&quot;found reward&quot;);&amp;#10;            rew_visible = 1;&amp;#10;            msg = &quot;Well done! :)&quot;;&amp;#10;            psychoJS.experiment.addData(&quot;rew_loc_x&quot;, curr_rew_x);&amp;#10;            psychoJS.experiment.addData(&quot;rew_loc_y&quot;, curr_rew_y);&amp;#10;            psychoJS.experiment.addData(&quot;t_reward_start&quot;, globalClock.getTime());&amp;#10;        }&amp;#10;    }&amp;#10;}&amp;#10;" valType="extendedCode" updates="constant" name="Each JS Frame"/>
         <Param val="resultTbl.saveAsWideText(result_name+'.csv', delim='auto')&amp;#10;resultTbl.saveAsPickle(result_name)" valType="extendedCode" updates="constant" name="End Experiment"/>
         <Param val="" valType="extendedCode" updates="constant" name="End JS Experiment"/>
@@ -471,7 +496,7 @@
         <Param val="reward_A_feedback" valType="code" updates="None" name="name"/>
         <Param val="A_visible" valType="num" updates="set every frame" name="opacity"/>
         <Param val="0" valType="num" updates="constant" name="ori"/>
-        <Param val="(0.5, 0)" valType="list" updates="constant" name="pos"/>
+        <Param val="(0.518, 0)" valType="list" updates="constant" name="pos"/>
         <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
         <Param val="" valType="code" updates="None" name="startEstim"/>
         <Param val="time (s)" valType="str" updates="None" name="startType"/>
@@ -481,8 +506,26 @@
         <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
         <Param val="&quot;Arrr! Ye've struck gold 1 of 4 with yer keen eye!&quot;" valType="str" updates="constant" name="text"/>
         <Param val="from exp settings" valType="str" updates="None" name="units"/>
-        <Param val="0.4" valType="num" updates="constant" name="wrapWidth"/>
+        <Param val="0.38" valType="num" updates="constant" name="wrapWidth"/>
       </TextComponent>
+      <KeyboardComponent name="TR_key">
+        <Param val="'5'" valType="list" updates="constant" name="allowedKeys"/>
+        <Param val="" valType="str" updates="constant" name="correctAns"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="False" valType="bool" updates="constant" name="discard previous"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="False" valType="bool" updates="constant" name="forceEndRoutine"/>
+        <Param val="TR_key" valType="code" updates="None" name="name"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="0.0" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="" valType="code" updates="constant" name="stopVal"/>
+        <Param val="all keys" valType="str" updates="constant" name="store"/>
+        <Param val="False" valType="bool" updates="constant" name="storeCorrect"/>
+        <Param val="False" valType="bool" updates="constant" name="syncScreenRefresh"/>
+      </KeyboardComponent>
     </Routine>
     <Routine name="new_rewards_prep">
       <ImageComponent name="new_rewards">
@@ -514,6 +557,23 @@
       </ImageComponent>
     </Routine>
     <Routine name="parrot_tip">
+      <CodeComponent name="parrot_tip_code">
+        <Param val="" valType="extendedCode" updates="constant" name="Before Experiment"/>
+        <Param val="" valType="extendedCode" updates="constant" name="Before JS Experiment"/>
+        <Param val="" valType="extendedCode" updates="constant" name="Begin Experiment"/>
+        <Param val="" valType="extendedCode" updates="constant" name="Begin JS Experiment"/>
+        <Param val="if ((type === &quot;backw&quot;)) {&amp;#10;    show_warning_p = 1;&amp;#10;} else {&amp;#10;    if ((type === &quot;forw&quot;)) {&amp;#10;        show_warning_p = 0;&amp;#10;    }&amp;#10;}&amp;#10;" valType="extendedCode" updates="constant" name="Begin JS Routine"/>
+        <Param val="if type == 'backw':&amp;#10;    show_warning_p = 1&amp;#10;elif type == 'forw':&amp;#10;    show_warning_p = 0" valType="extendedCode" updates="constant" name="Begin Routine"/>
+        <Param val="Auto-&gt;JS" valType="str" updates="None" name="Code Type"/>
+        <Param val="" valType="extendedCode" updates="constant" name="Each Frame"/>
+        <Param val="" valType="extendedCode" updates="constant" name="Each JS Frame"/>
+        <Param val="" valType="extendedCode" updates="constant" name="End Experiment"/>
+        <Param val="" valType="extendedCode" updates="constant" name="End JS Experiment"/>
+        <Param val="" valType="extendedCode" updates="constant" name="End JS Routine"/>
+        <Param val="" valType="extendedCode" updates="constant" name="End Routine"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="parrot_tip_code" valType="code" updates="None" name="name"/>
+      </CodeComponent>
       <ImageComponent name="parrot">
         <Param val="center" valType="str" updates="constant" name="anchor"/>
         <Param val="$[1,1,1]" valType="color" updates="constant" name="color"/>
@@ -541,6 +601,31 @@
         <Param val="128" valType="num" updates="constant" name="texture resolution"/>
         <Param val="from exp settings" valType="str" updates="None" name="units"/>
       </ImageComponent>
+      <TextComponent name="backw_warning_parrot">
+        <Param val="black" valType="color" updates="constant" name="color"/>
+        <Param val="rgb" valType="str" updates="constant" name="colorSpace"/>
+        <Param val="1" valType="num" updates="constant" name="contrast"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="None" valType="str" updates="constant" name="flip"/>
+        <Param val="Open Sans" valType="str" updates="constant" name="font"/>
+        <Param val="LTR" valType="str" updates="None" name="languageStyle"/>
+        <Param val="0.1" valType="num" updates="constant" name="letterHeight"/>
+        <Param val="backw_warning_parrot" valType="code" updates="None" name="name"/>
+        <Param val="show_warning_p" valType="num" updates="set every repeat" name="opacity"/>
+        <Param val="0" valType="num" updates="constant" name="ori"/>
+        <Param val="(0.4, 0)" valType="list" updates="constant" name="pos"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="0.0" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="4" valType="code" updates="constant" name="stopVal"/>
+        <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
+        <Param val="Careful! This is a backwards trial!" valType="str" updates="constant" name="text"/>
+        <Param val="from exp settings" valType="str" updates="None" name="units"/>
+        <Param val="0.6" valType="num" updates="constant" name="wrapWidth"/>
+      </TextComponent>
     </Routine>
     <Routine name="feedback_screen">
       <CodeComponent name="code">
@@ -548,8 +633,8 @@
         <Param val="" valType="extendedCode" updates="constant" name="Before JS Experiment"/>
         <Param val="feedback_msg = ''" valType="extendedCode" updates="constant" name="Begin Experiment"/>
         <Param val="feedback_msg = &quot;&quot;;&amp;#10;" valType="extendedCode" updates="constant" name="Begin JS Experiment"/>
-        <Param val="feedback_msg = `You were better than ${feedback}% of the candidates. Try to be even more precise and walk only the same routes to impress me!`;&amp;#10;" valType="extendedCode" updates="constant" name="Begin JS Routine"/>
-        <Param val="feedback_msg= f'You were better than {feedback}% of the candidates. Try to be even more precise and walk only the same routes to impress me!'" valType="extendedCode" updates="constant" name="Begin Routine"/>
+        <Param val="feedback_msg = `This round, you were better than ${feedback}% of the candidates. Try to be even more precise and walk only the same routes to impress me! Yer gold will be more plenty as well...`;&amp;#10;" valType="extendedCode" updates="constant" name="Begin JS Routine"/>
+        <Param val="feedback_msg= f'This round, you were better than {feedback}% of the candidates. Try to be even more precise and walk only the same routes to impress me! Yer gold will be more plenty as well...'" valType="extendedCode" updates="constant" name="Begin Routine"/>
         <Param val="Auto-&gt;JS" valType="str" updates="None" name="Code Type"/>
         <Param val="" valType="extendedCode" updates="constant" name="Each Frame"/>
         <Param val="" valType="extendedCode" updates="constant" name="Each JS Frame"/>
@@ -582,7 +667,7 @@
         <Param val="time (s)" valType="str" updates="None" name="startType"/>
         <Param val="0.0" valType="code" updates="None" name="startVal"/>
         <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
-        <Param val="5" valType="code" updates="constant" name="stopVal"/>
+        <Param val="3.5" valType="code" updates="constant" name="stopVal"/>
         <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
         <Param val="128" valType="num" updates="constant" name="texture resolution"/>
         <Param val="from exp settings" valType="str" updates="None" name="units"/>
@@ -606,7 +691,7 @@
         <Param val="time (s)" valType="str" updates="None" name="startType"/>
         <Param val="0.0" valType="code" updates="None" name="startVal"/>
         <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
-        <Param val="5" valType="code" updates="constant" name="stopVal"/>
+        <Param val="3.5" valType="code" updates="constant" name="stopVal"/>
         <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
         <Param val="$feedback_msg" valType="str" updates="set every repeat" name="text"/>
         <Param val="from exp settings" valType="str" updates="None" name="units"/>
@@ -808,105 +893,6 @@
         <Param val="False" valType="bool" updates="constant" name="storeCorrect"/>
         <Param val="True" valType="bool" updates="constant" name="syncScreenRefresh"/>
       </KeyboardComponent>
-    </Routine>
-    <Routine name="intro_2">
-      <ImageComponent name="treasure_box_intro_2">
-        <Param val="center" valType="str" updates="constant" name="anchor"/>
-        <Param val="$[1,1,1]" valType="color" updates="constant" name="color"/>
-        <Param val="rgb" valType="str" updates="constant" name="colorSpace"/>
-        <Param val="1" valType="num" updates="constant" name="contrast"/>
-        <Param val="False" valType="bool" updates="None" name="disabled"/>
-        <Param val="" valType="code" updates="None" name="durationEstim"/>
-        <Param val="False" valType="bool" updates="constant" name="flipHoriz"/>
-        <Param val="False" valType="bool" updates="constant" name="flipVert"/>
-        <Param val="images/map_w_txt.png" valType="file" updates="constant" name="image"/>
-        <Param val="linear" valType="str" updates="constant" name="interpolate"/>
-        <Param val="" valType="str" updates="constant" name="mask"/>
-        <Param val="treasure_box_intro_2" valType="code" updates="None" name="name"/>
-        <Param val="" valType="num" updates="constant" name="opacity"/>
-        <Param val="0" valType="num" updates="constant" name="ori"/>
-        <Param val="(0, 0)" valType="list" updates="constant" name="pos"/>
-        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
-        <Param val="(2,2)" valType="list" updates="constant" name="size"/>
-        <Param val="" valType="code" updates="None" name="startEstim"/>
-        <Param val="time (s)" valType="str" updates="None" name="startType"/>
-        <Param val="0.0" valType="code" updates="None" name="startVal"/>
-        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
-        <Param val="" valType="code" updates="constant" name="stopVal"/>
-        <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
-        <Param val="128" valType="num" updates="constant" name="texture resolution"/>
-        <Param val="from exp settings" valType="str" updates="None" name="units"/>
-      </ImageComponent>
-      <TextComponent name="text_intro_2">
-        <Param val="white" valType="color" updates="constant" name="color"/>
-        <Param val="rgb" valType="str" updates="constant" name="colorSpace"/>
-        <Param val="1" valType="num" updates="constant" name="contrast"/>
-        <Param val="False" valType="bool" updates="None" name="disabled"/>
-        <Param val="" valType="code" updates="None" name="durationEstim"/>
-        <Param val="None" valType="str" updates="constant" name="flip"/>
-        <Param val="Open Sans" valType="str" updates="constant" name="font"/>
-        <Param val="LTR" valType="str" updates="None" name="languageStyle"/>
-        <Param val="0.05" valType="num" updates="constant" name="letterHeight"/>
-        <Param val="text_intro_2" valType="code" updates="None" name="name"/>
-        <Param val="" valType="num" updates="constant" name="opacity"/>
-        <Param val="0" valType="num" updates="constant" name="ori"/>
-        <Param val="(0, 0)" valType="list" updates="constant" name="pos"/>
-        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
-        <Param val="" valType="code" updates="None" name="startEstim"/>
-        <Param val="time (s)" valType="str" updates="None" name="startType"/>
-        <Param val="0.0" valType="code" updates="None" name="startVal"/>
-        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
-        <Param val="" valType="code" updates="constant" name="stopVal"/>
-        <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
-        <Param val="To navigate through the sand, you can use the keys 1, 2, 3, and 4.&amp;#10;Please use your right hand so that your index finger (1) will take you left, your middle finger (2) moves you north, your ring finger (3) leads you south, and your little finger (4) guides you right.&amp;#10;&amp;#10;Press 1 to start the practice!" valType="str" updates="constant" name="text"/>
-        <Param val="from exp settings" valType="str" updates="None" name="units"/>
-        <Param val="" valType="num" updates="constant" name="wrapWidth"/>
-      </TextComponent>
-      <KeyboardComponent name="next_intro_2">
-        <Param val="'1'" valType="list" updates="constant" name="allowedKeys"/>
-        <Param val="" valType="str" updates="constant" name="correctAns"/>
-        <Param val="False" valType="bool" updates="None" name="disabled"/>
-        <Param val="True" valType="bool" updates="constant" name="discard previous"/>
-        <Param val="" valType="code" updates="None" name="durationEstim"/>
-        <Param val="True" valType="bool" updates="constant" name="forceEndRoutine"/>
-        <Param val="next_intro_2" valType="code" updates="None" name="name"/>
-        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
-        <Param val="" valType="code" updates="None" name="startEstim"/>
-        <Param val="time (s)" valType="str" updates="None" name="startType"/>
-        <Param val="0.0" valType="code" updates="None" name="startVal"/>
-        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
-        <Param val="" valType="code" updates="constant" name="stopVal"/>
-        <Param val="last key" valType="str" updates="constant" name="store"/>
-        <Param val="False" valType="bool" updates="constant" name="storeCorrect"/>
-        <Param val="True" valType="bool" updates="constant" name="syncScreenRefresh"/>
-      </KeyboardComponent>
-      <ImageComponent name="navigation_img">
-        <Param val="center" valType="str" updates="constant" name="anchor"/>
-        <Param val="$[1,1,1]" valType="color" updates="constant" name="color"/>
-        <Param val="rgb" valType="str" updates="constant" name="colorSpace"/>
-        <Param val="1" valType="num" updates="constant" name="contrast"/>
-        <Param val="False" valType="bool" updates="None" name="disabled"/>
-        <Param val="" valType="code" updates="None" name="durationEstim"/>
-        <Param val="False" valType="bool" updates="constant" name="flipHoriz"/>
-        <Param val="False" valType="bool" updates="constant" name="flipVert"/>
-        <Param val="images/footprints_buttons.png" valType="file" updates="constant" name="image"/>
-        <Param val="linear" valType="str" updates="constant" name="interpolate"/>
-        <Param val="" valType="str" updates="constant" name="mask"/>
-        <Param val="navigation_img" valType="code" updates="None" name="name"/>
-        <Param val="" valType="num" updates="constant" name="opacity"/>
-        <Param val="0" valType="num" updates="constant" name="ori"/>
-        <Param val="(0, -0.6)" valType="list" updates="constant" name="pos"/>
-        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
-        <Param val="(0.4, 0.5)" valType="list" updates="constant" name="size"/>
-        <Param val="" valType="code" updates="None" name="startEstim"/>
-        <Param val="time (s)" valType="str" updates="None" name="startType"/>
-        <Param val="0.0" valType="code" updates="None" name="startVal"/>
-        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
-        <Param val="" valType="code" updates="constant" name="stopVal"/>
-        <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
-        <Param val="128" valType="num" updates="constant" name="texture resolution"/>
-        <Param val="from exp settings" valType="str" updates="None" name="units"/>
-      </ImageComponent>
     </Routine>
     <Routine name="up_down_practice">
       <CodeComponent name="code_updown">
@@ -1264,27 +1250,479 @@
         <Param val="True" valType="bool" updates="constant" name="syncScreenRefresh"/>
       </KeyboardComponent>
     </Routine>
+    <Routine name="intro_2">
+      <ImageComponent name="treasure_box_intro_2">
+        <Param val="center" valType="str" updates="constant" name="anchor"/>
+        <Param val="$[1,1,1]" valType="color" updates="constant" name="color"/>
+        <Param val="rgb" valType="str" updates="constant" name="colorSpace"/>
+        <Param val="1" valType="num" updates="constant" name="contrast"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="False" valType="bool" updates="constant" name="flipHoriz"/>
+        <Param val="False" valType="bool" updates="constant" name="flipVert"/>
+        <Param val="images/map_w_txt.png" valType="file" updates="constant" name="image"/>
+        <Param val="linear" valType="str" updates="constant" name="interpolate"/>
+        <Param val="" valType="str" updates="constant" name="mask"/>
+        <Param val="treasure_box_intro_2" valType="code" updates="None" name="name"/>
+        <Param val="" valType="num" updates="constant" name="opacity"/>
+        <Param val="0" valType="num" updates="constant" name="ori"/>
+        <Param val="(0, 0)" valType="list" updates="constant" name="pos"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="(2,2)" valType="list" updates="constant" name="size"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="0.0" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="" valType="code" updates="constant" name="stopVal"/>
+        <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
+        <Param val="128" valType="num" updates="constant" name="texture resolution"/>
+        <Param val="from exp settings" valType="str" updates="None" name="units"/>
+      </ImageComponent>
+      <TextComponent name="text_intro_2">
+        <Param val="white" valType="color" updates="constant" name="color"/>
+        <Param val="rgb" valType="str" updates="constant" name="colorSpace"/>
+        <Param val="1" valType="num" updates="constant" name="contrast"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="None" valType="str" updates="constant" name="flip"/>
+        <Param val="Open Sans" valType="str" updates="constant" name="font"/>
+        <Param val="LTR" valType="str" updates="None" name="languageStyle"/>
+        <Param val="0.05" valType="num" updates="constant" name="letterHeight"/>
+        <Param val="text_intro_2" valType="code" updates="None" name="name"/>
+        <Param val="" valType="num" updates="constant" name="opacity"/>
+        <Param val="0" valType="num" updates="constant" name="ori"/>
+        <Param val="(0, 0)" valType="list" updates="constant" name="pos"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="0.0" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="" valType="code" updates="constant" name="stopVal"/>
+        <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
+        <Param val="To navigate through the sand, you can use the keys 1, 2, 3, and 4.&amp;#10;Please use your right hand so that your index finger (1) will take you left, your middle finger (2) moves you north, your ring finger (3) leads you south, and your little finger (4) guides you right.&amp;#10;Unfortunately, walking through sand can take quite long and is effortful...&amp;#10;&amp;#10;Press 1 to start the practice!" valType="str" updates="constant" name="text"/>
+        <Param val="from exp settings" valType="str" updates="None" name="units"/>
+        <Param val="" valType="num" updates="constant" name="wrapWidth"/>
+      </TextComponent>
+      <KeyboardComponent name="next_intro_2">
+        <Param val="'1'" valType="list" updates="constant" name="allowedKeys"/>
+        <Param val="" valType="str" updates="constant" name="correctAns"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="True" valType="bool" updates="constant" name="discard previous"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="True" valType="bool" updates="constant" name="forceEndRoutine"/>
+        <Param val="next_intro_2" valType="code" updates="None" name="name"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="0.0" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="" valType="code" updates="constant" name="stopVal"/>
+        <Param val="last key" valType="str" updates="constant" name="store"/>
+        <Param val="False" valType="bool" updates="constant" name="storeCorrect"/>
+        <Param val="True" valType="bool" updates="constant" name="syncScreenRefresh"/>
+      </KeyboardComponent>
+      <ImageComponent name="navigation_img">
+        <Param val="center" valType="str" updates="constant" name="anchor"/>
+        <Param val="$[1,1,1]" valType="color" updates="constant" name="color"/>
+        <Param val="rgb" valType="str" updates="constant" name="colorSpace"/>
+        <Param val="1" valType="num" updates="constant" name="contrast"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="False" valType="bool" updates="constant" name="flipHoriz"/>
+        <Param val="False" valType="bool" updates="constant" name="flipVert"/>
+        <Param val="images/footprints_buttons.png" valType="file" updates="constant" name="image"/>
+        <Param val="linear" valType="str" updates="constant" name="interpolate"/>
+        <Param val="" valType="str" updates="constant" name="mask"/>
+        <Param val="navigation_img" valType="code" updates="None" name="name"/>
+        <Param val="" valType="num" updates="constant" name="opacity"/>
+        <Param val="0" valType="num" updates="constant" name="ori"/>
+        <Param val="(0, -0.6)" valType="list" updates="constant" name="pos"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="(0.4, 0.5)" valType="list" updates="constant" name="size"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="0.0" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="" valType="code" updates="constant" name="stopVal"/>
+        <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
+        <Param val="128" valType="num" updates="constant" name="texture resolution"/>
+        <Param val="from exp settings" valType="str" updates="None" name="units"/>
+      </ImageComponent>
+    </Routine>
+    <Routine name="intro_1_1">
+      <ImageComponent name="intro1_1_ship">
+        <Param val="center" valType="str" updates="constant" name="anchor"/>
+        <Param val="$[1,1,1]" valType="color" updates="constant" name="color"/>
+        <Param val="rgb" valType="str" updates="constant" name="colorSpace"/>
+        <Param val="1" valType="num" updates="constant" name="contrast"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="False" valType="bool" updates="constant" name="flipHoriz"/>
+        <Param val="False" valType="bool" updates="constant" name="flipVert"/>
+        <Param val="images/ship_box.png" valType="file" updates="constant" name="image"/>
+        <Param val="linear" valType="str" updates="constant" name="interpolate"/>
+        <Param val="" valType="str" updates="constant" name="mask"/>
+        <Param val="intro1_1_ship" valType="code" updates="None" name="name"/>
+        <Param val="" valType="num" updates="constant" name="opacity"/>
+        <Param val="0" valType="num" updates="constant" name="ori"/>
+        <Param val="(0, 0)" valType="list" updates="constant" name="pos"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="(2,2)" valType="list" updates="constant" name="size"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="0.0" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="" valType="code" updates="constant" name="stopVal"/>
+        <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
+        <Param val="128" valType="num" updates="constant" name="texture resolution"/>
+        <Param val="from exp settings" valType="str" updates="None" name="units"/>
+      </ImageComponent>
+      <TextComponent name="intro1_1_txt">
+        <Param val="white" valType="color" updates="constant" name="color"/>
+        <Param val="rgb" valType="str" updates="constant" name="colorSpace"/>
+        <Param val="1" valType="num" updates="constant" name="contrast"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="None" valType="str" updates="constant" name="flip"/>
+        <Param val="Open Sans" valType="str" updates="constant" name="font"/>
+        <Param val="LTR" valType="str" updates="None" name="languageStyle"/>
+        <Param val="0.05" valType="num" updates="constant" name="letterHeight"/>
+        <Param val="intro1_1_txt" valType="code" updates="None" name="name"/>
+        <Param val="" valType="num" updates="constant" name="opacity"/>
+        <Param val="0" valType="num" updates="constant" name="ori"/>
+        <Param val="(0, 0)" valType="list" updates="constant" name="pos"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="0.0" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="" valType="code" updates="constant" name="stopVal"/>
+        <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
+        <Param val="Most of the times, you will have to find the gold coins in the order they are presented.&amp;#10;But careful! To properly test you, the pirate captain will sometimes tell you to find the rewards in revsered order.&amp;#10;The most important part is to clearly visualise the paths you want to walk, and to always walk the same paths as long as the locations stay the same.&amp;#10;&amp;#10;Press 1 to continue!" valType="str" updates="constant" name="text"/>
+        <Param val="from exp settings" valType="str" updates="None" name="units"/>
+        <Param val="" valType="num" updates="constant" name="wrapWidth"/>
+      </TextComponent>
+      <KeyboardComponent name="next_intro_1_1">
+        <Param val="'1'" valType="list" updates="constant" name="allowedKeys"/>
+        <Param val="" valType="str" updates="constant" name="correctAns"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="True" valType="bool" updates="constant" name="discard previous"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="True" valType="bool" updates="constant" name="forceEndRoutine"/>
+        <Param val="next_intro_1_1" valType="code" updates="None" name="name"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="0.0" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="" valType="code" updates="constant" name="stopVal"/>
+        <Param val="last key" valType="str" updates="constant" name="store"/>
+        <Param val="False" valType="bool" updates="constant" name="storeCorrect"/>
+        <Param val="True" valType="bool" updates="constant" name="syncScreenRefresh"/>
+      </KeyboardComponent>
+    </Routine>
+    <Routine name="the_end">
+      <ImageComponent name="full_ship_end">
+        <Param val="center" valType="str" updates="constant" name="anchor"/>
+        <Param val="$[1,1,1]" valType="color" updates="constant" name="color"/>
+        <Param val="rgb" valType="str" updates="constant" name="colorSpace"/>
+        <Param val="1" valType="num" updates="constant" name="contrast"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="False" valType="bool" updates="constant" name="flipHoriz"/>
+        <Param val="False" valType="bool" updates="constant" name="flipVert"/>
+        <Param val="images/pirates.jpg" valType="file" updates="constant" name="image"/>
+        <Param val="linear" valType="str" updates="constant" name="interpolate"/>
+        <Param val="" valType="str" updates="constant" name="mask"/>
+        <Param val="full_ship_end" valType="code" updates="None" name="name"/>
+        <Param val="" valType="num" updates="constant" name="opacity"/>
+        <Param val="0" valType="num" updates="constant" name="ori"/>
+        <Param val="(0, 0)" valType="list" updates="constant" name="pos"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="(2,2)" valType="list" updates="constant" name="size"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="0.0" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="2" valType="code" updates="constant" name="stopVal"/>
+        <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
+        <Param val="128" valType="num" updates="constant" name="texture resolution"/>
+        <Param val="from exp settings" valType="str" updates="None" name="units"/>
+      </ImageComponent>
+      <ImageComponent name="ship_box">
+        <Param val="center" valType="str" updates="constant" name="anchor"/>
+        <Param val="$[1,1,1]" valType="color" updates="constant" name="color"/>
+        <Param val="rgb" valType="str" updates="constant" name="colorSpace"/>
+        <Param val="1" valType="num" updates="constant" name="contrast"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="False" valType="bool" updates="constant" name="flipHoriz"/>
+        <Param val="False" valType="bool" updates="constant" name="flipVert"/>
+        <Param val="images/ship_box.png" valType="file" updates="constant" name="image"/>
+        <Param val="linear" valType="str" updates="constant" name="interpolate"/>
+        <Param val="" valType="str" updates="constant" name="mask"/>
+        <Param val="ship_box" valType="code" updates="None" name="name"/>
+        <Param val="" valType="num" updates="constant" name="opacity"/>
+        <Param val="0" valType="num" updates="constant" name="ori"/>
+        <Param val="(0, 0)" valType="list" updates="constant" name="pos"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="(2,2)" valType="list" updates="constant" name="size"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="2" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="" valType="code" updates="constant" name="stopVal"/>
+        <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
+        <Param val="128" valType="num" updates="constant" name="texture resolution"/>
+        <Param val="from exp settings" valType="str" updates="None" name="units"/>
+      </ImageComponent>
+      <KeyboardComponent name="end_practice_key">
+        <Param val="'1'" valType="list" updates="constant" name="allowedKeys"/>
+        <Param val="" valType="str" updates="constant" name="correctAns"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="True" valType="bool" updates="constant" name="discard previous"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="True" valType="bool" updates="constant" name="forceEndRoutine"/>
+        <Param val="end_practice_key" valType="code" updates="None" name="name"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="2" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="" valType="code" updates="constant" name="stopVal"/>
+        <Param val="last key" valType="str" updates="constant" name="store"/>
+        <Param val="False" valType="bool" updates="constant" name="storeCorrect"/>
+        <Param val="True" valType="bool" updates="constant" name="syncScreenRefresh"/>
+      </KeyboardComponent>
+      <TextComponent name="outro">
+        <Param val="white" valType="color" updates="constant" name="color"/>
+        <Param val="rgb" valType="str" updates="constant" name="colorSpace"/>
+        <Param val="1" valType="num" updates="constant" name="contrast"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="None" valType="str" updates="constant" name="flip"/>
+        <Param val="Open Sans" valType="str" updates="constant" name="font"/>
+        <Param val="LTR" valType="str" updates="None" name="languageStyle"/>
+        <Param val="0.08" valType="num" updates="constant" name="letterHeight"/>
+        <Param val="outro" valType="code" updates="None" name="name"/>
+        <Param val="" valType="num" updates="constant" name="opacity"/>
+        <Param val="0" valType="num" updates="constant" name="ori"/>
+        <Param val="(0, 0)" valType="list" updates="constant" name="pos"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="2" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="" valType="code" updates="constant" name="stopVal"/>
+        <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
+        <Param val="Arr, ye be a fine pirate, ye scallywag! &amp;#10;In the MRI, it be crucial to be swift as a cutlass and accurate as a marksman. Always visualise the paths you want to take.&amp;#10;Just one more hour, and nothin' shall stand in yer way of joinin' our crew!&amp;#10;&amp;#10;&amp;#10;End with 1." valType="str" updates="constant" name="text"/>
+        <Param val="from exp settings" valType="str" updates="None" name="units"/>
+        <Param val="" valType="num" updates="constant" name="wrapWidth"/>
+      </TextComponent>
+    </Routine>
+    <Routine name="test_keys">
+      <CodeComponent name="key_test_code">
+        <Param val="" valType="extendedCode" updates="constant" name="Before Experiment"/>
+        <Param val="" valType="extendedCode" updates="constant" name="Before JS Experiment"/>
+        <Param val="from psychopy.core import wait as wait&amp;#10;msg = &quot;waiting for the 4 button presses..&quot;&amp;#10;all_keys_are_pressed = False" valType="extendedCode" updates="constant" name="Begin Experiment"/>
+        <Param val="import {wait as wait} from 'psychopy/core';&amp;#10;var all_keys_are_pressed, msg;&amp;#10;msg = &quot;waiting for the 4 button presses..&quot;;&amp;#10;all_keys_are_pressed = false;&amp;#10;" valType="extendedCode" updates="constant" name="Begin JS Experiment"/>
+        <Param val="" valType="extendedCode" updates="constant" name="Begin JS Routine"/>
+        <Param val="" valType="extendedCode" updates="constant" name="Begin Routine"/>
+        <Param val="Auto-&gt;JS" valType="str" updates="None" name="Code Type"/>
+        <Param val="keys_pressed = key_resp_test.keys&amp;#10;if all_keys_are_pressed == True:&amp;#10;    wait(3)&amp;#10;    continueRoutine = False&amp;#10;    &amp;#10;    &amp;#10;if len(keys_pressed) &gt; 0:&amp;#10;    all_keys_are_pressed = set(['1', '2', '3', '4']).issubset(set(keys_pressed))&amp;#10;    if all_keys_are_pressed == True:&amp;#10;        msg = &quot;all buttons pressed!&quot;&amp;#10;" valType="extendedCode" updates="constant" name="Each Frame"/>
+        <Param val="keys_pressed = key_resp_test.keys;&amp;#10;if ((all_keys_are_pressed === true)) {&amp;#10;    wait(3);&amp;#10;    continueRoutine = false;&amp;#10;}&amp;#10;if ((keys_pressed.length &gt; 0)) {&amp;#10;    all_keys_are_pressed = set([&quot;1&quot;, &quot;2&quot;, &quot;3&quot;, &quot;4&quot;]).issubset(set(keys_pressed));&amp;#10;    if ((all_keys_are_pressed === true)) {&amp;#10;        msg = &quot;all buttons pressed!&quot;;&amp;#10;    }&amp;#10;}&amp;#10;" valType="extendedCode" updates="constant" name="Each JS Frame"/>
+        <Param val="" valType="extendedCode" updates="constant" name="End Experiment"/>
+        <Param val="" valType="extendedCode" updates="constant" name="End JS Experiment"/>
+        <Param val="" valType="extendedCode" updates="constant" name="End JS Routine"/>
+        <Param val="" valType="extendedCode" updates="constant" name="End Routine"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="key_test_code" valType="code" updates="None" name="name"/>
+      </CodeComponent>
+      <ImageComponent name="treasurehunt_welcome_img">
+        <Param val="center" valType="str" updates="constant" name="anchor"/>
+        <Param val="$[1,1,1]" valType="color" updates="constant" name="color"/>
+        <Param val="rgb" valType="str" updates="constant" name="colorSpace"/>
+        <Param val="1" valType="num" updates="constant" name="contrast"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="False" valType="bool" updates="constant" name="flipHoriz"/>
+        <Param val="False" valType="bool" updates="constant" name="flipVert"/>
+        <Param val="images/map_w_txt.png" valType="file" updates="constant" name="image"/>
+        <Param val="linear" valType="str" updates="constant" name="interpolate"/>
+        <Param val="" valType="str" updates="constant" name="mask"/>
+        <Param val="treasurehunt_welcome_img" valType="code" updates="None" name="name"/>
+        <Param val="" valType="num" updates="constant" name="opacity"/>
+        <Param val="0" valType="num" updates="constant" name="ori"/>
+        <Param val="(0, 0)" valType="list" updates="constant" name="pos"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="(2,2)" valType="list" updates="constant" name="size"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="0.0" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="" valType="code" updates="constant" name="stopVal"/>
+        <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
+        <Param val="128" valType="num" updates="constant" name="texture resolution"/>
+        <Param val="from exp settings" valType="str" updates="None" name="units"/>
+      </ImageComponent>
+      <TextComponent name="welcome_txt">
+        <Param val="black" valType="color" updates="constant" name="color"/>
+        <Param val="rgb" valType="str" updates="constant" name="colorSpace"/>
+        <Param val="1" valType="num" updates="constant" name="contrast"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="None" valType="str" updates="constant" name="flip"/>
+        <Param val="Open Sans" valType="str" updates="constant" name="font"/>
+        <Param val="LTR" valType="str" updates="None" name="languageStyle"/>
+        <Param val="0.1" valType="num" updates="constant" name="letterHeight"/>
+        <Param val="welcome_txt" valType="code" updates="None" name="name"/>
+        <Param val="" valType="num" updates="constant" name="opacity"/>
+        <Param val="0" valType="num" updates="constant" name="ori"/>
+        <Param val="(0, 0.1)" valType="list" updates="constant" name="pos"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="0.0" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="" valType="code" updates="constant" name="stopVal"/>
+        <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
+        <Param val="Welcome to the treasure hunt experiment!&amp;#10;&amp;#10;Please press every key of the button box once." valType="str" updates="set every frame" name="text"/>
+        <Param val="from exp settings" valType="str" updates="None" name="units"/>
+        <Param val="" valType="num" updates="constant" name="wrapWidth"/>
+      </TextComponent>
+      <KeyboardComponent name="key_resp_test">
+        <Param val="'1','2','3','4'" valType="list" updates="constant" name="allowedKeys"/>
+        <Param val="" valType="str" updates="constant" name="correctAns"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="True" valType="bool" updates="constant" name="discard previous"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="False" valType="bool" updates="constant" name="forceEndRoutine"/>
+        <Param val="key_resp_test" valType="code" updates="None" name="name"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="0.0" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="" valType="code" updates="constant" name="stopVal"/>
+        <Param val="all keys" valType="str" updates="constant" name="store"/>
+        <Param val="False" valType="bool" updates="constant" name="storeCorrect"/>
+        <Param val="True" valType="bool" updates="constant" name="syncScreenRefresh"/>
+      </KeyboardComponent>
+      <TextComponent name="feedback_testkeys">
+        <Param val="black" valType="color" updates="constant" name="color"/>
+        <Param val="rgb" valType="str" updates="constant" name="colorSpace"/>
+        <Param val="1" valType="num" updates="constant" name="contrast"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="None" valType="str" updates="constant" name="flip"/>
+        <Param val="Open Sans" valType="str" updates="constant" name="font"/>
+        <Param val="LTR" valType="str" updates="None" name="languageStyle"/>
+        <Param val="0.08" valType="num" updates="constant" name="letterHeight"/>
+        <Param val="feedback_testkeys" valType="code" updates="None" name="name"/>
+        <Param val="" valType="num" updates="constant" name="opacity"/>
+        <Param val="0" valType="num" updates="constant" name="ori"/>
+        <Param val="(0, -0.4)" valType="list" updates="constant" name="pos"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="0.0" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="" valType="code" updates="constant" name="stopVal"/>
+        <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
+        <Param val="$msg" valType="str" updates="set every frame" name="text"/>
+        <Param val="from exp settings" valType="str" updates="None" name="units"/>
+        <Param val="" valType="num" updates="constant" name="wrapWidth"/>
+      </TextComponent>
+    </Routine>
+    <Routine name="scan_trigger">
+      <CodeComponent name="scanner_trigger_code">
+        <Param val="" valType="extendedCode" updates="constant" name="Before Experiment"/>
+        <Param val="" valType="extendedCode" updates="constant" name="Before JS Experiment"/>
+        <Param val="" valType="extendedCode" updates="constant" name="Begin Experiment"/>
+        <Param val="" valType="extendedCode" updates="constant" name="Begin JS Experiment"/>
+        <Param val="time_scanner_prompt_start = globalClock.getTime();&amp;#10;" valType="extendedCode" updates="constant" name="Begin JS Routine"/>
+        <Param val="time_scanner_prompt_start = globalClock.getTime()" valType="extendedCode" updates="constant" name="Begin Routine"/>
+        <Param val="Auto-&gt;JS" valType="str" updates="None" name="Code Type"/>
+        <Param val="time_scanner_prompt_end = globalClock.getTime()&amp;#10;&amp;#10;thisExp.addData('time_scanner_prompt_start', time_scanner_prompt_start)&amp;#10;thisExp.addData('time_scanner_prompt_end', time_scanner_prompt_end)&amp;#10;&amp;#10;&amp;#10;if len(scan_trigger_key.getKeys(keyList = '5')) &gt; 0:&amp;#10;    Scanner_trigger = globalClock.getTime()&amp;#10;    thisExp.nextEntry()&amp;#10;    thisExp.addData(f&quot;TR_received_no{len(scan_trigger_key.getKeys(keyList = '5'))}&quot;, Scanner_trigger)" valType="extendedCode" updates="constant" name="Each Frame"/>
+        <Param val="time_scanner_prompt_end = globalClock.getTime();&amp;#10;psychoJS.experiment.addData(&quot;time_scanner_prompt_start&quot;, time_scanner_prompt_start);&amp;#10;psychoJS.experiment.addData(&quot;time_scanner_prompt_end&quot;, time_scanner_prompt_end);&amp;#10;if ((scan_trigger_key.getKeys({&quot;keyList&quot;: &quot;5&quot;}).length &gt; 0)) {&amp;#10;    Scanner_trigger = globalClock.getTime();&amp;#10;    psychoJS.experiment.nextEntry();&amp;#10;    psychoJS.experiment.addData(`TR_received_no${scan_trigger_key.getKeys({&quot;keyList&quot;: &quot;5&quot;}).length}`, Scanner_trigger);&amp;#10;}&amp;#10;" valType="extendedCode" updates="constant" name="Each JS Frame"/>
+        <Param val="" valType="extendedCode" updates="constant" name="End Experiment"/>
+        <Param val="" valType="extendedCode" updates="constant" name="End JS Experiment"/>
+        <Param val="" valType="extendedCode" updates="constant" name="End JS Routine"/>
+        <Param val="" valType="extendedCode" updates="constant" name="End Routine"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="scanner_trigger_code" valType="code" updates="None" name="name"/>
+      </CodeComponent>
+      <KeyboardComponent name="scan_trigger_key">
+        <Param val="'5'" valType="list" updates="constant" name="allowedKeys"/>
+        <Param val="" valType="str" updates="constant" name="correctAns"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="True" valType="bool" updates="constant" name="discard previous"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="True" valType="bool" updates="constant" name="forceEndRoutine"/>
+        <Param val="scan_trigger_key" valType="code" updates="None" name="name"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="0.0" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="" valType="code" updates="constant" name="stopVal"/>
+        <Param val="all keys" valType="str" updates="constant" name="store"/>
+        <Param val="False" valType="bool" updates="constant" name="storeCorrect"/>
+        <Param val="True" valType="bool" updates="constant" name="syncScreenRefresh"/>
+      </KeyboardComponent>
+      <TextComponent name="wait_scanner_trigger_txt">
+        <Param val="black" valType="color" updates="constant" name="color"/>
+        <Param val="rgb" valType="str" updates="constant" name="colorSpace"/>
+        <Param val="1" valType="num" updates="constant" name="contrast"/>
+        <Param val="False" valType="bool" updates="None" name="disabled"/>
+        <Param val="" valType="code" updates="None" name="durationEstim"/>
+        <Param val="None" valType="str" updates="constant" name="flip"/>
+        <Param val="Open Sans" valType="str" updates="constant" name="font"/>
+        <Param val="LTR" valType="str" updates="None" name="languageStyle"/>
+        <Param val="0.1" valType="num" updates="constant" name="letterHeight"/>
+        <Param val="wait_scanner_trigger_txt" valType="code" updates="None" name="name"/>
+        <Param val="" valType="num" updates="constant" name="opacity"/>
+        <Param val="0" valType="num" updates="constant" name="ori"/>
+        <Param val="(0, 0)" valType="list" updates="constant" name="pos"/>
+        <Param val="True" valType="bool" updates="None" name="saveStartStop"/>
+        <Param val="" valType="code" updates="None" name="startEstim"/>
+        <Param val="time (s)" valType="str" updates="None" name="startType"/>
+        <Param val="0.0" valType="code" updates="None" name="startVal"/>
+        <Param val="duration (s)" valType="str" updates="None" name="stopType"/>
+        <Param val="" valType="code" updates="constant" name="stopVal"/>
+        <Param val="True" valType="bool" updates="None" name="syncScreenRefresh"/>
+        <Param val="Waiting for scanner ..." valType="str" updates="set every frame" name="text"/>
+        <Param val="from exp settings" valType="str" updates="None" name="units"/>
+        <Param val="" valType="num" updates="constant" name="wrapWidth"/>
+      </TextComponent>
+    </Routine>
   </Routines>
   <Flow>
-    <Routine name="intro_0"/>
-    <Routine name="intro_1"/>
-    <Routine name="intro_2"/>
-    <Routine name="up_down_practice"/>
-    <Routine name="left_right_practice"/>
-    <Routine name="summary_intro"/>
-    <LoopInitiator loopType="TrialHandler" name="trials">
+    <Routine name="test_keys"/>
+    <LoopInitiator loopType="TrialHandler" name="wait_5_times">
       <Param name="Selected rows" updates="None" val="" valType="str"/>
-      <Param name="conditions" updates="None" val="[{'Round': 0, 'lower_isi': 1.5, 'upper_isi': 2, 'rew_x_A': 0.21, 'rew_y_A': 0.29, 'rew_x_B': 0.21, 'rew_y_B': -0.29, 'rew_x_C': 0, 'rew_y_C': 0, 'rew_x_D': -0.21, 'rew_y_D': 0.29, 'height_progress': 0, 'feedback': 34, 'reps_per_run': 10}, {'Round': 1, 'lower_isi': 1.5, 'upper_isi': 2, 'rew_x_A': 0, 'rew_y_A': -0.29, 'rew_x_B': -0.21, 'rew_y_B': 0, 'rew_x_C': 0, 'rew_y_C': 0.29, 'rew_x_D': 0.21, 'rew_y_D': 0, 'height_progress': 0, 'feedback': 48, 'reps_per_run': 10}, {'Round': 2, 'lower_isi': 1.5, 'upper_isi': 2, 'rew_x_A': -0.21, 'rew_y_A': 0, 'rew_x_B': 0, 'rew_y_B': 0.29, 'rew_x_C': 0.21, 'rew_y_C': 0, 'rew_x_D': 0, 'rew_y_D': -0.29, 'height_progress': 0, 'feedback': 46, 'reps_per_run': 8}, {'Round': 3, 'lower_isi': 1.5, 'upper_isi': 2, 'rew_x_A': -0.21, 'rew_y_A': -0.29, 'rew_x_B': 0.21, 'rew_y_B': 0.29, 'rew_x_C': 0.21, 'rew_y_C': -0.29, 'rew_x_D': 0, 'rew_y_D': 0.29, 'height_progress': 0, 'feedback': 53, 'reps_per_run': 8}, {'Round': 4, 'lower_isi': 1.5, 'upper_isi': 2, 'rew_x_A': -0.21, 'rew_y_A': 0.29, 'rew_x_B': 0.21, 'rew_y_B': 0.29, 'rew_x_C': 0.21, 'rew_y_C': -0.29, 'rew_x_D': -0.21, 'rew_y_D': -0.29, 'height_progress': 0, 'feedback': 57, 'reps_per_run': 6}, {'Round': 5, 'lower_isi': 1.5, 'upper_isi': 2, 'rew_x_A': -0.21, 'rew_y_A': 0.29, 'rew_x_B': 0, 'rew_y_B': 0, 'rew_x_C': 0.21, 'rew_y_C': -0.29, 'rew_x_D': 0.21, 'rew_y_D': 0.29, 'height_progress': 0, 'feedback': 55, 'reps_per_run': 6}, {'Round': 6, 'lower_isi': 1.5, 'upper_isi': 2, 'rew_x_A': 0.21, 'rew_y_A': -0.29, 'rew_x_B': 0, 'rew_y_B': 0.29, 'rew_x_C': -0.21, 'rew_y_C': 0, 'rew_x_D': 0, 'rew_y_D': -0.29, 'height_progress': 0, 'feedback': 59, 'reps_per_run': 4}, {'Round': 7, 'lower_isi': 1.5, 'upper_isi': 2, 'rew_x_A': 0, 'rew_y_A': -0.29, 'rew_x_B': 0.21, 'rew_y_B': 0, 'rew_x_C': 0, 'rew_y_C': 0.29, 'rew_x_D': -0.21, 'rew_y_D': 0, 'height_progress': 0, 'feedback': 63, 'reps_per_run': 4}, {'Round': 8, 'lower_isi': 1.5, 'upper_isi': 2, 'rew_x_A': 0, 'rew_y_A': 0.29, 'rew_x_B': 0.21, 'rew_y_B': -0.29, 'rew_x_C': 0.21, 'rew_y_C': 0.29, 'rew_x_D': -0.21, 'rew_y_D': -0.29, 'height_progress': 0, 'feedback': 66, 'reps_per_run': 2}, {'Round': 9, 'lower_isi': 1.5, 'upper_isi': 2, 'rew_x_A': -0.21, 'rew_y_A': -0.29, 'rew_x_B': 0.21, 'rew_y_B': -0.29, 'rew_x_C': 0.21, 'rew_y_C': 0.29, 'rew_x_D': -0.21, 'rew_y_D': 0.29, 'height_progress': 0, 'feedback': 68, 'reps_per_run': 2}]" valType="str"/>
-      <Param name="conditionsFile" updates="None" val="pract_cond_3x3.xlsx" valType="file"/>
+      <Param name="conditions" updates="None" val="None" valType="str"/>
+      <Param name="conditionsFile" updates="None" val="" valType="file"/>
       <Param name="endPoints" updates="None" val="[0, 1]" valType="num"/>
       <Param name="isTrials" updates="None" val="True" valType="bool"/>
       <Param name="loopType" updates="None" val="sequential" valType="str"/>
+      <Param name="nReps" updates="None" val="5" valType="num"/>
+      <Param name="name" updates="None" val="wait_5_times" valType="code"/>
+      <Param name="random seed" updates="None" val="" valType="code"/>
+    </LoopInitiator>
+    <Routine name="scan_trigger"/>
+    <LoopTerminator name="wait_5_times"/>
+    <LoopInitiator loopType="TrialHandler" name="trials">
+      <Param name="Selected rows" updates="None" val="" valType="str"/>
+      <Param name="conditions" updates="None" val="[{'Round': 0, 'Config': 'A2', 'rew_x_A': 0.21, 'rew_y_A': 0.29, 'rew_x_B': 0, 'rew_y_B': 0, 'rew_x_C': -0.21, 'rew_y_C': -0.29, 'rew_x_D': -0.21, 'rew_y_D': 0.29, 'exp_step_DA': 2, 'exp_step_AB': 2, 'exp_step_BC': 2, 'exp_step_CD': 2, 'type': 'forw', 'reps_per_run': 5, 'height_progress': 0, 'feedback': 64}, {'Round': 1, 'Config': 'B2', 'rew_x_A': 0, 'rew_y_A': -0.29, 'rew_x_B': -0.21, 'rew_y_B': 0.29, 'rew_x_C': 0.21, 'rew_y_C': -0.29, 'rew_x_D': -0.21, 'rew_y_D': 0.29, 'exp_step_DA': 3, 'exp_step_AB': 3, 'exp_step_BC': 4, 'exp_step_CD': 4, 'type': 'forw', 'reps_per_run': 5, 'height_progress': 0, 'feedback': 51}, {'Round': 2, 'Config': 'C2', 'rew_x_A': 0.21, 'rew_y_A': 0.29, 'rew_x_B': -0.21, 'rew_y_B': 0, 'rew_x_C': 0.21, 'rew_y_C': -0.29, 'rew_x_D': -0.21, 'rew_y_D': -0.29, 'exp_step_DA': 4, 'exp_step_AB': 3, 'exp_step_BC': 3, 'exp_step_CD': 2, 'type': 'forw', 'reps_per_run': 5, 'height_progress': 0, 'feedback': 73}, {'Round': 3, 'Config': 'D2', 'rew_x_A': 0, 'rew_y_A': 0.29, 'rew_x_B': 0, 'rew_y_B': -0.29, 'rew_x_C': 0, 'rew_y_C': 0.29, 'rew_x_D': -0.21, 'rew_y_D': 0, 'exp_step_DA': 2, 'exp_step_AB': 2, 'exp_step_BC': 2, 'exp_step_CD': 2, 'type': 'forw', 'reps_per_run': 5, 'height_progress': 0, 'feedback': 61}, {'Round': 4, 'Config': 'E2', 'rew_x_A': 0.21, 'rew_y_A': 0.29, 'rew_x_B': -0.21, 'rew_y_B': 0, 'rew_x_C': 0.21, 'rew_y_C': -0.29, 'rew_x_D': 0, 'rew_y_D': 0, 'exp_step_DA': 2, 'exp_step_AB': 3, 'exp_step_BC': 3, 'exp_step_CD': 2, 'type': 'forw', 'reps_per_run': 5, 'height_progress': 0, 'feedback': 78}, {'Round': 5, 'Config': 'A2', 'rew_x_A': 0.21, 'rew_y_A': 0.29, 'rew_x_B': 0, 'rew_y_B': 0, 'rew_x_C': -0.21, 'rew_y_C': -0.29, 'rew_x_D': -0.21, 'rew_y_D': 0.29, 'exp_step_DA': 2, 'exp_step_AB': 2, 'exp_step_BC': 2, 'exp_step_CD': 2, 'type': 'backw', 'reps_per_run': 5, 'height_progress': 0, 'feedback': 48}, {'Round': 6, 'Config': 'B2', 'rew_x_A': 0, 'rew_y_A': -0.29, 'rew_x_B': -0.21, 'rew_y_B': 0.29, 'rew_x_C': 0.21, 'rew_y_C': -0.29, 'rew_x_D': -0.21, 'rew_y_D': 0.29, 'exp_step_DA': 3, 'exp_step_AB': 3, 'exp_step_BC': 4, 'exp_step_CD': 4, 'type': 'backw', 'reps_per_run': 5, 'height_progress': 0, 'feedback': 87}, {'Round': 7, 'Config': 'C2', 'rew_x_A': 0.21, 'rew_y_A': 0.29, 'rew_x_B': -0.21, 'rew_y_B': 0, 'rew_x_C': 0.21, 'rew_y_C': -0.29, 'rew_x_D': -0.21, 'rew_y_D': -0.29, 'exp_step_DA': 4, 'exp_step_AB': 3, 'exp_step_BC': 3, 'exp_step_CD': 2, 'type': 'backw', 'reps_per_run': 5, 'height_progress': 0, 'feedback': 78}, {'Round': 8, 'Config': 'D2', 'rew_x_A': 0, 'rew_y_A': 0.29, 'rew_x_B': 0, 'rew_y_B': -0.29, 'rew_x_C': 0, 'rew_y_C': 0.29, 'rew_x_D': -0.21, 'rew_y_D': 0, 'exp_step_DA': 2, 'exp_step_AB': 2, 'exp_step_BC': 2, 'exp_step_CD': 2, 'type': 'backw', 'reps_per_run': 5, 'height_progress': 0, 'feedback': 88}, {'Round': 9, 'Config': 'E2', 'rew_x_A': 0.21, 'rew_y_A': 0.29, 'rew_x_B': -0.21, 'rew_y_B': 0, 'rew_x_C': 0.21, 'rew_y_C': -0.29, 'rew_x_D': 0, 'rew_y_D': 0, 'exp_step_DA': 2, 'exp_step_AB': 3, 'exp_step_BC': 3, 'exp_step_CD': 2, 'type': 'backw', 'reps_per_run': 5, 'height_progress': 0, 'feedback': 91}]" valType="str"/>
+      <Param name="conditionsFile" updates="None" val="task_cond_pt2_3x3.xlsx" valType="file"/>
+      <Param name="endPoints" updates="None" val="[0, 1]" valType="num"/>
+      <Param name="isTrials" updates="None" val="True" valType="bool"/>
+      <Param name="loopType" updates="None" val="random" valType="str"/>
       <Param name="nReps" updates="None" val="1" valType="num"/>
       <Param name="name" updates="None" val="trials" valType="code"/>
       <Param name="random seed" updates="None" val="" valType="code"/>
     </LoopInitiator>
-    <Routine name="new_rewards_prep"/>
-    <Routine name="parrot_tip"/>
     <Routine name="show_rewards"/>
     <LoopInitiator loopType="TrialHandler" name="rep_runs">
       <Param name="Selected rows" updates="None" val="" valType="str"/>

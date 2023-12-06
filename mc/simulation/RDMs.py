@@ -17,8 +17,65 @@ import scipy
 from sklearn.linear_model import LinearRegression
 from scipy import stats
 import statsmodels.api as sm
+import colormaps as cmaps
+
+def plot_RDMs(RDM_dict, no_tasks, save_dir, string_for_ticks = None):
+    for RDM in RDM_dict:
+        # import pdb; pdb.set_trace()
+        indexline_after = int(len(RDM_dict[RDM])/no_tasks)
+        fig, ax = plt.subplots(figsize=(5,4))
+        cmaps.BlueYellowRed
+        cmap = plt.get_cmap('BlueYellowRed')
+        # Set the upper triangle to be empty
+        corr_mat = RDM_dict[RDM]
+        
+        corr_mat[np.triu_indices(int(len(RDM_dict[RDM])), k=1)] = np.nan
+        im = ax.imshow(corr_mat, cmap=cmap, interpolation = 'none', aspect = 'equal', vmin=-1, vmax=1); 
+        for i in range(indexline_after-1,int(len(RDM_dict[RDM])),indexline_after):
+            ax.axhline(i+0.5, color='white', linewidth=1)
+            ax.axvline(i+0.5, color='white', linewidth=1)
+            
+        # #Add a colorbar to the right of the plot with a colormap toolbox
+        # divider = make_axes_locatable(ax)
+        # cax = divider.append_axes("right", size="5%", pad=0.1)
+        # cbar = fig.colorbar(im, cax=cax)
+        # cbar.set_label('Correlation', rotation=270, labelpad=15)
+        
+        # Set x-axis and y-axis ticks and labels
+        if indexline_after == 1:
+            ticks = np.arange(indexline_after-1, int(len(RDM_dict[RDM])), indexline_after)
+        else:   
+            ticks = np.arange(indexline_after/2, int(len(RDM_dict[RDM])), indexline_after)
+        ax.set_xticks(ticks)
+        ax.set_yticks(ticks)
+        if string_for_ticks == None:
+            ax.set_xticklabels(['Task {}'.format(i // indexline_after + 1) for i in ticks], rotation=45, ha = 'right', fontsize=16)
+            ax.set_yticklabels(['Task {}'.format(i // indexline_after + 1) for i in ticks], fontsize=16)
+        else:
+            ax.set_xticklabels(string_for_ticks, rotation=45, ha = 'right', fontsize=16)
+            ax.set_yticklabels(string_for_ticks, fontsize=16)
 
 
+                
+        # Set axis labels and title
+        ax.set_title(f"Model RDM for {RDM} model", fontsize=18)
+        
+        # Adjust the appearance of ticks and grid lines
+        ax.grid(False)
+        cbar = ax.figure.colorbar(im, ax=ax)
+        cbar.ax.set_ylabel("Pearson's r", rotation=-90, va="bottom")
+        
+        
+        # Adjust the layout to prevent cutoff of labels and colorbar
+        plt.tight_layout()
+        fig.savefig(f"{save_dir}{RDM}.png", dpi=300, bbox_inches='tight')
+        fig.savefig(f"{save_dir}{RDM}.tiff", dpi=300, bbox_inches='tight')
+        
+    
+    
+    
+    
+    
 def within_task_RDM(activation_matrix, ax=None, plotting = False, titlestring = None, intervalline= None):
     # import pdb; pdb.set_trace()
     activation_matrix = np.nan_to_num(activation_matrix)
@@ -34,9 +91,7 @@ def within_task_RDM(activation_matrix, ax=None, plotting = False, titlestring = 
     # RDM = np.ones((len(RSM), len(RSM)))
     # RDM = RDM - RSM
     if plotting == True: 
-        
-        
-        
+    
         
         if ax is None:
             plt.figure()
@@ -49,6 +104,9 @@ def within_task_RDM(activation_matrix, ax=None, plotting = False, titlestring = 
                 plt.axvline(interval, color='white', ls='dashed')
         # sn.heatmap(corr_matrix, annot = False)
     return RSM
+
+
+
 
 # create RDM based on dataframes, doesn't matter between what
 def df_based_RDM(dataframe, ax=None, plotting = False, titlestring = None):

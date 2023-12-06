@@ -18,7 +18,7 @@ import numpy as np
 import mc
 from matplotlib import pyplot as plt
 import scipy
-import colormaps as cmaps
+import colormaps as cmaps 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import textwrap
 
@@ -319,16 +319,18 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
         #         curr_corr = f"{curr_RSM_one}_with_{curr_RSM_two}"
         #         temp_corr = mc.simulation.RDMs.corr_matrices_pearson(regressors[curr_RSM_one], regressors[curr_RSM_two], no_tasks = task_no, mask_within= True, exclude_diag=True)
         #         similarities_exclude_autocorr[curr_corr] = temp_corr[0,1]
-        #import pdb; pdb.set_trace()
+        import pdb; pdb.set_trace()
         if plotting:
+          
             regressors['data'] = RSM_neurons
             for RDM in regressors:
                 fig, ax = plt.subplots(figsize=(5,4))
-                cmap = cmaps.fall; # also nice: bamako, oslo
+                cmaps.BlueYellowRed
+                cmap = plt.get_cmap('BlueYellowRed')
                 # Set the upper triangle to be empty
                 corr_mat = regressors[RDM]
                 corr_mat[np.triu_indices(280, k=1)] = np.nan
-                im = ax.imshow(corr_mat, cmap=cmap, interpolation = 'none', aspect = 'equal'); 
+                im = ax.imshow(corr_mat, cmap=cmap, interpolation = 'none', aspect = 'equal', vmin=-1, vmax=1); 
                 for i in range(39,280,40):
                     ax.axhline(i, color='white', linewidth=1)
                     ax.axvline(i, color='white', linewidth=1)
@@ -351,6 +353,8 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
                 
                 # Adjust the appearance of ticks and grid lines
                 ax.grid(False)
+                cbar = ax.figure.colorbar(im, ax=ax)
+                cbar.ax.set_ylabel("Pearson's r", rotation=-90, va="bottom")
                 
                 # Adjust the layout to prevent cutoff of labels and colorbar
                 plt.tight_layout()
@@ -360,7 +364,7 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
             # in the end, remove data from the dict again!
             del regressors['data']
                 
-                
+               
                 
         # import pdb; pdb.set_trace()
         
@@ -1003,6 +1007,7 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
     
     # import pdb; pdb.set_trace()
     if plotting == True:
+        import pdb; pdb.set_trace()
         # plot the averaged simulated and cleaned data
         mc.simulation.predictions.plot_without_legends(ave_location_between, titlestring= 'Location model, averaged across runs in mouse a', intervalline= 4*no_bins_per_state, saving_file='/Users/xpsy1114/Documents/projects/multiple_clocks/output/')
         mc.simulation.predictions.plot_without_legends(ave_clocks_between, titlestring= 'Schema model, averaged across runs in mouse a', intervalline= 4*no_bins_per_state, saving_file='/Users/xpsy1114/Documents/projects/multiple_clocks/output/')
@@ -1600,6 +1605,8 @@ def prep_ephys_per_trial(timings_all, locations_all, no_trial_in_each_task, task
 ############################
 ### PLOTTING FUNCTIONS #####
 ############################
+import colormaps as cmaps
+
 
 def plotting_hist_scat(data_list, label_string_list, label_tick_list, title_string, save_fig = False):
     # import pdb; pdb.set_trace()
@@ -1607,7 +1614,8 @@ def plotting_hist_scat(data_list, label_string_list, label_tick_list, title_stri
     ax.boxplot(data_list)
     sigma = 0.08
     mu = 0.01
-    cmap = plt.get_cmap('Pastel1')
+    #cmaps.Pastel1
+    #cmap = plt.get_cmap('Pastel1')
     for index, contrast in enumerate(data_list):
         noise = np.ones(len(data_list[index])) + sigma * np.random.randn(len(data_list[index])) + mu
         data_to_plot = contrast.copy()
@@ -1618,8 +1626,14 @@ def plotting_hist_scat(data_list, label_string_list, label_tick_list, title_stri
     ax.set_xticks(label_tick_list)
     plt.xticks(rotation = 45)
     ax.set_xticklabels(label_string_list, fontsize = 18)
+    #ax.set_yticklabels(fontsize = 18)
     plt.axhline(0, color='grey', ls='dashed', linewidth = 1)
     plt.title(title_string)
+    
+
+    #ax.set_yticklabels([str(f) for f in field_names], fontsize = 16)
+    
+    
     
     # Customize grid lines
     ax.grid(True, linestyle='--', alpha=0.7)

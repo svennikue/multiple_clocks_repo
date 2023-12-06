@@ -13,7 +13,11 @@ import numpy as np
 import mc
 import matplotlib.pyplot as plt
 import scipy.special as sps  
-
+import statsmodels.api as sm
+from nilearn.image import load_img
+import os
+import nibabel as nib
+import statsmodels.api as sm
 
 def print_stuff(string_input):
     print(string_input)
@@ -179,122 +183,59 @@ def make_loc_EV(dataframe, x_coord, y_coord):
         
     return(loc_on, loc_dur, loc_mag)   
             
-            
-            
-            
-            # # if this is also a new task configuration...
-            # if dataframe.at[index, 'task_config'] != dataframe.at[index-1, 'task_config']:
-            #     #... use the start time from when the participant saw the screen first.
-            #     start = dataframe.at[index, 'start_ABCD_screen']
-            # else:
-            #     start = dataframe.at[index - 1, 't_step_press_global']  # Extract 'goal' value from index-1
-            
-            
-            # # first check if this is the first task of several repeats.
-            # if (index == 0) or (row['task_config'] != dataframe.at[index -1, 'task_config']):
 
-            # else: # if it isnt, then take the reward start time from last rew D as start field.
-                
-            #     # in case a new task config just started
-            #     # important to not overwrite the previous ones!
-            #     if dataframe.at[index, 'task_config'] != dataframe.at[index-1, 'task_config']:
-            #         start = dataframe.at[index, 'start_ABCD_screen']
-            #     # otherwise, if this is within a reward
-            #     else:
-            #         start = dataframe.at[index - 1, 't_step_press_global']  # Extract 'goal' value from index-1
-                
-            #     duration = dataframe.at[index, 't_step_press_global'] - start
-            #     loc_on.append(start)
-            #     loc_dur.append(duration)    
-                    
+            
+# FMRI ANALYSIS
+
+
+def my_eval(model, data):
+      "Handle one voxel, copy the code that exists already for the neural data"
+      X = sm.add_constant(model.rdm.transpose());
+      Y = data.dissimilarities.transpose();
+      est = sm.OLS(Y, X).fit()
+      # import pdb; pdb.set_trace()
+      return est.tvalues[1:], est.params[1:], est.pvalues[1:]
+
+
+
+def save_RSA_result(result_file, data_RDM_file, file_path, file_name, mask, number_regr, ref_image_for_affine_path):
+    x, y, z = mask.shape
+    ref_img = load_img(ref_image_for_affine_path)
+    affine_matrix = ref_img.affine
     
+    if not os.path.exists(file_path):
+        os.makedirs(file_path)
+
+    t_result_brain = np.zeros([x*y*z])
+    t_result_brain[list(data_RDM_file.rdm_descriptors['voxel_index'])] = [vox[0][number_regr] for vox in result_file]
+    t_result_brain = t_result_brain.reshape([x,y,z])
     
+    t_result_brain_nifti = nib.Nifti1Image(t_result_brain, affine=affine_matrix)
+    t_result_brain_file = f"{file_path}/t_val_{file_name}.nii.gz"
+    nib.save(t_result_brain_nifti, t_result_brain_file)
     
+    b_result_brain = np.zeros([x*y*z])
+    b_result_brain[list(data_RDM_file.rdm_descriptors['voxel_index'])] = [vox[1][number_regr] for vox in result_file]
+    b_result_brain = b_result_brain.reshape([x,y,z])
     
-    # # THIS IS THE FUNCTION THAT I PARTLY ALREADY DISTROYED...
-    # for index in loc_df.index:
-    #     if index > 0:  # Check if the index is valid (not the first row)
-    #         if skip_next:
-    #             skip_next = False
-    #             continue
-    #         # next, check if it's a row with a reward that has started within a task
-            
-    #         import pdb; pdb.set_trace()
-            
-            
-    #         # first option: this is a reward field.
-    #         if not np.isnan(dataframe.at[index,'rew_loc_x']): # if this is a reward field.
-    #             if index+2 < len(dataframe):
-    #                 if dataframe.at[index, 'task_config'] == dataframe.at[index+1, 'task_config']:
-    #                     start = dataframe.at[index, 't_reward_start'] 
-    #                     # if its within the same task config, compute duration like so
-    #                     duration = dataframe.at[index + 1, 't_step_press_global'] - start
-    #                     loc_on.append(start)
-    #                     loc_dur.append(duration)
-    #                 elif dataframe.at[index, 'task_config'] != dataframe.at[index+1, 'task_config']:
-    #                     start = dataframe.at[index, 't_reward_start'] 
-    #                     # if its not within same task config, take reward afterwait to compute duration
-    #                     duration = dataframe.at[index, 't_reward_afterwait'] - start
-    #                     loc_on.append(start)
-    #                     loc_dur.append(duration)
-    #                     # skip the next if the current reward was the last one of a configuration
-    #                     skip_next = True 
-    #             else:
-    #                 # if this is the last row, then ignore- this is where the task stopped.
-    #                 continue
-    #             # # then create the 
-    #             # loc_on.append(start)
-    #             # loc_dur.append(duration)
-    #             # # and then skip the next row
-    #             # skip_next = True
-    #         # if this is just a normal step with t_step_press_global filled and no reward.
-    #         else: 
-    #             # in case a new task config just started
-    #             # important to not overwrite the previous ones!
-    #             if dataframe.at[index, 'task_config'] != dataframe.at[index-1, 'task_config']:
-    #                 start = dataframe.at[index, 'start_ABCD_screen']
-    #             # otherwise, if this is within a reward
-    #             else:
-    #                 start = dataframe.at[index - 1, 't_step_press_global']  # Extract 'goal' value from index-1
-                
-    #             duration = dataframe.at[index, 't_step_press_global'] - start
-    #             loc_on.append(start)
-    #             loc_dur.append(duration)    
-                    
-    #         # this condition also usually means that it is a reward field, except if it wasn't finished.
-    #         # so this must be for the unfinished ones (that I hopefully won't have unless for the first subject!)
-    #         if np.isnan(dataframe.at[index, 't_step_press_global']):
-    #             # first check if this is where the task stopped, or if the next reward is where the task stopped.
-    #             # ignore these as they are not complete.
-    #             if index+2 < len(dataframe):
-    #                 # first case, no rew, within the same run
-    #                 if dataframe.at[index, 'task_config'] == dataframe.at[index+1, 'task_config']:
-    #                     start = dataframe.at[index, 't_reward_start'] 
-    #                     # if its within the same task config, compute duration like so
-    #                     duration = dataframe.at[index + 1, 't_step_press_global'] - start
-    #                 # second case, no rew, but next task configuration will be different (don't think this case is possible actually)
-    #                 elif dataframe.at[index, 'task_config'] != dataframe.at[index+1, 'task_config']:
-    #                     start = dataframe.at[index, 't_reward_start'] 
-    #                     # if its not within same task config, take reward afterwait to compute duration
-    #                     duration = dataframe.at[index, 't_reward_afterwait'] - start
-                    
-    #             else:# if this is the last row, then ignore- this is where the task stopped.
-    #                 continue
-                
-    #             loc_on.append(start)
-    #             loc_dur.append(duration)
-    #             # and then skip the next row
-    #             skip_next = True
-            
-        
+    b_result_brain_nifti = nib.Nifti1Image(b_result_brain, affine=affine_matrix)
+    b_result_brain_file = f"{file_path}/beta_{file_name}.nii.gz"
+    nib.save(b_result_brain_nifti, b_result_brain_file)
     
+    p_result_brain = np.zeros([x*y*z])
+    p_result_brain[list(data_RDM_file.rdm_descriptors['voxel_index'])] = [1 - vox[2][number_regr] for vox in result_file]
+    p_result_brain = p_result_brain.reshape([x,y,z])
+    
+    p_result_brain_nifti = nib.Nifti1Image(p_result_brain, affine=affine_matrix)
+    p_result_brain_file = f"{file_path}/p_val_{file_name}.nii.gz"
+    nib.save(p_result_brain_nifti, p_result_brain_file)
 
 
-
-
-
-
-
-
-
-
+def evaluate_model(model, data):
+      "Handle one voxel, copy the code that exists already for the neural data"
+      X = sm.add_constant(model.rdm.transpose());
+      Y = data.dissimilarities.transpose();
+      est = sm.OLS(Y, X).fit()
+      # import pdb; pdb.set_trace()
+      return est.tvalues[1:], est.params[1:], est.pvalues[1:]
+    
