@@ -239,3 +239,91 @@ def evaluate_model(model, data):
       # import pdb; pdb.set_trace()
       return est.tvalues[1:], est.params[1:], est.pvalues[1:]
     
+
+
+def analyse_pathlength_beh(df):
+    # identify where the next task begins by iterating through the DataFrame 
+    # and collecting the indices where the column is not empty
+    index_next_task = []
+    for index, row in df.iterrows():
+        if not pd.isna(row['start_ABCD_screen']):
+            index_next_task.append(index)
+    
+    # compute the task length for each task
+    # careful! this only works if the task was completed.
+    # also this isn't super precise since it doesn't actually show where they 
+    # walked but where they were able to move away from reward
+    for i, index in enumerate(index_next_task):
+        if i+1 < len(index_next_task):
+            df.at[index, 'task_length'] = df.at[index_next_task[i+1] - 1 , 't_reward_afterwait'] - df.at[index, 'start_ABCD_screen']   
+            if 'type' in df.columns:
+                df.at[index, 'type'] = df.at[index+ 1, 'type']
+        elif i+1 == len(index_next_task):
+            df.at[index, 'task_length'] = df.at[len(df)-1, 't_reward_afterwait'] - df.at[index, 'start_ABCD_screen'] 
+                    
+    # not sure why I included this... seems wrong.      
+    # index_next_task = index_next_task[1:]
+                    
+    # identify where the next reward starts by iterating through the DataFrame 
+    # and collecting the indices where the column is not empty
+    index_next_reward = []
+    for index, row in df.iterrows():
+        if not pd.isna(row['t_reward_start']):
+            index_next_reward.append(index)
+
+    # Update 06.10.23: I don't think I need this anymore, I fixed it in the exp code
+    # fill the missing last reward_delay columns.
+    # they should be t_reward_afterwait-t_reward_start
+    # take every 4th reward index to do so.
+    #for i in range(3, len(index_next_reward), 4):
+    #   df.at[index_next_reward[i], 'reward_delay'] = df.at[index_next_reward[i], 't_reward_afterwait'] - df.at[index_next_reward[i], 't_reward_start'] 
+    
+    # fill gaps in the round_no column
+    df['round_no'] = df['round_no'].fillna(method='ffill')
+    # do the same for the task_config 
+    df['task_config'] = df['task_config'].fillna(method='ffill')
+    # and create a reward type column which allows to differentiate all trials
+    df['config_type'] = df['task_config'] + '_' + df['type']
+    df['config_type'] = df['config_type'].fillna(method='ffill')
+                
+    
+    # import pdb; pdb.set_trace()
+    # create a new column in which you plot how long ever subpath takes (with rew)
+    j = 0
+    for i, task_index in enumerate(index_next_task):
+        if task_index > 1:
+            while (len(index_next_reward) > j) and (index_next_reward[j] < task_index):
+                df.at[index_next_reward[j], 'cum_subpath_length_without_rew'] = df.at[index_next_reward[j], 't_step_press_curr_run'] + df.at[index_next_reward[j]-1, 'length_step'] 
+                df.at[index_next_reward[j], 'cum_subpath_length_with_rew'] = df.at[index_next_reward[j], 't_step_press_curr_run'] + df.at[index_next_reward[j]-1, 'length_step'] + df.at[index_next_reward[j], 'reward_delay'] 
+                j += 1
+            df.at[task_index-1, 'cum_subpath_length_without_rew'] = df.at[index_next_task[i-1], 'task_length'] - df.at[task_index-1, 'reward_delay']
+            df.at[task_index-1, 'cum_subpath_length_with_rew'] = df.at[index_next_task[i-1], 'task_length']
+            # df.at[task_index-1, 't_step_press_curr_run'] + df.at[task_index-2, 'length_step'] + df.at[task_index-1, 'reward_delay'] 
+        # for the next reward count backwards
+        if task_index == index_next_task[-1]:
+            for i in range(4,0, -1):
+                df.at[index_next_reward[-i], 'cum_subpath_length_without_rew']= df.at[index_next_reward[-i], 't_step_press_curr_run'] + df.at[index_next_reward[-i]-1, 'length_step'] 
+                df.at[index_next_reward[-i], 'cum_subpath_length_with_rew']= df.at[index_next_reward[-i], 't_step_press_curr_run'] + df.at[index_next_reward[-i]-1, 'length_step'] + df.at[index_next_reward[-i], 'reward_delay']
+
+    states = ['A', 'B', 'C', 'D']*len(index_next_task)
+    
+    
+    
+    # then, write the not- cumulative columns.
+    for i, reward_index in enumerate(index_next_reward):
+        if i < len(states):
+            df.at[reward_index, 'state'] = states[i]
+        if i > 0:
+            df.at[reward_index, 'subpath_length_without_rew'] = df.at[reward_index, 'cum_subpath_length_without_rew'] - df.at[index_next_reward[i-1], 'cum_subpath_length_with_rew']
+            df.at[reward_index, 'subpath_length_with_rew'] = df.at[reward_index, 'cum_subpath_length_with_rew'] - df.at[index_next_reward[i-1], 'cum_subpath_length_with_rew']
+
+    for i in range(0, len(index_next_reward), 4):
+        df.at[index_next_reward[i], 'subpath_length_without_rew'] = df.at[index_next_reward[i], 'cum_subpath_length_without_rew'] 
+        df.at[index_next_reward[i], 'subpath_length_with_rew'] = df.at[index_next_reward[i], 'cum_subpath_length_with_rew']
+
+    
+    #first reduce to only including those rows that have values for rewards.
+    df_clean = df.dropna(subset = ['subpath_length_with_rew'])
+    
+    return(df, df_clean)
+    

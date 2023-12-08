@@ -31,17 +31,18 @@ import matplotlib.pyplot as plt
 
 
 subjects = ['sub-01']
-task_halves = ['1', '2']
+task_halves = ['1']
 RDM_version = '02' # just for safety. 02 is for the report.
 no_RDM_conditions = 80
-save_all = False
+save_all = True
+regression_version = '06' 
 
 # TODO FOR SERVER
 # make all paths relative and adjust to both laptop and server!!
       
 for sub in subjects:
     data_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}"
-    RDM_dir = f"{data_dir}/beh/RDMs_{RDM_version}"
+    RDM_dir = f"{data_dir}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
     for task_half in task_halves:
         # load the relevant pre-processed task-half
         # note: i'd ideally would like to do this within one big file. 
@@ -96,7 +97,7 @@ for sub in subjects:
         
         # NEXT THING TO CHECK: WHY ARENT THERE FORW. BACKW. EVs???
         
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         # # create a dummy-file for the RDM conditions
         # data_RDM_file = np.zeros((no_RDM_conditions, x, y, z))
         
@@ -147,7 +148,7 @@ for sub in subjects:
         
         
         # only one pattern per image
-        image_value = np.arange(len(no_RDM_conditions))
+        image_value = np.arange(no_RDM_conditions)
         
         
         #
@@ -202,7 +203,7 @@ for sub in subjects:
         
         # now do the same with my version as well so I can interpret the numbers.
         RDM_my_loc = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(loc_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in loc model'))
-        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_loc, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}+/results", file_name= f"my_loc_{task_half}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_loc, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results", file_name= f"my_loc_{task_half}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
         
         
         
@@ -236,7 +237,7 @@ for sub in subjects:
         
         # now do the same with my version as well so I can interpret the numbers.
         RDM_my_clock = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(clocks_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in clock model'))
-        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_clock, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}+/results", file_name= f"my_clock_{task_half}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_clock, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results", file_name= f"my_clock_{task_half}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
         
         # midnight RDM
         midnight_data = midnight_data.transpose()
@@ -267,7 +268,7 @@ for sub in subjects:
         
         # now do the same with my version as well so I can interpret the numbers.
         RDM_my_midn = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(midnight_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in  midnight model'))
-        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_midn, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}+/results", file_name= f"my_midn_{task_half}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_midn, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results", file_name= f"my_midn_{task_half}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
         
         
 
@@ -303,7 +304,7 @@ for sub in subjects:
         
         # now do the same with my version as well so I can interpret the numbers.
         RDM_my_phase = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(phase_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in phase model'))
-        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_phase, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}+/results", file_name= f"my_phase_{task_half}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_phase, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results", file_name= f"my_phase_{task_half}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
         
         
         
@@ -337,7 +338,7 @@ for sub in subjects:
         RDM_brain_state = RDM_brain_state.reshape([x, y, z])
         # now do the same with my version as well so I can interpret the numbers.
         RDM_my_state = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(state_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in state model'))
-        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_state, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}+/results", file_name= f"my_state_{task_half}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_state, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results", file_name= f"my_state_{task_half}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
         
         
         
@@ -371,11 +372,11 @@ for sub in subjects:
         results_clocks_midn_states_loc_ph_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(clocks_midn_states_loc_ph_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model 2'))
         
         
-        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}/results", file_name= f"my_combo_clock_{task_half}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
-        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}/results", file_name= f"my_combo_midn_{task_half}", mask=mask, number_regr = 1, ref_image_for_affine_path=ref_img)
-        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}/results", file_name= f"my_combo_state_{task_half}", mask=mask, number_regr = 2, ref_image_for_affine_path=ref_img)
-        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}/results", file_name= f"my_combo_loc_{task_half}", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
-        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}/results", file_name= f"my_combo_phase_{task_half}", mask=mask, number_regr = 4, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results", file_name= f"my_combo_clock_{task_half}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results", file_name= f"my_combo_midn_{task_half}", mask=mask, number_regr = 1, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results", file_name= f"my_combo_state_{task_half}", mask=mask, number_regr = 2, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results", file_name= f"my_combo_loc_{task_half}", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results", file_name= f"my_combo_phase_{task_half}", mask=mask, number_regr = 4, ref_image_for_affine_path=ref_img)
         
         
         
@@ -502,28 +503,29 @@ for sub in subjects:
         
         # ############################################
         
-        # # Last part: SAFE THE RESULTS!!
-        # if save_all:
-        #     ref_img = load_img(f"{fmri_data_dir}/{file}")
-        #     affine_matrix = ref_img.affine
-        #     if not os.path.exists(f"{data_dir}/func/RSA_{RDM_version}+/results/"):
-        #         os.makedirs(f"{data_dir}/func/RSA_{RDM_version}+/results/")
+        # Last part: SAFE THE RESULTS!!
+        if save_all:
+            ref_img = load_img(f"{fmri_data_dir}/{file}")
+            affine_matrix = ref_img.affine
+            if not os.path.exists(f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/"):
+                os.makedirs(f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/")
                 
                 
-        #     loc_nifti = nib.Nifti1Image(RDM_brain_loc, affine=affine_matrix)
-        #     loc_file = f"{data_dir}/func/RSA_{RDM_version}+/results/loc_model_RDM_0{task_half}.nii.gz"
+            loc_nifti = nib.Nifti1Image(RDM_brain_loc, affine=affine_matrix)
+            loc_file = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/loc_model_RDM_0{task_half}.nii.gz"
             
-        #     phase_nifti = nib.Nifti1Image(RDM_brain_phase, affine=affine_matrix)
-        #     phase_file = f"{data_dir}/func/RSA_{RDM_version}+/results/phase_model_RDM_0{task_half}.nii.gz"
+            phase_nifti = nib.Nifti1Image(RDM_brain_phase, affine=affine_matrix)
+            phase_file = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/phase_model_RDM_0{task_half}.nii.gz"
             
-        #     midnigth_nifti = nib.Nifti1Image(RDM_brain_midnight, affine=affine_matrix)
-        #     midnight_file = f"{data_dir}/func/RSA_{RDM_version}+/results/midnight_model_RDM_0{task_half}.nii.gz"
+            midnigth_nifti = nib.Nifti1Image(RDM_brain_midnight, affine=affine_matrix)
+            midnight_file = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/midnight_model_RDM_0{task_half}.nii.gz"
             
-        #     clocks_nifti = nib.Nifti1Image(RDM_brain_clocks, affine=affine_matrix)
-        #     clocks_file = f"{data_dir}/func/RSA_{RDM_version}+/results/clocks_model_RDM_0{task_half}.nii.gz"
+            clocks_nifti = nib.Nifti1Image(RDM_brain_clocks, affine=affine_matrix)
+            clocks_file = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/clocks_model_RDM_0{task_half}.nii.gz"
             
-        #     state_nifti = nib.Nifti1Image(RDM_brain_state, affine=affine_matrix)
-        #     state_file = f"{data_dir}/func/RSA_{RDM_version}+/results/state_model_RDM_0{task_half}.nii.gz"
+            state_nifti = nib.Nifti1Image(RDM_brain_state, affine=affine_matrix)
+            state_file = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/state_model_RDM_0{task_half}.nii.gz"
+            
             
         #     # combo_state_nifti = nib.Nifti1Image(RDM_brain_cl_midn_st_state, affine=affine_matrix)
         #     # combo_state_file = f"{data_dir}/func/RSA_{RDM_version}/results/combo_RDM_state_0{task_half}.nii.gz"
@@ -569,12 +571,12 @@ for sub in subjects:
             
             
             
-        #     # Save the NIfTI image to the 
-        #     nib.save(loc_nifti, loc_file)
-        #     nib.save(phase_nifti, phase_file)
-        #     nib.save(midnigth_nifti, midnight_file)
-        #     nib.save(clocks_nifti, clocks_file)
-        #     nib.save(state_nifti, state_file)
+            # Save the NIfTI image to the 
+            nib.save(loc_nifti, loc_file)
+            nib.save(phase_nifti, phase_file)
+            nib.save(midnigth_nifti, midnight_file)
+            nib.save(clocks_nifti, clocks_file)
+            nib.save(state_nifti, state_file)
             
         #     # # combo model 1
         #     # nib.save(b_combo_clmidst_clocks_nifti, b_combo_clmidst_clocks_file)

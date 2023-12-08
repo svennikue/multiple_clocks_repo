@@ -14,21 +14,24 @@ import os
 import numpy as np
 import mc
 import matplotlib.pyplot as plt
+import pickle
 
 
 #import pdb; pdb.set_trace()
-
-subjects = ['sub-01', 'sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06']
+subjects = ['sub-01']
+# subjects = ['sub-01', 'sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06']
 task_halves = ['1', '2']
 #subjects = ['sub-01']
 # task_halves = ['1']
 RDM_version = '02' # version 02 = with temp_res = 10
+regression_version = '06'
 
 fmriplotting = False # careful these are LOOOOADS!!
 fmriplotting_debug = False
 fmri_save = True
 
 temporal_resolution = 10
+
 
 
 for sub in subjects:
@@ -38,6 +41,12 @@ for sub in subjects:
         file = f"{sub}_fmri_pt{task_half}"
         file_all = f"{sub}_fmri_pt{task_half}_all.csv"
         
+        # load regressors as previously created to use the same ones.
+        EV_folder = f'/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/func/EVs_{regression_version}_pt0{task_half}/'
+        with open(f"{EV_folder}my_EV_dict", 'rb') as f:
+            regressor_dict = pickle.load(f)
+        
+        #import pdb; pdb.set_trace()
         # load the two required excel sheets
         df = pd.read_csv(data_dir_beh + f"{file}.csv")
         # the first row is empty so delete to get indices right
@@ -60,7 +69,7 @@ for sub in subjects:
                 if not np.isnan(row['rew_loc_x']):
                     df.at[index, 'time_bin_type'] =  df.at[index, 'config_type'] + '_' + df.at[index, 'state'] + '_reward'
                 elif np.isnan(row['rew_loc_x']):
-                    df.at[index, 'time_bin_type'] = df.at[index, 'config_type'] + '_' + df.at[index, 'state'] + '_subpath'
+                    df.at[index, 'time_bin_type'] = df.at[index, 'config_type'] + '_' + df.at[index, 'state'] + '_path'
         
 
         # create a dictionnary with all future regressors.
@@ -156,6 +165,14 @@ for sub in subjects:
                 else:
                     continue
     
+        # 07.12.2023 Change the whole way of how I am dealing with the regressors.
+        # to make it the same between the fMRI data and the simulations, I can also
+        # actually simulate every ms of time.
+        # but actually, maybe that doesn't make a lot of sense and it's easier without...
+        
+        # but something that I do need to make sure is that the order of the models is the
+        # same as in the regressors.
+
         
         # so now, account for the temporal resolution that you want:
         for reg in regressors:
@@ -223,15 +240,23 @@ for sub in subjects:
             steps_subpath_alltasks.append(steps_per_subpath)
     
     
-
+        
         # finally, create simulations and time-bin per run.
+        # first, prep result dictionaries.
+        clocks_dict = {key: "" for key in configs}
+        midnight_dict = {key: "" for key in configs}
+        location_dict = {key: "" for key in configs}
+        phase_dict = {key: "" for key in configs}
+        state_dict = {key: "" for key in configs}
         # loop through all tasks, and within the tasks, through all runs.
+        # import pdb; pdb.set_trace()
         for task_no, task_config in enumerate(rew_list):
                 # import pdb; pdb.set_trace()
-
+                
                 # select the config name -> needed for dictionaries
                 config_name = configs[task_no]
                 
+                print(f"the config is {task_config} for {config_name}")
                 # select complete trajectory of current task.
                 trajectory = walked_path[task_no]
                 trajectory = [[int(value) for value in sub_list] for sub_list in trajectory]
@@ -287,40 +312,65 @@ for sub in subjects:
                 # NEXT STEP: prepare the regression.
                 # then select the correct regressors, filter keys starting with 'A1_backw'
                 regressors_curr_task = {key: value for key, value in regressors.items() if key.startswith(config_name)}
+                
                 # check that all regressors have the same length in case the task wasn't completed.
                 if len(subpath_after_steps[task_no]) < 20:
                     # if I cut the task short, then also cut the regressors short.
-                    for config_name, regressor_list in regressors_curr_task.items():
+                    for reg_type, regressor_list in regressors_curr_task.items():
                     # Truncate the list if its length is greater than the maximum length
-                        regressors_curr_task[config_name] = regressor_list[:(np.shape(clocks_repeats)[1])]
+                        regressors_curr_task[reg_type] = regressor_list[:(np.shape(clocks_repeats)[1])]
                 # Ensure all lists have the same length
                 list_lengths = set(len(value) for value in regressors_curr_task.values())
                 if len(list_lengths) != 1:
                     raise ValueError("All lists must have the same length.")
                 regressors_matrix = np.array(list(regressors_curr_task.values()))
+                if fmriplotting_debug:
+                    plt.figure(); plt.imshow(regressors_matrix, aspect = 'auto')
                 
                 # then timebin the run like it happened for the actual data -> now several repeats within one timebin.
                 # this can be done just based on the steps! I don't need the timings for this.
-                clocks_binned = mc.simulation.predictions.transform_data_to_betas(clocks_repeats, regressors_matrix)
-                midnight_binned = mc.simulation.predictions.transform_data_to_betas(midnight_repeats, regressors_matrix)
-                location_binned = mc.simulation.predictions.transform_data_to_betas(location_repeats, regressors_matrix)
-                phase_binned = mc.simulation.predictions.transform_data_to_betas(phase_repeats, regressors_matrix)
-                state_binned = mc.simulation.predictions.transform_data_to_betas(state_repeats, regressors_matrix)
-               
+                # clocks_binned = mc.simulation.predictions.transform_data_to_betas(clocks_repeats, regressors_matrix)
+                # midnight_binned = mc.simulation.predictions.transform_data_to_betas(midnight_repeats, regressors_matrix)
+                # location_binned = mc.simulation.predictions.transform_data_to_betas(location_repeats, regressors_matrix)
+                # phase_binned = mc.simulation.predictions.transform_data_to_betas(phase_repeats, regressors_matrix)
+                # state_binned = mc.simulation.predictions.transform_data_to_betas(state_repeats, regressors_matrix)
+                
+                
+                
+                # instead of concatenating these, I will save them in a new dictionary.
+                # this will then later allow me to create the big matrices, but in alphabetical order!
+                clocks_dict[config_name] = mc.simulation.predictions.transform_data_to_betas(clocks_repeats, regressors_matrix)
+                midnight_dict[config_name] = mc.simulation.predictions.transform_data_to_betas(midnight_repeats, regressors_matrix)
+                location_dict[config_name] = mc.simulation.predictions.transform_data_to_betas(location_repeats, regressors_matrix)
+                phase_dict[config_name] = mc.simulation.predictions.transform_data_to_betas(phase_repeats, regressors_matrix)
+                state_dict[config_name] = mc.simulation.predictions.transform_data_to_betas(state_repeats, regressors_matrix)
+                
+                
                 # these need to be concatenated for each run and task
-                if task_no == 0:
-                    clocks_between = clocks_binned.copy()
-                    midnight_between = midnight_binned.copy()
-                    location_between = location_binned.copy()
-                    phase_between = phase_binned.copy()
-                    state_between = state_binned.copy()
-                else:
-                    clocks_between = np.concatenate((clocks_between, clocks_binned),1)
-                    midnight_between = np.concatenate((midnight_between, midnight_binned),1)
-                    location_between = np.concatenate((location_between, location_binned),1)
-                    phase_between = np.concatenate((phase_between, phase_binned),1)
-                    state_between = np.concatenate((state_between, state_binned),1)
+                # if task_no == 0:
+                #     clocks_between = clocks_binned.copy()
+                #     midnight_between = midnight_binned.copy()
+                #     location_between = location_binned.copy()
+                #     phase_between = phase_binned.copy()
+                #     state_between = state_binned.copy()
+                # else:
+                #     clocks_between = np.concatenate((clocks_between, clocks_binned),1)
+                #     midnight_between = np.concatenate((midnight_between, midnight_binned),1)
+                #     location_between = np.concatenate((location_between, location_binned),1)
+                #     phase_between = np.concatenate((phase_between, phase_binned),1)
+                #     state_between = np.concatenate((state_between, state_binned),1)
        
+        # then, create the location_between etc. matrix by concatenating the keys of each dict by alphabeticla order
+        model_dict_sorted_keys = sorted(configs)
+        print(f"I am sorting in this order: {model_dict_sorted_keys}")
+        clocks_between  = np.concatenate([clocks_dict[key] for key in model_dict_sorted_keys], 1)
+        midnight_between  = np.concatenate([midnight_dict[key] for key in model_dict_sorted_keys], 1)
+        location_between  = np.concatenate([location_dict[key] for key in model_dict_sorted_keys], 1)
+        phase_between  = np.concatenate([phase_dict[key] for key in model_dict_sorted_keys], 1)
+        state_between  = np.concatenate([state_dict[key] for key in model_dict_sorted_keys], 1)
+
+
+
         # then, in a last step, create the RDMs
         RSM_dict = {}
         RSM_dict['Location'] = mc.simulation.RDMs.within_task_RDM(location_between, plotting = False, titlestring = 'Location RDM')
@@ -348,10 +398,15 @@ for sub in subjects:
             intercorr_RDM_dict['correlation_try_two'] = corr_RDMs
             mc.simulation.RDMs.plot_RDMs(intercorr_RDM_dict, 5, save_in_dir, string_for_ticks = tick_string)       
             
+            reg_to_plot = np.ones((80, 72))
+            for i, elem in enumerate(regressors):
+                reg_to_plot[i,0:len(regressors[elem])] = (regressors[elem])
+            plt.figure(); plt.imshow(reg_to_plot, aspect = 'auto')
             
+        # import pdb; pdb.set_trace()    
         if fmri_save: 
             # then save these matrices.
-            RDM_dir = f"{data_dir}derivatives/{sub}/beh/RDMs_{RDM_version}"
+            RDM_dir = f"{data_dir}derivatives/{sub}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
             if not os.path.exists(RDM_dir):
                 os.makedirs(RDM_dir)
             for RDM in RSM_dict:
