@@ -23,26 +23,26 @@ from rsatoolbox.util.searchlight import get_volume_searchlight, get_searchlight_
 from nilearn.image import load_img
 from joblib import Parallel, delayed
 import matplotlib.pyplot as plt
+import fsl
 
 
 import mc
 import matplotlib.pyplot as plt
 
-
+# import pdb; pdb.set_trace()  
 
 subjects = ['sub-01']
 task_halves = ['1']
-RDM_version = '02' # just for safety. 02 is for the report.
+RDM_version = '02' # 04 is another try to bring the results back...'03' # 03 is teporal resolution = 1. 02 is for the report.
 no_RDM_conditions = 80
 save_all = True
-regression_version = '06' 
-
-# TODO FOR SERVER
+regression_version = '04_pt01+_that_worked' 
 # make all paths relative and adjust to both laptop and server!!
       
 for sub in subjects:
     data_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}"
-    RDM_dir = f"{data_dir}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
+    #RDM_dir = f"{data_dir}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
+    RDM_dir = f"{data_dir}/beh/RDMs_{RDM_version}_glmbase_06"
     for task_half in task_halves:
         # load the relevant pre-processed task-half
         # note: i'd ideally would like to do this within one big file. 
@@ -67,7 +67,8 @@ for sub in subjects:
         
         # Loop through files in the folder
         # glm_04 is the one with nuisance and motion regressors as well as button press
-        pe_path = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-01/func/glm_04_pt0{task_half}.feat/stats"
+        pe_path = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-01/func/glm_04_pt01+_that_worked.feat/stats"
+        #pe_path = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-01/func/glm_{regression_version}_pt0{task_half}.feat/stats"
         
         # define the naming conventions in this folder
         pes_I_want = re.compile(r'^pe([1-9]|[1-7][0-9]|80)\.nii\.gz$')
@@ -88,43 +89,60 @@ for sub in subjects:
                 numeric_value = int(match.group(1)) - 1  # Extract the numeric value and convert to an index
                 image_paths[numeric_value] = file_path  # save path to check if everything went fine later
                 data_RDM_file[numeric_value] = nib.load(file_path).get_fdata()
-    
+        
         # Convert the list to a NumPy array
         data_RDM_file = np.array(data_RDM_file)
         for elem in image_paths:
             print(elem)
+          
+    
+        # old:  
+            
+        pes_I_want = re.compile(r'^pe([1-9]|[1-7][0-9]|80)\.nii\.gz$')
+        # List all files in the folder
+        files_in_pe_folder = os.listdir(pe_path)
         
+        # loop over all images
+        data_RDM_file = np.zeros((no_RDM_conditions, x, y, z))
         
-        # NEXT THING TO CHECK: WHY ARENT THERE FORW. BACKW. EVs???
+        # Loop through the files and read in only those that match the pattern
+        image_paths = []
+        i = 0
+        for filename in files_in_pe_folder:
+            if pes_I_want.match(filename):
+                file_path = os.path.join(pe_path, filename)
+                image_paths.append(os.path.join(file_path, filename))  # Get the full file path
+                print(file_path)
+                data_RDM_file[i] = nib.load(file_path).get_fdata()
+                i += 1
+        # this is just to check if this changed the analysis.
+        # delete from here
+        # image_paths_old = []
+        # for filename in os.listdir(pe_path):
+        #     if "pe" in filename:
+        #         # Check if "pe" is in the file name
+        #         image_paths_old.append(os.path.join(pe_path, filename))  # Get the full file path
+        # # loop over all images
+        # data = np.zeros((80, x, y, z))
+        # for x, im in enumerate(image_paths_old):
+        #     data[x] = nib.load(im).get_fdata()
+        #     print(im)
+        # data_RDM_file_2d = data_RDM_file.reshape([data.shape[0], -1])
+        # data_RDM_file_2d = np.nan_to_num(data_RDM_file_2d) # now this is 80timepoints x 746.496 voxels
+        # # import pdb; pdb.set_trace()  
+        # # delete until here
+        # import pdb; pdb.set_trace()  
         
-        # import pdb; pdb.set_trace()
-        # # create a dummy-file for the RDM conditions
-        # data_RDM_file = np.zeros((no_RDM_conditions, x, y, z))
-        
-        # # Loop through the files and read in only those that are regressors I want e.g. pe01 - pe80
-        # image_paths = []
-        # i = 0
-        # for filename in files_in_pe_folder:
-        #     if pes_I_want.match(filename):
-        #         file_path = os.path.join(pe_path, filename)
-        #         image_paths.append(os.path.join(file_path, filename))  # Get the full file path
-        #         data_RDM_file[i] = nib.load(file_path).get_fdata()
-        #         i += 1
-        
-        
-        
-
         
         # STEP 2: get RDM for each voxel
-        # reshape data so we have n_observastions x n_voxels
+        # reshape data so we have n_observations x n_voxels
+        # uncomment again
         data_RDM_file_2d = data_RDM_file.reshape([data_RDM_file.shape[0], -1])
         data_RDM_file_2d = np.nan_to_num(data_RDM_file_2d) # now this is 80timepoints x 746.496 voxels
         
         
-        
-        
         # as a test, save this matrix and then also save the 3d-2d one.
-        
+        # -> yes, it's the same, and there is no shuffle-error with the reshaping.
         # affine_matrix = ref_img.affine
         
         # original_shape = data_RDM_file.shape
@@ -141,12 +159,7 @@ for sub in subjects:
         # data_RDM_file_nifti10 = nib.Nifti1Image(data_RDM_file[10], affine = affine_matrix)
         # nib.save(data_RDM_file_nifti10, f"{fmri_data_dir}/data_RDM_file_nifti10.nii.gz")
         
-        
-        
-        # import pdb; pdb.set_trace()  
-        
-        
-        
+
         # only one pattern per image
         image_value = np.arange(no_RDM_conditions)
         

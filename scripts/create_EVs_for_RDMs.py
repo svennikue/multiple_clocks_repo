@@ -102,7 +102,7 @@ for sub in subjects:
         # check there are no nans 
         mc.analyse.analyse_MRI_behav.check_for_nan(button_press_EV)
         
-        
+        import pdb; pdb.set_trace()
         if locationEVs:
             # # Location EVs.
 
