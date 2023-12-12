@@ -24,8 +24,8 @@ import re
 
 #import pdb; pdb.set_trace()
 
-#subjects = ['sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06']
-subjects = ['sub-01']
+subjects = ['sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06']
+#subjects = ['sub-01']
 version = '06' # GLM number -> new, better script is now 06. first GLM was 04.
 
 # to debug task_halves = ['1']
@@ -67,8 +67,6 @@ for sub in subjects:
         # note, these generally are timings I can trust, based on recordings with the global clock:
         # key_resp_test.rt; scanner_prompt_start & end; TR_received_no0; start_ABCD_screen
         # TR updated 06.12.2023 I believe this needs to be TR_received_no0, actually.
-
-
 
         # Button press EV -> will be a nuisance regressor.
         # for button press EVs I need to add the entries in nav_key_task.rt to 
@@ -260,12 +258,7 @@ for sub in subjects:
             elif 'C1_forw_A_reward_dur' in taskEV_dic:
                 print(f"Now done with {sub} and task half {task_half}. Made {len(taskEV_dic)/2} EVs, each with length {len(taskEV_dic['C1_forw_A_reward_dur'])}")       
         
-                
-            # if 'C2_forw_A_reward_dur' in taskEV_dic:
-            #     print(f"Now done with {sub} and task half {task_half}. Made {len(taskEV_dic)/2 - excluded} EVs, each with length {len(taskEV_dic['C2_forw_A_reward_dur'])}")       
-            # elif 'C1_forw_A_reward_dur' in taskEV_dic:
-            #     print(f"Now done with {sub} and task half {task_half}. Made {len(taskEV_dic)/2 - excluded} EVs, each with length {len(taskEV_dic['C1_forw_A_reward_dur'])}")       
-        
+
             
             # lastly, save the taskEV_dic so that I can also use it as data regressors.
             # this has to be like this bc its a dictionary
@@ -288,10 +281,6 @@ for sub in subjects:
             print(f"I collected {len(EV_paths)} EVs to put into the fsf file.")
             sorted_EVs = sorted(EV_paths)
             
-            
-            
-            # CONTINUE HERE!!
-            # This still doesnt work like I would like it to work.
             text_to_write = []
             with open(f"{analysisDir}/templates/my_RDM_GLM_v2.fsf", "r") as fin:                    
                 for line in fin:
@@ -307,8 +296,7 @@ for sub in subjects:
                     fout.write(line)
 
                 
-                
-            
+
 
         if plotting == True:
             # create a list of all EV variables
