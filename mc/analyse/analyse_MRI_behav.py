@@ -129,10 +129,17 @@ def transform_coord(coord, is_x = False, is_y = False):
 
 # use to check if the EV making went wrong
 def check_for_nan(array):
-    if np.isnan(array).any():
+    count = 0
+    while np.isnan(array).any():
         print(f"Careful! There are Nans in {array}. Pausing script")
-        import pdb; pdb.set_trace()
-
+        # import pdb; pdb.set_trace()
+        # try if this is sensible: delete the rows with the nans.
+        array = array[0: (len(array)-1)]
+        count = count + 1
+    if count > 0:   
+        print(f"deteleted {count} rows to avoid nans.")
+    return count, array
+        
 
 
 def make_loc_EV(dataframe, x_coord, y_coord):
@@ -145,6 +152,10 @@ def make_loc_EV(dataframe, x_coord, y_coord):
     #loc_one_on = loc_one['t_step_press_global'].to_list()
     # import pdb; pdb.set_trace()
     # try if this one works.
+    # look at to check if its really the same task. For this, create a reward type 
+    # column which allows to differentiate all trials
+    loc_df['config_type'] = loc_df['task_config'] + '_' + loc_df['type']
+    loc_df['config_type'] = loc_df['config_type'].fillna(method='ffill')
     for index, row in loc_df.iterrows():
         if index > 0: 
             if skip_next:

@@ -4,9 +4,13 @@
 Created on Mon Oct 30 15:25:55 2023
 creates the EVs for the RDM conditions.
 
-ToDo: rewrite with input args.
-
-track updates here.
+This is the first script that has to be run on the behavioural data to rund the RSA.
+As an input, it requires the complete behavioural result file (to extract the TR), 
+and the custom-created one (for the rest of the analysis).
+One needs to set the subject list it needs to run for, the task-halves, which EVs
+it should create and give the GLM a version number. 
+It saves EV files for FEAT, as well as an .fsf file that can be used as an input for the EVs,
+making sure to order the EVs correctly.
 
 06.12.2023: version 06 for RDM GLM. TR is different, made the script nicer. Everything else should be the same. 
 
@@ -23,14 +27,16 @@ import pickle
 import re
 
 #import pdb; pdb.set_trace()
-
-subjects = ['sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06']
+# nan in sub-10 and in sub-21 -> fix later.
+# subjects = ['sub-22', 'sub-23','sub-24']
+subjects = ['sub-01', 'sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06']
+# subjects = ['sub-07', 'sub-08', 'sub-09', 'sub-11', 'sub-12', 'sub-13', 'sub-14', 'sub-15', 'sub-16', 'sub-17', 'sub-18','sub-19', 'sub-20',  'sub-22', 'sub-23','sub-24']
 #subjects = ['sub-01']
 version = '06' # GLM number -> new, better script is now 06. first GLM was 04.
 
 # to debug task_halves = ['1']
 task_halves = ['1', '2']
-locationEVs = False
+locationEVs = True
 
 time_binEVs = True
 plotting = False
@@ -95,12 +101,16 @@ for sub in subjects:
         # the duration can just be something like 20 ms
         dur_press = np.ones(len(on_press)) * 0.02
         mag_press = np.ones(len(on_press))
+        
         button_press_EV = mc.analyse.analyse_MRI_behav.create_EV(on_press, dur_press, mag_press, 'press_EV', EV_folder, first_TR_at)
         
         # check there are no nans 
-        mc.analyse.analyse_MRI_behav.check_for_nan(button_press_EV)
+        deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(button_press_EV)
+        if deleted_x_rows > 0:
+            print(f"careful! I am saving a cutted EV button press file. Happened for subject {sub} in task half {task_half}")
+            np.savetxt(str(EV_folder) + 'ev_' + 'press_EV' + '.txt', array, delimiter="    ", fmt='%f')
         
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         if locationEVs:
             # # Location EVs.
 
@@ -108,56 +118,89 @@ for sub in subjects:
             coord_y_one = -0.29
             loc_one_on, loc_one_dur, loc_one_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_one, coord_y_one)
             loc_one_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_one_on, loc_one_dur, loc_one_mag, 'loc_one_EV', EV_folder, first_TR_at)
-            mc.analyse.analyse_MRI_behav.check_for_nan(loc_one_EV)
+            deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_one_EV)
+            if deleted_x_rows > 0:
+                print(f"careful! I am saving a cutted EV loc_one_EV file. Happened for subject {sub} in task half {task_half}")
+                np.savetxt(str(EV_folder) + 'ev_' + 'loc_one_EV' + '.txt', array, delimiter="    ", fmt='%f')
             
             coord_x_two = 0
             coord_y_two = -0.29
             loc_two_on, loc_two_dur, loc_two_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_two, coord_y_two)
             loc_two_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_two_on, loc_two_dur, loc_two_mag, 'loc_two_EV', EV_folder, first_TR_at)
-            mc.analyse.analyse_MRI_behav.check_for_nan(loc_two_EV)
+            deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_two_EV)
+            if deleted_x_rows > 0:
+                print(f"careful! I am saving a cutted EV loc_two_EV file. Happened for subject {sub} in task half {task_half}")
+                np.savetxt(str(EV_folder) + 'ev_' + 'loc_two_EV' + '.txt', array, delimiter="    ", fmt='%f')
+            
                     
             coord_x_three = 0.21
             coord_y_three = -0.29
             loc_three_on, loc_three_dur, loc_three_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_three, coord_y_three)
             loc_three_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_three_on, loc_three_dur, loc_three_mag, 'loc_three_EV', EV_folder, first_TR_at)
-            mc.analyse.analyse_MRI_behav.check_for_nan(loc_three_EV)       
+            deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_three_EV)  
+            if deleted_x_rows > 0:
+                print(f"careful! I am saving a cutted EV loc_three_EV file. Happened for subject {sub} in task half {task_half}")
+                np.savetxt(str(EV_folder) + 'ev_' + 'loc_three_EV' + '.txt', array, delimiter="    ", fmt='%f')
+            
 
             coord_x_four = -0.21
             coord_y_four = 0
             loc_four_on, loc_four_dur, loc_four_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_four, coord_y_four)
             loc_four_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_four_on, loc_four_dur, loc_four_mag, 'loc_four_EV', EV_folder, first_TR_at)
-            mc.analyse.analyse_MRI_behav.check_for_nan(loc_four_EV)      
+            deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_four_EV)  
+            if deleted_x_rows > 0:
+                print(f"careful! I am saving a cutted EV loc_four_EV file. Happened for subject {sub} in task half {task_half}")
+                np.savetxt(str(EV_folder) + 'ev_' + 'loc_four_EV' + '.txt', array, delimiter="    ", fmt='%f')
             
-            
+                     
             coord_x_five = 0
             coord_y_five = 0
             loc_five_on, loc_five_dur, loc_five_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_five, coord_y_five)
             loc_five_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_five_on, loc_five_dur, loc_five_mag, 'loc_five_EV', EV_folder, first_TR_at)
-            mc.analyse.analyse_MRI_behav.check_for_nan(loc_five_EV)       
+            deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_five_EV) 
+            if deleted_x_rows > 0:
+                print(f"careful! I am saving a cutted EV loc_five_EV file. Happened for subject {sub} in task half {task_half}")
+                np.savetxt(str(EV_folder) + 'ev_' + 'loc_five_EV' + '.txt', array, delimiter="    ", fmt='%f')
+            
                     
             coord_x_six = 0.21
             coord_y_six = 0
             loc_six_on, loc_six_dur, loc_six_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_six, coord_y_six)
             loc_six_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_six_on, loc_six_dur, loc_six_mag, 'loc_six_EV', EV_folder, first_TR_at)
-            mc.analyse.analyse_MRI_behav.check_for_nan(loc_six_EV)       
-             
+            deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_six_EV)       
+            if deleted_x_rows > 0:
+                print(f"careful! I am saving a cutted EV loc_six_EV file. Happened for subject {sub} in task half {task_half}")
+                np.savetxt(str(EV_folder) + 'ev_' + 'loc_six_EV' + '.txt', array, delimiter="    ", fmt='%f')
+            
             coord_x_seven = -0.21
             coord_y_seven = 0.29
             loc_seven_on, loc_seven_dur, loc_seven_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_seven, coord_y_seven)
             loc_seven_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_seven_on, loc_seven_dur, loc_seven_mag, 'loc_seven_EV', EV_folder, first_TR_at)
-            mc.analyse.analyse_MRI_behav.check_for_nan(loc_seven_EV)        
+            deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_seven_EV) 
+            if deleted_x_rows > 0:
+                print(f"careful! I am saving a cutted EV loc_seven_EV file. Happened for subject {sub} in task half {task_half}")
+                np.savetxt(str(EV_folder) + 'ev_' + 'loc_seven_EV' + '.txt', array, delimiter="    ", fmt='%f')
+            
             
             coord_x_eight = 0
             coord_y_eight = 0.29
             loc_eight_on, loc_eight_dur, loc_eight_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_eight, coord_y_eight)
             loc_eight_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_eight_on, loc_eight_dur, loc_eight_mag, 'loc_eight_EV', EV_folder, first_TR_at)
-            mc.analyse.analyse_MRI_behav.check_for_nan(loc_eight_EV)        
+            deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_eight_EV)
+            if deleted_x_rows > 0:
+                print(f"careful! I am saving a cutted EV loc_eight_EV file. Happened for subject {sub} in task half {task_half}")
+                np.savetxt(str(EV_folder) + 'ev_' + 'loc_eight_EV' + '.txt', array, delimiter="    ", fmt='%f')
+            
             
             coord_x_nine = 0.21
             coord_y_nine = 0.29
             loc_nine_on, loc_nine_dur, loc_nine_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_nine, coord_y_nine)
             loc_nine_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_nine_on, loc_nine_dur, loc_nine_mag, 'loc_nine_EV', EV_folder, first_TR_at)
-            mc.analyse.analyse_MRI_behav.check_for_nan(loc_nine_EV)
+            deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_nine_EV)
+            if deleted_x_rows > 0:
+                print(f"careful! I am saving a cutted EV loc_nine_EV file. Happened for subject {sub} in task half {task_half}")
+                np.savetxt(str(EV_folder) + 'ev_' + 'loc_nine_EV' + '.txt', array, delimiter="    ", fmt='%f')
+            
 
         
         if time_binEVs:
@@ -251,8 +294,17 @@ for sub in subjects:
                     #     excluded = excluded + 1
                     #     continue
                     reward_EV = mc.analyse.analyse_MRI_behav.create_EV(taskEV_dic[f"{task}_{state}_reward_onset"], taskEV_dic[f"{task}_{state}_reward_dur"], mag_reward, f"{task}_{state}_reward", EV_folder, first_TR_at)
-                    mc.analyse.analyse_MRI_behav.check_for_nan(reward_EV)
-                    mc.analyse.analyse_MRI_behav.check_for_nan(subpath_EV)
+                    deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(reward_EV)
+                    if deleted_x_rows > 0:
+                        print(f"careful! I am saving a cutted EV {task}{state} reward file. Happened for subject {sub} in task half {task_half}")
+                        np.savetxt(str(EV_folder) + 'ev_' + f"{task}_{state}_reward" + '.txt', array, delimiter="    ", fmt='%f')
+                    
+                    deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(subpath_EV)
+                    if deleted_x_rows > 0:
+                        print(f"careful! I am saving a cutted EV {task}{state} subpath file. Happened for subject {sub} in task half {task_half}")
+                        np.savetxt(str(EV_folder) + 'ev_' + f"{task}_{state}_path" + '.txt', array, delimiter="    ", fmt='%f')
+                    
+                    
             if 'C2_forw_A_reward_dur' in taskEV_dic:
                 print(f"Now done with {sub} and task half {task_half}. Made {len(taskEV_dic)/2} EVs, each with length {len(taskEV_dic['C2_forw_A_reward_dur'])}")       
             elif 'C1_forw_A_reward_dur' in taskEV_dic:
@@ -286,7 +338,7 @@ for sub in subjects:
                 for line in fin:
                     for i, EV_path in enumerate(sorted_EVs):    
                         if line.startswith(f"set fmri(custom{i+1})"):
-                            print(f"my old line was: {line}")
+                            # print(f"my old line was: {line}")
                             line = f'set fmri(custom{i+1}) "{EV_path}"\n'
                             #import pdb; pdb.set_trace();
                     text_to_write.append(line)

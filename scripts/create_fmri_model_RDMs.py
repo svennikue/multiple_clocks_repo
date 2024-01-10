@@ -18,15 +18,16 @@ import pickle
 
 
 #import pdb; pdb.set_trace()
-subjects = ['sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06']
-# subjects = ['sub-01', 'sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06']
+# subjects = ['sub-07', 'sub-08', 'sub-09', 'sub-11', 'sub-12', 'sub-13', 'sub-14', 'sub-15', 'sub-16', 'sub-17', 'sub-18','sub-19', 'sub-20',  'sub-22', 'sub-23','sub-24']
+
+subjects = ['sub-01', 'sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06']
 task_halves = ['1', '2']
 #subjects = ['sub-01']
 # task_halves = ['1']
 RDM_version = '04' # 04 res 10, more ordered stuff in code with dicts 11.12. # 03 is with resolution 1, no continuational model '02' # version 02 = with temp_res = 10
 regression_version = '06'
 
-fmriplotting = True 
+fmriplotting = False
 fmriplotting_debug = False
 fmri_save = True
 
