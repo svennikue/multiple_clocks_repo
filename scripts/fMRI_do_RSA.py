@@ -38,7 +38,18 @@ regression_version = '06' #'04_pt01+_that_worked'
       
 for sub in subjects:
     data_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}"
+    if os.path.isdir(data_dir):
+        print(f"Running on laptop.")
+    else:
+        data_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}"
+        print(f"Running on Cluster, setting {data_dir} as data directory")
+       
     RDM_dir = f"{data_dir}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
+    if os.path.isdir(RDM_dir):
+        print(f"RDM dir exists: {RDM_dir}")
+    else:
+        print(f"ERROR! RDM dir doesn't exist! ({RDM_dir})")
+        
     #RDM_dir = f"{data_dir}/beh/RDMs_{RDM_version}_glmbase_06"
     for task_half in task_halves:
         # load the relevant pre-processed task-half
@@ -64,7 +75,7 @@ for sub in subjects:
         # Loop through files in the folder
         # glm_04 is the one with nuisance and motion regressors as well as button press
         # pe_path = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-01/func/glm_04_pt01+_that_worked.feat/stats"
-        pe_path = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-01/func/glm_{regression_version}_pt0{task_half}.feat/stats"
+        pe_path = f"{data_dir}/func/glm_{regression_version}_pt0{task_half}.feat/stats"
         
         # define the naming conventions in this folder
         pes_I_want = re.compile(r'^pe([1-9]|[1-7][0-9]|80)\.nii\.gz$')
