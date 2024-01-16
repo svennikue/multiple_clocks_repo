@@ -32,7 +32,8 @@ subjects = ['sub-01']
 task_halves = ['1', '2']
 RDM_version = '04' # 04 is another try to bring the results back...'03' # 03 is teporal resolution = 1. 02 is for the report.
 no_RDM_conditions = 80
-save_all = True
+# save_all = True
+load_old = True
 regression_version = '06' #'04_pt01+_that_worked' 
 # make all paths relative and adjust to both laptop and server!!
       
@@ -65,12 +66,20 @@ for sub in subjects:
         
         # Prepare searchlight positions
         # chang this on the server to {sub}_T1_biascorr_brain_mask.nii.gz
-        mask = load_img(f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/func/mask_pt0{task_half}_mask.nii.gz")
+        # mask = load_img(f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/func/mask_pt0{task_half}_mask.nii.gz")
+        mask = load_img(f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/anat/grey_matter_func_bin.nii.gz")
         mask = mask.get_fdata()
         
-        # creating the searchlights
-        centers, neighbors = get_volume_searchlight(mask, radius=3, threshold=0.5) # Found 175483 searchlights
-        
+        if load_old:
+            centers = np.load(f"{RDM_dir}/searchlight_centers.npy", allow_pickle=True)
+            neighbors = np.load(f"{RDM_dir}/searchlight_neihbors.npy", allow_pickle=True)
+        else:
+            # creating the searchlights
+            centers, neighbors = get_volume_searchlight(mask, radius=3, threshold=0.5) # Found 175.483 searchlights
+            # if I use the grey matter mask, then I find 144.905 searchlights
+            # save this structure
+            np.save(f"{RDM_dir}/searchlight_centers.npy", centers)
+            np.save(f"{RDM_dir}/searchlight_neihbors.npy", neighbors)
         
         # Loop through files in the folder
         # glm_04 is the one with nuisance and motion regressors as well as button press
@@ -146,15 +155,15 @@ for sub in subjects:
         
         # then compute the location model.
         loc_model = rsatoolbox.model.ModelFixed('loc_model_only', loc_RDM)
-        eval_results_loc = evaluate_models_searchlight(data_RDM, loc_model, eval_fixed, method='spearman', n_jobs=3)
-        # get the evaulation score for each voxel
-        # We only have one model, but evaluations returns a list. By using float we just grab the value within that list
-        eval_score_loc = [np.float(e.evaluations) for e in eval_results_loc]
-        # Create an 3D array, with the size of mask, and
-        x, y, z = mask.shape
-        RDM_brain_loc = np.zeros([x*y*z])
-        RDM_brain_loc[list(data_RDM.rdm_descriptors['voxel_index'])] = eval_score_loc
-        RDM_brain_loc = RDM_brain_loc.reshape([x, y, z])
+        # eval_results_loc = evaluate_models_searchlight(data_RDM, loc_model, eval_fixed, method='spearman', n_jobs=3)
+        # # get the evaulation score for each voxel
+        # # We only have one model, but evaluations returns a list. By using float we just grab the value within that list
+        # eval_score_loc = [np.float(e.evaluations) for e in eval_results_loc]
+        # # Create an 3D array, with the size of mask, and
+        # x, y, z = mask.shape
+        # RDM_brain_loc = np.zeros([x*y*z])
+        # RDM_brain_loc[list(data_RDM.rdm_descriptors['voxel_index'])] = eval_score_loc
+        # RDM_brain_loc = RDM_brain_loc.reshape([x, y, z])
         
         # now do the same with my version as well so I can interpret the numbers.
         RDM_my_loc = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(loc_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in loc model'))
@@ -180,15 +189,15 @@ for sub in subjects:
         # then compute the clocks model.
         clocks_model = rsatoolbox.model.ModelFixed('clocks_model_only', clocks_RDM)
         # compute phase RSA
-        eval_results_clocks = evaluate_models_searchlight(data_RDM, clocks_model, eval_fixed, method='spearman', n_jobs=3)
-        # get the evaulation score for each voxel
-        # We only have one model, but evaluations returns a list. By using float we just grab the value within that list
-        eval_score_clocks = [np.float(e.evaluations) for e in eval_results_clocks]
-        # Create an 3D array, with the size of mask, and
-        x, y, z = mask.shape
-        RDM_brain_clocks = np.zeros([x*y*z])
-        RDM_brain_clocks[list(data_RDM.rdm_descriptors['voxel_index'])] = eval_score_clocks
-        RDM_brain_clocks = RDM_brain_clocks.reshape([x, y, z])
+        # eval_results_clocks = evaluate_models_searchlight(data_RDM, clocks_model, eval_fixed, method='spearman', n_jobs=3)
+        # # get the evaulation score for each voxel
+        # # We only have one model, but evaluations returns a list. By using float we just grab the value within that list
+        # eval_score_clocks = [np.float(e.evaluations) for e in eval_results_clocks]
+        # # Create an 3D array, with the size of mask, and
+        # x, y, z = mask.shape
+        # RDM_brain_clocks = np.zeros([x*y*z])
+        # RDM_brain_clocks[list(data_RDM.rdm_descriptors['voxel_index'])] = eval_score_clocks
+        # RDM_brain_clocks = RDM_brain_clocks.reshape([x, y, z])
         
         # now do the same with my version as well so I can interpret the numbers.
         RDM_my_clock = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(clocks_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in clock model'))
@@ -211,15 +220,15 @@ for sub in subjects:
         # set up model
         midnight_model = rsatoolbox.model.ModelFixed('midnight_model_only', midnight_RDM)
         # compute phase RSA
-        eval_results_midnight = evaluate_models_searchlight(data_RDM, midnight_model, eval_fixed, method='spearman', n_jobs=3)
-        # get the evaulation score for each voxel
-        # We only have one model, but evaluations returns a list. By using float we just grab the value within that list
-        eval_score_midnight = [np.float(e.evaluations) for e in eval_results_midnight]
-        # Create an 3D array, with the size of mask, and
-        x, y, z = mask.shape
-        RDM_brain_midnight = np.zeros([x*y*z])
-        RDM_brain_midnight[list(data_RDM.rdm_descriptors['voxel_index'])] = eval_score_midnight
-        RDM_brain_midnight = RDM_brain_midnight.reshape([x, y, z])
+        # eval_results_midnight = evaluate_models_searchlight(data_RDM, midnight_model, eval_fixed, method='spearman', n_jobs=3)
+        # # get the evaulation score for each voxel
+        # # We only have one model, but evaluations returns a list. By using float we just grab the value within that list
+        # eval_score_midnight = [np.float(e.evaluations) for e in eval_results_midnight]
+        # # Create an 3D array, with the size of mask, and
+        # x, y, z = mask.shape
+        # RDM_brain_midnight = np.zeros([x*y*z])
+        # RDM_brain_midnight[list(data_RDM.rdm_descriptors['voxel_index'])] = eval_score_midnight
+        # RDM_brain_midnight = RDM_brain_midnight.reshape([x, y, z])
         
         # now do the same with my version as well so I can interpret the numbers.
         RDM_my_midn = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(midnight_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in  midnight model'))
@@ -247,15 +256,15 @@ for sub in subjects:
         predict_phase = phase_model.predict()
         
         # compute phase RSA
-        eval_results_phase = evaluate_models_searchlight(data_RDM, phase_model, eval_fixed, method='spearman', n_jobs=3)
-        # get the evaulation score for each voxel
-        # We only have one model, but evaluations returns a list. By using float we just grab the value within that list
-        eval_score_phase = [np.float(e.evaluations) for e in eval_results_phase]
-        # Create an 3D array, with the size of mask, and
-        x, y, z = mask.shape
-        RDM_brain_phase = np.zeros([x*y*z])
-        RDM_brain_phase[list(data_RDM.rdm_descriptors['voxel_index'])] = eval_score_phase
-        RDM_brain_phase = RDM_brain_phase.reshape([x, y, z])
+        # eval_results_phase = evaluate_models_searchlight(data_RDM, phase_model, eval_fixed, method='spearman', n_jobs=3)
+        # # get the evaulation score for each voxel
+        # # We only have one model, but evaluations returns a list. By using float we just grab the value within that list
+        # eval_score_phase = [np.float(e.evaluations) for e in eval_results_phase]
+        # # Create an 3D array, with the size of mask, and
+        # x, y, z = mask.shape
+        # RDM_brain_phase = np.zeros([x*y*z])
+        # RDM_brain_phase[list(data_RDM.rdm_descriptors['voxel_index'])] = eval_score_phase
+        # RDM_brain_phase = RDM_brain_phase.reshape([x, y, z])
         
         # now do the same with my version as well so I can interpret the numbers.
         RDM_my_phase = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(phase_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in phase model'))
@@ -282,16 +291,16 @@ for sub in subjects:
         # set up model
         state_model = rsatoolbox.model.ModelFixed('state_model_only', state_RDM)
         # compute phase RSA
-        eval_results_state = evaluate_models_searchlight(data_RDM, state_model, eval_fixed, method='spearman', n_jobs=3)
-        # get the evaulation score for each voxel
-        # We only have one model, but evaluations returns a list. By using float we just grab the value within that list
-        eval_score_state = [np.float(e.evaluations) for e in eval_results_state]
-        # Create an 3D array, with the size of mask, and
-        x, y, z = mask.shape
-        RDM_brain_state = np.zeros([x*y*z])
-        RDM_brain_state[list(data_RDM.rdm_descriptors['voxel_index'])] = eval_score_state
-        RDM_brain_state = RDM_brain_state.reshape([x, y, z])
-        # now do the same with my version as well so I can interpret the numbers.
+        # eval_results_state = evaluate_models_searchlight(data_RDM, state_model, eval_fixed, method='spearman', n_jobs=3)
+        # # get the evaulation score for each voxel
+        # # We only have one model, but evaluations returns a list. By using float we just grab the value within that list
+        # eval_score_state = [np.float(e.evaluations) for e in eval_results_state]
+        # # Create an 3D array, with the size of mask, and
+        # x, y, z = mask.shape
+        # RDM_brain_state = np.zeros([x*y*z])
+        # RDM_brain_state[list(data_RDM.rdm_descriptors['voxel_index'])] = eval_score_state
+        # RDM_brain_state = RDM_brain_state.reshape([x, y, z])
+        # # now do the same with my version as well so I can interpret the numbers.
         RDM_my_state = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(state_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in state model'))
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_state, data_RDM_file=data_RDM, file_path = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results", file_name= f"my_state_{task_half}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
         
@@ -338,37 +347,37 @@ for sub in subjects:
         
         # ############################################
         
-        # Last part: SAFE THE RESULTS!!
-        if save_all:
-            ref_img = load_img(f"{fmri_data_dir}/{file}")
-            affine_matrix = ref_img.affine
-            if not os.path.exists(f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/"):
-                os.makedirs(f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/")
+        # # Last part: SAFE THE RESULTS!!
+        # if save_all:
+        #     ref_img = load_img(f"{fmri_data_dir}/{file}")
+        #     affine_matrix = ref_img.affine
+        #     if not os.path.exists(f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/"):
+        #         os.makedirs(f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/")
                 
                 
-            loc_nifti = nib.Nifti1Image(RDM_brain_loc, affine=affine_matrix)
-            loc_file = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/loc_model_RDM_0{task_half}.nii.gz"
+        #     loc_nifti = nib.Nifti1Image(RDM_brain_loc, affine=affine_matrix)
+        #     loc_file = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/loc_model_RDM_0{task_half}.nii.gz"
             
-            phase_nifti = nib.Nifti1Image(RDM_brain_phase, affine=affine_matrix)
-            phase_file = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/phase_model_RDM_0{task_half}.nii.gz"
+        #     phase_nifti = nib.Nifti1Image(RDM_brain_phase, affine=affine_matrix)
+        #     phase_file = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/phase_model_RDM_0{task_half}.nii.gz"
             
-            midnigth_nifti = nib.Nifti1Image(RDM_brain_midnight, affine=affine_matrix)
-            midnight_file = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/midnight_model_RDM_0{task_half}.nii.gz"
+        #     midnigth_nifti = nib.Nifti1Image(RDM_brain_midnight, affine=affine_matrix)
+        #     midnight_file = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/midnight_model_RDM_0{task_half}.nii.gz"
             
-            clocks_nifti = nib.Nifti1Image(RDM_brain_clocks, affine=affine_matrix)
-            clocks_file = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/clocks_model_RDM_0{task_half}.nii.gz"
+        #     clocks_nifti = nib.Nifti1Image(RDM_brain_clocks, affine=affine_matrix)
+        #     clocks_file = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/clocks_model_RDM_0{task_half}.nii.gz"
             
-            state_nifti = nib.Nifti1Image(RDM_brain_state, affine=affine_matrix)
-            state_file = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/state_model_RDM_0{task_half}.nii.gz"
+        #     state_nifti = nib.Nifti1Image(RDM_brain_state, affine=affine_matrix)
+        #     state_file = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results/state_model_RDM_0{task_half}.nii.gz"
             
             
 
-            # Save the NIfTI image to the 
-            nib.save(loc_nifti, loc_file)
-            nib.save(phase_nifti, phase_file)
-            nib.save(midnigth_nifti, midnight_file)
-            nib.save(clocks_nifti, clocks_file)
-            nib.save(state_nifti, state_file)
+        #     # Save the NIfTI image to the 
+        #     nib.save(loc_nifti, loc_file)
+        #     nib.save(phase_nifti, phase_file)
+        #     nib.save(midnigth_nifti, midnight_file)
+        #     nib.save(clocks_nifti, clocks_file)
+        #     nib.save(state_nifti, state_file)
             
         
         

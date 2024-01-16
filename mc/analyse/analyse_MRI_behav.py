@@ -18,6 +18,7 @@ from nilearn.image import load_img
 import os
 import nibabel as nib
 import statsmodels.api as sm
+import rsatoolbox.data as rsd
 
 def print_stuff(string_input):
     print(string_input)
@@ -251,6 +252,45 @@ def evaluate_model(model, data):
       return est.tvalues[1:], est.params[1:], est.pvalues[1:]
     
 
+
+def prepare_model_data(model_data):
+    model_data = model_data.transpose()
+    nCond = model_data.shape[0]/2
+    nVox = model_data.shape[1]
+    sessions = np.concatenate((np.zeros(int(np.shape(model_data)[0]/2)), np.ones(int(np.shape(model_data)[0]/2))))
+    des = {'subj': 1}
+    conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(nCond)])), (1,2)).transpose(),160)
+    obs_des = {'conds': conds, 'sessions': sessions}
+    chn_des = {'voxels': np.array(['voxel_' + str(x) for x in np.arange(nVox)])}
+    RSA_tb_model_data_object = rsd.Dataset(measurements=model_data,
+                       descriptors=des,
+                       obs_descriptors=obs_des,
+                       channel_descriptors=chn_des)
+    return RSA_tb_model_data_object
+
+
+def save_as_nifti(rsa_toolbox_object, file_path, file_name, mask, reference_image):
+    if not os.path.exists(file_path):
+        os.makedirs(file_path)
+        
+    x, y, z = mask.shape
+    t = np.shape(rsa_toolbox_object[0].dissimilarities)[1]
+    ref_img = load_img(reference_image)
+    affine_matrix = ref_img.affine
+
+    model_RDM = np.zeros((x*y*z,t))
+    model_RDM[list(rsa_toolbox_object.rdm_descriptors['voxel_index']), :] = [np.reshape(vox.dissimilarities,t)  for vox in rsa_toolbox_object]
+    model_RDM = model_RDM.reshape([x,y,z,t])
+    
+    model_RDM_nifti = nib.Nifti1Image(model_RDM, affine=affine_matrix)
+    model_RDM_file = f"{file_path}/{file_name}.nii.gz"
+    nib.save(model_RDM_nifti, model_RDM_file)
+    
+def load_RDMs_from_nifi(path_to_file, mask, reference_image):
+    test_model_RDM_nifti = nib.load(path_to_file).get_fdata()
+    data_RDM_object = 0
+    return data_RDM_object
+    
 
 def analyse_pathlength_beh(df):
     # identify where the next task begins by iterating through the DataFrame 
