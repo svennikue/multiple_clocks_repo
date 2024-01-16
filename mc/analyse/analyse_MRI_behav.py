@@ -19,6 +19,8 @@ import os
 import nibabel as nib
 import statsmodels.api as sm
 import rsatoolbox.data as rsd
+from rsatoolbox.rdm.calc import _build_rdms
+from rsatoolbox.rdm import RDMs
 
 def print_stuff(string_input):
     print(string_input)
@@ -269,27 +271,33 @@ def prepare_model_data(model_data):
     return RSA_tb_model_data_object
 
 
-def save_as_nifti(rsa_toolbox_object, file_path, file_name, mask, reference_image):
-    if not os.path.exists(file_path):
-        os.makedirs(file_path)
-        
-    x, y, z = mask.shape
-    t = np.shape(rsa_toolbox_object[0].dissimilarities)[1]
-    ref_img = load_img(reference_image)
-    affine_matrix = ref_img.affine
+# def save_data_RDM(rsa_toolbox_object, file_path, file_name, mask):
+#     if not os.path.exists(file_path):
+#         os.makedirs(file_path)    
+#     x, y, z = mask.shape
+#     t = np.shape(rsa_toolbox_object[0].dissimilarities)[1]
 
-    model_RDM = np.zeros((x*y*z,t))
-    model_RDM[list(rsa_toolbox_object.rdm_descriptors['voxel_index']), :] = [np.reshape(vox.dissimilarities,t)  for vox in rsa_toolbox_object]
-    model_RDM = model_RDM.reshape([x,y,z,t])
+#     model_RDM = np.zeros((x*y*z,t))
+#     model_RDM[list(rsa_toolbox_object.rdm_descriptors['voxel_index']), :] = [np.reshape(vox.dissimilarities,t)  for vox in rsa_toolbox_object]
+#     model_RDM = model_RDM.reshape([x,y,z,t])
     
-    model_RDM_nifti = nib.Nifti1Image(model_RDM, affine=affine_matrix)
-    model_RDM_file = f"{file_path}/{file_name}.nii.gz"
-    nib.save(model_RDM_nifti, model_RDM_file)
+#     np.save(f"{file_path}/{file_name}", model_RDM)
+#     import pickle
+#     # Assuming 'rdm' is your RDM instance
+#     with open(f"{file_path}/data_RDM.pkl", 'wb') as file:
+#         pickle.dump(data_RDM, file)
     
-def load_RDMs_from_nifi(path_to_file, mask, reference_image):
-    test_model_RDM_nifti = nib.load(path_to_file).get_fdata()
-    data_RDM_object = 0
-    return data_RDM_object
+    
+       
+# def load_RDMs_from_nifi(path_to_file, mask):
+#     test_model_RDM = np.load(path_to_file)
+#     x, y, z = mask.shape
+#     t = np.shape(test_model_RDM)[-1]
+#     model_RDM_2d = test_model_RDM.reshape((x*y*z,t))
+
+#     data_RDM_object = RDMs(dissimilarities = model_RDM_2d)
+    
+#     return data_RDM_object
     
 
 def analyse_pathlength_beh(df):
