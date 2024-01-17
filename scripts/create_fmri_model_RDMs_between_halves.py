@@ -52,13 +52,14 @@ for sub in subjects:
     state_between = {}
     for task_half in task_halves:
         data_dir_beh = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/beh/"
+        RDM_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
         if os.path.isdir(data_dir_beh):
             print("Running on laptop.")
         else:
-            data_dir_beh = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}/beh/"
+            data_dir_beh = f"/home/fs0/xpsy1114/scratch/data/pilot/{sub}/beh/"
+            RDM_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
             print(f"Running on Cluster, setting {data_dir_beh} as data directory")
-        
-
+            
         file = f"{sub}_fmri_pt{task_half}"
         file_all = f"{sub}_fmri_pt{task_half}_all.csv"
         
@@ -378,8 +379,9 @@ for sub in subjects:
     
     
     if fmriplotting:
-        save_in_dir = f"{data_dir}derivatives/{sub}/beh/RDMs_{RDM_version}"
-        mc.simulation.RDMs.plot_RDMs(corrected_RSM_dict, len(configs), save_in_dir)
+        if not os.path.exists(RDM_dir):
+            os.makedirs(RDM_dir)
+        mc.simulation.RDMs.plot_RDMs(corrected_RSM_dict, len(configs), RDM_dir)
     
         # make my own correlation matrix.
         # Schema - Partial Schema - Subgoal Progress - Location - State
@@ -393,12 +395,11 @@ for sub in subjects:
                     tick_string.append(RDM_two)
                 corr_RDMs[x,y] = mc.simulation.RDMs.corr_matrices_pearson(corrected_RSM_dict[RDM_one], corrected_RSM_dict[RDM_two])[0][1]               
         intercorr_RDM_dict['correlation_try_two'] = corr_RDMs
-        mc.simulation.RDMs.plot_RDMs(intercorr_RDM_dict, 5, save_in_dir, string_for_ticks = tick_string)       
+        mc.simulation.RDMs.plot_RDMs(intercorr_RDM_dict, 5, RDM_dir, string_for_ticks = tick_string)       
         
 
     if fmri_save: 
         # then save these matrices.
-        RDM_dir = f"{data_dir}derivatives/{sub}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
         if not os.path.exists(RDM_dir):
             os.makedirs(RDM_dir)
         for RDM in corrected_RSM_dict:
