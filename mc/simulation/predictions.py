@@ -1937,8 +1937,9 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     # make the task_progress_model here
     # make this based on cumsumsteps[-1]
 
-    samplepoints = np.linspace(-np.pi, np.pi, (temporal_resolution*len(cumsumsteps[-1]))) if wrap_around == 1 else np.linspace(0, 1, len(temporal_resolution*len(cumsumsteps[-1]))
-    task_prog_matrix = np.empty
+    samplepoints = np.linspace(-np.pi, np.pi, (temporal_resolution*len(cumsumsteps[-1]))) if wrap_around == 1 else np.linspace(0, 1, len(temporal_resolution*len(cumsumsteps[-1])))
+    task_prog_matrix = np.empty()
+    
     phase_matrix_subpath = np.empty([len(neuron_phase_functions), len(samplepoints)])
     phase_matrix_subpath[:] = np.nan
     # read out the respective phase coding 
