@@ -15,25 +15,34 @@ import numpy as np
 import mc
 import matplotlib.pyplot as plt
 import pickle
+import sys
 
+# new
 
-#import pdb; pdb.set_trace()
+if len (sys.argv) > 1:
+    subj_no = sys.argv[1]
+else:
+    subj_no = '01'
+
 # subjects = ['sub-07', 'sub-08', 'sub-09', 'sub-11', 'sub-12', 'sub-13', 'sub-14', 'sub-15', 'sub-16', 'sub-17', 'sub-18','sub-19', 'sub-20',  'sub-22', 'sub-23','sub-24']
 # 'sub-01', 'sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06'
-subjects = ['sub-01']
-task_halves = ['1', '2']
+subjects = [f"sub-{subj_no}"]
+
 #subjects = ['sub-01']
-# task_halves = ['1']
-RDM_version = '05' #  05 is between halves ;04 res 10, more ordered stuff in code with dicts 11.12. # 03 is with resolution 1, no continuational model '02' # version 02 = with temp_res = 10
-regression_version = '06'
+task_halves = ['1', '2']
+RDM_version = '05' # 05 is both task halves combined
+# 04 is another try to bring the results back...'03' # 03 is teporal resolution = 1. 02 is for the report.
+
+temporal_resolution = 10
+
 
 fmriplotting = False
 fmriplotting_debug = False
 fmri_save = True
 
-temporal_resolution = 10
-
-
+regression_version = '06' #'04_pt01+_that_worked' 
+# make all paths relative and adjust to both laptop and server!!
+      
 
 for sub in subjects:
     clocks_between = {}
@@ -42,8 +51,14 @@ for sub in subjects:
     phase_between = {}
     state_between = {}
     for task_half in task_halves:
-        data_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/"
-        data_dir_beh = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/pilot/{sub}/beh/"
+        data_dir_beh = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/beh/"
+        if os.path.isdir(data_dir_beh):
+            print("Running on laptop.")
+        else:
+            data_dir_beh = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}/beh/"
+            print(f"Running on Cluster, setting {data_dir_beh} as data directory")
+        
+
         file = f"{sub}_fmri_pt{task_half}"
         file_all = f"{sub}_fmri_pt{task_half}_all.csv"
         
@@ -340,8 +355,7 @@ for sub in subjects:
 
     # import pdb; pdb.set_trace()
     # then, in a last step, create the RDMs
-    # this needs to be changed. from Alon:
-    # just concatenate the conditions from the two task halves (giving you 2*nCond X nVoxels matrix), 
+    # concatenate the conditions from the two task halves (giving you 2*nCond X nVoxels matrix), 
     # and calculate the correlations between all rows of this matrix. This gives you a symmetric matrix 
     # (of size 2*nCond X 2*nCond), where the (non-symmetric) nCond X nCond bottom left square (or top right, 
     # doesn't matter because it's symmetric) (i.e. a quarter of the original matrix) has all the correlations 
@@ -354,9 +368,8 @@ for sub in subjects:
     RSM_dict_betw_TH['Subgoal Progress']= mc.simulation.RDMs.within_task_RDM(np.concatenate([phase_between['1'], phase_between['2']],1), plotting = False, titlestring = 'Phase RDM')
     RSM_dict_betw_TH['State']= mc.simulation.RDMs.within_task_RDM(np.concatenate([state_between['1'], state_between['2']],1), plotting = False, titlestring= 'State RDM')
     
-    # then, the next step has to be to do the computation that Alon suggested.
-    # You then just average the lower triangle and the top triangle of this nCond x nCond matrix, 
-    # e.g. by adding it to its transpose, dividing by 2, and taking only the lower or 
+    # then average the lower triangle and the top triangle of this nCond x nCond matrix, 
+    # by adding it to its transpose, dividing by 2, and taking only the lower or 
     # upper triangle of the result.    
     corrected_RSM_dict = {}
     for model in RSM_dict_betw_TH:
@@ -383,7 +396,6 @@ for sub in subjects:
         mc.simulation.RDMs.plot_RDMs(intercorr_RDM_dict, 5, save_in_dir, string_for_ticks = tick_string)       
         
 
-    # import pdb; pdb.set_trace()    
     if fmri_save: 
         # then save these matrices.
         RDM_dir = f"{data_dir}derivatives/{sub}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
