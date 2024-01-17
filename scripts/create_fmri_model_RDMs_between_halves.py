@@ -50,6 +50,7 @@ for sub in subjects:
     location_between = {}
     phase_between = {}
     state_between = {}
+    task_prog_between = {}
     for task_half in task_halves:
         data_dir_beh = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/pilot/{sub}/beh/"
         RDM_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
@@ -253,6 +254,7 @@ for sub in subjects:
         location_dict = {key: "" for key in configs}
         phase_dict = {key: "" for key in configs}
         state_dict = {key: "" for key in configs}
+        task_prog_dict = {key: "" for key in configs}
         # loop through all tasks, and within the tasks, through all runs.
         # import pdb; pdb.set_trace()
         for config in configs:
@@ -295,7 +297,7 @@ for sub in subjects:
                 # KEY STEP
                 # create all models.
                 # DOUBLE CHECK HOW THE 'TIMINGS' ONE IS USED!!!
-                location_model, phase_model, state_model, midnight_model, clocks_model, phase_state_model = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False)
+                location_model, phase_model, state_model, midnight_model, clocks_model, phase_state_model, task_prog_model = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False)
                 
                 # these need to be concatenated for each run and task
                 if no_run == 0:
@@ -304,12 +306,14 @@ for sub in subjects:
                     location_repeats = location_model.copy()
                     phase_repeats = phase_model.copy()
                     state_repeats = state_model.copy()
+                    task_prog_repeats = task_prog_model.copy()
                 else:
                     clocks_repeats = np.concatenate((clocks_repeats, clocks_model), 1)
                     midnight_repeats = np.concatenate((midnight_repeats, midnight_model), 1)
                     location_repeats = np.concatenate((location_repeats, location_model), 1)
                     phase_repeats = np.concatenate((phase_repeats, phase_model), 1)
                     state_repeats = np.concatenate((state_repeats, state_model), 1)
+                    task_prog_repeats = np.concatenate((task_prog_repeats, task_prog_model), 1)
             
             # NEXT STEP: prepare the regression.
             # then select the correct regressors, filter keys starting with 'A1_backw'
@@ -343,7 +347,7 @@ for sub in subjects:
             location_dict[config] = mc.simulation.predictions.transform_data_to_betas(location_repeats, regressors_matrix)
             phase_dict[config] = mc.simulation.predictions.transform_data_to_betas(phase_repeats, regressors_matrix)
             state_dict[config] = mc.simulation.predictions.transform_data_to_betas(state_repeats, regressors_matrix)
-     
+            task_prog_dict[config] = mc.simulation.predictions.transform_data_to_betas(task_prog_repeats, regressors_matrix)
         
         # then, create the location_between etc. matrix by concatenating the keys of each dict by alphabeticla order
         model_dict_sorted_keys = sorted(configs)
@@ -353,6 +357,7 @@ for sub in subjects:
         location_between[task_half]   = np.concatenate([location_dict[key] for key in model_dict_sorted_keys], 1)
         phase_between[task_half]   = np.concatenate([phase_dict[key] for key in model_dict_sorted_keys], 1)
         state_between[task_half]   = np.concatenate([state_dict[key] for key in model_dict_sorted_keys], 1)
+        task_prog_between[task_half] = np.concatenate([task_prog_dict[key] for key in model_dict_sorted_keys], 1)
 
     # import pdb; pdb.set_trace()
     # then, in a last step, create the RDMs
@@ -368,6 +373,7 @@ for sub in subjects:
     RSM_dict_betw_TH['Partial Schema'] = mc.simulation.RDMs.within_task_RDM(np.concatenate([midnight_between['1'], midnight_between['2']],1), plotting = False, titlestring = 'Midnight RDM')
     RSM_dict_betw_TH['Subgoal Progress']= mc.simulation.RDMs.within_task_RDM(np.concatenate([phase_between['1'], phase_between['2']],1), plotting = False, titlestring = 'Phase RDM')
     RSM_dict_betw_TH['State']= mc.simulation.RDMs.within_task_RDM(np.concatenate([state_between['1'], state_between['2']],1), plotting = False, titlestring= 'State RDM')
+    RSM_dict_betw_TH['Task_prog']= mc.simulation.RDMs.within_task_RDM(np.concatenate([task_prog_between['1'], task_prog_between['2']],1), plotting = False, titlestring= 'Task Progress RDM')
     
     # then average the lower triangle and the top triangle of this nCond x nCond matrix, 
     # by adding it to its transpose, dividing by 2, and taking only the lower or 
@@ -411,4 +417,5 @@ for sub in subjects:
         np.save(os.path.join(RDM_dir, f"data_midnight_{sub}_fmri_both_halves"), np.concatenate((midnight_between['1'], midnight_between['2']), 1))
         np.save(os.path.join(RDM_dir, f"data_phase_{sub}_fmri_both_halves"), np.concatenate((phase_between['1'], phase_between['2']), 1))
         np.save(os.path.join(RDM_dir, f"data_state_{sub}_fmri_both_halves"), np.concatenate((state_between['1'], state_between['2']), 1))
+        np.save(os.path.join(RDM_dir, f"data_task_prog_{sub}_fmri_both_halves"), np.concatenate((task_prog_between['1'], task_prog_between['2']), 1))
     

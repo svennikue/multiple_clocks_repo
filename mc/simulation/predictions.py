@@ -1930,24 +1930,17 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
         # plt.figure(); 
         # for f in neuron_task_progress_functions:
         #     plt.plot(np.linspace(0,1,1000), f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)/np.max(f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)))                
-      
-        
-    import pdb; pdb.set_trace()
-    # NEW
-    # make the task_progress_model here
-    # make this based on cumsumsteps[-1]
-
-    samplepoints = np.linspace(-np.pi, np.pi, (temporal_resolution*len(cumsumsteps[-1]))) if wrap_around == 1 else np.linspace(0, 1, len(temporal_resolution*len(cumsumsteps[-1])))
-    task_prog_matrix = np.empty()
     
-    phase_matrix_subpath = np.empty([len(neuron_phase_functions), len(samplepoints)])
-    phase_matrix_subpath[:] = np.nan
+        
+    # make a task progress model    
+    samplepoints = np.linspace(-np.pi, np.pi, (temporal_resolution*cumsumsteps[-1])) if wrap_around == 1 else np.linspace(0, 1, len(temporal_resolution*cumsumsteps[-1]))
+    task_prog_matrix = np.empty([len(neuron_task_progress_functions), len(samplepoints)])
+    task_prog_matrix[:] = np.nan
     # read out the respective phase coding 
     for timepoint, read_out_point in enumerate(samplepoints):
-        for row in range(0, len(neuron_phase_functions)):
-            phase_matrix_subpath[row, timepoint] = neuron_phase_functions[row].pdf(read_out_point)
-    
-    # NEW END
+        for row in range(0, len(neuron_task_progress_functions)):
+            task_prog_matrix[row, timepoint] = neuron_task_progress_functions[row].pdf(read_out_point)
+
 
     # make the state continuum, no smoothness in state.
     neuron_state_functions = []
@@ -2064,7 +2057,6 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
             # Q: IS THIS WAY OF DEALING WIHT DOUBLE ACTIVATION OK???
             clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()
     
-
     if plot == True:
         mc.simulation.predictions.plot_without_legends(loc_model, titlestring='Location_model')
         mc.simulation.predictions.plot_without_legends(phas_model, titlestring='Phase Model')
@@ -2072,8 +2064,9 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
         mc.simulation.predictions.plot_without_legends(midn_model, titlestring='Midnight Model')
         mc.simulation.predictions.plot_without_legends(clo_model, titlestring='Musicbox model')
         mc.simulation.predictions.plot_without_legends(phas_stat, titlestring='One ring of musicbox')
-
-    return loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat
+        mc.simulation.predictions.plot_without_legends(task_prog_matrix, titlestring='Task progress Model')
+        
+    return loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat, task_prog_matrix
 
 
 

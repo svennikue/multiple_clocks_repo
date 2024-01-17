@@ -52,11 +52,16 @@ for sub in subjects:
         print(f"Running on Cluster, setting {data_dir} as data directory")
        
     RDM_dir = f"{data_dir}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
-    results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results"
     if os.path.isdir(RDM_dir):
         print(f"RDM dir exists: {RDM_dir}")
     else:
         print(f"ERROR! RDM dir doesn't exist! ({RDM_dir})")
+        
+    results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results"   
+    if os.path.isdir(results_dir):
+        print(f"RDM dir exists: {results_dir}")
+    else:
+        print(f"ERROR! RDM dir doesn't exist! ({results_dir})")
     
     # get a reference image to later project the results onto. This is usually
     # example_func from half 1, as this is where the data is corrected to.
@@ -141,6 +146,7 @@ for sub in subjects:
     midnight_data = np.load(os.path.join(RDM_dir, f"data_midnight_{sub}_fmri_both_halves.npy"))
     phase_data = np.load(os.path.join(RDM_dir, f"data_phase_{sub}_fmri_both_halves.npy"))
     state_data = np.load(os.path.join(RDM_dir, f"data_state_{sub}_fmri_both_halves.npy"))
+    task_prog_data = np.load(os.path.join(RDM_dir, f"data_task_prog_{sub}_fmri_both_halves.npy"))
     
     # to show how mine looked like
     # delete later!
@@ -211,6 +217,18 @@ for sub in subjects:
     # 4.5
     RDM_my_state = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(state_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in state model'))
     mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_state, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_state_betw_halves", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+    
+    # task progress RDM
+    # 3.6
+    task_prog_data = mc.analyse.analyse_MRI_behav.prepare_model_data(task_prog_data)
+    task_prog_RDM = rsr.calc_rdm(task_prog_data, method = 'crosscorr', descriptor='conds', cv_descriptor='sessions')
+    fig, ax, ret_vla = rsatoolbox.vis.show_rdm(task_prog_RDM)
+    
+    # set up task prog model
+    task_prog_model = rsatoolbox.model.ModelFixed('task_prog_only', task_prog_RDM)
+    # 4.6
+    RDM_my_task_prog = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(task_prog_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in task prog model'))
+    mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_task_prog, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_task_prog_betw_halves", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
     
     
     
