@@ -15,25 +15,31 @@ import numpy as np
 import nibabel as nib
 import os
 import re
-from rsatoolbox.inference import eval_fixed
 import rsatoolbox.rdm as rsr
-import rsatoolbox.data as rsd
 import rsatoolbox
-from rsatoolbox.util.searchlight import get_volume_searchlight, get_searchlight_RDMs, evaluate_models_searchlight
+from rsatoolbox.util.searchlight import get_volume_searchlight, get_searchlight_RDMs
 from nilearn.image import load_img
 from joblib import Parallel, delayed
 import matplotlib.pyplot as plt
 import mc
 import pickle
+import sys
 
 # import pdb; pdb.set_trace()  
 
+if len (sys.argv) > 1:
+    subj_no = sys.argv[1]
+else:
+    subj_no = '01'
 
-subjects = ['sub-01']
+subjects = [f"sub-{subj_no}"]
+
+#subjects = ['sub-01']
 task_halves = ['1', '2']
-RDM_version = '05' # 04 is another try to bring the results back...'03' # 03 is teporal resolution = 1. 02 is for the report.
+RDM_version = '05' # 05 is both task halves combined
+# 04 is another try to bring the results back...'03' # 03 is teporal resolution = 1. 02 is for the report.
 no_RDM_conditions = 80
-load_old = True
+load_old = False
 regression_version = '06' #'04_pt01+_that_worked' 
 # make all paths relative and adjust to both laptop and server!!
       
@@ -57,9 +63,9 @@ for sub in subjects:
     ref_img = load_img(f"{data_dir}/func/preproc_clean_01.feat/example_func.nii.gz")
     
     # Step 1: creating the searchlights
-    # mask will define the searchlight positions.
-    # IMPORTANT: on server, you still need to create this mask.
-    mask = load_img(f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/anat/grey_matter_func_bin.nii.gz")
+    # mask will define the searchlight positions, in pt01 space because that is 
+    # where the functional files have been registered to.
+    mask = load_img(f"{data_dir}/anat/grey_matter_mask_func_01.nii.gz")
     mask = mask.get_fdata()  
     # save this file to save time
     if load_old:
