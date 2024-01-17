@@ -51,7 +51,7 @@ for sub in subjects:
     phase_between = {}
     state_between = {}
     for task_half in task_halves:
-        data_dir_beh = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/beh/"
+        data_dir_beh = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/pilot/{sub}/beh/"
         RDM_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
         if os.path.isdir(data_dir_beh):
             print("Running on laptop.")

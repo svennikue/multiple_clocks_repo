@@ -69,15 +69,23 @@ for sub in subjects:
     mask = mask.get_fdata()  
     # save this file to save time
     if load_old:
-        centers = np.load(f"{RDM_dir}/searchlight_centers.npy", allow_pickle=True)
-        neighbors = np.load(f"{RDM_dir}/searchlight_neihbors.npy", allow_pickle=True)
+        with open(f"{RDM_dir}/searchlight_centers.pkl", 'rb') as file:
+            centers = pickle.load(file)
+        with open(f"{RDM_dir}/searchlight_neighbors.pkl", 'rb') as file:
+            neighbors = pickle.load(file)
+        #centers = np.load(f"{RDM_dir}/searchlight_centers.npy", allow_pickle=True)
+        #neighbors = np.load(f"{RDM_dir}/searchlight_neihbors.npy", allow_pickle=True)
     else:
         # creating the searchlights
         centers, neighbors = get_volume_searchlight(mask, radius=3, threshold=0.5) # Found 175.483 searchlights
         # if I use the grey matter mask, then I find 144.905 searchlights
         # save this structure
-        np.save(f"{RDM_dir}/searchlight_centers.npy", centers)
-        np.save(f"{RDM_dir}/searchlight_neihbors.npy", neighbors)
+        with open(f"{RDM_dir}/searchlight_centers.pkl", 'wb') as file:
+            pickle.dump(centers, file)
+        with open(f"{RDM_dir}/searchlight_neihbors.pkl", 'wb') as file:
+            pickle.dump(neighbors, file)   
+        #np.save(f"{RDM_dir}/searchlight_centers.npy", centers)
+        #np.save(f"{RDM_dir}/searchlight_neihbors.npy", neighbors)
             
     # Step 2: loading and computing the data RDMs
     if load_old:

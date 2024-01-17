@@ -52,14 +52,10 @@ from matplotlib.patches import Circle
 import scipy
 import colormaps as cmap
 from sklearn.linear_model import LinearRegression
-import scipy
-from sklearn.linear_model import LinearRegression
-from scipy import stats
 from scipy.stats import multivariate_normal
 from scipy.stats import norm
 from itertools import product
 from scipy.signal import argrelextrema
-from sklearn import preprocessing
 from scipy import interpolate
 
 # PART 1
@@ -1871,11 +1867,10 @@ def set_location_ephys(walked_path, reward_fields, grid_size = 3, plotting = Fal
 ##############################################
 
 
-# WHY DO I USE THIS ONE??? COMPARE WITH SET_CONTINUOUS_MODELS_EPHYS
 
 # to create the model RDMs.
 def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, temporal_resolution = 10, plot = False):
-    #import pdb; pdb.set_trace()
+    
     # THERE IS SOMETHING WRONG WITH THE STEPS STILL.
     # I COUNT 1 STEP LESS THAN THE PATH
     # BUT IT DOESNT REACH THE FINAL GOAL LOCATION.
@@ -1895,12 +1890,25 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     # make the phase continuum
     # set the phases such that the mean is between 0 and 1/no_phase_neurons; 1/no_phase_neurons and 2/no_phase_neurons,
     # and 2/no_phase_neurons and 1.
+    # also prepare the progress continuum
+    no_task_progress_neurons = 10
+    
     neuron_phase_functions = []
+    neuron_task_progress_functions = []
     if wrap_around == 0:
         means_at_phase = np.linspace(0, 1, (no_phase_neurons*2)+1)
         means_at_phase = means_at_phase[1::2].copy()
         for div in means_at_phase: 
             neuron_phase_functions.append(norm(loc = div, scale = 1/(no_phase_neurons/2))) 
+        
+        means_at_prog = np.linspace(0,1,(no_task_progress_neurons*2)+1)
+        means_at_prog = means_at_prog[1::2].copy()
+        for div in means_at_prog: 
+            neuron_task_progress_functions.append(norm(loc = div, scale = 1/((no_task_progress_neurons)*2))) 
+        # x = np.linspace(0,1,1000)
+        # plt.figure();
+        # for neuron in range(0, len(neuron_task_progress_functions)):
+        #     plt.plot(x, neuron_task_progress_functions[neuron].pdf(x))       
         # # to plot the functions.
         # x = np.linspace(0,1,1000)
         # plt.figure();
@@ -1912,11 +1920,33 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
         means_at_phase = means_at_phase[1::2].copy() 
         for div in means_at_phase:
             neuron_phase_functions.append(scipy.stats.vonmises(1/(no_phase_neurons/10), loc=div))
+            
+        means_at_prog = np.linspace(-np.pi, np.pi, (no_task_progress_neurons*2)+1)
+        means_at_prog = means_at_prog[1::2].copy() 
+        for div in means_at_prog:
+            neuron_task_progress_functions.append(scipy.stats.vonmises(1/(no_task_progress_neurons/100), loc=div))
         # careful! this has to be read differently due to vonmises
         # to plot the functions.
         # plt.figure(); 
-        # for f in neuron_phase_functions:
+        # for f in neuron_task_progress_functions:
         #     plt.plot(np.linspace(0,1,1000), f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)/np.max(f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)))                
+      
+        
+    import pdb; pdb.set_trace()
+    # NEW
+    # make the task_progress_model here
+    # make this based on cumsumsteps[-1]
+
+    samplepoints = np.linspace(-np.pi, np.pi, (temporal_resolution*len(cumsumsteps[-1]))) if wrap_around == 1 else np.linspace(0, 1, len(temporal_resolution*len(cumsumsteps[-1]))
+    task_prog_matrix = np.empty
+    phase_matrix_subpath = np.empty([len(neuron_phase_functions), len(samplepoints)])
+    phase_matrix_subpath[:] = np.nan
+    # read out the respective phase coding 
+    for timepoint, read_out_point in enumerate(samplepoints):
+        for row in range(0, len(neuron_phase_functions)):
+            phase_matrix_subpath[row, timepoint] = neuron_phase_functions[row].pdf(read_out_point)
+    
+    # NEW END
 
     # make the state continuum, no smoothness in state.
     neuron_state_functions = []
