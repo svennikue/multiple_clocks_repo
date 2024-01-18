@@ -55,10 +55,11 @@ for sub in subjects:
     if not os.path.exists(RDM_dir):
         os.makedirs(RDM_dir)
         
-    results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results"   
+    results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}"   
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
-    
+        os.makedirs(f"{results_dir}/results")
+    results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results"  
     
     # get a reference image to later project the results onto. This is usually
     # example_func from half 1, as this is where the data is corrected to.
