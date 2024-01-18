@@ -52,16 +52,13 @@ for sub in subjects:
         print(f"Running on Cluster, setting {data_dir} as data directory")
        
     RDM_dir = f"{data_dir}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
-    if os.path.isdir(RDM_dir):
-        print(f"RDM dir exists: {RDM_dir}")
-    else:
-        print(f"ERROR! RDM dir doesn't exist! ({RDM_dir})")
+    if not os.path.exists(RDM_dir):
+        os.makedirs(RDM_dir)
         
     results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results"   
-    if os.path.isdir(results_dir):
-        print(f"RDM dir exists: {results_dir}")
-    else:
-        print(f"ERROR! RDM dir doesn't exist! ({results_dir})")
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
+    
     
     # get a reference image to later project the results onto. This is usually
     # example_func from half 1, as this is where the data is corrected to.
