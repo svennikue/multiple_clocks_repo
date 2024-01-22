@@ -315,6 +315,13 @@ for sub in subjects:
                     state_repeats = np.concatenate((state_repeats, state_model), 1)
                     task_prog_repeats = np.concatenate((task_prog_repeats, task_prog_model), 1)
             
+            # and create a run-counter-model.
+            # CONTINUE HERE!!!!
+            #run_count = mc.simulation.predictions.create_run_count_model_fmri()
+            # INCLUDE THE COUNT-RUNS MODEL AT SOME POINT!!!
+
+             
+                
             # NEXT STEP: prepare the regression.
             # then select the correct regressors, filter keys starting with 'A1_backw'
             regressors_curr_task = {key: value for key, value in regressors.items() if key.startswith(config)}

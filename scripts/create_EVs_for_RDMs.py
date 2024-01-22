@@ -25,18 +25,26 @@ import mc
 import matplotlib.pyplot as plt
 import pickle
 import re
+import sys
+
 
 #import pdb; pdb.set_trace()
-# nan in sub-10 and in sub-21 -> fix later.
-# subjects = ['sub-22', 'sub-23','sub-24']
-subjects = ['sub-01', 'sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06']
+
+
+if len (sys.argv) > 1:
+    subj_no = sys.argv[1]
+else:
+    subj_no = '01'
+    
+    
+subjects = [f"sub-{subj_no}"]
 # subjects = ['sub-07', 'sub-08', 'sub-09', 'sub-11', 'sub-12', 'sub-13', 'sub-14', 'sub-15', 'sub-16', 'sub-17', 'sub-18','sub-19', 'sub-20',  'sub-22', 'sub-23','sub-24']
 #subjects = ['sub-01']
-version = '06' # GLM number -> new, better script is now 06. first GLM was 04.
+version = '07' # GLM number -> 07 is only button press and rewards. | new, better script is now 06. first GLM was 04.
 
 # to debug task_halves = ['1']
 task_halves = ['1', '2']
-locationEVs = True
+locationEVs = False
 
 time_binEVs = True
 plotting = False
@@ -44,22 +52,32 @@ analyse_behav = False
 
 for sub in subjects:
     for task_half in task_halves:
-        data_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/pilot/{sub}/beh/"
+        data_dir_beh = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/pilot/{sub}/beh/"
+        funcDir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/func"
+        analysisDir = "/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_clocks_repo/mc/fmri_analysis"
+        if os.path.isdir(data_dir_beh):
+            print("Running on laptop.")
+        else:
+            data_dir_beh = f"/home/fs0/xpsy1114/scratch/data/pilot/{sub}/beh/"
+            funcDir = f"/home/fs0/xpsy1114/scratch/data/pilot/{sub}/func"
+            analysisDir = "/home/fs0/xpsy1114/scratch/analysis"
+            print(f"Running on Cluster, setting {data_dir_beh} as data directory")
+
         file = f"{sub}_fmri_pt{task_half}"
         file_all = f"{sub}_fmri_pt{task_half}_all.csv"
-        analysisDir="/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_clocks_repo/mc/fmri_analysis"
-        funcDir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/func/"
+        
+
         # define and make paths
         if locationEVs:
-            EV_folder = f'/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/func/EVs_{version}_pt0{task_half}_press_and_loc/'
+            EV_folder = f'{funcDir}/EVs_{version}_pt0{task_half}_press_and_loc/'
         elif time_binEVs:
-            EV_folder = f'/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/func/EVs_{version}_pt0{task_half}/'
+            EV_folder = f'{funcDir}/EVs_{version}_pt0{task_half}/'
         if not os.path.exists(EV_folder):
             os.makedirs(EV_folder)
         
         # load behavioural file
-        df = pd.read_csv(data_dir + f"{file}.csv")
-        df_all = pd.read_csv(data_dir+file_all)
+        df = pd.read_csv(data_dir_beh + f"{file}.csv")
+        df_all = pd.read_csv(data_dir_beh+file_all)
         
         # Keep in case I want to look at the behaviour at some point, but not really needed for now.
         if analyse_behav: 
@@ -263,16 +281,16 @@ for sub in subjects:
             # I want 80 EVs in the end -> 160 elements in the dictionary (duration + onset)
             for i, task in enumerate(task_names):
                 for s, state in enumerate(state_names):
-                    EV_subpathname_onset = f"{task}_{state}_subpath_onset"
-                    EV_subpathname_dur = f"{task}_{state}_subpath_dur"
+                    #EV_subpathname_onset = f"{task}_{state}_subpath_onset"
+                    #EV_subpathname_dur = f"{task}_{state}_subpath_dur"
                     EV_rewardname_onset = f"{task}_{state}_reward_onset"
                     EV_rewardname_dur = f"{task}_{state}_reward_dur"
                     
                     partial_df = df[((df['config_type'] == task) & (df['state'] == state))]
                     #partial_df = df[((df['task_config'] == task) & (df['state'] == state))]
                     
-                    taskEV_dic[EV_subpathname_onset] = partial_df['subpath_onset'].dropna().to_list()
-                    taskEV_dic[EV_subpathname_dur] = partial_df['subpath_dur_without_rew'].dropna().to_list()
+                    #taskEV_dic[EV_subpathname_onset] = partial_df['subpath_onset'].dropna().to_list()
+                    #taskEV_dic[EV_subpathname_dur] = partial_df['subpath_dur_without_rew'].dropna().to_list()
                     
                     taskEV_dic[EV_rewardname_onset] = partial_df['reward_onset'].dropna().to_list()
                     taskEV_dic[EV_rewardname_dur] = partial_df['reward_duration'].dropna().to_list()
@@ -282,12 +300,12 @@ for sub in subjects:
             # excluded = 0
             for i, task in enumerate(task_names):
                 for s, state in enumerate(state_names):
-                    mag_subpath = np.ones(len(taskEV_dic[f"{task}_{state}_subpath_onset"]))
+                    # mag_subpath = np.ones(len(taskEV_dic[f"{task}_{state}_subpath_onset"]))
                     # if len(mag_subpath) < 3:
                     #     print(f"Careful! {task} x {state} subpath and reward is not complete and will be excluded.")
                     #     excluded = excluded + 2 # bc reward will also be exluded
                     #     continue
-                    subpath_EV = mc.analyse.analyse_MRI_behav.create_EV(taskEV_dic[f"{task}_{state}_subpath_onset"], taskEV_dic[f"{task}_{state}_subpath_dur"], mag_subpath, f"{task}_{state}_path", EV_folder, first_TR_at)
+                    # subpath_EV = mc.analyse.analyse_MRI_behav.create_EV(taskEV_dic[f"{task}_{state}_subpath_onset"], taskEV_dic[f"{task}_{state}_subpath_dur"], mag_subpath, f"{task}_{state}_path", EV_folder, first_TR_at)
                     mag_reward = np.ones(len(taskEV_dic[f"{task}_{state}_reward_onset"]))
                     # if len(mag_reward) < 3:
                     #     print(f"Careful! {task} x {state} reward is not complete and will be excluded.")
@@ -299,10 +317,10 @@ for sub in subjects:
                         print(f"careful! I am saving a cutted EV {task}{state} reward file. Happened for subject {sub} in task half {task_half}")
                         np.savetxt(str(EV_folder) + 'ev_' + f"{task}_{state}_reward" + '.txt', array, delimiter="    ", fmt='%f')
                     
-                    deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(subpath_EV)
-                    if deleted_x_rows > 0:
-                        print(f"careful! I am saving a cutted EV {task}{state} subpath file. Happened for subject {sub} in task half {task_half}")
-                        np.savetxt(str(EV_folder) + 'ev_' + f"{task}_{state}_path" + '.txt', array, delimiter="    ", fmt='%f')
+                    #deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(subpath_EV)
+                    #if deleted_x_rows > 0:
+                    #    print(f"careful! I am saving a cutted EV {task}{state} subpath file. Happened for subject {sub} in task half {task_half}")
+                    #   np.savetxt(str(EV_folder) + 'ev_' + f"{task}_{state}_path" + '.txt', array, delimiter="    ", fmt='%f')
                     
                     
             if 'C2_forw_A_reward_dur' in taskEV_dic:
@@ -319,9 +337,9 @@ for sub in subjects:
             
             
             # then, lastly, adjust the .fsf file I will use for the regression.
-            original_fsf_file=f"{analysisDir}/templates/my_RDM_GLM_v2.fsf"
-            with open(original_fsf_file, 'r') as file:
-                fsf_content = file.read()
+            # original_fsf_file=f"{analysisDir}/templates/my_RDM_GLM_v2.fsf"
+            # with open(original_fsf_file, 'r') as file:
+            #     fsf_content = file.read()
                 
             # collect all filepaths I just created.
             files_in_EV_folder = os.listdir(EV_folder) 
@@ -336,15 +354,54 @@ for sub in subjects:
             text_to_write = []
             with open(f"{analysisDir}/templates/my_RDM_GLM_v2.fsf", "r") as fin:                    
                 for line in fin:
-                    for i, EV_path in enumerate(sorted_EVs):    
+                    for i, EV_path in enumerate(sorted_EVs): 
                         if line.startswith(f"set fmri(custom{i+1})"):
                             # print(f"my old line was: {line}")
                             line = f'set fmri(custom{i+1}) "{EV_path}"\n'
-                            #import pdb; pdb.set_trace();
+                        if line.startswith(f"set fmri(evtitle{i+1})"):
+                            EV_name_ext = os.path.basename(EV_path)
+                            EV_name = EV_name_ext.rsplit('.',1)[0]
+                            print(f"changing evtitle{i+1} to {EV_name}")
+                            line = f'set fmri(evtitle{i+1}) "{EV_name}"\n'
                     text_to_write.append(line)
+            
+            # then, in the next round, delete all the EVs that I don't actually include.
+            # first, do this for the orthogonalisation of the EVs + contrasts you want with the ones you don't.
+            skip = 0
+            text_to_write_half_cleaned = []
+            for line in text_to_write:
+                if skip > 0:
+                    # if the counter is increased, skip next line and decrease counter
+                    skip -= 1
+                    continue
+                if (line.startswith("# Orthogonalise EV") and int(line[-3:-1]) > len(EV_paths)) or (line.startswith("# Real contrast_orig") and int(line[-3:-1]) > len(EV_paths)) or (line.startswith("# Real contrast_real vector") and int(line[-3:-1]) > len(EV_paths)):
+                    #print(f"end of line is {line[-3:-1]}, so skip these next 3")
+                    skip = 2
+                else:
+                    #import pdb; pdb.set_trace();
+                    text_to_write_half_cleaned.append(line)
+                    
+            # then, delete all the configurations of the actual EVs don't want.
+            skip_until_marker = False
+            marker_line = "# Contrast & F-tests mode"
+            text_to_write_cleaned = []
+            for line in text_to_write_half_cleaned:
+                if skip_until_marker:
+                    if line.strip() == marker_line:
+                        # add marker line to text and stop skipping
+                        text_to_write_cleaned.append(line)
+                        skip_until_marker = False
+                    continue
+                if line.startswith("# EV") and int(line[5:7]) > len(EV_paths):
+                    skip_until_marker = True
+                else:
+                    text_to_write_cleaned.append(line)
+                    
+                    
+                    
 
             with open(f"{funcDir}/{sub}_my_RDM_GLM_0{task_half}_{version}.fsf", "w") as fout:
-                for line in text_to_write:
+                for line in text_to_write_cleaned:
                     fout.write(line)
 
                 

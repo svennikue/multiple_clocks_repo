@@ -39,7 +39,7 @@ task_halves = ['1', '2']
 RDM_version = '05' # 05 is both task halves combined
 # 04 is another try to bring the results back...'03' # 03 is teporal resolution = 1. 02 is for the report.
 no_RDM_conditions = 80
-load_old = False
+load_old = True
 regression_version = '06' #'04_pt01+_that_worked' 
 # make all paths relative and adjust to both laptop and server!!
       
@@ -85,7 +85,7 @@ for sub in subjects:
         # save this structure
         with open(f"{RDM_dir}/searchlight_centers.pkl", 'wb') as file:
             pickle.dump(centers, file)
-        with open(f"{RDM_dir}/searchlight_neihbors.pkl", 'wb') as file:
+        with open(f"{RDM_dir}/searchlight_neighbors.pkl", 'wb') as file:
             pickle.dump(neighbors, file)   
         #np.save(f"{RDM_dir}/searchlight_centers.npy", centers)
         #np.save(f"{RDM_dir}/searchlight_neihbors.npy", neighbors)
