@@ -59,7 +59,7 @@ for sub in subjects:
             print("Running on laptop.")
         else:
             data_dir_beh = f"/home/fs0/xpsy1114/scratch/data/pilot/{sub}/beh/"
-            funcDir = f"/home/fs0/xpsy1114/scratch/data/pilot/{sub}/func"
+            funcDir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}/func"
             analysisDir = "/home/fs0/xpsy1114/scratch/analysis"
             print(f"Running on Cluster, setting {data_dir_beh} as data directory")
 
@@ -361,7 +361,7 @@ for sub in subjects:
                         if line.startswith(f"set fmri(evtitle{i+1})"):
                             EV_name_ext = os.path.basename(EV_path)
                             EV_name = EV_name_ext.rsplit('.',1)[0]
-                            print(f"changing evtitle{i+1} to {EV_name}")
+                            # print(f"changing evtitle{i+1} to {EV_name}")
                             line = f'set fmri(evtitle{i+1}) "{EV_name}"\n'
                     text_to_write.append(line)
             
