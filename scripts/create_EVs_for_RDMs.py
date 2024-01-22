@@ -363,6 +363,11 @@ for sub in subjects:
                             EV_name = EV_name_ext.rsplit('.',1)[0]
                             # print(f"changing evtitle{i+1} to {EV_name}")
                             line = f'set fmri(evtitle{i+1}) "{EV_name}"\n'
+                        if line.startswith("set fmri(evs_orig)"):
+                            line = f"set fmri(evs_orig) {len(EV_paths)}\n"
+                        if line.startswith("set fmri(evs_real)"):
+                            line = f"set fmri(evs_real) {len(EV_paths)+1}\n"   
+                            # import pdb; pdb.set_trace();
                     text_to_write.append(line)
             
             # then, in the next round, delete all the EVs that I don't actually include.
