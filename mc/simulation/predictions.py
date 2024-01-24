@@ -2071,11 +2071,20 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
 
 # CONTINUE HERE!!!
 def create_run_count_model_fmri(number_of_steps, number_of_runs, wrap_around = 1, temporal_resolution = 10, plot = False): 
-    neuron_run_count = []
+    
+    # define where the mean of these function shall be
+    steps_per_run = [(np.sum(run) * temporal_resolution) for run in number_of_steps]
+    cumsumsteps = np.cumsum(steps_per_run)
+    cumsumsteps = np.append(0, cumsumsteps)
+    half_steps = [int(steps/2) for steps in steps_per_run]
+    means_at = []
+    for i, elem in enumerate(half_steps):
+        means_at.append(elem + cumsumsteps[i])
+    
+    neuron_run_count = []   
     if wrap_around == 0:
-        means_at_run = np.linspace(0, 1, (number_of_runs*2)+1)
-        means_at_run = means_at_run[1::2].copy()
-        for div in means_at_run: 
+        means_at_norm = [(elem/(cumsumsteps[-1])) for elem in means_at]
+        for div in means_at: 
             neuron_run_count.append(norm(loc = div, scale = 1/(number_of_runs/2))) 
         # x = np.linspace(0,1,1000)
         # plt.figure();
@@ -2083,32 +2092,87 @@ def create_run_count_model_fmri(number_of_steps, number_of_runs, wrap_around = 1
         #     plt.plot(x, neuron_phase_functions[neuron].pdf(x))
         # to plot the functions.  
     if wrap_around == 1:
-        means_at_run = np.linspace(-np.pi, np.pi, (number_of_runs*2)+1)
-        means_at_run = means_at_run[1::2].copy() 
-        for div in means_at_run:
-            neuron_run_count.append(scipy.stats.vonmises(1/(number_of_runs/10), loc=div))
-        # careful! this has to be read differently due to vonmises
+        # then normalise it to be between between -np.pi and np.pi
+        means_at_pi = [((2*np.pi*(elem/(cumsumsteps[-1])))-np.pi) for elem in means_at]
+        for div in means_at_pi:
+            neuron_run_count.append(scipy.stats.vonmises(1/(number_of_runs/10), loc=div))  
         # plt.figure(); 
-        # for f in neuron_task_progress_functions:
+        # for f in neuron_run_count:
         #     plt.plot(np.linspace(0,1,1000), f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)/np.max(f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)))                
     
-    for i, elem in enumerate(number_of_steps):
-        cumsumsteps = np.empty(number_of_runs)
-        cumsumsteps[i] = np.cumsum(elem) * temporal_resolution
-        
-        samplepoints = np.linspace(-np.pi, np.pi, cumsumsteps[i]) if wrap_around == 1 else np.linspace(0, 1, cumsumsteps[i])
-        
-        run_count_model = np.empty([len(neuron_run_count), cumsumsteps[i]])
-        run_count_model[:] = np.nan
-        # read out the respective phase coding 
-        for timepoint, read_out_point in enumerate(samplepoints):
-            for row in range(0, len(neuron_run_count)):
-                run_count_model[row, timepoint] = neuron_run_count[row].pdf(read_out_point)
-    
+    all_steps_all_runs = sum(steps_per_run)
+    run_count_model = np.empty((number_of_runs,all_steps_all_runs))
+    samplepoints = np.linspace(-np.pi, np.pi, run_count_model.shape[1]) if wrap_around == 1 else np.linspace(0, 1, run_count_model.shape[1])
+    # read out the respective phase coding 
+    for timepoint, read_out_point in enumerate(samplepoints):
+        for row in range(0, len(neuron_run_count)):
+            run_count_model[row, timepoint] = neuron_run_count[row].pdf(read_out_point)
+
+
     if plot == True:
-        mc.simulation.predictions.plot_without_legends(run_count_model, titlestring='Run count model')
+        fig, ax = plt.subplots(figsize=(5,4))
+        plt.imshow(run_count_model, aspect='auto', interpolation = 'none')
+        for interval in cumsumsteps:
+            ax.axvline(interval, color='white', linewidth=1)
+        # also plot how long the trials go, respectively
         
-    return run_count_model
+    return run_count_model    
+    # # Normalize spacings to sum up to 2*pi
+    # normalized_spacings = 2 * np.pi * steps_per_run / np.sum(steps_per_run)
+    # # Calculate the positions
+    # means_at_run = np.cumsum(normalized_spacings) - np.pi - normalized_spacings[0]
+
+    
+    # neuron_run_count = []
+    # if wrap_around == 0:
+    #     means_at_run = np.linspace(0, 1, (number_of_runs*2)+1)
+    #     means_at_run = means_at_run[1::2].copy()
+    #     for div in means_at_run: 
+    #         neuron_run_count.append(norm(loc = div, scale = 1/(number_of_runs/2))) 
+    #     # x = np.linspace(0,1,1000)
+    #     # plt.figure();
+    #     # for neuron in range(0, len(neuron_phase_functions)):
+    #     #     plt.plot(x, neuron_phase_functions[neuron].pdf(x))
+    #     # to plot the functions.  
+    # if wrap_around == 1:
+    #     means_at_run = np.linspace(-np.pi, np.pi, (number_of_runs*2)+1)
+    #     means_at_run = means_at_run[1::2].copy() 
+    #     for div in means_at_run:
+    #         neuron_run_count.append(scipy.stats.vonmises(1/(number_of_runs/20), loc=div))
+    #     # careful! this has to be read differently due to vonmises
+    #     # plt.figure(); 
+    #     # for f in neuron_run_count:
+    #     #     plt.plot(np.linspace(0,1,1000), f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)/np.max(f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)))                
+    # import pdb; pdb.set_trace()
+    
+    
+    
+    
+    
+    # for repeat, steps_per_run in enumerate(number_of_steps):
+    #     # first create a long empty matrix across all repeats.
+    #     run_count_model_singlerun = np.empty((number_of_runs,(np.sum(steps_per_run) * temporal_resolution)))
+    #     if repeat == 0:
+    #         run_count_model = run_count_model_singlerun.copy()
+    #     elif repeat > 0:
+    #         run_count_model = np.concatenate((run_count_model, run_count_model_singlerun), 1)
+            
+            
+            
+    #     samplepoints = np.linspace(-np.pi, np.pi, run_count_model_singlerun.shape[1]) if wrap_around == 1 else np.linspace(0, 1, run_count_model_singlerun.shape[1])
+    #     # read out the respective phase coding 
+    #     for timepoint, read_out_point in enumerate(samplepoints):
+    #         for row in range(0, len(neuron_run_count)):
+    #             run_count_model_singlerun[row, timepoint] = neuron_run_count[row].pdf(read_out_point)
+    #     if repeat == 0:
+    #         run_count_model = run_count_model_singlerun.copy()
+    #     elif repeat > 0:
+    #         run_count_model = np.concatenate((run_count_model, run_count_model_singlerun), 1)
+    
+    # if plot == True:
+    #     mc.simulation.predictions.plot_without_legends(run_count_model, titlestring='Run count model')
+        
+    
                 
 
 

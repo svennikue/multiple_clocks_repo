@@ -317,10 +317,12 @@ for sub in subjects:
             
             # and create a run-counter-model.
             # CONTINUE HERE!!!!
-            #run_count = mc.simulation.predictions.create_run_count_model_fmri()
+
+            run_count = mc.simulation.predictions.create_run_count_model_fmri(step_number, len(step_number), wrap_around = 1, temporal_resolution = 10, plot = False)
             # INCLUDE THE COUNT-RUNS MODEL AT SOME POINT!!!
 
-             
+            import pdb; pdb.set_trace()
+                         
                 
             # NEXT STEP: prepare the regression.
             # then select the correct regressors, filter keys starting with 'A1_backw'
