@@ -2065,13 +2065,24 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
         mc.simulation.predictions.plot_without_legends(clo_model, titlestring='Musicbox model')
         mc.simulation.predictions.plot_without_legends(phas_stat, titlestring='One ring of musicbox')
         mc.simulation.predictions.plot_without_legends(task_prog_matrix, titlestring='Task progress Model')
-        
-    return loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat, task_prog_matrix
-
-
-# CONTINUE HERE!!!
-def create_run_count_model_fmri(number_of_steps, number_of_runs, wrap_around = 1, temporal_resolution = 10, plot = False): 
     
+        
+    # careful! If I change this then the old fmri stuff won't work anymore!!
+    # make everything a dicitonary
+    result_dict = {}
+    result_dict['location'] = loc_model
+    result_dict['phase'] = phas_model
+    result_dict['phase_state'] = phas_stat
+    result_dict['midnight'] = midn_model
+    result_dict['clocks'] = clo_model
+    result_dict['state'] = stat_model
+    result_dict['task_prog'] = task_prog_matrix
+    #['clocks', 'midnight', 'location', 'phase', 'state', 'task_prog']
+    return result_dict
+    # return loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat, task_prog_matrix
+
+
+def create_run_count_model_fmri(number_of_steps, number_of_runs, wrap_around = 1, temporal_resolution = 10, plot = False): 
     # define where the mean of these function shall be
     steps_per_run = [(np.sum(run) * temporal_resolution) for run in number_of_steps]
     cumsumsteps = np.cumsum(steps_per_run)
@@ -2107,73 +2118,190 @@ def create_run_count_model_fmri(number_of_steps, number_of_runs, wrap_around = 1
     for timepoint, read_out_point in enumerate(samplepoints):
         for row in range(0, len(neuron_run_count)):
             run_count_model[row, timepoint] = neuron_run_count[row].pdf(read_out_point)
-
-
+            
     if plot == True:
         fig, ax = plt.subplots(figsize=(5,4))
         plt.imshow(run_count_model, aspect='auto', interpolation = 'none')
+        # to plot where a new run starts
         for interval in cumsumsteps:
             ax.axvline(interval, color='white', linewidth=1)
-        # also plot how long the trials go, respectively
         
     return run_count_model    
-    # # Normalize spacings to sum up to 2*pi
-    # normalized_spacings = 2 * np.pi * steps_per_run / np.sum(steps_per_run)
-    # # Calculate the positions
-    # means_at_run = np.cumsum(normalized_spacings) - np.pi - normalized_spacings[0]
 
+
+
+
+
+# Now. I want to make a model which:
+# only encodes the current reward locations (midnight for rewards)
+# encodes the current and future reward locations (clocks for rewards/ state x rewards)
+# this solves in in one of 2 different ways:
+# midnight x reward = like location model which is only active if there is a reward (so at the last step of a task)
+# clocks x reward would also have neurons in the middle which would propagate the activity with a task-lag.
+# ie. 4 neurons x 9 locations, like a state x location matrix.
+def create_reward_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, temporal_resolution = 10, plot = False):
     
-    # neuron_run_count = []
-    # if wrap_around == 0:
-    #     means_at_run = np.linspace(0, 1, (number_of_runs*2)+1)
-    #     means_at_run = means_at_run[1::2].copy()
-    #     for div in means_at_run: 
-    #         neuron_run_count.append(norm(loc = div, scale = 1/(number_of_runs/2))) 
-    #     # x = np.linspace(0,1,1000)
-    #     # plt.figure();
-    #     # for neuron in range(0, len(neuron_phase_functions)):
-    #     #     plt.plot(x, neuron_phase_functions[neuron].pdf(x))
-    #     # to plot the functions.  
-    # if wrap_around == 1:
-    #     means_at_run = np.linspace(-np.pi, np.pi, (number_of_runs*2)+1)
-    #     means_at_run = means_at_run[1::2].copy() 
-    #     for div in means_at_run:
-    #         neuron_run_count.append(scipy.stats.vonmises(1/(number_of_runs/20), loc=div))
-    #     # careful! this has to be read differently due to vonmises
-    #     # plt.figure(); 
-    #     # for f in neuron_run_count:
-    #     #     plt.plot(np.linspace(0,1,1000), f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)/np.max(f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)))                
-    # import pdb; pdb.set_trace()
-    
-    
-    
-    
-    
-    # for repeat, steps_per_run in enumerate(number_of_steps):
-    #     # first create a long empty matrix across all repeats.
-    #     run_count_model_singlerun = np.empty((number_of_runs,(np.sum(steps_per_run) * temporal_resolution)))
-    #     if repeat == 0:
-    #         run_count_model = run_count_model_singlerun.copy()
-    #     elif repeat > 0:
-    #         run_count_model = np.concatenate((run_count_model, run_count_model_singlerun), 1)
-            
-            
-            
-    #     samplepoints = np.linspace(-np.pi, np.pi, run_count_model_singlerun.shape[1]) if wrap_around == 1 else np.linspace(0, 1, run_count_model_singlerun.shape[1])
-    #     # read out the respective phase coding 
-    #     for timepoint, read_out_point in enumerate(samplepoints):
-    #         for row in range(0, len(neuron_run_count)):
-    #             run_count_model_singlerun[row, timepoint] = neuron_run_count[row].pdf(read_out_point)
-    #     if repeat == 0:
-    #         run_count_model = run_count_model_singlerun.copy()
-    #     elif repeat > 0:
-    #         run_count_model = np.concatenate((run_count_model, run_count_model_singlerun), 1)
-    
-    # if plot == True:
-    #     mc.simulation.predictions.plot_without_legends(run_count_model, titlestring='Run count model')
+    cumsumsteps = np.cumsum(step_number)
+    # code up the 2d location neurons. this is e.g. a 3x3 grid tiled with multivatiate
+    # gaussians that are centred around the grid locations.
+    # first, build all possible coord combinations 
+    all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
+    neuron_loc_functions = []
+    for coord in all_coords:
+        neuron_loc_functions.append(multivariate_normal(coord, cov = fire_radius))
         
+    # make the phase continuum
+    # set the phases such that the mean is between 0 and 1/no_phase_neurons; 1/no_phase_neurons and 2/no_phase_neurons,
+    # and 2/no_phase_neurons and 1.
+    # also prepare the progress continuum
+    no_task_progress_neurons = 10
+    neuron_task_progress_functions = []
+    if wrap_around == 0:
+        means_at_prog = np.linspace(0,1,(no_task_progress_neurons*2)+1)
+        means_at_prog = means_at_prog[1::2].copy()
+        for div in means_at_prog: 
+            neuron_task_progress_functions.append(norm(loc = div, scale = 1/((no_task_progress_neurons)*2))) 
+        # x = np.linspace(0,1,1000)
+        # plt.figure();
+        # for neuron in range(0, len(neuron_task_progress_functions)):
+        #     plt.plot(x, neuron_task_progress_functions[neuron].pdf(x))       
+        # # to plot the functions.
+        
+    if wrap_around == 1:
+        means_at_prog = np.linspace(-np.pi, np.pi, (no_task_progress_neurons*2)+1)
+        means_at_prog = means_at_prog[1::2].copy() 
+        for div in means_at_prog:
+            neuron_task_progress_functions.append(scipy.stats.vonmises(1/(no_task_progress_neurons/100), loc=div))
+        # careful! this has to be read differently due to vonmises
+        # to plot the functions.
+        # plt.figure(); 
+        # for f in neuron_task_progress_functions:
+        #     plt.plot(np.linspace(0,1,1000), f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)/np.max(f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)))                
     
-                
+    # make a task progress model    
+    samplepoints = np.linspace(-np.pi, np.pi, (temporal_resolution*cumsumsteps[-1])) if wrap_around == 1 else np.linspace(0, 1, len(temporal_resolution*cumsumsteps[-1]))
+    task_prog_matrix = np.empty([len(neuron_task_progress_functions), len(samplepoints)])
+    task_prog_matrix[:] = np.nan
+    # read out the respective phase coding 
+    for timepoint, read_out_point in enumerate(samplepoints):
+        for row in range(0, len(neuron_task_progress_functions)):
+            task_prog_matrix[row, timepoint] = neuron_task_progress_functions[row].pdf(read_out_point)
+
+
+    # make the state continuum, no smoothness in state.
+    neuron_state_functions = []
+    means_at_state = np.linspace(0,(len(step_number)-1), (len(step_number)))
+    for div in means_at_state:
+        neuron_state_functions.append(norm(loc = div, scale = 1/len(step_number)))     
+    # x = np.linspace(0,3,1000)
+    # plt.figure();
+    # for neuron in range(0, len(neuron_state_functions)):
+    #     plt.plot(x, neuron_state_functions[neuron].pdf(x))
+
+    # now loop through all subpaths.
+    for count_paths, pathlength in enumerate(step_number):
+        # first step: divide into subpaths
+        step_index = np.insert(cumsumsteps, 0, 0)
+        curr_path = walked_path[step_index[count_paths]+1 : step_index[count_paths+1]+1]
+        # second step: prepare in case I want to have a better 'temporal resolution'
+        fields_path = []
+        for elem in curr_path:
+            fields_path.append(mc.simulation.predictions.field_to_number(elem, grid_size))
+        locs_over_time = np.repeat(fields_path, repeats = temporal_resolution)
+        
+        reward_mask = np.append(np.zeros(len(fields_path)-1),count_paths+1)
+        reward_mask = np.repeat(reward_mask, repeats = temporal_resolution)
+
+        coords_over_time = list(locs_over_time)
+        for index, elem in enumerate(coords_over_time):
+            coords_over_time[index] = all_coords[elem]
+        
+        # third step: from the previous location model, create the midnight x reward model.
+        # this basically only means: activate location if there is a reward here.
+        reward_midn_matrix = np.zeros([grid_size*grid_size,len(coords_over_time)])
+        #reward_midn_matrix[:] = np.nan
+        # and then simply fill the matrix with the respective functions
+        for timepoint, location in enumerate(coords_over_time):
+            if reward_mask[timepoint] > 0:
+                for row in range(0, grid_size*grid_size):
+                    reward_midn_matrix[row, timepoint] = neuron_loc_functions[row].pdf(location) # location has to be a coord
+                   
+
+        # fourth: create the state matrix.
+        state_matrix = np.empty([len(neuron_state_functions), len(locs_over_time)])
+        state_matrix[:] = np.nan
+        for row in range(0, len(neuron_state_functions)):
+            state_matrix[row] = neuron_state_functions[row].pdf(count_paths)
+
+
+        # last step: put subpaths together and concat into a bigger matrix.
+        if count_paths == 0:
+            rew_midn_model = reward_midn_matrix.copy()
+            stat_model = state_matrix.copy()
+            reward_mask_task = reward_mask.copy()
+        elif count_paths > 0:
+            rew_midn_model = np.concatenate((rew_midn_model,reward_midn_matrix), axis = 1)
+            stat_model = np.concatenate((stat_model, state_matrix), axis = 1)
+            reward_mask_task = np.append(reward_mask_task, reward_mask)
+       
+    
+    # for the clocks x reward model, fill in the task-lag neurons that are anchored at that location
+    # first create an empty one
+    reward_clo_model_empty = np.zeros((len(rew_midn_model) * len(state_matrix), rew_midn_model.shape[1]))
+    for row in range(0, len(reward_clo_model_empty), len(state_matrix)):
+        # import pdb; pdb.set_trace()
+        if row == 0:
+            reward_clo_model_empty[row] = rew_midn_model[row]
+        else:
+            reward_clo_model_empty[row] = rew_midn_model[int(row/len(stat_model))]
+    
+    reward_clo_model = reward_clo_model_empty.copy()
+    # then fill the task-lag neurons.
+    for step in range(reward_clo_model_empty.shape[1]):
+        # import pdb; pdb.set_trace()
+        for row, neuron_activity in enumerate(reward_clo_model_empty[:,step]):
+            if neuron_activity > 0:
+                # find out which reward has been activated and fill the respective 4 rows accordingly.
+                if reward_mask_task[step] == 1 and reward_mask_task[step-1] == 0:
+                    reward_clo_model[row+1, reward_mask_task == 2] += neuron_activity
+                    reward_clo_model[row+2, reward_mask_task == 3] += neuron_activity
+                    reward_clo_model[row+3, reward_mask_task == 4] += neuron_activity
+                if reward_mask_task[step] == 2 and reward_mask_task[step-1] == 0:
+                    reward_clo_model[row+1, reward_mask_task == 3] += neuron_activity
+                    reward_clo_model[row+2, reward_mask_task == 4] += neuron_activity
+                    reward_clo_model[row+3, reward_mask_task == 1] += neuron_activity
+                if reward_mask_task[step] == 3 and reward_mask_task[step-1] == 0:
+                    reward_clo_model[row+1, reward_mask_task == 4] += neuron_activity
+                    reward_clo_model[row+2, reward_mask_task == 1] += neuron_activity
+                    reward_clo_model[row+3, reward_mask_task == 2] += neuron_activity
+                if reward_mask_task[step] == 4 and reward_mask_task[step-1] == 0:
+                    reward_clo_model[row+1, reward_mask_task == 1] += neuron_activity
+                    reward_clo_model[row+2, reward_mask_task == 2] += neuron_activity
+                    reward_clo_model[row+3, reward_mask_task == 3] += neuron_activity
+
+
+    if plot == True:
+        mc.simulation.predictions.plot_without_legends(stat_model, titlestring='State Model')
+        mc.simulation.predictions.plot_without_legends(rew_midn_model, titlestring='Midnight Model, only rewards')
+        mc.simulation.predictions.plot_without_legends(task_prog_matrix, titlestring='Task progress Model')
+        # and the reward x musicbox model
+        fig, ax = plt.subplots(figsize=(5,4))
+        plt.imshow(reward_clo_model, aspect = 'auto')
+        for new_anchor in range(0, len(reward_clo_model_empty), len(state_matrix)):
+            ax.axhline(new_anchor-0.5, color='white', linewidth=1)
+        
+    #return rew_midn_model, reward_clocks_model, stat_model, task_progress_model
+    # make everything a dicitonary
+    result_dict = {}
+    result_dict['rew_midnight'] = rew_midn_model
+    result_dict['reward_clocks'] = reward_clo_model
+    result_dict['state'] = stat_model
+    result_dict['task_prog'] = task_prog_matrix
+
+     #['clocks', 'midnight', 'location', 'phase', 'state', 'task_prog']   
+    return result_dict
+
+# END 
 
 
 ################################

@@ -30,7 +30,12 @@ subjects = [f"sub-{subj_no}"]
 
 #subjects = ['sub-01']
 task_halves = ['1', '2']
-RDM_version = '05' # 05 is both task halves combined
+
+# change this string depending on the RDM version and models you want to include!!
+models_I_want = ['clocks', 'midnight', 'location', 'phase', 'state', 'task_prog']
+
+RDM_version = '06' # 06 is both task halves combined, with the reduced midnight and clocks: only coding for rewards.
+# '05' is both task halves combined, with clocks, midnight, phase, state, loc model.
 # 04 is another try to bring the results back...'03' # 03 is teporal resolution = 1. 02 is for the report.
 
 temporal_resolution = 10
@@ -249,12 +254,17 @@ for sub in subjects:
 
         # finally, create simulations and time-bin per run.
         # first, prep result dictionaries.
-        clocks_dict = {key: "" for key in configs}
-        midnight_dict = {key: "" for key in configs}
-        location_dict = {key: "" for key in configs}
-        phase_dict = {key: "" for key in configs}
-        state_dict = {key: "" for key in configs}
-        task_prog_dict = {key: "" for key in configs}
+        all_models_dict = {f"{model}_dict": {key: "" for key in configs} for model in models_I_want}
+        for models in models_I_want:
+            all_models_dict[f"{models}_dict"] = {key: "" for key in configs}
+            
+
+        # clocks_dict = {key: "" for key in configs}
+        # midnight_dict = {key: "" for key in configs}
+        # location_dict = {key: "" for key in configs}
+        # phase_dict = {key: "" for key in configs}
+        # state_dict = {key: "" for key in configs}
+        # task_prog_dict = {key: "" for key in configs}
         # loop through all tasks, and within the tasks, through all runs.
         # import pdb; pdb.set_trace()
         for config in configs:
@@ -296,32 +306,54 @@ for sub in subjects:
                 
                 # KEY STEP
                 # create all models.
-                # DOUBLE CHECK HOW THE 'TIMINGS' ONE IS USED!!!
-                location_model, phase_model, state_model, midnight_model, clocks_model, phase_state_model, task_prog_model = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False)
                 
-                # these need to be concatenated for each run and task
-                if no_run == 0:
-                    clocks_repeats = clocks_model.copy()
-                    midnight_repeats = midnight_model.copy()
-                    location_repeats = location_model.copy()
-                    phase_repeats = phase_model.copy()
-                    state_repeats = state_model.copy()
-                    task_prog_repeats = task_prog_model.copy()
+                # RDM_version 06 makes musicbox and clocks models that are only coding for reward locations.
+                # CAREFUL!!!!
+                # THESE ARE NOW DICTIONARIYS!!!
+                
+                if RDM_version == '06':
+                    # THIS IS A DICT NOW! FIX!
+                    rew_midn_model, rew_clocks_model, state_model, task_prog_model = mc.simulation.predictions.create_reward_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False)
+                    if no_run == 0:
+                        rew_clocks_repeats = rew_clocks_model.copy()
+                        rew_midnight_repeats = rew_midn_model.copy()
+                        state_repeats = state_model.copy()
+                        task_prog_repeats = task_prog_model.copy()
+                    else:
+                        rew_clocks_repeats = np.concatenate((rew_clocks_repeats, rew_clocks_model), 1)
+                        rew_midnight_repeats = np.concatenate((rew_midnight_repeats, rew_midn_model), 1)
+                        state_repeats = np.concatenate((state_repeats, state_model), 1)
+                        task_prog_repeats = np.concatenate((task_prog_repeats, task_prog_model), 1)
                 else:
-                    clocks_repeats = np.concatenate((clocks_repeats, clocks_model), 1)
-                    midnight_repeats = np.concatenate((midnight_repeats, midnight_model), 1)
-                    location_repeats = np.concatenate((location_repeats, location_model), 1)
-                    phase_repeats = np.concatenate((phase_repeats, phase_model), 1)
-                    state_repeats = np.concatenate((state_repeats, state_model), 1)
-                    task_prog_repeats = np.concatenate((task_prog_repeats, task_prog_model), 1)
+                    result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False)
+                    # test if this is the same as the models you want, otherwise break!
+                    model_list = list(result_model_dict.keys())
+                    if model_list != models_I_want:
+                        print('careful! the model dictionary did not output your defined mdoels!')
+                        pdb.set_trace()
+                    
+                    
+                    # THIS IS A DICT NOW! FIX!
+                    #location_model, phase_model, state_model, midnight_model, clocks_model, phase_state_model, task_prog_model = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False)
+                    # these need to be concatenated for each run and task
+                    if no_run == 0:
+                        clocks_repeats = clocks_model.copy()
+                        midnight_repeats = midnight_model.copy()
+                        location_repeats = location_model.copy()
+                        phase_repeats = phase_model.copy()
+                        state_repeats = state_model.copy()
+                        task_prog_repeats = task_prog_model.copy()
+                    else:
+                        clocks_repeats = np.concatenate((clocks_repeats, clocks_model), 1)
+                        midnight_repeats = np.concatenate((midnight_repeats, midnight_model), 1)
+                        location_repeats = np.concatenate((location_repeats, location_model), 1)
+                        phase_repeats = np.concatenate((phase_repeats, phase_model), 1)
+                        state_repeats = np.concatenate((state_repeats, state_model), 1)
+                        task_prog_repeats = np.concatenate((task_prog_repeats, task_prog_model), 1)
             
             # and create a run-counter-model.
-            # CONTINUE HERE!!!!
-
-            run_count = mc.simulation.predictions.create_run_count_model_fmri(step_number, len(step_number), wrap_around = 1, temporal_resolution = 10, plot = False)
-            # INCLUDE THE COUNT-RUNS MODEL AT SOME POINT!!!
-
-            import pdb; pdb.set_trace()
+            run_count_repeats = mc.simulation.predictions.create_run_count_model_fmri(step_number, len(step_number), wrap_around = 1, temporal_resolution = 10, plot = False)
+            # INCLUDE THIS COUNT-RUNS MODEL AT SOME POINT!!
                          
                 
             # NEXT STEP: prepare the regression.
@@ -340,6 +372,11 @@ for sub in subjects:
             list_lengths = set(len(value) for value in regressors_curr_task.values())
             if len(list_lengths) != 1:
                 raise ValueError("All lists must have the same length.")
+            
+            # if you only want to include rewards:
+            if RDM_version == '06':
+                regressors_curr_task = {k: v for k, v in regressors_curr_task.items() if k.endswith('reward')}
+
             # sort it alphabetically.
             sorted_regnames_curr_task = sorted(regressors_curr_task.keys())
             # Create a list of lists sorted by keys
@@ -349,18 +386,36 @@ for sub in subjects:
                 plt.figure(); plt.imshow(regressors_matrix, aspect = 'auto')
             
             
-            # instead of concatenating these, I will save them in a new dictionary.
-            # this will then later allow me to create the big matrices, but in alphabetical order!
-            clocks_dict[config] = mc.simulation.predictions.transform_data_to_betas(clocks_repeats, regressors_matrix)
-            midnight_dict[config] = mc.simulation.predictions.transform_data_to_betas(midnight_repeats, regressors_matrix)
-            location_dict[config] = mc.simulation.predictions.transform_data_to_betas(location_repeats, regressors_matrix)
-            phase_dict[config] = mc.simulation.predictions.transform_data_to_betas(phase_repeats, regressors_matrix)
-            state_dict[config] = mc.simulation.predictions.transform_data_to_betas(state_repeats, regressors_matrix)
-            task_prog_dict[config] = mc.simulation.predictions.transform_data_to_betas(task_prog_repeats, regressors_matrix)
-        
+            
+            for model_dict in all_models_dict:
+                # ok to do this I also need to have all the previous stuff in ORDEREd dicitonaries!!
+                all_models_dict[model_dict][config] = mc.simulation.predictions.transform_data_to_betas(rew_clocks_repeats, regressors_matrix)
+            
+            # if RDM_version == '06':
+            #     clocks_dict[config] = mc.simulation.predictions.transform_data_to_betas(rew_clocks_repeats, regressors_matrix)
+            #     midnight_dict[config] = mc.simulation.predictions.transform_data_to_betas(rew_midnight_repeats, regressors_matrix)
+            #     state_dict[config] = mc.simulation.predictions.transform_data_to_betas(state_repeats, regressors_matrix)
+            #     task_prog_dict[config] = mc.simulation.predictions.transform_data_to_betas(task_prog_repeats, regressors_matrix)
+            
+                
+            # else:    
+            #     # instead of concatenating these, I will save them in a new dictionary.
+            #     # this will then later allow me to create the big matrices, but in alphabetical order!
+            #     clocks_dict[config] = mc.simulation.predictions.transform_data_to_betas(clocks_repeats, regressors_matrix)
+            #     midnight_dict[config] = mc.simulation.predictions.transform_data_to_betas(midnight_repeats, regressors_matrix)
+            #     location_dict[config] = mc.simulation.predictions.transform_data_to_betas(location_repeats, regressors_matrix)
+            #     phase_dict[config] = mc.simulation.predictions.transform_data_to_betas(phase_repeats, regressors_matrix)
+            #     state_dict[config] = mc.simulation.predictions.transform_data_to_betas(state_repeats, regressors_matrix)
+            #     task_prog_dict[config] = mc.simulation.predictions.transform_data_to_betas(task_prog_repeats, regressors_matrix)
+            
         # then, create the location_between etc. matrix by concatenating the keys of each dict by alphabeticla order
         model_dict_sorted_keys = sorted(configs)
         print(f"I am sorting in this order: {model_dict_sorted_keys}")
+        
+        # can you have a dictionary in a dictionary? check!!
+        # if I always want to use different models, it will be way more useful
+        # to loop trhough dctionaries
+    
         clocks_between[task_half] = np.concatenate([clocks_dict[key] for key in model_dict_sorted_keys], 1)
         midnight_between[task_half]   = np.concatenate([midnight_dict[key] for key in model_dict_sorted_keys], 1)
         location_between[task_half]   = np.concatenate([location_dict[key] for key in model_dict_sorted_keys], 1)
