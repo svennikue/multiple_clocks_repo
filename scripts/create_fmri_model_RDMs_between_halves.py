@@ -47,7 +47,7 @@ RDM_version = '06' # 06 is both task halves combined, with the reduced midnight 
 temporal_resolution = 10
 
 
-fmriplotting = True
+fmriplotting = False
 fmriplotting_debug = False
 fmri_save = True
 
@@ -376,7 +376,7 @@ for sub in subjects:
     RSM_dict_betw_TH = {}
     for model in models_between_tasks:
         RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_between_tasks[model]['1'], models_between_tasks[model]['2']),1), plotting = False, titlestring= model)
-        mc.simulation.predictions.plot_without_legends(RSM_dict_betw_TH[model])
+        # mc.simulation.predictions.plot_without_legends(RSM_dict_betw_TH[model])
 
     # then average the lower triangle and the top triangle of this nCond x nCond matrix, 
     # by adding it to its transpose, dividing by 2, and taking only the lower or 

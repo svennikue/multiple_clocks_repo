@@ -33,15 +33,29 @@ else:
     subj_no = '01'
 
 subjects = [f"sub-{subj_no}"]
+load_old = True
+
 
 #subjects = ['sub-01']
 task_halves = ['1', '2']
-RDM_version = '05' # 05 is both task halves combined
+RDM_version = '05' # 06 is both task halves combined and only looking at reward times.
+# RDM_version = '05' # 05 is both task halves combined
 # 04 is another try to bring the results back...'03' # 03 is teporal resolution = 1. 02 is for the report.
-no_RDM_conditions = 80
-load_old = True
-regression_version = '06' #'04_pt01+_that_worked' 
+
+# models_I_want = ['reward_midnight', 'reward_clocks', 'state', 'task_prog']
+
+if RDM_version == '05': 
+    models_I_want = ['location', 'phase', 'phase_state', 'midnight', 'clocks', 'state', 'task_prog']
+elif RDM_version == '06':
+    models_I_want = ['reward_midnight', 'reward_clocks', 'state', 'task_prog']
+
+regression_version = '06' # 07 is only button press and rewards.
+# regression_version = '06' new, better script is now 06 #'04_pt01+_that_worked' 
 # make all paths relative and adjust to both laptop and server!!
+no_RDM_conditions = 80
+
+if RDM_version == '07':
+    no_RDM_conditions = 40
       
 for sub in subjects:
     data_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}"
@@ -139,129 +153,153 @@ for sub in subjects:
     # Step 3: load and compute the model RDMs.
 
     # load the data files I created.
-    location_data = np.load(os.path.join(RDM_dir, f"data_location_{sub}_fmri_both_halves.npy")) 
-    clocks_data = np.load(os.path.join(RDM_dir, f"data_clock_{sub}_fmri_both_halves.npy"))
-    midnight_data = np.load(os.path.join(RDM_dir, f"data_midnight_{sub}_fmri_both_halves.npy"))
-    phase_data = np.load(os.path.join(RDM_dir, f"data_phase_{sub}_fmri_both_halves.npy"))
-    state_data = np.load(os.path.join(RDM_dir, f"data_state_{sub}_fmri_both_halves.npy"))
-    task_prog_data = np.load(os.path.join(RDM_dir, f"data_task_prog_{sub}_fmri_both_halves.npy"))
+
+    
+    # location_data = np.load(os.path.join(RDM_dir, f"data_location_{sub}_fmri_both_halves.npy")) 
+    # clocks_data = np.load(os.path.join(RDM_dir, f"data_clock_{sub}_fmri_both_halves.npy"))
+    # midnight_data = np.load(os.path.join(RDM_dir, f"data_midnight_{sub}_fmri_both_halves.npy"))
+    # phase_data = np.load(os.path.join(RDM_dir, f"data_phase_{sub}_fmri_both_halves.npy"))
+    # state_data = np.load(os.path.join(RDM_dir, f"data_state_{sub}_fmri_both_halves.npy"))
+    # task_prog_data = np.load(os.path.join(RDM_dir, f"data_task_prog_{sub}_fmri_both_halves.npy"))
+    
+    data_dir = {}
+    for model in models_I_want:
+        data_dir[model]= np.load(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves.npy")) 
     
     # to show how mine looked like
     # delete later!
     # my_loc_RDM = np.load(os.path.join(RDM_dir, f"RSM_location_{sub}_fmri_both_halves.npy"))
     # plt.figure(); plt.imshow(my_loc_RDM)
 
-    # then create model RDMs.
-    # 3.1
-    # location RDM
-    loc_data = mc.analyse.analyse_MRI_behav.prepare_model_data(location_data)
-    loc_RDM = rsr.calc_rdm(loc_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
-    fig, ax, ret_vla = rsatoolbox.vis.show_rdm(loc_RDM)
+    # step 3: create model RDMs.
+    model_RDM_dir = {}
+    RDM_my_model_dir = {}
+    for model in data_dir:
+        model_data = mc.analyse.analyse_MRI_behav.prepare_model_data(data_dir[model])
+        model_RDM_dir[model] = rsr.calc_rdm(model_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
+        fig, ax, ret_vla = rsatoolbox.vis.show_rdm(model_RDM_dir[model])
+        # then compute the location model.
+        model_model = rsatoolbox.model.ModelFixed(f"{model}_only", model_RDM_dir[model])
+        # Step 4: evaluate the model fit between model and data RDMs.
+        RDM_my_model_dir[model] = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(model_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in loc model'))
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_model_dir[model], data_RDM_file=data_RDM, file_path = results_dir, file_name= f"my_{model}_betw_halves", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+       
+    
+    
+    # # 3.1
+    # # location RDM
+    # loc_data = mc.analyse.analyse_MRI_behav.prepare_model_data(location_data)
+    # loc_RDM = rsr.calc_rdm(loc_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
+    # fig, ax, ret_vla = rsatoolbox.vis.show_rdm(loc_RDM)
 
-    # then compute the location model.
-    loc_model = rsatoolbox.model.ModelFixed('loc_model_only', loc_RDM)
-    # Step 4: evaluate the model fit between model and data RDMs.
-    # 4.1
-    RDM_my_loc = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(loc_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in loc model'))
-    mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_loc, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_loc_betw_halves", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+    # #  then compute the location model.
+    # loc_model = rsatoolbox.model.ModelFixed('loc_model_only', loc_RDM)
+    # # Step 4: evaluate the model fit between model and data RDMs.
+    # # 4.1
+    # RDM_my_loc = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(loc_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in loc model'))
+    # mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_loc, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_loc_betw_halves", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
     
      
-    # clock RDM
-    # 3.2
-    clocks_data = mc.analyse.analyse_MRI_behav.prepare_model_data(clocks_data)
-    clocks_RDM = rsr.calc_rdm(clocks_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
-    fig, ax, ret_vla = rsatoolbox.vis.show_rdm(clocks_RDM)
+    # # clock RDM
+    # # 3.2
+    # clocks_data = mc.analyse.analyse_MRI_behav.prepare_model_data(clocks_data)
+    # clocks_RDM = rsr.calc_rdm(clocks_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
+    # fig, ax, ret_vla = rsatoolbox.vis.show_rdm(clocks_RDM)
     
-    # then compute the clocks model.
-    clocks_model = rsatoolbox.model.ModelFixed('clocks_model_only', clocks_RDM)
-    # 4.2
-    RDM_my_clock = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(clocks_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in clock model'))
-    mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_clock, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_clock_betw_halves", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+    # # then compute the clocks model.
+    # clocks_model = rsatoolbox.model.ModelFixed('clocks_model_only', clocks_RDM)
+    # # 4.2
+    # RDM_my_clock = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(clocks_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in clock model'))
+    # mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_clock, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_clock_betw_halves", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
     
-    # midnight RDM
-    # 3.3
-    midnight_data = mc.analyse.analyse_MRI_behav.prepare_model_data(midnight_data)
-    midnight_RDM = rsr.calc_rdm(midnight_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions') 
-    fig, ax, ret_vla = rsatoolbox.vis.show_rdm(midnight_RDM)
+    # # midnight RDM
+    # # 3.3
+    # midnight_data = mc.analyse.analyse_MRI_behav.prepare_model_data(midnight_data)
+    # midnight_RDM = rsr.calc_rdm(midnight_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions') 
+    # fig, ax, ret_vla = rsatoolbox.vis.show_rdm(midnight_RDM)
     
-    # then compute the midnight model.
-    midnight_model = rsatoolbox.model.ModelFixed('midnight_model_only', midnight_RDM)
-    # 4.3
-    RDM_my_midn = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(midnight_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in  midnight model'))
-    mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_midn, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_midn_betw_halves", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+    # # then compute the midnight model.
+    # midnight_model = rsatoolbox.model.ModelFixed('midnight_model_only', midnight_RDM)
+    # # 4.3
+    # RDM_my_midn = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(midnight_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in  midnight model'))
+    # mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_midn, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_midn_betw_halves", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
     
     
-    # phase_RDM
-    # 3.4
-    phase_data = mc.analyse.analyse_MRI_behav.prepare_model_data(phase_data)
-    phase_RDM = rsr.calc_rdm(phase_data,  method='crosscorr', descriptor='conds', cv_descriptor='sessions')
-    fig, ax, ret_vla = rsatoolbox.vis.show_rdm(phase_RDM)
+    # # phase_RDM
+    # # 3.4
+    # phase_data = mc.analyse.analyse_MRI_behav.prepare_model_data(phase_data)
+    # phase_RDM = rsr.calc_rdm(phase_data,  method='crosscorr', descriptor='conds', cv_descriptor='sessions')
+    # fig, ax, ret_vla = rsatoolbox.vis.show_rdm(phase_RDM)
 
-    # set up model
-    phase_model = rsatoolbox.model.ModelFixed('phase_model_only', phase_RDM)
-    # 4.4
-    RDM_my_phase = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(phase_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in phase model'))
-    mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_phase, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_phase_betw_halves", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+    # # set up model
+    # phase_model = rsatoolbox.model.ModelFixed('phase_model_only', phase_RDM)
+    # # 4.4
+    # RDM_my_phase = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(phase_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in phase model'))
+    # mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_phase, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_phase_betw_halves", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
     
     
-    # state RDM
-    # 3.5
-    state_data = mc.analyse.analyse_MRI_behav.prepare_model_data(state_data)
-    state_RDM = rsr.calc_rdm(state_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
-    fig, ax, ret_vla = rsatoolbox.vis.show_rdm(state_RDM)
+    # # state RDM
+    # # 3.5
+    # state_data = mc.analyse.analyse_MRI_behav.prepare_model_data(state_data)
+    # state_RDM = rsr.calc_rdm(state_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
+    # fig, ax, ret_vla = rsatoolbox.vis.show_rdm(state_RDM)
 
-    # set up model
-    state_model = rsatoolbox.model.ModelFixed('state_model_only', state_RDM)
-    # 4.5
-    RDM_my_state = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(state_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in state model'))
-    mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_state, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_state_betw_halves", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+    # # set up model
+    # state_model = rsatoolbox.model.ModelFixed('state_model_only', state_RDM)
+    # # 4.5
+    # RDM_my_state = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(state_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in state model'))
+    # mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_state, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_state_betw_halves", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
     
-    # task progress RDM
-    # 3.6
-    task_prog_data = mc.analyse.analyse_MRI_behav.prepare_model_data(task_prog_data)
-    task_prog_RDM = rsr.calc_rdm(task_prog_data, method = 'crosscorr', descriptor='conds', cv_descriptor='sessions')
-    fig, ax, ret_vla = rsatoolbox.vis.show_rdm(task_prog_RDM)
+    # # task progress RDM
+    # # 3.6
+    # task_prog_data = mc.analyse.analyse_MRI_behav.prepare_model_data(task_prog_data)
+    # task_prog_RDM = rsr.calc_rdm(task_prog_data, method = 'crosscorr', descriptor='conds', cv_descriptor='sessions')
+    # fig, ax, ret_vla = rsatoolbox.vis.show_rdm(task_prog_RDM)
     
-    # set up task prog model
-    task_prog_model = rsatoolbox.model.ModelFixed('task_prog_only', task_prog_RDM)
-    # 4.6
-    RDM_my_task_prog = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(task_prog_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in task prog model'))
-    mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_task_prog, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_task_prog_betw_halves", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+    # # set up task prog model
+    # task_prog_model = rsatoolbox.model.ModelFixed('task_prog_only', task_prog_RDM)
+    # # 4.6
+    # RDM_my_task_prog = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(task_prog_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in task prog model'))
+    # mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_task_prog, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_task_prog_betw_halves", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
     
     
     
     # create a dictionary which shows how much model RDMs overlap
-    overlap_corr_model_RDMs ={}
-    overlap_corr_model_RDMs['loc_with_midnight'] = np.corrcoef(loc_RDM.dissimilarities, midnight_RDM.dissimilarities)[1][0]
-    overlap_corr_model_RDMs['loc_with_clocks'] = np.corrcoef(loc_RDM.dissimilarities, clocks_RDM.dissimilarities)[1][0]
-    overlap_corr_model_RDMs['loc_with_state'] = np.corrcoef(loc_RDM.dissimilarities, state_RDM.dissimilarities)[1][0]
-    overlap_corr_model_RDMs['loc_with_phase'] = np.corrcoef(loc_RDM.dissimilarities, phase_RDM.dissimilarities)[1][0]
-    overlap_corr_model_RDMs['midnight_with_clocks'] = np.corrcoef(midnight_RDM.dissimilarities, clocks_RDM.dissimilarities)[1][0]
-    overlap_corr_model_RDMs['midnight_with_state'] = np.corrcoef(midnight_RDM.dissimilarities, state_RDM.dissimilarities)[1][0]
-    overlap_corr_model_RDMs['midnight_with_phase'] = np.corrcoef(midnight_RDM.dissimilarities, phase_RDM.dissimilarities)[1][0]
-    overlap_corr_model_RDMs['clocks_with_state'] = np.corrcoef(clocks_RDM.dissimilarities, state_RDM.dissimilarities)[1][0]
-    overlap_corr_model_RDMs['clocks_with_phase'] = np.corrcoef(clocks_RDM.dissimilarities, phase_RDM.dissimilarities)[1][0]
-    overlap_corr_model_RDMs['state_with_phase'] = np.corrcoef(state_RDM.dissimilarities, phase_RDM.dissimilarities)[1][0]
+    # overlap_corr_model_RDMs ={}
+    # overlap_corr_model_RDMs['loc_with_midnight'] = np.corrcoef(loc_RDM.dissimilarities, midnight_RDM.dissimilarities)[1][0]
+    # overlap_corr_model_RDMs['loc_with_clocks'] = np.corrcoef(loc_RDM.dissimilarities, clocks_RDM.dissimilarities)[1][0]
+    # overlap_corr_model_RDMs['loc_with_state'] = np.corrcoef(loc_RDM.dissimilarities, state_RDM.dissimilarities)[1][0]
+    # overlap_corr_model_RDMs['loc_with_phase'] = np.corrcoef(loc_RDM.dissimilarities, phase_RDM.dissimilarities)[1][0]
+    # overlap_corr_model_RDMs['midnight_with_clocks'] = np.corrcoef(midnight_RDM.dissimilarities, clocks_RDM.dissimilarities)[1][0]
+    # overlap_corr_model_RDMs['midnight_with_state'] = np.corrcoef(midnight_RDM.dissimilarities, state_RDM.dissimilarities)[1][0]
+    # overlap_corr_model_RDMs['midnight_with_phase'] = np.corrcoef(midnight_RDM.dissimilarities, phase_RDM.dissimilarities)[1][0]
+    # overlap_corr_model_RDMs['clocks_with_state'] = np.corrcoef(clocks_RDM.dissimilarities, state_RDM.dissimilarities)[1][0]
+    # overlap_corr_model_RDMs['clocks_with_phase'] = np.corrcoef(clocks_RDM.dissimilarities, phase_RDM.dissimilarities)[1][0]
+    # overlap_corr_model_RDMs['state_with_phase'] = np.corrcoef(state_RDM.dissimilarities, phase_RDM.dissimilarities)[1][0]
     
     
-    # combined model 1
-    # clocks, midnight and state.
-    clocks_midn_states_RDM = rsatoolbox.rdm.concat(clocks_RDM, midnight_RDM, state_RDM)
-    clocks_midn_states_model = rsatoolbox.model.ModelWeighted('clocks_midn_states_RDM', clocks_midn_states_RDM)
-    results_clocks_midn_states_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(clocks_midn_states_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model 1'))
+    if RDM_version == '05': 
+        # # combined model 1
+        # # clocks, midnight and state.
+        # clocks_midn_states_RDM = rsatoolbox.rdm.concat(clocks_RDM, midnight_RDM, state_RDM)
+        # clocks_midn_states_model = rsatoolbox.model.ModelWeighted('clocks_midn_states_RDM', clocks_midn_states_RDM)
+        # results_clocks_midn_states_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(clocks_midn_states_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model 1'))
+        
+        
+        # combined model 2
+        # clocks, midnight, state, phase and location.
     
-    
-    # combined model 2
-    # clocks, midnight, state, phase and location.
-    clocks_midn_states_loc_ph_RDM = rsatoolbox.rdm.concat(clocks_RDM, midnight_RDM, state_RDM, loc_RDM, phase_RDM)
-    clocks_midn_states_loc_ph_model = rsatoolbox.model.ModelWeighted('clocks_midn_states_RDM', clocks_midn_states_loc_ph_RDM)
-    # the first is t, the second beta. [est.tvalues[1:], est.params[1:]]
-    results_clocks_midn_states_loc_ph_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(clocks_midn_states_loc_ph_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model 2'))
-    
-    
-    mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_combo_clock_betw_halves", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
-    mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_combo_midn_betw_halves", mask=mask, number_regr = 1, ref_image_for_affine_path=ref_img)
-    mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_combo_state_betw_halves", mask=mask, number_regr = 2, ref_image_for_affine_path=ref_img)
-    mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_combo_loc_betw_halves", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
-    mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_combo_phase_betw_halves", mask=mask, number_regr = 4, ref_image_for_affine_path=ref_img)
-    
+        clocks_midn_states_loc_ph_RDM = rsatoolbox.rdm.concat(model_RDM_dir['clocks'], model_RDM_dir['midnight'], model_RDM_dir['state'], model_RDM_dir['location'], model_RDM_dir['phase'])
+        #clocks_midn_states_loc_ph_RDM = rsatoolbox.rdm.concat(clocks_RDM, midnight_RDM, state_RDM, loc_RDM, phase_RDM)
+        clocks_midn_states_loc_ph_model = rsatoolbox.model.ModelWeighted('clocks_midn_states_RDM', clocks_midn_states_loc_ph_RDM)
+        # the first is t, the second beta. [est.tvalues[1:], est.params[1:]]
+        results_clocks_midn_states_loc_ph_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(clocks_midn_states_loc_ph_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model 2'))
+        
+        
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_combo_clock_betw_halves", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_combo_midn_betw_halves", mask=mask, number_regr = 1, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_combo_state_betw_halves", mask=mask, number_regr = 2, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_combo_loc_betw_halves", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_combo_phase_betw_halves", mask=mask, number_regr = 4, ref_image_for_affine_path=ref_img)
+
+        
