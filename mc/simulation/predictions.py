@@ -2082,8 +2082,10 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     # return loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat, task_prog_matrix
 
 
-def create_run_count_model_fmri(number_of_steps, number_of_runs, wrap_around = 1, temporal_resolution = 10, plot = False): 
+def create_run_count_model_fmri(number_of_steps, number_of_runs, norm_number_of_runs=5, wrap_around = 1, temporal_resolution = 10, plot = False): 
     # define where the mean of these function shall be
+    # if number_of_runs < 5:
+    #     import pdb; pdb.set_trace()
     steps_per_run = [(np.sum(run) * temporal_resolution) for run in number_of_steps]
     cumsumsteps = np.cumsum(steps_per_run)
     cumsumsteps = np.append(0, cumsumsteps)
@@ -2096,7 +2098,7 @@ def create_run_count_model_fmri(number_of_steps, number_of_runs, wrap_around = 1
     if wrap_around == 0:
         means_at_norm = [(elem/(cumsumsteps[-1])) for elem in means_at]
         for div in means_at: 
-            neuron_run_count.append(norm(loc = div, scale = 1/(number_of_runs/2))) 
+            neuron_run_count.append(norm(loc = div, scale = 1/(norm_number_of_runs/2))) 
         # x = np.linspace(0,1,1000)
         # plt.figure();
         # for neuron in range(0, len(neuron_phase_functions)):
@@ -2106,13 +2108,14 @@ def create_run_count_model_fmri(number_of_steps, number_of_runs, wrap_around = 1
         # then normalise it to be between between -np.pi and np.pi
         means_at_pi = [((2*np.pi*(elem/(cumsumsteps[-1])))-np.pi) for elem in means_at]
         for div in means_at_pi:
-            neuron_run_count.append(scipy.stats.vonmises(1/(number_of_runs/10), loc=div))  
+            # neuron_run_count.append(scipy.stats.vonmises(1, loc=div))  
+            neuron_run_count.append(scipy.stats.vonmises(1/(norm_number_of_runs/10), loc=div))  
         # plt.figure(); 
         # for f in neuron_run_count:
         #     plt.plot(np.linspace(0,1,1000), f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)/np.max(f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)))                
     
     all_steps_all_runs = sum(steps_per_run)
-    run_count_model = np.empty((number_of_runs,all_steps_all_runs))
+    run_count_model = np.empty((norm_number_of_runs,all_steps_all_runs))
     samplepoints = np.linspace(-np.pi, np.pi, run_count_model.shape[1]) if wrap_around == 1 else np.linspace(0, 1, run_count_model.shape[1])
     # read out the respective phase coding 
     for timepoint, read_out_point in enumerate(samplepoints):
@@ -2293,11 +2296,11 @@ def create_reward_model_RDMs_fmri(walked_path, timings_per_step, step_number, gr
     #return rew_midn_model, reward_clocks_model, stat_model, task_progress_model
     # make everything a dicitonary
     result_dict = {}
-    result_dict['rew_midnight'] = rew_midn_model
+    result_dict['reward_midnight'] = rew_midn_model
     result_dict['reward_clocks'] = reward_clo_model
     result_dict['state'] = stat_model
     result_dict['task_prog'] = task_prog_matrix
-
+    
      #['clocks', 'midnight', 'location', 'phase', 'state', 'task_prog']   
     return result_dict
 
