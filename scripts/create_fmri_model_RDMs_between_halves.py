@@ -38,9 +38,11 @@ task_halves = ['1', '2']
 # RDM 06 
 # change this string depending on the RDM version and models you want to include.
 models_I_want = ['reward_midnight', 'reward_clocks', 'state', 'task_prog']
+# models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog']
 
 add_run_counts_model = False
-RDM_version = '06' # 06 is both task halves combined, with the reduced midnight and clocks: only coding for rewards.
+RDM_version = '06' #07 is  the second version of having midnight/clocks but only at reward locations: by 0-ing all non-reward ones.
+# 06 is both task halves combined, with the reduced midnight and clocks: only coding for rewards.
 # '05' is both task halves combined, with clocks, midnight, phase, state, loc model.
 # 04 is another try to bring the results back...'03' # 03 is teporal resolution = 1. 02 is for the report.
 
@@ -293,10 +295,13 @@ for sub in subjects:
                 
                 # KEY STEP
                 # create all models.
+                elif RDM_version == '05':
+                    result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False)
                 if RDM_version == '06':
                     result_model_dict =  mc.simulation.predictions.create_reward_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False)
-                elif RDM_version == '05':
-                    result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False)
+                elif RDM_version == '07':
+                    result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True)
+               
                 
                 # test if this function gives the same as the models you want, otherwise break!
                 model_list = list(result_model_dict.keys())

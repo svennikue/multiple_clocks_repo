@@ -1869,8 +1869,8 @@ def set_location_ephys(walked_path, reward_fields, grid_size = 3, plotting = Fal
 
 
 # to create the model RDMs.
-def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, temporal_resolution = 10, plot = False):
-    
+def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, temporal_resolution = 10, plot = False, only_rew = False):
+    #import pdb; pdb.set_trace()
     # THERE IS SOMETHING WRONG WITH THE STEPS STILL.
     # I COUNT 1 STEP LESS THAN THE PATH
     # BUT IT DOESNT REACH THE FINAL GOAL LOCATION.
@@ -1999,6 +1999,12 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
         for location in range(0, len(midnight_model_subpath), no_phase_neurons):
             midnight_model_subpath[location:location+no_phase_neurons] = midnight_model_subpath[location:location+no_phase_neurons] * phase_matrix_subpath
         
+        if only_rew == True:
+            # 0 all non-reward neurons!
+            import pdb; pdb.set_trace()
+            bla = 1
+            
+            
         # phase state neurons - don't think I need those.
         phase_state_subpath = np.repeat(state_matrix, repeats = len(phase_matrix_subpath), axis = 0)
         for phase in range(0, len(phase_state_subpath), len(phase_matrix_subpath)):

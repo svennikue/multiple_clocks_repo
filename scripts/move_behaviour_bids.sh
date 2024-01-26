@@ -9,7 +9,8 @@ if [ ! -d $scratchDir ]; then
   analysisDir="/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_clocks_repo/mc/fmri_analysis"
 fi
 
-for subjectTag in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
+# 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24
+for subjectTag in 25 26; do
     #mkdir ${scratchDir}/pilot/sub-${subjectTag}
     #mkdir ${scratchDir}/pilot/sub-${subjectTag}/beh
     #mkdir ${scratchDir}/pilot/sub-${subjectTag}/motion
