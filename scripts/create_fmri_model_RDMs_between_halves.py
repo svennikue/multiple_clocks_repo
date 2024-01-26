@@ -51,7 +51,7 @@ fmriplotting = False
 fmriplotting_debug = False
 fmri_save = True
 
-regression_version = '06' #'04_pt01+_that_worked' 
+regression_version = '07' #'04_pt01+_that_worked' 
 # make all paths relative and adjust to both laptop and server!!
       
 
