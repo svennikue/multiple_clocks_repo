@@ -343,7 +343,7 @@ for sub in subjects:
             
             # special setting RDM_version 06
             # if you only want to include rewards:
-            if RDM_version == '06':
+            if RDM_version == '06' or RDM_version == '07':
                 regressors_curr_task = {k: v for k, v in regressors_curr_task.items() if k.endswith('reward')}
 
             # sort alphabetically.
