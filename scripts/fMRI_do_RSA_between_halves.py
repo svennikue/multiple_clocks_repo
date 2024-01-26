@@ -38,7 +38,7 @@ load_old = False
 
 #subjects = ['sub-01']
 task_halves = ['1', '2']
-RDM_version = '06' # 06 is both task halves combined and only looking at reward times.
+RDM_version = '07' # 06 is both task halves combined and only looking at reward times.
 # RDM_version = '05' # 05 is both task halves combined
 # 04 is another try to bring the results back...'03' # 03 is teporal resolution = 1. 02 is for the report.
 
@@ -48,7 +48,8 @@ if RDM_version == '05':
     models_I_want = ['location', 'phase', 'phase_state', 'midnight', 'clocks', 'state', 'task_prog']
 elif RDM_version == '06':
     models_I_want = ['reward_midnight', 'reward_clocks', 'state', 'task_prog']
-
+elif RDM_version == '07':
+    models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog']
 
 regression_version = '07' # 07 is only button press and rewards.
 # regression_version = '06' new, better script is now 06 #'04_pt01+_that_worked' 

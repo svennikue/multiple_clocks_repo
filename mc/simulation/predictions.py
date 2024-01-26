@@ -2001,8 +2001,20 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
         
         if only_rew == True:
             # 0 all non-reward neurons!
-            import pdb; pdb.set_trace()
-            bla = 1
+            reward_mask = np.append(np.zeros(len(fields_path)-1),count_paths+1)
+            reward_mask = np.repeat(reward_mask, repeats = temporal_resolution)
+            
+            loc_rew_matrix = np.zeros([grid_size*grid_size,len(coords_over_time)])
+            # and then simply fill the matrix with the respective functions
+            for timepoint, location in enumerate(coords_over_time):
+                if reward_mask[timepoint] > 0:
+                    for row in range(0, grid_size*grid_size):
+                        loc_rew_matrix[row, timepoint] = neuron_loc_functions[row].pdf(location) # location has to be a coord
+            
+            midnight_model_subpath = np.repeat(loc_rew_matrix, repeats = no_phase_neurons, axis = 0)
+            # multiply three rows of the location matrix (1 location) with the phase_matrix_subpath, respectively
+            for location in range(0, len(midnight_model_subpath), no_phase_neurons):
+                midnight_model_subpath[location:location+no_phase_neurons] = midnight_model_subpath[location:location+no_phase_neurons] * phase_matrix_subpath
             
             
         # phase state neurons - don't think I need those.
@@ -2039,6 +2051,7 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     # I will manipulate clocks_per_step, and use clocks_per_step.dummy as control to check for overwritten stuff.
     clo_model =  full_clock_matrix_dummy.copy()
     
+    
     # now loop through the already filled columns (every 12th one) and fill the clocks if activated.
     for row in range(0, len(norm_midn)):
         local_maxima = argrelextrema(norm_midn[row,:], np.greater_equal, order = 5, mode = 'wrap')
@@ -2062,7 +2075,9 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
             shifted_adjusted_clock[0] = np.zeros((len(shifted_adjusted_clock[0])))
             # Q: IS THIS WAY OF DEALING WIHT DOUBLE ACTIVATION OK???
             clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()
+    
     # import pdb; pdb.set_trace()
+    
     if plot == True:
         mc.simulation.predictions.plot_without_legends(loc_model, titlestring='Location_model')
         mc.simulation.predictions.plot_without_legends(phas_model, titlestring='Phase Model')
@@ -2076,13 +2091,20 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     # careful! If I change this then the old fmri stuff won't work anymore!!
     # make everything a dicitonary
     result_dict = {}
-    result_dict['location'] = loc_model
-    result_dict['phase'] = phas_model
-    result_dict['phase_state'] = phas_stat
-    result_dict['midnight'] = midn_model
-    result_dict['clocks'] = clo_model
-    result_dict['state'] = stat_model
-    result_dict['task_prog'] = task_prog_matrix
+    
+    if only_rew == True:
+        result_dict['reward_midnight_v2'] = midn_model
+        result_dict['reward_clocks_v2'] = clo_model
+        result_dict['state'] = stat_model
+        result_dict['task_prog'] = task_prog_matrix
+    else:
+        result_dict['location'] = loc_model
+        result_dict['phase'] = phas_model
+        result_dict['phase_state'] = phas_stat
+        result_dict['midnight'] = midn_model
+        result_dict['clocks'] = clo_model
+        result_dict['state'] = stat_model
+        result_dict['task_prog'] = task_prog_matrix
     #['clocks', 'midnight', 'location', 'phase', 'state', 'task_prog']
     return result_dict
     # return loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat, task_prog_matrix
