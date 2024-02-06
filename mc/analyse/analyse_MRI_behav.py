@@ -246,8 +246,8 @@ def save_RSA_result(result_file, data_RDM_file, file_path, file_name, mask, numb
 
 
 def evaluate_model(model, data):
-    import pdb; pdb.set_trace()
-    "Handle one voxel, copy the code that exists already for the neural data"
+    # import pdb; pdb.set_trace()
+    # "Handle one voxel, copy the code that exists already for the neural data"
     # instead first scale/ centre and divide by variance model and data
     # and don't include an intercept 
     
