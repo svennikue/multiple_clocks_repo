@@ -22,7 +22,7 @@ import sys
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '01'
+    subj_no = '02'
 
 # subjects = ['sub-07', 'sub-08', 'sub-09', 'sub-11', 'sub-12', 'sub-13', 'sub-14', 'sub-15', 'sub-16', 'sub-17', 'sub-18','sub-19', 'sub-20',  'sub-22', 'sub-23','sub-24']
 # 'sub-01', 'sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06'
@@ -435,7 +435,7 @@ for sub in subjects:
     
     # just for me. what happens if I add the ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']?
     addition_model = corrected_RSM_dict['reward_location'] + corrected_RSM_dict['one_future_rew_loc'] + corrected_RSM_dict['two_future_rew_loc'] + corrected_RSM_dict['three_future_rew_loc'] 
-    
+    import pdb; pdb.set_trace()
     if fmriplotting:
         if not os.path.exists(RDM_dir):
             os.makedirs(RDM_dir)
