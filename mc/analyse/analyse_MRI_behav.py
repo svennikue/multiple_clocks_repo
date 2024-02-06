@@ -246,12 +246,16 @@ def save_RSA_result(result_file, data_RDM_file, file_path, file_name, mask, numb
 
 
 def evaluate_model(model, data):
-      "Handle one voxel, copy the code that exists already for the neural data"
-      X = sm.add_constant(model.rdm.transpose());
-      Y = data.dissimilarities.transpose();
-      est = sm.OLS(Y, X).fit()
-      # import pdb; pdb.set_trace()
-      return est.tvalues[1:], est.params[1:], est.pvalues[1:]
+    import pdb; pdb.set_trace()
+    "Handle one voxel, copy the code that exists already for the neural data"
+    # instead first scale/ centre and divide by variance model and data
+    # and don't include an intercept 
+    
+    X = sm.add_constant(model.rdm.transpose());
+    Y = data.dissimilarities.transpose();
+    est = sm.OLS(Y, X).fit()
+    # import pdb; pdb.set_trace()
+    return est.tvalues[1:], est.params[1:], est.pvalues[1:]
     
 
 

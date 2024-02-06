@@ -34,14 +34,25 @@ task_halves = ['1', '2']
 
 # RDM 05 
 # models_I_want = ['location', 'phase', 'phase_state', 'midnight', 'clocks', 'state', 'task_prog']
-
 # RDM 06 
-# change this string depending on the RDM version and models you want to include.
 # models_I_want = ['reward_midnight', 'reward_clocks', 'state', 'task_prog']
-models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog']
+# RDM 07
+# models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog']
+
+# change this string depending on the RDM version and models you want to include.
+# RDM 08
+# ok no actually the counting thing wasn't what's needed.
+# models_I_want = ['reward_midnight_count', 'reward_clocks_count']
+models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
+
 
 add_run_counts_model = False
-RDM_version = '07' #07 is  the second version of having midnight/clocks but only at reward locations: by 0-ing all non-reward ones.
+RDM_version = '09' #09 is reward location and future reward location.
+
+
+# actually, this is not the plan anymore  [09 as completely new way of doing the clocks/ midnight: ‘counting’ how many other rewards in the future are at the same location, and creating the RDMs as such.] 
+# 08 is using combination models (GLMs with several models in the do RSA script)
+#07 is  the second version of having midnight/clocks but only at reward locations: by 0-ing all non-reward ones.
 # 06 is both task halves combined, with the reduced midnight and clocks: only coding for rewards.
 # '05' is both task halves combined, with clocks, midnight, phase, state, loc model.
 # 04 is another try to bring the results back...'03' # 03 is teporal resolution = 1. 02 is for the report.
@@ -246,7 +257,7 @@ for sub in subjects:
                         steps.insert(0, (subpath[0]- subpath_after_steps[config][r-1]))
                     steps_subpath_alltasks[config].append(steps)    
 
-
+        #if not RDM_version == '09':
         # finally, create simulations and time-bin per run.
         # first, prep result dictionaries.
         if add_run_counts_model == True:
@@ -299,16 +310,16 @@ for sub in subjects:
                     result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False)
                 if RDM_version == '06':
                     result_model_dict =  mc.simulation.predictions.create_reward_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False)
-                elif RDM_version == '07':
+                elif RDM_version == '07' or RDM_version == '09':
                     result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True)
-               
-                
+
                 # test if this function gives the same as the models you want, otherwise break!
-                model_list = list(result_model_dict.keys())
-                if model_list != models_I_want:
-                    print('careful! the model dictionary did not output your defined models!')
-                    print(f"These are the models you wanted: {models_I_want}. And these are the ones you got: {model_list}")
-                    import pdb; pdb.set_trace()
+                if not RDM_version == '09':
+                    model_list = list(result_model_dict.keys())
+                    if model_list != models_I_want:
+                        print('careful! the model dictionary did not output your defined models!')
+                        print(f"These are the models you wanted: {models_I_want}. And these are the ones you got: {model_list}")
+                        import pdb; pdb.set_trace()
                     
                 # models  need to be concatenated for each run and task
                 if no_run == 0:
@@ -324,8 +335,11 @@ for sub in subjects:
                 models_I_want.append('run_count_model')
                 repeats_model_dict['run_count_model'] = run_count_repeats
             # INCLUDE THIS COUNT-RUNS MODEL AT SOME POINT!!
-                         
+
                 
+            # I believe that here at latest I need to do the future reward model.
+            
+            
             # NEXT STEP: prepare the regression- select the correct regressors, filter keys starting with 'A1_backw'
             regressors_curr_task = {key: value for key, value in regressors.items() if key.startswith(config)}
             
@@ -343,7 +357,7 @@ for sub in subjects:
             
             # special setting RDM_version 06
             # if you only want to include rewards:
-            if RDM_version == '06' or RDM_version == '07':
+            if RDM_version == '06' or RDM_version == '07' or RDM_version == '09':
                 regressors_curr_task = {k: v for k, v in regressors_curr_task.items() if k.endswith('reward')}
 
             # sort alphabetically.
@@ -354,33 +368,61 @@ for sub in subjects:
             if fmriplotting_debug:
                 plt.figure(); plt.imshow(regressors_matrix, aspect = 'auto')
             
+            
+
+                
+                
             # then do the ORDERED time-binning for each model - across the 5 repeats.
             for model in all_models_dict:
-                all_models_dict[model][config] = mc.simulation.predictions.transform_data_to_betas(repeats_model_dict[model], regressors_matrix)
+                if model == 'one_future_rew_loc':
+                    print('yey')
+                if model not in ['one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'addition_clock_model']:
+                    all_models_dict[model][config] = mc.simulation.predictions.transform_data_to_betas(repeats_model_dict[model], regressors_matrix)
                 #if model == 'run_count_model':
-                    #fig, ax = plt.subplots(figsize=(5,4)); plt.imshow(all_models_dict[model][config], aspect= 'auto'); ax.set_title(config)
-                    #plt.figure(); plt.imshow(repeats_model_dict['run_count_model'], aspect= 'auto', interpolation='none')
-
+                    # fig, ax = plt.subplots(figsize=(5,4)); plt.imshow(all_models_dict[model][config], aspect= 'auto'); ax.set_title(config)
+                    # plt.figure(); plt.imshow(repeats_model_dict['run_count_model'], aspect= 'auto', interpolation='none')
+            
+            # import pdb; pdb.set_trace()  
+            if RDM_version == '09':
+                # now do the rotating thing. 
+                all_models_dict['one_future_rew_loc'][config] = np.roll(all_models_dict['reward_location'][config], -1, axis = 1) 
+                all_models_dict['two_future_rew_loc'][config] = np.roll(all_models_dict['reward_location'][config], -2, axis = 1) 
+                all_models_dict['three_future_rew_loc'][config] = np.roll(all_models_dict['reward_location'][config], -3, axis = 1) 
+                # all_models_dict['addition_clock_model'][config] =  all_models_dict['reward_location'][config] + all_models_dict['one_future_rew_loc'][config]  + all_models_dict['two_future_rew_loc'][config] + all_models_dict['three_future_rew_loc'][config]  
             # THEN DO IT ALL AGAIN FOR THE NEXT TASK CONFIG.
+       
+        #elif RDM_version == '09':
+        #    all_models_dict = mc.simulation.predictions.create_counting_reward_models_fmri(rew_list)
+        
 
+        
         # once through all task configuration - create the location_between etc. matrix by concatenating the task configurations in alphabetical order
         model_dict_sorted_keys = sorted(configs)
         print(f"I am sorting in this order: {model_dict_sorted_keys}")
-    
+        
         # concatenate the model simulations of all tasks in the same order.
         for model in all_models_dict:
-            models_between_tasks[model][task_half] = np.concatenate([all_models_dict[model][key] for key in model_dict_sorted_keys], 1)
+            if model == 'reward_midnight_count':
+                models_between_tasks[model][task_half] = np.concatenate([all_models_dict[model][key] for key in model_dict_sorted_keys])
+            else:
+                models_between_tasks[model][task_half] = np.concatenate([all_models_dict[model][key] for key in model_dict_sorted_keys], 1)
         # THEN DO IT ALL AGAIN FOR THE NEXT TASK HALF
-
+    
+    
+    
     # then, in a last step, create the RDMs
     # concatenate the conditions from the two task halves (giving you 2*nCond X nVoxels matrix), 
     # and calculate the correlations between all rows of this matrix. This gives you a symmetric matrix 
     # (of size 2*nCond X 2*nCond), where the (non-symmetric) nCond X nCond bottom left square (or top right, 
     # doesn't matter because it's symmetric) (i.e. a quarter of the original matrix) has all the correlations 
     # across THs. 
+    # import pdb; pdb.set_trace()
     RSM_dict_betw_TH = {}
     for model in models_between_tasks:
-        RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_between_tasks[model]['1'], models_between_tasks[model]['2']),1), plotting = False, titlestring= model)
+        if model == 'reward_midnight_count':
+            RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_between_tasks[model]['1'], models_between_tasks[model]['2'])), plotting = False, titlestring= model)
+        else:
+            RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_between_tasks[model]['1'], models_between_tasks[model]['2']),1), plotting = False, titlestring= model)
         # mc.simulation.predictions.plot_without_legends(RSM_dict_betw_TH[model])
 
     # then average the lower triangle and the top triangle of this nCond x nCond matrix, 
@@ -390,6 +432,9 @@ for sub in subjects:
     for model in RSM_dict_betw_TH:
         corrected_model = (RSM_dict_betw_TH[model] + np.transpose(RSM_dict_betw_TH[model]))/2
         corrected_RSM_dict[model] = corrected_model[0:int(len(corrected_model)/2), int(len(corrected_model)/2):]
+    
+    # just for me. what happens if I add the ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']?
+    addition_model = corrected_RSM_dict['reward_location'] + corrected_RSM_dict['one_future_rew_loc'] + corrected_RSM_dict['two_future_rew_loc'] + corrected_RSM_dict['three_future_rew_loc'] 
     
     if fmriplotting:
         if not os.path.exists(RDM_dir):

@@ -33,12 +33,14 @@ else:
     subj_no = '01'
 
 subjects = [f"sub-{subj_no}"]
-load_old = False
+load_old = True
 
 
 #subjects = ['sub-01']
 task_halves = ['1', '2']
-RDM_version = '07' # 06 is both task halves combined and only looking at reward times.
+RDM_version = '07' # 
+# 07 is the reward based model
+# 06 is both task halves combined and only looking at reward times.
 # RDM_version = '05' # 05 is both task halves combined
 # 04 is another try to bring the results back...'03' # 03 is teporal resolution = 1. 02 is for the report.
 
@@ -50,13 +52,15 @@ elif RDM_version == '06':
     models_I_want = ['reward_midnight', 'reward_clocks', 'state', 'task_prog']
 elif RDM_version == '07':
     models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog']
+elif RDM_version == '08':
+    models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog']
 
 regression_version = '07' # 07 is only button press and rewards.
 # regression_version = '06' new, better script is now 06 #'04_pt01+_that_worked' 
 # make all paths relative and adjust to both laptop and server!!
 no_RDM_conditions = 80
 
-if regression_version == '07':
+if regression_version == '07' or regression_version == '06' or regression_version == '08':
     no_RDM_conditions = 40
       
 for sub in subjects:
@@ -165,7 +169,7 @@ for sub in subjects:
        
 
     if RDM_version == '05': 
-
+        
         clocks_midn_states_loc_ph_RDM = rsatoolbox.rdm.concat(model_RDM_dir['clocks'], model_RDM_dir['midnight'], model_RDM_dir['state'], model_RDM_dir['location'], model_RDM_dir['phase'])
         #clocks_midn_states_loc_ph_RDM = rsatoolbox.rdm.concat(clocks_RDM, midnight_RDM, state_RDM, loc_RDM, phase_RDM)
         clocks_midn_states_loc_ph_model = rsatoolbox.model.ModelWeighted('clocks_midn_states_RDM', clocks_midn_states_loc_ph_RDM)
@@ -179,4 +183,21 @@ for sub in subjects:
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_combo_loc_betw_halves", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_combo_phase_betw_halves", mask=mask, number_regr = 4, ref_image_for_affine_path=ref_img)
 
+    if RDM_version == '08': 
+        #['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog']
+        
+        clocks_midn_states_loc_ph_RDM = rsatoolbox.rdm.concat(model_RDM_dir['clocks'], model_RDM_dir['midnight'], model_RDM_dir['state'], model_RDM_dir['location'], model_RDM_dir['phase'])
+        #clocks_midn_states_loc_ph_RDM = rsatoolbox.rdm.concat(clocks_RDM, midnight_RDM, state_RDM, loc_RDM, phase_RDM)
+        clocks_midn_states_loc_ph_model = rsatoolbox.model.ModelWeighted('clocks_midn_states_RDM', clocks_midn_states_loc_ph_RDM)
+        # the first is t, the second beta. [est.tvalues[1:], est.params[1:]]
+        results_clocks_midn_states_loc_ph_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(clocks_midn_states_loc_ph_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model 2'))
+        
+        
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_combo_clock_betw_halves", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_combo_midn_betw_halves", mask=mask, number_regr = 1, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_combo_state_betw_halves", mask=mask, number_regr = 2, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_combo_loc_betw_halves", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_combo_phase_betw_halves", mask=mask, number_regr = 4, ref_image_for_affine_path=ref_img)
+
+    
         

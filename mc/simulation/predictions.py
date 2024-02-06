@@ -1871,10 +1871,6 @@ def set_location_ephys(walked_path, reward_fields, grid_size = 3, plotting = Fal
 # to create the model RDMs.
 def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, temporal_resolution = 10, plot = False, only_rew = False):
     #import pdb; pdb.set_trace()
-    # THERE IS SOMETHING WRONG WITH THE STEPS STILL.
-    # I COUNT 1 STEP LESS THAN THE PATH
-    # BUT IT DOESNT REACH THE FINAL GOAL LOCATION.
-    # INSTEAD, DONT COUNT THE FIRST LOC
     
     cumsumsteps = np.cumsum(step_number)
     
@@ -2035,7 +2031,8 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
             loc_model = np.concatenate((loc_model, loc_matrix), axis = 1)
             stat_model = np.concatenate((stat_model, state_matrix), axis = 1)
             phas_stat = np.concatenate((phas_stat, phase_state_subpath), axis = 1)
-                       
+            
+    # import pdb; pdb.set_trace()                   
     # sixth. make the clock model - not per subpath but the whole thing.
     # solving 2 (see below): make the neurons within the clock.
     # I am going to fuse the midnight and the phas_stat model. Thus they need to be equally 'strong' > normalise!
@@ -2097,6 +2094,7 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
         result_dict['reward_clocks_v2'] = clo_model
         result_dict['state'] = stat_model
         result_dict['task_prog'] = task_prog_matrix
+        result_dict['reward_location'] = loc_model
     else:
         result_dict['location'] = loc_model
         result_dict['phase'] = phas_model
@@ -2332,7 +2330,40 @@ def create_reward_model_RDMs_fmri(walked_path, timings_per_step, step_number, gr
      #['clocks', 'midnight', 'location', 'phase', 'state', 'task_prog']   
     return result_dict
 
-# END 
+def create_counting_reward_models_fmri(dict_config_by_reward):
+    # import pdb; pdb.set_trace()
+    from collections import Counter
+    # the logic here will be that I create a temporary concatenation of all configs,
+    # but in the end give out an array per config so I can sort it afterwards.
+    
+    # create a reward list as tuples so I can count
+    all_rewards_list = [tuple(item) for sublist in dict_config_by_reward.values() for item in sublist]   
+    # create counter for each reward coordinate
+    rew_frequencies = Counter(all_rewards_list)
+   
+    # new dicitonary where each config has assigned their frequency per reward
+    midnight_dict = {config: np.array([rew_frequencies[tuple(single_rew)] for single_rew in rewards]) for config, rewards in dict_config_by_reward.items()}
+    
+    # now I need to have another one for the clocks.
+    # the only issue I am having with this rn is that I am unsure of the within-between task activations.
+    # the midnight is between; while the clocks shifted activity is within.
+    # Convert frequency lists to 4-row matrices with shifts
+    clocks_dict = {}
+    for config, freq_list in midnight_dict.items():
+        # Convert the list to a NumPy array for manipulation
+        array = np.array(freq_list)
+        # Create the matrix with shifted rows
+        clocks_frequencies = np.vstack([np.roll(array, -shift) for shift in range(4)])
+        # Store the matrix in the new dictionary
+        clocks_dict[config] = clocks_frequencies
+
+    result_dict = {}
+    result_dict['reward_midnight_count'] = midnight_dict
+    result_dict['reward_clocks_count'] = clocks_dict
+    
+    return result_dict
+
+
 
 
 ################################
