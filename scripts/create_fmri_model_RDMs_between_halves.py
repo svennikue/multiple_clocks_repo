@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import pickle
 import sys
 
-# new
+#import pdb; pdb.set_trace()
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -47,9 +47,9 @@ models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 
 
 
 add_run_counts_model = False
-RDM_version = '09' #09 is reward location and future reward location.
+RDM_version = '10' # 10 is like 09, so rewards only and the models as well, but excluding the state A (because of the visual feedback) 
 
-
+#09 is reward location and future reward location.
 # actually, this is not the plan anymore  [09 as completely new way of doing the clocks/ midnight: ‘counting’ how many other rewards in the future are at the same location, and creating the RDMs as such.] 
 # 08 is using combination models (GLMs with several models in the do RSA script)
 #07 is  the second version of having midnight/clocks but only at reward locations: by 0-ing all non-reward ones.
@@ -64,7 +64,8 @@ fmriplotting = False
 fmriplotting_debug = False
 fmri_save = True
 
-regression_version = '07' #'04_pt01+_that_worked' 
+regression_version = '08' # 08 is rewards only and without A (because of the visual feedback)
+#'04_pt01+_that_worked' 
 # make all paths relative and adjust to both laptop and server!!
       
 
@@ -234,6 +235,8 @@ for sub in subjects:
                
         
         # next step: create subpath files with rew_index and how many steps there are per subpath.
+
+
         for config in subpath_after_steps:
             # if task is completed
             if (len(subpath_after_steps[config])%4) == 0:
@@ -306,15 +309,15 @@ for sub in subjects:
                 
                 # KEY STEP
                 # create all models.
-                elif RDM_version == '05':
+                if RDM_version == '05':
                     result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False)
-                if RDM_version == '06':
+                elif RDM_version == '06':
                     result_model_dict =  mc.simulation.predictions.create_reward_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False)
-                elif RDM_version == '07' or RDM_version == '09':
+                elif RDM_version == '07' or RDM_version == '09' or RDM_version == '10':
                     result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True)
 
                 # test if this function gives the same as the models you want, otherwise break!
-                if not RDM_version == '09':
+                if RDM_version not in ['09','10']:
                     model_list = list(result_model_dict.keys())
                     if model_list != models_I_want:
                         print('careful! the model dictionary did not output your defined models!')
@@ -357,8 +360,11 @@ for sub in subjects:
             
             # special setting RDM_version 06
             # if you only want to include rewards:
-            if RDM_version == '06' or RDM_version == '07' or RDM_version == '09':
+            if RDM_version == '06' or RDM_version == '07' or RDM_version == '09' or RDM_version == '10':
                 regressors_curr_task = {k: v for k, v in regressors_curr_task.items() if k.endswith('reward')}
+            if RDM_version == '10': # additionally get rid of the A-state.
+                regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key}
+
 
             # sort alphabetically.
             sorted_regnames_curr_task = sorted(regressors_curr_task.keys())
@@ -383,11 +389,12 @@ for sub in subjects:
                     # plt.figure(); plt.imshow(repeats_model_dict['run_count_model'], aspect= 'auto', interpolation='none')
             
             # import pdb; pdb.set_trace()  
-            if RDM_version == '09':
+            if RDM_version == '09' or RDM_version == '10':
                 # now do the rotating thing. 
                 all_models_dict['one_future_rew_loc'][config] = np.roll(all_models_dict['reward_location'][config], -1, axis = 1) 
                 all_models_dict['two_future_rew_loc'][config] = np.roll(all_models_dict['reward_location'][config], -2, axis = 1) 
-                all_models_dict['three_future_rew_loc'][config] = np.roll(all_models_dict['reward_location'][config], -3, axis = 1) 
+                if RDM_version == '09':
+                    all_models_dict['three_future_rew_loc'][config] = np.roll(all_models_dict['reward_location'][config], -3, axis = 1) 
                 # all_models_dict['addition_clock_model'][config] =  all_models_dict['reward_location'][config] + all_models_dict['one_future_rew_loc'][config]  + all_models_dict['two_future_rew_loc'][config] + all_models_dict['three_future_rew_loc'][config]  
             # THEN DO IT ALL AGAIN FOR THE NEXT TASK CONFIG.
        
