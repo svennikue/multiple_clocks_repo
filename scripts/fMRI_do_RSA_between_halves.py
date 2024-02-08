@@ -24,6 +24,7 @@ import matplotlib.pyplot as plt
 import mc
 import pickle
 import sys
+import random
 
 # import pdb; pdb.set_trace()  
 
@@ -38,8 +39,9 @@ load_old = True
 
 #subjects = ['sub-01']
 task_halves = ['1', '2']
-RDM_version = '09' # 10 is like 09 but leaving out the A-State.
+RDM_version = '10' # 999 is debugging: using 09 - reward locations and future rew model; but scrambled.
 
+# 10 is like 09 but leaving out the A-State.
 # 09 is reward location and future reward location.
 # 07 is the reward based model
 # 06 is both task halves combined and only looking at reward times.
@@ -56,7 +58,7 @@ elif RDM_version == '07':
     models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog']
 elif RDM_version == '08':
     models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog']
-elif RDM_version == '09' or RDM_version == '10':
+elif RDM_version == '09' or RDM_version == '10' or RDM_version == '999':
     models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
 
 
@@ -134,11 +136,22 @@ for sub in subjects:
             # define the naming conventions in this folder
             data_RDM_file[task_half] = [None] * no_RDM_conditions  # Initialize a list
             image_paths = [None] * no_RDM_conditions
-            for reg_index in range(1, no_RDM_conditions+1):
-                file_path = os.path.join(pe_path, f"pe{reg_index}.nii.gz")
-                image_paths[reg_index-1] = file_path  # save path to check if everything went fine later
-                data_RDM_file[task_half][reg_index-1] = nib.load(file_path).get_fdata()
-
+            
+            # if debug mode, scramble randomly
+            if RDM_version == 999:
+                random_index = list(range(1, no_RDM_conditions+1))
+                random.shuffle(random_index)
+                for reg_index in range(0, no_RDM_conditions):
+                    file_path = os.path.join(pe_path, f"pe{random_index[reg_index]}.nii.gz")
+                    image_paths[random_index[reg_index]-1] = file_path  # save path to check if everything went fine later
+                    data_RDM_file[task_half][random_index[reg_index]-1] = nib.load(file_path).get_fdata()
+            
+            else:
+                for reg_index in range(1, no_RDM_conditions+1):
+                    file_path = os.path.join(pe_path, f"pe{reg_index}.nii.gz")
+                    image_paths[reg_index-1] = file_path  # save path to check if everything went fine later
+                    data_RDM_file[task_half][reg_index-1] = nib.load(file_path).get_fdata()
+            
             # Convert the list to a NumPy array
             data_RDM_file[task_half] = np.array(data_RDM_file[task_half])
             # reshape data so we have n_observations x n_voxels
@@ -208,7 +221,7 @@ for sub in subjects:
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_combo_loc_betw_halves", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "my_combo_phase_betw_halves", mask=mask, number_regr = 4, ref_image_for_affine_path=ref_img)
 
-    if RDM_version == '09':
+    if RDM_version == '09' or RDM_version == '999':
         # I want to have a combined 
         current_and_all_future_rew_RDM = rsatoolbox.rdm.concat(model_RDM_dir['reward_location'], model_RDM_dir['one_future_rew_loc'], model_RDM_dir['two_future_rew_loc'], model_RDM_dir['three_future_rew_loc'])
         current_and_all_future_rew_model = rsatoolbox.model.ModelWeighted('current_and_all_future_rew_RDM', current_and_all_future_rew_RDM)
@@ -224,10 +237,10 @@ for sub in subjects:
         clocks_curr_rew_RDM = rsatoolbox.rdm.concat(model_RDM_dir['reward_location'], model_RDM_dir['reward_clocks_v2'])
         clocks_curr_rew_RDM_model = rsatoolbox.model.ModelWeighted('clocks_curr_rew_RDM', clocks_curr_rew_RDM)
         
-        results_current_and_all_future_rew_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(current_and_all_future_rew_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model'))
+        results_clocks_curr_rew_RDM_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(current_and_all_future_rew_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model'))
         
-        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=clocks_curr_rew_RDM_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "curr_reward_location_combo_cl_mid", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
-        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=clocks_curr_rew_RDM_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "clocks_location_combo_cl_mid", mask=mask, number_regr = 1, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_curr_rew_RDM_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "curr_reward_location_combo_cl_mid", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_curr_rew_RDM_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "clocks_location_combo_cl_mid", mask=mask, number_regr = 1, ref_image_for_affine_path=ref_img)
         
     if RDM_version == '10':
         # I want to have a combined 
@@ -244,7 +257,15 @@ for sub in subjects:
         clocks_curr_rew_RDM = rsatoolbox.rdm.concat(model_RDM_dir['reward_location'], model_RDM_dir['reward_clocks_v2'])
         clocks_curr_rew_RDM_model = rsatoolbox.model.ModelWeighted('clocks_curr_rew_RDM', clocks_curr_rew_RDM)
         
-        results_current_and_all_future_rew_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(current_and_all_future_rew_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model'))
+        results_clocks_curr_rew_RDM_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(current_and_all_future_rew_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model'))
         
-        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=clocks_curr_rew_RDM_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "curr_reward_location_combo_cl_mid", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
-        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=clocks_curr_rew_RDM_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "clocks_location_combo_cl_mid", mask=mask, number_regr = 1, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_curr_rew_RDM_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "curr_reward_location_combo_cl_mid", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_curr_rew_RDM_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "clocks_location_combo_cl_mid", mask=mask, number_regr = 1, ref_image_for_affine_path=ref_img)
+
+
+####################### play around with RDM visualisation.
+
+
+
+
+

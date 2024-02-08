@@ -43,8 +43,9 @@ task_halves = ['1', '2']
 # RDM 08
 # ok no actually the counting thing wasn't what's needed.
 # models_I_want = ['reward_midnight_count', 'reward_clocks_count']
-models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
+# 09 models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
 
+models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
 
 add_run_counts_model = False
 RDM_version = '10' # 10 is like 09, so rewards only and the models as well, but excluding the state A (because of the visual feedback) 
@@ -441,8 +442,8 @@ for sub in subjects:
         corrected_RSM_dict[model] = corrected_model[0:int(len(corrected_model)/2), int(len(corrected_model)/2):]
     
     # just for me. what happens if I add the ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']?
-    addition_model = corrected_RSM_dict['reward_location'] + corrected_RSM_dict['one_future_rew_loc'] + corrected_RSM_dict['two_future_rew_loc'] + corrected_RSM_dict['three_future_rew_loc'] 
-    import pdb; pdb.set_trace()
+    # addition_model = corrected_RSM_dict['reward_location'] + corrected_RSM_dict['one_future_rew_loc'] + corrected_RSM_dict['two_future_rew_loc'] + corrected_RSM_dict['three_future_rew_loc'] 
+
     if fmriplotting:
         if not os.path.exists(RDM_dir):
             os.makedirs(RDM_dir)

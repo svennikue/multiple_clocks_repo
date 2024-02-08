@@ -219,7 +219,9 @@ def save_RSA_result(result_file, data_RDM_file, file_path, file_name, mask, numb
     
     if not os.path.exists(file_path):
         os.makedirs(file_path)
-
+        
+    import pdb; pdb.set_trace() 
+    
     t_result_brain = np.zeros([x*y*z])
     t_result_brain[list(data_RDM_file.rdm_descriptors['voxel_index'])] = [vox[0][number_regr] for vox in result_file]
     t_result_brain = t_result_brain.reshape([x,y,z])
