@@ -58,15 +58,20 @@ elif RDM_version == '07':
     models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog']
 elif RDM_version == '08':
     models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog']
-elif RDM_version == '09' or RDM_version == '10' or RDM_version == '999':
+elif RDM_version == '09' or RDM_version == '999':
     models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
-
+elif RDM_version == '10':
+    models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
+    
 
 regression_version = '08' # 08 is rewards only and without A (because of the visual feedback)
 # 07 is only button press and rewards.
 # regression_version = '06' new, better script is now 06 #'04_pt01+_that_worked' 
 # make all paths relative and adjust to both laptop and server!!
 no_RDM_conditions = 80
+
+print(f"Now running RSA for RDM version {RDM_version} based on subj GLM {regression_version} for subj {subj_no}")
+
 
 if regression_version == '07' or regression_version == '06':
     no_RDM_conditions = 40
