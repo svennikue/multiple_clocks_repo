@@ -39,7 +39,7 @@ load_old = True
 
 #subjects = ['sub-01']
 task_halves = ['1', '2']
-RDM_version = '10' # 999 is debugging: using 09 - reward locations and future rew model; but scrambled.
+RDM_version = '999' # 999 is debugging: using 09 - reward locations and future rew model; but scrambled.
 
 # 10 is like 09 but leaving out the A-State.
 # 09 is reward location and future reward location.
@@ -64,7 +64,7 @@ elif RDM_version == '10':
     models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
     
 
-regression_version = '08' # 08 is rewards only and without A (because of the visual feedback)
+regression_version = '07' # 08 is rewards only and without A (because of the visual feedback)
 # 07 is only button press and rewards.
 # regression_version = '06' new, better script is now 06 #'04_pt01+_that_worked' 
 # make all paths relative and adjust to both laptop and server!!
@@ -143,7 +143,7 @@ for sub in subjects:
             image_paths = [None] * no_RDM_conditions
             
             # if debug mode, scramble randomly
-            if RDM_version == 999:
+            if RDM_version == '999':
                 random_index = list(range(1, no_RDM_conditions+1))
                 random.shuffle(random_index)
                 for reg_index in range(0, no_RDM_conditions):
@@ -179,6 +179,8 @@ for sub in subjects:
     # load the data files I created.
     data_dir = {}
     for model in models_I_want:
+        if RDM_version == '999':
+            RDM_dir = f"{data_dir}/beh/RDMs_09_glmbase_{regression_version}"
         data_dir[model]= np.load(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves.npy")) 
 
     # step 3: create model RDMs.
