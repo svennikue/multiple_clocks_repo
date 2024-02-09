@@ -35,11 +35,11 @@ else:
 
 subjects = [f"sub-{subj_no}"]
 load_old = True
-
+visualise_RDMs = True
 
 #subjects = ['sub-01']
 task_halves = ['1', '2']
-RDM_version = '999' # 999 is debugging: using 09 - reward locations and future rew model; but scrambled.
+RDM_version = '09' # 999 is debugging: using 09 - reward locations and future rew model; but scrambled.
 
 # 10 is like 09 but leaving out the A-State.
 # 09 is reward location and future reward location.
@@ -130,6 +130,9 @@ for sub in subjects:
     if load_old:
         with open(f"{results_dir}/data_RDM.pkl", 'rb') as file:
             data_RDM = pickle.load(file)
+        if visualise_RDMs == True:
+            mc.analyse.analyse_MRI_behav.visualise_data_RDM(mni_x=53, mni_y = 30, mni_z= 2, data_RDM_file= data_RDM, mask=mask)
+            
     else:
         data_RDM_file_2d = {}
         data_RDM_file = {}
@@ -148,15 +151,16 @@ for sub in subjects:
                 random.shuffle(random_index)
                 for reg_index in range(0, no_RDM_conditions):
                     file_path = os.path.join(pe_path, f"pe{random_index[reg_index]}.nii.gz")
-                    image_paths[random_index[reg_index]-1] = file_path  # save path to check if everything went fine later
-                    data_RDM_file[task_half][random_index[reg_index]-1] = nib.load(file_path).get_fdata()
+                    image_paths[reg_index-1] = file_path  # save path to check if everything went fine later
+                    data_RDM_file[task_half][reg_index-1] = nib.load(file_path).get_fdata()
+                print(f"This is the order now: {image_paths}")
             
             else:
                 for reg_index in range(1, no_RDM_conditions+1):
                     file_path = os.path.join(pe_path, f"pe{reg_index}.nii.gz")
                     image_paths[reg_index-1] = file_path  # save path to check if everything went fine later
                     data_RDM_file[task_half][reg_index-1] = nib.load(file_path).get_fdata()
-            
+                print(f"This is the order now: {image_paths}") 
             # Convert the list to a NumPy array
             data_RDM_file[task_half] = np.array(data_RDM_file[task_half])
             # reshape data so we have n_observations x n_voxels
@@ -177,17 +181,17 @@ for sub in subjects:
     # Step 3: load and compute the model RDMs.
 
     # load the data files I created.
-    data_dir = {}
+    data_dirs = {}
     for model in models_I_want:
         if RDM_version == '999':
             RDM_dir = f"{data_dir}/beh/RDMs_09_glmbase_{regression_version}"
-        data_dir[model]= np.load(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves.npy")) 
+        data_dirs[model]= np.load(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves.npy")) 
 
     # step 3: create model RDMs.
     model_RDM_dir = {}
     RDM_my_model_dir = {}
-    for model in data_dir:
-        model_data = mc.analyse.analyse_MRI_behav.prepare_model_data(data_dir[model], no_RDM_conditions)
+    for model in data_dirs:
+        model_data = mc.analyse.analyse_MRI_behav.prepare_model_data(data_dirs[model], no_RDM_conditions)
         model_RDM_dir[model] = rsr.calc_rdm(model_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
         fig, ax, ret_vla = rsatoolbox.vis.show_rdm(model_RDM_dir[model])
         # then compute the location model.

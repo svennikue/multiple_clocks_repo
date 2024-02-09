@@ -142,7 +142,6 @@ def check_for_nan(array):
     if count > 0:   
         print(f"deteleted {count} rows to avoid nans.")
     return count, array
-        
 
 
 def make_loc_EV(dataframe, x_coord, y_coord):
@@ -201,16 +200,39 @@ def make_loc_EV(dataframe, x_coord, y_coord):
             
 # FMRI ANALYSIS
 
+# potentially delete this one
+# def my_eval(model, data):
+#       "Handle one voxel, copy the code that exists already for the neural data"
+#       X = sm.add_constant(model.rdm.transpose());
+#       Y = data.dissimilarities.transpose();
+#       est = sm.OLS(Y, X).fit()
+#       # import pdb; pdb.set_trace()
+#       return est.tvalues[1:], est.params[1:], est.pvalues[1:]
 
-def my_eval(model, data):
-      "Handle one voxel, copy the code that exists already for the neural data"
-      X = sm.add_constant(model.rdm.transpose());
-      Y = data.dissimilarities.transpose();
-      est = sm.OLS(Y, X).fit()
-      # import pdb; pdb.set_trace()
-      return est.tvalues[1:], est.params[1:], est.pvalues[1:]
+# write a visualisation function for data RDMs.
+def visualise_data_RDM(mni_x, mni_y, mni_z, data_RDM_file, mask):
+    # import pdb; pdb.set_trace()
+    x, y, z = mask.shape
+    index_centre = np.ravel_multi_index((mni_x, mni_y, mni_z), (x,y,z))
+    index_RDM = np.where(data_RDM_file.rdm_descriptors['voxel_index']==index_centre)[0]
+    RDM_I_want= data_RDM_file[index_RDM].dissimilarities
+    
+    # matrix_40x40 = np.zeros((40, 40))
 
+    # # Function to fill in the lower triangular part of the matrix
+    # def fill_lower_triangular(matrix, data):
+    #     indices = np.tril_indices_from(matrix)
+    #     matrix[indices] = data
+    
+    # # Call the function to fill your matrix
+    # fill_lower_triangular(matrix_40x40, RDM_I_want)
 
+    # I believe that the RDMs are 80,93 - no actually its 40,93 for the half
+    # well actually, an RDM should be no_conditions * no_conditions
+    # why the hell is it 0,780??? this should be from 39x39 not 40x40???
+    
+    
+    
 
 def save_RSA_result(result_file, data_RDM_file, file_path, file_name, mask, number_regr, ref_image_for_affine_path):
     x, y, z = mask.shape
@@ -277,34 +299,7 @@ def prepare_model_data(model_data, number_conditions):
     return RSA_tb_model_data_object
 
 
-# def save_data_RDM(rsa_toolbox_object, file_path, file_name, mask):
-#     if not os.path.exists(file_path):
-#         os.makedirs(file_path)    
-#     x, y, z = mask.shape
-#     t = np.shape(rsa_toolbox_object[0].dissimilarities)[1]
 
-#     model_RDM = np.zeros((x*y*z,t))
-#     model_RDM[list(rsa_toolbox_object.rdm_descriptors['voxel_index']), :] = [np.reshape(vox.dissimilarities,t)  for vox in rsa_toolbox_object]
-#     model_RDM = model_RDM.reshape([x,y,z,t])
-    
-#     np.save(f"{file_path}/{file_name}", model_RDM)
-#     import pickle
-#     # Assuming 'rdm' is your RDM instance
-#     with open(f"{file_path}/data_RDM.pkl", 'wb') as file:
-#         pickle.dump(data_RDM, file)
-    
-    
-       
-# def load_RDMs_from_nifi(path_to_file, mask):
-#     test_model_RDM = np.load(path_to_file)
-#     x, y, z = mask.shape
-#     t = np.shape(test_model_RDM)[-1]
-#     model_RDM_2d = test_model_RDM.reshape((x*y*z,t))
-
-#     data_RDM_object = RDMs(dissimilarities = model_RDM_2d)
-    
-#     return data_RDM_object
-    
 
 def analyse_pathlength_beh(df):
     # identify where the next task begins by iterating through the DataFrame 

@@ -31,26 +31,26 @@ import sys
 #import pdb; pdb.set_trace()
 
 
-if len (sys.argv) > 1:
-    subj_no = sys.argv[1]
-else:
-    subj_no = '02'
-    
-    
-subjects = [f"sub-{subj_no}"]
-# subjects = ['sub-07', 'sub-08', 'sub-09', 'sub-11', 'sub-12', 'sub-13', 'sub-14', 'sub-15', 'sub-16', 'sub-17', 'sub-18','sub-19', 'sub-20',  'sub-22', 'sub-23','sub-24']
-#subjects = ['sub-01']
-version = '08' # 08 is rewards only and without A (because of the visual feedback)
-#'07' # GLM number -> 07 is only button press and rewards. | new, better script is now 06. first GLM was 04.
+# version = '08' # 08 is rewards only and without A (because of the visual feedback)
+#'07' # GLM number -> 07 is only button press and rewards. | new, better script is now 06. first GLM was 04. retrospectively, version '03' is location_EVs.
+version = '09' # this is the instruction period only.
+
+
+# plotting = True
+analyse_behav = False
+
 
 
 # to debug task_halves = ['1']
 task_halves = ['1', '2']
-locationEVs = False
-
-time_binEVs = True
-plotting = False
-analyse_behav = False
+if len (sys.argv) > 1:
+    subj_no = sys.argv[1]
+else:
+    subj_no = '01'
+    
+# subjects = ['sub-07', 'sub-08', 'sub-09', 'sub-11', 'sub-12', 'sub-13', 'sub-14', 'sub-15', 'sub-16', 'sub-17', 'sub-18','sub-19', 'sub-20',  'sub-22', 'sub-23','sub-24']
+#subjects = ['sub-01']    
+subjects = [f"sub-{subj_no}"]
 
 for sub in subjects:
     for task_half in task_halves:
@@ -70,10 +70,12 @@ for sub in subjects:
         
 
         # define and make paths
-        if locationEVs:
+        if version == '03':
             EV_folder = f'{funcDir}/EVs_{version}_pt0{task_half}_press_and_loc/'
-        elif time_binEVs:
+        elif version in ['06', '07', '08', '09']:
             EV_folder = f'{funcDir}/EVs_{version}_pt0{task_half}/'
+        if os.path.exists(EV_folder):
+            print("careful, the EV folder does exist- there might be other EVs and thus not all files will be output correctly!")
         if not os.path.exists(EV_folder):
             os.makedirs(EV_folder)
         
@@ -101,6 +103,7 @@ for sub in subjects:
         new_task = new_task.reset_index(drop=True)
         end_task = df[(~df['nav_key_task.rt'].isna())]
         end_task = end_task.reset_index(drop=True)
+        
         
         # in case there are started tasks that have not been ended:
         # delete the last row of new_task to make it equally long
@@ -131,99 +134,66 @@ for sub in subjects:
             np.savetxt(str(EV_folder) + 'ev_' + 'press_EV' + '.txt', array, delimiter="    ", fmt='%f')
         
         # import pdb; pdb.set_trace()
-        if locationEVs:
+        if version == '03':
             # # Location EVs.
-
-            coord_x_one = -0.21
-            coord_y_one = -0.29
-            loc_one_on, loc_one_dur, loc_one_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_one, coord_y_one)
-            loc_one_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_one_on, loc_one_dur, loc_one_mag, 'loc_one_EV', EV_folder, first_TR_at)
-            deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_one_EV)
-            if deleted_x_rows > 0:
-                print(f"careful! I am saving a cutted EV loc_one_EV file. Happened for subject {sub} in task half {task_half}")
-                np.savetxt(str(EV_folder) + 'ev_' + 'loc_one_EV' + '.txt', array, delimiter="    ", fmt='%f')
+            list_coords_x = [-0,21, 0, 0.21, -0.21, 0, 0.21, -0.21, 0, 0.21]
+            list_coords_y = [-0.29, 0, 0.29, -0.29, 0, 0.29, -0.29, 0, 0.29]
+            list_names = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
             
-            coord_x_two = 0
-            coord_y_two = -0.29
-            loc_two_on, loc_two_dur, loc_two_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_two, coord_y_two)
-            loc_two_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_two_on, loc_two_dur, loc_two_mag, 'loc_two_EV', EV_folder, first_TR_at)
-            deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_two_EV)
-            if deleted_x_rows > 0:
-                print(f"careful! I am saving a cutted EV loc_two_EV file. Happened for subject {sub} in task half {task_half}")
-                np.savetxt(str(EV_folder) + 'ev_' + 'loc_two_EV' + '.txt', array, delimiter="    ", fmt='%f')
-            
-                    
-            coord_x_three = 0.21
-            coord_y_three = -0.29
-            loc_three_on, loc_three_dur, loc_three_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_three, coord_y_three)
-            loc_three_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_three_on, loc_three_dur, loc_three_mag, 'loc_three_EV', EV_folder, first_TR_at)
-            deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_three_EV)  
-            if deleted_x_rows > 0:
-                print(f"careful! I am saving a cutted EV loc_three_EV file. Happened for subject {sub} in task half {task_half}")
-                np.savetxt(str(EV_folder) + 'ev_' + 'loc_three_EV' + '.txt', array, delimiter="    ", fmt='%f')
-            
-
-            coord_x_four = -0.21
-            coord_y_four = 0
-            loc_four_on, loc_four_dur, loc_four_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_four, coord_y_four)
-            loc_four_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_four_on, loc_four_dur, loc_four_mag, 'loc_four_EV', EV_folder, first_TR_at)
-            deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_four_EV)  
-            if deleted_x_rows > 0:
-                print(f"careful! I am saving a cutted EV loc_four_EV file. Happened for subject {sub} in task half {task_half}")
-                np.savetxt(str(EV_folder) + 'ev_' + 'loc_four_EV' + '.txt', array, delimiter="    ", fmt='%f')
-            
-                     
-            coord_x_five = 0
-            coord_y_five = 0
-            loc_five_on, loc_five_dur, loc_five_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_five, coord_y_five)
-            loc_five_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_five_on, loc_five_dur, loc_five_mag, 'loc_five_EV', EV_folder, first_TR_at)
-            deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_five_EV) 
-            if deleted_x_rows > 0:
-                print(f"careful! I am saving a cutted EV loc_five_EV file. Happened for subject {sub} in task half {task_half}")
-                np.savetxt(str(EV_folder) + 'ev_' + 'loc_five_EV' + '.txt', array, delimiter="    ", fmt='%f')
-            
-                    
-            coord_x_six = 0.21
-            coord_y_six = 0
-            loc_six_on, loc_six_dur, loc_six_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_six, coord_y_six)
-            loc_six_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_six_on, loc_six_dur, loc_six_mag, 'loc_six_EV', EV_folder, first_TR_at)
-            deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_six_EV)       
-            if deleted_x_rows > 0:
-                print(f"careful! I am saving a cutted EV loc_six_EV file. Happened for subject {sub} in task half {task_half}")
-                np.savetxt(str(EV_folder) + 'ev_' + 'loc_six_EV' + '.txt', array, delimiter="    ", fmt='%f')
-            
-            coord_x_seven = -0.21
-            coord_y_seven = 0.29
-            loc_seven_on, loc_seven_dur, loc_seven_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_seven, coord_y_seven)
-            loc_seven_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_seven_on, loc_seven_dur, loc_seven_mag, 'loc_seven_EV', EV_folder, first_TR_at)
-            deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_seven_EV) 
-            if deleted_x_rows > 0:
-                print(f"careful! I am saving a cutted EV loc_seven_EV file. Happened for subject {sub} in task half {task_half}")
-                np.savetxt(str(EV_folder) + 'ev_' + 'loc_seven_EV' + '.txt', array, delimiter="    ", fmt='%f')
-            
-            
-            coord_x_eight = 0
-            coord_y_eight = 0.29
-            loc_eight_on, loc_eight_dur, loc_eight_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_eight, coord_y_eight)
-            loc_eight_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_eight_on, loc_eight_dur, loc_eight_mag, 'loc_eight_EV', EV_folder, first_TR_at)
-            deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_eight_EV)
-            if deleted_x_rows > 0:
-                print(f"careful! I am saving a cutted EV loc_eight_EV file. Happened for subject {sub} in task half {task_half}")
-                np.savetxt(str(EV_folder) + 'ev_' + 'loc_eight_EV' + '.txt', array, delimiter="    ", fmt='%f')
-            
-            
-            coord_x_nine = 0.21
-            coord_y_nine = 0.29
-            loc_nine_on, loc_nine_dur, loc_nine_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x_nine, coord_y_nine)
-            loc_nine_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_nine_on, loc_nine_dur, loc_nine_mag, 'loc_nine_EV', EV_folder, first_TR_at)
-            deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_nine_EV)
-            if deleted_x_rows > 0:
-                print(f"careful! I am saving a cutted EV loc_nine_EV file. Happened for subject {sub} in task half {task_half}")
-                np.savetxt(str(EV_folder) + 'ev_' + 'loc_nine_EV' + '.txt', array, delimiter="    ", fmt='%f')
-            
-
+            for i, name in enumerate(list_names):
+                coord_x = list_coords_x[i]
+                coord_y = list_coords_y[i]
+                loc_on, loc_dur, loc_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x, coord_y)
+                loc_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_on, loc_dur, loc_mag, f"loc_{name}_EV", EV_folder, first_TR_at)
+                deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_EV)
+                if deleted_x_rows > 0:
+                    print(f"careful! I am saving a cutted EV loc_{name}_EV file. Happened for subject {sub} in task half {task_half}")
+                    np.savetxt(str(EV_folder) + 'ev_' + f"loc_{name}_EV" + '.txt', array, delimiter="    ", fmt='%f')
+ 
         
-        if time_binEVs:
+ 
+        if version == '09':
+            # extract the timings of where a task has ended: t_reward_afterwait & repeat == '4' 
+            # + 3.5 reward text + instruction period lasts 12 seconds; 
+            # so t_reward_afterwait + 3.5 rew + 12 sec should be ca. start_ABCD screen
+            # first, for the first task do:
+            df.loc[df.index[~df['start_ABCD_screen'].isna()][0], 'instruct_start'] = df.loc[df.index[~df['start_ABCD_screen'].isna()][0], 'start_ABCD_screen'] - 12
+            # for the other tasks, loop through table:
+            for index, row in df.iterrows():
+                if (row['rep_runs.thisN'] == 5) and (~pd.isna(row['t_reward_afterwait'])):
+                   df.at[index+1, 'instruct_start'] = row['t_reward_afterwait'] + 3.5
+                                                             
+
+            # create a reward type to filter for same tasks
+            # column which allows to differentiate all trials
+            df['config_type'] = df['task_config'] + '_' + df['type']
+            df['config_type'] = df['config_type'].fillna(method='ffill')
+            task_names = df['config_type'].dropna().unique().tolist()
+            
+            # then make regressors based on that.
+            instruc_EV_dic = {}
+            for i, task in enumerate(task_names):
+                EVname_instruction_onset = f"{task}_instruction_onset"
+                partial_df = df[((df['config_type'] == task) & (~df['instruct_start'].isna()))]
+                instruc_EV_dic[EVname_instruction_onset] = partial_df['instruct_start'].tolist()
+                
+                dur_instruct = [12] # duration is always 12 seconds
+                mag_instruct = np.ones(len(instruc_EV_dic[f"{task}_instruction_onset"]))
+                
+                instruction_EV = mc.analyse.analyse_MRI_behav.create_EV(instruc_EV_dic[f"{task}_instruction_onset"], dur_instruct , mag_instruct, f"{task}_instruction_onset", EV_folder, first_TR_at)
+                deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(instruction_EV)
+                # import pdb; pdb.set_trace()
+                
+                if deleted_x_rows > 0:
+                    print(f"careful! I am saving a cutted EV {task} file. Happened for subject {sub} in task half {task_half}")
+                    np.savetxt(str(EV_folder) + 'ev_' + f"{task}_instruction_onset" + '.txt', array, delimiter="    ", fmt='%f')
+            # additionally check if I made a regressor for each task.
+            if len(instruc_EV_dic) < 10:
+                print(f"careful! Less instruction periods than tasks (10) have been saved. Happened for subject {sub} in task half {task_half}")
+                
+                
+            
+        if version in ['06','07','08']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward
             # identify where the next task begins by iterating through the DataFrame 
             # and collecting the indices where the column is not empty
             index_next_task = []
@@ -231,14 +201,11 @@ for sub in subjects:
                 if not pd.isna(row['start_ABCD_screen']):
                     index_next_task.append(index)
                  
-
-            # compute the task length for each task
-            # careful! this only works if the task was completed.
+            # compute the task length for each task - careful! this only works if the task was completed.
             for i, index in enumerate(index_next_task):
                 df.at[index, 'task_onset'] = df.at[index, 'start_ABCD_screen'] 
                 df.at[index+1, 'subpath_onset'] = df.at[index, 'start_ABCD_screen'] 
-
-                
+     
             # identify where the next reward starts by iterating through the DataFrame 
             # and collecting the indices where the column is not empty
             index_next_reward = []
@@ -258,15 +225,12 @@ for sub in subjects:
             for index, row in df.iterrows():
                 if not pd.isna(row['subpath_onset']):
                     index_next_subpath.append(index)
-                    
-            #index_next_subpath = index_next_subpath[1:]
-                        
+                              
             for i, index in enumerate(index_next_subpath):
                 if i+1 < len(index_next_reward):
                     df.at[index, 'subpath_dur_with_rew'] = df.at[index_next_subpath[i+1], 'subpath_onset'] - df.at[index, 'subpath_onset']
                     df.at[index, 'subpath_dur_without_rew'] = df.at[index_next_reward[i], 'reward_onset'] - df.at[index, 'subpath_onset']
                 
-            
             # I need 8 regressors per task (e.g. C1). I have 5 * 2 tasks.
             # actually, C1 forward = C2 backward. For now, don't put together
             
@@ -275,79 +239,68 @@ for sub in subjects:
             df['config_type'] = df['task_config'] + '_' + df['type']
             df['config_type'] = df['config_type'].fillna(method='ffill')
             task_names = df['config_type'].dropna().unique().tolist()
-            
-            # separate by state and subpath/reward for now.
             state_names = df['state'].dropna().unique().tolist()
-            if version == '08':
-                state_names.remove('A')
-                
-                
             
+            if version == '08': # without the A-state because of visual feedback
+                state_names.remove('A')
+                    
             taskEV_dic = {}
-            # I want 80 EVs in the end -> 160 elements in the dictionary (duration + onset)
+            # e.g. for 06 I want 80 EVs in the end -> 160 elements in the dictionary (duration + onset)
             for i, task in enumerate(task_names):
                 for s, state in enumerate(state_names):
-                    #EV_subpathname_onset = f"{task}_{state}_subpath_onset"
-                    #EV_subpathname_dur = f"{task}_{state}_subpath_dur"
                     EV_rewardname_onset = f"{task}_{state}_reward_onset"
                     EV_rewardname_dur = f"{task}_{state}_reward_dur"
-                    
+                    if version == '06': # inlude subpaths
+                        EV_subpathname_onset = f"{task}_{state}_subpath_onset"
+                        EV_subpathname_dur = f"{task}_{state}_subpath_dur"
+
                     partial_df = df[((df['config_type'] == task) & (df['state'] == state))]
-                    #partial_df = df[((df['task_config'] == task) & (df['state'] == state))]
-                    
-                    #taskEV_dic[EV_subpathname_onset] = partial_df['subpath_onset'].dropna().to_list()
-                    #taskEV_dic[EV_subpathname_dur] = partial_df['subpath_dur_without_rew'].dropna().to_list()
-                    
                     taskEV_dic[EV_rewardname_onset] = partial_df['reward_onset'].dropna().to_list()
                     taskEV_dic[EV_rewardname_dur] = partial_df['reward_duration'].dropna().to_list()
-            
-            # I need a stratgey for this on how to include empty regressors.
-            # in the future: only include those regressors that actually have more than 2 activations.
-            # excluded = 0
-            for i, task in enumerate(task_names):
-                for s, state in enumerate(state_names):
-                    # mag_subpath = np.ones(len(taskEV_dic[f"{task}_{state}_subpath_onset"]))
-                    # if len(mag_subpath) < 3:
-                    #     print(f"Careful! {task} x {state} subpath and reward is not complete and will be excluded.")
-                    #     excluded = excluded + 2 # bc reward will also be exluded
-                    #     continue
-                    # subpath_EV = mc.analyse.analyse_MRI_behav.create_EV(taskEV_dic[f"{task}_{state}_subpath_onset"], taskEV_dic[f"{task}_{state}_subpath_dur"], mag_subpath, f"{task}_{state}_path", EV_folder, first_TR_at)
+                    if version == '06': #include subpaths
+                        taskEV_dic[EV_subpathname_onset] = partial_df['subpath_onset'].dropna().to_list()
+                        taskEV_dic[EV_subpathname_dur] = partial_df['subpath_dur_without_rew'].dropna().to_list()
+                    
+                    # I need a stratgey for this on how to include empty regressors.
+                    # in the future: only include those regressors that actually have more than 2 activations.
+                    # excluded = 0
+                    # for i, task in enumerate(task_names):
+                    #     for s, state in enumerate(state_names):
+                        
                     mag_reward = np.ones(len(taskEV_dic[f"{task}_{state}_reward_onset"]))
                     # if len(mag_reward) < 3:
                     #     print(f"Careful! {task} x {state} reward is not complete and will be excluded.")
                     #     excluded = excluded + 1
                     #     continue
                     reward_EV = mc.analyse.analyse_MRI_behav.create_EV(taskEV_dic[f"{task}_{state}_reward_onset"], taskEV_dic[f"{task}_{state}_reward_dur"], mag_reward, f"{task}_{state}_reward", EV_folder, first_TR_at)
+                    if version == '06': #include subpaths
+                        mag_subpath = np.ones(len(taskEV_dic[f"{task}_{state}_subpath_onset"]))
+                        # if len(mag_subpath) < 3:
+                        #     print(f"Careful! {task} x {state} subpath and reward is not complete and will be excluded.")
+                        #     excluded = excluded + 2 # bc reward will also be exluded
+                        #     continue
+                        subpath_EV = mc.analyse.analyse_MRI_behav.create_EV(taskEV_dic[f"{task}_{state}_subpath_onset"], taskEV_dic[f"{task}_{state}_subpath_dur"], mag_subpath, f"{task}_{state}_path", EV_folder, first_TR_at)
+                           
                     deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(reward_EV)
                     if deleted_x_rows > 0:
                         print(f"careful! I am saving a cutted EV {task}{state} reward file. Happened for subject {sub} in task half {task_half}")
                         np.savetxt(str(EV_folder) + 'ev_' + f"{task}_{state}_reward" + '.txt', array, delimiter="    ", fmt='%f')
                     
-                    #deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(subpath_EV)
-                    #if deleted_x_rows > 0:
-                    #    print(f"careful! I am saving a cutted EV {task}{state} subpath file. Happened for subject {sub} in task half {task_half}")
-                    #   np.savetxt(str(EV_folder) + 'ev_' + f"{task}_{state}_path" + '.txt', array, delimiter="    ", fmt='%f')
-                    
-                    
-            if 'C2_forw_A_reward_dur' in taskEV_dic:
-                print(f"Now done with {sub} and task half {task_half}. Made {len(taskEV_dic)/2} EVs, each with length {len(taskEV_dic['C2_forw_A_reward_dur'])}")       
-            elif 'C1_forw_A_reward_dur' in taskEV_dic:
-                print(f"Now done with {sub} and task half {task_half}. Made {len(taskEV_dic)/2} EVs, each with length {len(taskEV_dic['C1_forw_A_reward_dur'])}")       
-        
-
-            
+                    if version == '06': #include subpaths
+                        deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(subpath_EV)
+                        if deleted_x_rows > 0:
+                            print(f"careful! I am saving a cutted EV {task}{state} subpath file. Happened for subject {sub} in task half {task_half}")
+                            np.savetxt(str(EV_folder) + 'ev_' + f"{task}_{state}_path" + '.txt', array, delimiter="    ", fmt='%f')
+                        
             # lastly, save the taskEV_dic so that I can also use it as data regressors.
-            # this has to be like this bc its a dictionary
             with open(f"{EV_folder}my_EV_dict", 'wb') as f:
                 pickle.dump(taskEV_dic, f)
-            
-            
-            # then, lastly, adjust the .fsf file I will use for the regression.
-            # original_fsf_file=f"{analysisDir}/templates/my_RDM_GLM_v2.fsf"
-            # with open(original_fsf_file, 'r') as file:
-            #     fsf_content = file.read()
-                
+     
+        # then, lastly, adjust the .fsf file I will use for the regression.
+        if version in ['06','07','08','09']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward, 09 is instruction period
             # collect all filepaths I just created.
+            # this is a bit risky in case there have been other EVs in there that I didnt want...
+            # optimise if you have time!
             files_in_EV_folder = os.listdir(EV_folder) 
             EV_paths = []
             for EV in files_in_EV_folder:
@@ -407,35 +360,31 @@ for sub in subjects:
                     skip_until_marker = True
                 else:
                     text_to_write_cleaned.append(line)
-                    
-                    
-                    
-
+        
             with open(f"{funcDir}/{sub}_my_RDM_GLM_0{task_half}_{version}.fsf", "w") as fout:
                 for line in text_to_write_cleaned:
                     fout.write(line)
+   
 
-                
 
-
-        if plotting == True:
-            # create a list of all EV variables
-            allEVnames = [var for var in globals() if '_EV' in var]
-            comboEVs = np.vstack([globals()[var] for var in allEVnames])
-            # but also store the indices when a new EV starts in the combo file
-            EVend_indices = [0] + [v.shape[0] for v in [globals()[var] for var in allEVnames]]
-            EVend_indices_cum = np.cumsum(EVend_indices)
-            title = ['onset', 'duration', 'magnitude']
-            fig, axes = plt.subplots(1,3, figsize = (15,5))
-            # loop through each columm amd create a bar plot
-            for i, ax in enumerate(axes):
-                column_data = comboEVs[:,i]
-                ax.imshow(column_data.reshape(-1,1), cmap = 'viridis', aspect = 'auto')
-                # ax.imshow(column_data, cmap = 'viridis', aspect = 'auto')
-                ax.set_xticks([]) # remove x-axis ticks
-                ax.set_title(f'EV {title[i]}')
-                for line_pos in EVend_indices_cum[1:]:
-                    ax.axhline(y = line_pos-0.5, color = 'red', linestyle ='--')
+        # if plotting == True:
+        #     # create a list of all EV variables
+        #     allEVnames = [var for var in globals() if '_EV' in var]
+        #     comboEVs = np.vstack([globals()[var] for var in allEVnames])
+        #     # but also store the indices when a new EV starts in the combo file
+        #     EVend_indices = [0] + [v.shape[0] for v in [globals()[var] for var in allEVnames]]
+        #     EVend_indices_cum = np.cumsum(EVend_indices)
+        #     title = ['onset', 'duration', 'magnitude']
+        #     fig, axes = plt.subplots(1,3, figsize = (15,5))
+        #     # loop through each columm amd create a bar plot
+        #     for i, ax in enumerate(axes):
+        #         column_data = comboEVs[:,i]
+        #         ax.imshow(column_data.reshape(-1,1), cmap = 'viridis', aspect = 'auto')
+        #         # ax.imshow(column_data, cmap = 'viridis', aspect = 'auto')
+        #         ax.set_xticks([]) # remove x-axis ticks
+        #         ax.set_title(f'EV {title[i]}')
+        #         for line_pos in EVend_indices_cum[1:]:
+        #             ax.axhline(y = line_pos-0.5, color = 'red', linestyle ='--')
 
             
 
