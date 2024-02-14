@@ -22,7 +22,7 @@ import sys
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '02'
+    subj_no = '01'
 
 # subjects = ['sub-07', 'sub-08', 'sub-09', 'sub-11', 'sub-12', 'sub-13', 'sub-14', 'sub-15', 'sub-16', 'sub-17', 'sub-18','sub-19', 'sub-20',  'sub-22', 'sub-23','sub-24']
 # 'sub-01', 'sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06'
@@ -37,19 +37,25 @@ task_halves = ['1', '2']
 # RDM 06 
 # models_I_want = ['reward_midnight', 'reward_clocks', 'state', 'task_prog']
 # RDM 07
-# models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog']
+# models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog', 'reward_location']
+# RDM 08
+# ??? (the model is using combination models (GLMs with several models in the do RSA script))
+# RDM 09 
+# models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
+# RDM 10 
+# models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
 
 # change this string depending on the RDM version and models you want to include.
-# RDM 08
-# ok no actually the counting thing wasn't what's needed.
 # models_I_want = ['reward_midnight_count', 'reward_clocks_count']
 # 09 models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
 
-models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
+# RDM 11
+models_I_want = ['instruction'] # 11 is only the instruction period, simply 0 and 1 distances.
 
 add_run_counts_model = False
-RDM_version = '10' # 10 is like 09, so rewards only and the models as well, but excluding the state A (because of the visual feedback) 
+RDM_version = '11' 
 
+# 10 is like 09, so rewards only and the models as well, but excluding the state A (because of the visual feedback) 
 #09 is reward location and future reward location.
 # actually, this is not the plan anymore  [09 as completely new way of doing the clocks/ midnight: ‘counting’ how many other rewards in the future are at the same location, and creating the RDMs as such.] 
 # 08 is using combination models (GLMs with several models in the do RSA script)
@@ -65,7 +71,8 @@ fmriplotting = False
 fmriplotting_debug = False
 fmri_save = True
 
-regression_version = '08' # 08 is rewards only and without A (because of the visual feedback)
+regression_version = '09' # this is the instruction period only.
+# 08 is rewards only and without A (because of the visual feedback)
 #'04_pt01+_that_worked' 
 # make all paths relative and adjust to both laptop and server!!
       
@@ -77,6 +84,7 @@ for sub in subjects:
         models_between_tasks = {f"{model}": {key: "" for key in ['1', '2']} for model in temp_models_I_want}
     else:
         models_between_tasks = {f"{model}": {key: "" for key in ['1', '2']} for model in models_I_want}
+    configs_dict = {}
     for task_half in task_halves:
         data_dir_beh = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/pilot/{sub}/beh/"
         RDM_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
@@ -100,6 +108,7 @@ for sub in subjects:
         df['repeat'] = df['repeat'].fillna(method='ffill')
         # so that I cann differenatiate task config and direction
         df['config_type'] = df['task_config'] + '_' + df['type']
+        
         # add columns whith field numbers 
         for index, row in df.iterrows():
             # current locations
@@ -123,6 +132,8 @@ for sub in subjects:
            
 
         configs = df['config_type'].dropna().unique()
+        
+        
         walked_path = {}
         timings = {}
         rew_list = {}
@@ -237,7 +248,7 @@ for sub in subjects:
         
         # next step: create subpath files with rew_index and how many steps there are per subpath.
 
-
+    
         for config in subpath_after_steps:
             # if task is completed
             if (len(subpath_after_steps[config])%4) == 0:
@@ -270,154 +281,154 @@ for sub in subjects:
             all_models_dict = {f"{model}": {key: "" for key in configs} for model in models_I_want}
         # and prepare the between-tasks dictionary.
         
-        for config in configs:
-            # import pdb; pdb.set_trace()
-            # models_I_want = ['reward_midnight', 'reward_clocks', 'state', 'task_prog']
-            print(f"the config is {rew_list[config]} for {config}")
-            # select complete trajectory of current task.
-            trajectory = walked_path[config]
-            trajectory = [[int(value) for value in sub_list] for sub_list in trajectory]
-            # select the timings of this task
-            timings_curr_run = timings[config]
-            
-            # select file that shows step no per subpath
-            step_number = steps_subpath_alltasks[config]
-            step_number = [[int(value) for value in sub_list] for sub_list in step_number]
-            # make file that shows cumulative steps per subpath
-            cumsteps_per_run = [np.cumsum(task)[-1] for task in step_number]
-            cumsteps_task = np.cumsum(cumsteps_per_run)
-            
-            # then start looping through each subpath within one task
-            repeats_model_dict = {}
-            for no_run in range(len(step_number)):
-                # first check if the run is not completed. if so, skip the uncomplete part.
-                if len(subpath_after_steps[config]) < 20:
-                    stop_after_x_runs = len(subpath_after_steps[config]) // 4
-                    if no_run >= stop_after_x_runs:
-                        continue
+        if not RDM_version == '11':
+            for config in configs:
+                # import pdb; pdb.set_trace()
+                # models_I_want = ['reward_midnight', 'reward_clocks', 'state', 'task_prog']
+                print(f"the config is {rew_list[config]} for {config}")
+                # select complete trajectory of current task.
+                trajectory = walked_path[config]
+                trajectory = [[int(value) for value in sub_list] for sub_list in trajectory]
+                # select the timings of this task
+                timings_curr_run = timings[config]
                 
-                if no_run == 0:
-                    # careful: fields is always one more than the step number
-                    curr_trajectory = trajectory[0:cumsteps_task[no_run]+1]
-                    curr_timings = timings_curr_run[0:cumsteps_task[no_run]+1]
-                    curr_stepnumber = step_number[no_run]
-                elif no_run > 0:
-                    # careful: fields is always one more than the step number
-                    curr_trajectory = trajectory[cumsteps_task[no_run-1]:cumsteps_task[no_run]+1]
-                    curr_timings = timings_curr_run[cumsteps_task[no_run-1]:cumsteps_task[no_run]+1]
-                    curr_stepnumber = step_number[no_run]
-                    curr_cumsumsteps = cumsteps_task[no_run]
+                # select file that shows step no per subpath
+                step_number = steps_subpath_alltasks[config]
+                step_number = [[int(value) for value in sub_list] for sub_list in step_number]
+                # make file that shows cumulative steps per subpath
+                cumsteps_per_run = [np.cumsum(task)[-1] for task in step_number]
+                cumsteps_task = np.cumsum(cumsteps_per_run)
                 
-                # KEY STEP
-                # create all models.
-                if RDM_version == '05':
-                    result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False)
-                elif RDM_version == '06':
-                    result_model_dict =  mc.simulation.predictions.create_reward_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False)
-                elif RDM_version == '07' or RDM_version == '09' or RDM_version == '10':
-                    result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True)
-
-                # test if this function gives the same as the models you want, otherwise break!
-                if RDM_version not in ['09','10']:
-                    model_list = list(result_model_dict.keys())
-                    if model_list != models_I_want:
-                        print('careful! the model dictionary did not output your defined models!')
-                        print(f"These are the models you wanted: {models_I_want}. And these are the ones you got: {model_list}")
-                        import pdb; pdb.set_trace()
+                # then start looping through each subpath within one task
+                repeats_model_dict = {}
+                for no_run in range(len(step_number)):
+                    # first check if the run is not completed. if so, skip the uncomplete part.
+                    if len(subpath_after_steps[config]) < 20:
+                        stop_after_x_runs = len(subpath_after_steps[config]) // 4
+                        if no_run >= stop_after_x_runs:
+                            continue
                     
-                # models  need to be concatenated for each run and task
-                if no_run == 0:
-                    for model in result_model_dict:
-                        repeats_model_dict[model] = result_model_dict[model].copy()
-                else:
-                    for model in result_model_dict:
-                        repeats_model_dict[model] = np.concatenate((repeats_model_dict[model], result_model_dict[model]), 1)
-            
-            # and create a run-counter-model.
-            if add_run_counts_model == True:
-                run_count_repeats = mc.simulation.predictions.create_run_count_model_fmri(step_number, len(step_number), norm_number_of_runs=5, wrap_around = 1, temporal_resolution = 10, plot = False)
-                models_I_want.append('run_count_model')
-                repeats_model_dict['run_count_model'] = run_count_repeats
-            # INCLUDE THIS COUNT-RUNS MODEL AT SOME POINT!!
-
+                    if no_run == 0:
+                        # careful: fields is always one more than the step number
+                        curr_trajectory = trajectory[0:cumsteps_task[no_run]+1]
+                        curr_timings = timings_curr_run[0:cumsteps_task[no_run]+1]
+                        curr_stepnumber = step_number[no_run]
+                    elif no_run > 0:
+                        # careful: fields is always one more than the step number
+                        curr_trajectory = trajectory[cumsteps_task[no_run-1]:cumsteps_task[no_run]+1]
+                        curr_timings = timings_curr_run[cumsteps_task[no_run-1]:cumsteps_task[no_run]+1]
+                        curr_stepnumber = step_number[no_run]
+                        curr_cumsumsteps = cumsteps_task[no_run]
+                    
+                    # KEY STEP
+                    # create all models.
+                    if RDM_version == '05':
+                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False)
+                    elif RDM_version == '06':
+                        result_model_dict =  mc.simulation.predictions.create_reward_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False)
+                    elif RDM_version == '07' or RDM_version == '09' or RDM_version == '10':
+                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True)
+                    # elif RDM_version == '11':
+                    #     result_model_dict = mc.analyse.analyse_MRI_behav.similarity_of_tasks(rew_list)
+                    
+                    # test if this function gives the same as the models you want, otherwise break!
+                    if RDM_version not in ['09','10','11']:
+                        model_list = list(result_model_dict.keys())
+                        if model_list != models_I_want:
+                            print('careful! the model dictionary did not output your defined models!')
+                            print(f"These are the models you wanted: {models_I_want}. And these are the ones you got: {model_list}")
+                            import pdb; pdb.set_trace()
+                        
+                    # models  need to be concatenated for each run and task
+                    if no_run == 0:
+                        for model in result_model_dict:
+                            repeats_model_dict[model] = result_model_dict[model].copy()
+                    else:
+                        for model in result_model_dict:
+                            repeats_model_dict[model] = np.concatenate((repeats_model_dict[model], result_model_dict[model]), 1)
                 
-            # I believe that here at latest I need to do the future reward model.
-            
-            
-            # NEXT STEP: prepare the regression- select the correct regressors, filter keys starting with 'A1_backw'
-            regressors_curr_task = {key: value for key, value in regressors.items() if key.startswith(config)}
-            
-            # check that all regressors have the same length in case the task wasn't completed.
-            if len(subpath_after_steps[config]) < 20:
-                # if I cut the task short, then also cut the regressors short.
-                for reg_type, regressor_list in regressors_curr_task.items():
-                # Truncate the list if its length is greater than the maximum length
-                    regressors_curr_task[reg_type] = regressor_list[:(np.shape(repeats_model_dict[list(repeats_model_dict)[0]])[1])]
-            
-            # Ensure all lists have the same length
-            list_lengths = set(len(value) for value in regressors_curr_task.values())
-            if len(list_lengths) != 1:
-                raise ValueError("All lists must have the same length.")
-            
-            # special setting RDM_version 06
-            # if you only want to include rewards:
-            if RDM_version == '06' or RDM_version == '07' or RDM_version == '09' or RDM_version == '10':
-                regressors_curr_task = {k: v for k, v in regressors_curr_task.items() if k.endswith('reward')}
-            if RDM_version == '10': # additionally get rid of the A-state.
-                regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key}
-
-
-            # sort alphabetically.
-            sorted_regnames_curr_task = sorted(regressors_curr_task.keys())
-            # Create a list of lists sorted by keys
-            sorted_regs = [regressors_curr_task[key] for key in sorted_regnames_curr_task]
-            regressors_matrix = np.array(sorted_regs)
-            if fmriplotting_debug:
-                plt.figure(); plt.imshow(regressors_matrix, aspect = 'auto')
-            
-            
-
+                # and create a run-counter-model.
+                if add_run_counts_model == True:
+                    run_count_repeats = mc.simulation.predictions.create_run_count_model_fmri(step_number, len(step_number), norm_number_of_runs=5, wrap_around = 1, temporal_resolution = 10, plot = False)
+                    models_I_want.append('run_count_model')
+                    repeats_model_dict['run_count_model'] = run_count_repeats
+                # INCLUDE THIS COUNT-RUNS MODEL AT SOME POINT!!
+    
+                    
+                # I believe that here at latest I need to do the future reward model.
                 
                 
-            # then do the ORDERED time-binning for each model - across the 5 repeats.
-            for model in all_models_dict:
-                if model == 'one_future_rew_loc':
-                    print('yey')
-                if model not in ['one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'addition_clock_model']:
-                    all_models_dict[model][config] = mc.simulation.predictions.transform_data_to_betas(repeats_model_dict[model], regressors_matrix)
-                #if model == 'run_count_model':
-                    # fig, ax = plt.subplots(figsize=(5,4)); plt.imshow(all_models_dict[model][config], aspect= 'auto'); ax.set_title(config)
-                    # plt.figure(); plt.imshow(repeats_model_dict['run_count_model'], aspect= 'auto', interpolation='none')
-            
-            # import pdb; pdb.set_trace()  
-            if RDM_version == '09' or RDM_version == '10':
-                # now do the rotating thing. 
-                all_models_dict['one_future_rew_loc'][config] = np.roll(all_models_dict['reward_location'][config], -1, axis = 1) 
-                all_models_dict['two_future_rew_loc'][config] = np.roll(all_models_dict['reward_location'][config], -2, axis = 1) 
-                if RDM_version == '09':
-                    all_models_dict['three_future_rew_loc'][config] = np.roll(all_models_dict['reward_location'][config], -3, axis = 1) 
-                # all_models_dict['addition_clock_model'][config] =  all_models_dict['reward_location'][config] + all_models_dict['one_future_rew_loc'][config]  + all_models_dict['two_future_rew_loc'][config] + all_models_dict['three_future_rew_loc'][config]  
-            # THEN DO IT ALL AGAIN FOR THE NEXT TASK CONFIG.
-       
-        #elif RDM_version == '09':
-        #    all_models_dict = mc.simulation.predictions.create_counting_reward_models_fmri(rew_list)
-        
+                # NEXT STEP: prepare the regression- select the correct regressors, filter keys starting with 'A1_backw'
+                regressors_curr_task = {key: value for key, value in regressors.items() if key.startswith(config)}
+                
+                # check that all regressors have the same length in case the task wasn't completed.
+                if len(subpath_after_steps[config]) < 20:
+                    # if I cut the task short, then also cut the regressors short.
+                    for reg_type, regressor_list in regressors_curr_task.items():
+                    # Truncate the list if its length is greater than the maximum length
+                        regressors_curr_task[reg_type] = regressor_list[:(np.shape(repeats_model_dict[list(repeats_model_dict)[0]])[1])]
+                
+                # Ensure all lists have the same length
+                list_lengths = set(len(value) for value in regressors_curr_task.values())
+                if len(list_lengths) != 1:
+                    raise ValueError("All lists must have the same length.")
+                
+                # special setting RDM_version 06
+                # if you only want to include rewards:
+                if RDM_version == '06' or RDM_version == '07' or RDM_version == '09' or RDM_version == '10':
+                    regressors_curr_task = {k: v for k, v in regressors_curr_task.items() if k.endswith('reward')}
+                if RDM_version == '10': # additionally get rid of the A-state.
+                    regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key}
+    
+    
+                # sort alphabetically.
+                sorted_regnames_curr_task = sorted(regressors_curr_task.keys())
+                # Create a list of lists sorted by keys
+                sorted_regs = [regressors_curr_task[key] for key in sorted_regnames_curr_task]
+                regressors_matrix = np.array(sorted_regs)
+                if fmriplotting_debug:
+                    plt.figure(); plt.imshow(regressors_matrix, aspect = 'auto')
+                
+                    
+                # then do the ORDERED time-binning for each model - across the 5 repeats.
+                for model in all_models_dict:
+                    if model == 'one_future_rew_loc':
+                        print('yey')
+                    if model not in ['one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'addition_clock_model']:
+                        all_models_dict[model][config] = mc.simulation.predictions.transform_data_to_betas(repeats_model_dict[model], regressors_matrix)
+                    #if model == 'run_count_model':
+                        # fig, ax = plt.subplots(figsize=(5,4)); plt.imshow(all_models_dict[model][config], aspect= 'auto'); ax.set_title(config)
+                        # plt.figure(); plt.imshow(repeats_model_dict['run_count_model'], aspect= 'auto', interpolation='none')
+                
+                # import pdb; pdb.set_trace()  
+                if RDM_version == '09' or RDM_version == '10':
+                    # now do the rotating thing. 
+                    all_models_dict['one_future_rew_loc'][config] = np.roll(all_models_dict['reward_location'][config], -1, axis = 1) 
+                    all_models_dict['two_future_rew_loc'][config] = np.roll(all_models_dict['reward_location'][config], -2, axis = 1) 
+                    if RDM_version == '09':
+                        all_models_dict['three_future_rew_loc'][config] = np.roll(all_models_dict['reward_location'][config], -3, axis = 1) 
 
         
         # once through all task configuration - create the location_between etc. matrix by concatenating the task configurations in alphabetical order
         model_dict_sorted_keys = sorted(configs)
         print(f"I am sorting in this order: {model_dict_sorted_keys}")
         
+        configs_dict[task_half] = rew_list
+        
         # concatenate the model simulations of all tasks in the same order.
-        for model in all_models_dict:
-            if model == 'reward_midnight_count':
-                models_between_tasks[model][task_half] = np.concatenate([all_models_dict[model][key] for key in model_dict_sorted_keys])
-            else:
-                models_between_tasks[model][task_half] = np.concatenate([all_models_dict[model][key] for key in model_dict_sorted_keys], 1)
-        # THEN DO IT ALL AGAIN FOR THE NEXT TASK HALF
+        if not RDM_version == '11':
+            for model in all_models_dict:
+                if model == 'reward_midnight_count':
+                    models_between_tasks[model][task_half] = np.concatenate([all_models_dict[model][key] for key in model_dict_sorted_keys])
+                else:
+                    models_between_tasks[model][task_half] = np.concatenate([all_models_dict[model][key] for key in model_dict_sorted_keys], 1)
+                # THEN DO IT ALL AGAIN FOR THE NEXT TASK HALF
+            
+    # this one has to be done between task halves
+    if RDM_version == '11':
+        models_between_tasks = mc.analyse.analyse_MRI_behav.similarity_of_tasks(configs_dict)
     
-    
-    
+        
     # then, in a last step, create the RDMs
     # concatenate the conditions from the two task halves (giving you 2*nCond X nVoxels matrix), 
     # and calculate the correlations between all rows of this matrix. This gives you a symmetric matrix 
@@ -440,7 +451,8 @@ for sub in subjects:
     for model in RSM_dict_betw_TH:
         corrected_model = (RSM_dict_betw_TH[model] + np.transpose(RSM_dict_betw_TH[model]))/2
         corrected_RSM_dict[model] = corrected_model[0:int(len(corrected_model)/2), int(len(corrected_model)/2):]
-    
+   
+
     # just for me. what happens if I add the ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']?
     # addition_model = corrected_RSM_dict['reward_location'] + corrected_RSM_dict['one_future_rew_loc'] + corrected_RSM_dict['two_future_rew_loc'] + corrected_RSM_dict['three_future_rew_loc'] 
 

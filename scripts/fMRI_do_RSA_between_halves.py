@@ -39,12 +39,15 @@ visualise_RDMs = True
 
 #subjects = ['sub-01']
 task_halves = ['1', '2']
-RDM_version = '09' # 999 is debugging: using 09 - reward locations and future rew model; but scrambled.
+RDM_version = '11' # 11 is only the instruction period, simply 0 and 1 distances.
+
+
+# 999 is debugging: using 09 - reward locations and future rew model; but scrambled.
 
 # 10 is like 09 but leaving out the A-State.
 # 09 is reward location and future reward location.
-# 07 is the reward based model
-# 06 is both task halves combined and only looking at reward times.
+# 07 is the reward based model -> 7 and 6 are a bit redundant
+# 06 is both task halves combined and only looking at reward times. -> 7 and 6 are a bit redundant
 # RDM_version = '05' # 05 is both task halves combined
 # 04 is another try to bring the results back...'03' # 03 is teporal resolution = 1. 02 is for the report.
 
@@ -62,9 +65,12 @@ elif RDM_version == '09' or RDM_version == '999':
     models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
 elif RDM_version == '10':
     models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
-    
+elif RDM_version == '11':
+    models_I_want = ['instruction'] 
 
-regression_version = '07' # 08 is rewards only and without A (because of the visual feedback)
+regression_version = '09' 
+# 09 is the instruction period only.
+# 08 is rewards only and without A (because of the visual feedback)
 # 07 is only button press and rewards.
 # regression_version = '06' new, better script is now 06 #'04_pt01+_that_worked' 
 # make all paths relative and adjust to both laptop and server!!
@@ -72,7 +78,9 @@ no_RDM_conditions = 80
 
 print(f"Now running RSA for RDM version {RDM_version} based on subj GLM {regression_version} for subj {subj_no}")
 
-
+if regression_version == '09':
+    no_RDM_conditions == 10
+    
 if regression_version == '07' or regression_version == '06':
     no_RDM_conditions = 40
     
@@ -170,6 +178,7 @@ for sub in subjects:
         # define the conditions, combine both task halves
         data_conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(no_RDM_conditions)])), (1,2)).transpose(),2*no_RDM_conditions)  
         # now prepare the data RDM file.
+        # this is defining both task halves/ runs: 0 is first half, the second one is 1s
         sessions = np.concatenate((np.zeros(int(data_RDM_file['1'].shape[0])), np.ones(int(data_RDM_file['2'].shape[0]))))   
         # final data RDM file; cross correlated between task-halves.
         data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='crosscorr', cv_descr=sessions)

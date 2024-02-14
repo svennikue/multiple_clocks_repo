@@ -33,7 +33,7 @@ import sys
 
 # version = '08' # 08 is rewards only and without A (because of the visual feedback)
 #'07' # GLM number -> 07 is only button press and rewards. | new, better script is now 06. first GLM was 04. retrospectively, version '03' is location_EVs.
-version = '09' # this is the instruction period only.
+version = '09' # 09 is the instruction period only.
 
 
 # plotting = True
@@ -46,7 +46,7 @@ task_halves = ['1', '2']
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '01'
+    subj_no = '02'
     
 # subjects = ['sub-07', 'sub-08', 'sub-09', 'sub-11', 'sub-12', 'sub-13', 'sub-14', 'sub-15', 'sub-16', 'sub-17', 'sub-18','sub-19', 'sub-20',  'sub-22', 'sub-23','sub-24']
 #subjects = ['sub-01']    

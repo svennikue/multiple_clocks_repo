@@ -242,7 +242,7 @@ def save_RSA_result(result_file, data_RDM_file, file_path, file_name, mask, numb
     if not os.path.exists(file_path):
         os.makedirs(file_path)
         
-    import pdb; pdb.set_trace() 
+    # import pdb; pdb.set_trace() 
     
     t_result_brain = np.zeros([x*y*z])
     t_result_brain[list(data_RDM_file.rdm_descriptors['voxel_index'])] = [vox[0][number_regr] for vox in result_file]
@@ -271,9 +271,6 @@ def save_RSA_result(result_file, data_RDM_file, file_path, file_name, mask, numb
 
 def evaluate_model(model, data):
     # import pdb; pdb.set_trace()
-    # "Handle one voxel, copy the code that exists already for the neural data"
-    # instead first scale/ centre and divide by variance model and data
-    # and don't include an intercept 
     
     X = sm.add_constant(model.rdm.transpose());
     Y = data.dissimilarities.transpose();
@@ -386,4 +383,38 @@ def analyse_pathlength_beh(df):
     df_clean = df.dropna(subset = ['subpath_length_with_rew'])
     
     return(df, df_clean)
+
+
+
+# CONTINUE HERE LATER!!
+def similarity_of_tasks(reward_per_task_per_taskhalf_dict):
+    #import pdb; pdb.set_trace()
+
+    all_rewards = []
+    for task_half in reward_per_task_per_taskhalf_dict:
+        #  make sure that the dictionary is alphabetically sorted.
+        for task in sorted(reward_per_task_per_taskhalf_dict[task_half].keys()):
+            all_rewards.append(reward_per_task_per_taskhalf_dict[task_half][task])
     
+    
+    task_similiarity = np.zeros((len(all_rewards), len(all_rewards)))
+    
+    for i in range(len(all_rewards)):
+        for j in range(len(all_rewards)):
+            if all_rewards[i] == all_rewards[j]:
+                task_similiarity[i, j] = 1
+
+    # np.corrcoef(task_similiarity[:, :10])
+    # corrected_model = (task_similiarity[:, :10] + np.transpose(task_similiarity[:, :10]))/2
+    # corrected_RSM_dict[model] = corrected_model[0:int(len(corrected_model)/2), int(len(corrected_model)/2):]
+   
+        
+    # to create the right format, split this into two task halves again
+    models_between_tasks = {'instruction': {key: "" for key in ['1', '2']}}
+    
+    models_between_tasks['instruction']['1'] = task_similiarity[:10, :10]
+    models_between_tasks['instruction']['2'] = task_similiarity[10:20, :10]
+
+    return models_between_tasks
+
+
