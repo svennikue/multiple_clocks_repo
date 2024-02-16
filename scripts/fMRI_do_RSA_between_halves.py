@@ -31,18 +31,18 @@ import random
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '01'
+    subj_no = '04'
 
 subjects = [f"sub-{subj_no}"]
-load_old = True
-visualise_RDMs = True
+load_old = False
+visualise_RDMs = False
 
 #subjects = ['sub-01']
 task_halves = ['1', '2']
-RDM_version = '11' # 11 is only the instruction period, simply 0 and 1 distances.
+RDM_version = '9999' # 11 is only the instruction period, simply 0 and 1 distances.
 
-
-# 999 is debugging: using 09 - reward locations and future rew model; but scrambled.
+# 9999 is debugging 2.0 - using 09 - reward locations and future rew model; but the voxels are scrambled.
+# 999 is debugging: using 09 - reward locations and future rew model; but EVs are scrambled.
 
 # 10 is like 09 but leaving out the A-State.
 # 09 is reward location and future reward location.
@@ -61,7 +61,7 @@ elif RDM_version == '07':
     models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog']
 elif RDM_version == '08':
     models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog']
-elif RDM_version == '09' or RDM_version == '999':
+elif RDM_version in ['09','999', '9999']:
     models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
 elif RDM_version == '10':
     models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
@@ -79,7 +79,7 @@ no_RDM_conditions = 80
 print(f"Now running RSA for RDM version {RDM_version} based on subj GLM {regression_version} for subj {subj_no}")
 
 if regression_version == '09':
-    no_RDM_conditions == 10
+    no_RDM_conditions = 10
     
 if regression_version == '07' or regression_version == '06':
     no_RDM_conditions = 40
@@ -144,6 +144,7 @@ for sub in subjects:
     else:
         data_RDM_file_2d = {}
         data_RDM_file = {}
+        data_RDM_file_1d = {}
         for task_half in task_halves:
             # import pdb; pdb.set_trace()  
             # load the relevant pre-processed task-half
@@ -174,7 +175,11 @@ for sub in subjects:
             # reshape data so we have n_observations x n_voxels
             data_RDM_file_2d[task_half] = data_RDM_file[task_half].reshape([data_RDM_file[task_half].shape[0], -1])
             data_RDM_file_2d[task_half] = np.nan_to_num(data_RDM_file_2d[task_half]) # now this is 80timepoints x 746.496 voxels
-    
+            if RDM_version == '9999':
+                data_RDM_file_1d[task_half] = data_RDM_file_2d[task_half].flatten()
+                np.random.shuffle(data_RDM_file_1d[task_half]) #shuffle all voxels randomly
+                data_RDM_file_2d[task_half] = data_RDM_file_1d[task_half].reshape(data_RDM_file_2d[task_half].shape) # and reshape
+
         # define the conditions, combine both task halves
         data_conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(no_RDM_conditions)])), (1,2)).transpose(),2*no_RDM_conditions)  
         # now prepare the data RDM file.
@@ -182,9 +187,9 @@ for sub in subjects:
         sessions = np.concatenate((np.zeros(int(data_RDM_file['1'].shape[0])), np.ones(int(data_RDM_file['2'].shape[0]))))   
         # final data RDM file; cross correlated between task-halves.
         data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='crosscorr', cv_descr=sessions)
-        # save  so that I don't need to recompute
-        with open(f"{results_dir}/data_RDM.pkl", 'wb') as file:
-            pickle.dump(data_RDM, file)
+        # save  so that I don't need to recompute - or don't save bc it's massive
+        # with open(f"{results_dir}/data_RDM.pkl", 'wb') as file:
+            # pickle.dump(data_RDM, file)
 
  
     # Step 3: load and compute the model RDMs.
