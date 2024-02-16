@@ -217,7 +217,10 @@ for sub in subjects:
                 df.at[index, 'reward_onset'] = df.at[index, 't_reward_start']
                 df.at[index+1, 'subpath_onset'] = df.at[index, 't_step_press_global']
                 if df.at[index, 'state'] == 'D':
-                    df.at[index, 'reward_duration'] = df.at[index + 1, 't_step_press_global'] - df.at[index, 't_reward_start']
+                    if df.at[index, 'rep_runs.thisN'] == 5: #if the next task starts, this is way more precise.
+                        df.at[index, 'reward_duration'] = df.at[index, 'reward_delay']
+                    else:
+                        df.at[index, 'reward_duration'] = df.at[index + 1, 't_step_press_global'] - df.at[index, 't_reward_start']
                 else:
                     df.at[index, 'reward_duration'] = df.at[index, 't_step_press_global'] - df.at[index, 't_reward_start']
              
