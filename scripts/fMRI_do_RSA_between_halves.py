@@ -31,7 +31,7 @@ import random
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '04'
+    subj_no = '01'
 
 subjects = [f"sub-{subj_no}"]
 load_old = False
@@ -39,12 +39,13 @@ visualise_RDMs = False
 
 #subjects = ['sub-01']
 task_halves = ['1', '2']
-RDM_version = '9999' # 11 is only the instruction period, simply 0 and 1 distances.
+RDM_version = '09-9' 
 
+# 11 is only the instruction period, simply 0 and 1 distances.
+# 10 is like 09 but leaving out the A-State.
 # 9999 is debugging 2.0 - using 09 - reward locations and future rew model; but the voxels are scrambled.
 # 999 is debugging: using 09 - reward locations and future rew model; but EVs are scrambled.
-
-# 10 is like 09 but leaving out the A-State.
+# 09-9 is kind-of debugging: try RDM 09 with glm 07 but only include those tasks, where the reward location is the same twice (B and D)
 # 09 is reward location and future reward location.
 # 07 is the reward based model -> 7 and 6 are a bit redundant
 # 06 is both task halves combined and only looking at reward times. -> 7 and 6 are a bit redundant
@@ -61,14 +62,14 @@ elif RDM_version == '07':
     models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog']
 elif RDM_version == '08':
     models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog']
-elif RDM_version in ['09','999', '9999']:
+elif RDM_version in ['09','999', '9999', '09-9']:
     models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
 elif RDM_version == '10':
     models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
 elif RDM_version == '11':
     models_I_want = ['instruction'] 
 
-regression_version = '09' 
+regression_version = '07' 
 # 09 is the instruction period only.
 # 08 is rewards only and without A (because of the visual feedback)
 # 07 is only button press and rewards.
@@ -83,9 +84,13 @@ if regression_version == '09':
     
 if regression_version == '07' or regression_version == '06':
     no_RDM_conditions = 40
+    if RDM_version == '09-9':
+        no_RDM_conditions = 16
     
 elif regression_version == '08':
     no_RDM_conditions = 30
+
+
     
 for sub in subjects:
     data_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}"
@@ -164,6 +169,20 @@ for sub in subjects:
                     data_RDM_file[task_half][reg_index-1] = nib.load(file_path).get_fdata()
                 print(f"This is the order now: {image_paths}")
             
+            # only take those that start with D or B. Use the file you created in create_EVs_for_RDMs to be sure.
+            if RDM_version == '09-9':
+                RDM_conditions = []
+                with open(f"{data_dir}/func/EVs_07_pt0{task_half}/task-to-EV.txt", 'r') as file:
+                    for line in file:
+                        index, name = line.strip().split(' ', 1)
+                        if name.startswith('ev_B') or name.startswith('ev_D'):
+                            RDM_conditions.append(int(index))
+                for i, reg_index in enumerate(RDM_conditions):
+                    file_path = os.path.join(pe_path, f"pe{reg_index}.nii.gz")
+                    image_paths[i] = file_path  # save path to check if everything went fine later
+                    data_RDM_file[task_half][i] = nib.load(file_path).get_fdata()
+                print(f"This is the order now: {image_paths}") 
+                    
             else:
                 for reg_index in range(1, no_RDM_conditions+1):
                     file_path = os.path.join(pe_path, f"pe{reg_index}.nii.gz")

@@ -47,14 +47,16 @@ task_halves = ['1', '2']
 
 # change this string depending on the RDM version and models you want to include.
 # models_I_want = ['reward_midnight_count', 'reward_clocks_count']
-# 09 models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
+# 09 or 09-9 or 999 or 9999
+models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
 
 # RDM 11
-models_I_want = ['instruction'] # 11 is only the instruction period, simply 0 and 1 distances.
+# models_I_want = ['instruction'] # 11 is only the instruction period, simply 0 and 1 distances.
 
 add_run_counts_model = False
-RDM_version = '11' 
+RDM_version = '09-9' #09-9 is kind-of debugging: try RDM 09 with glm 07 but only include those tasks, where the reward location is the same twice (B and D)
 
+# 11 is only the instruction period, simply 0 and 1 distances.
 # 10 is like 09, so rewards only and the models as well, but excluding the state A (because of the visual feedback) 
 #09 is reward location and future reward location.
 # actually, this is not the plan anymore  [09 as completely new way of doing the clocks/ midnight: ‘counting’ how many other rewards in the future are at the same location, and creating the RDMs as such.] 
@@ -71,7 +73,7 @@ fmriplotting = False
 fmriplotting_debug = False
 fmri_save = True
 
-regression_version = '09' # this is the instruction period only.
+regression_version = '07' # this is the instruction period only.
 # 08 is rewards only and without A (because of the visual feedback)
 #'04_pt01+_that_worked' 
 # make all paths relative and adjust to both laptop and server!!
@@ -132,8 +134,7 @@ for sub in subjects:
            
 
         configs = df['config_type'].dropna().unique()
-        
-        
+         
         walked_path = {}
         timings = {}
         rew_list = {}
@@ -248,7 +249,7 @@ for sub in subjects:
         
         # next step: create subpath files with rew_index and how many steps there are per subpath.
 
-    
+        
         for config in subpath_after_steps:
             # if task is completed
             if (len(subpath_after_steps[config])%4) == 0:
@@ -272,7 +273,9 @@ for sub in subjects:
                         steps.insert(0, (subpath[0]- subpath_after_steps[config][r-1]))
                     steps_subpath_alltasks[config].append(steps)    
 
-        #if not RDM_version == '09':
+        if RDM_version == '09-9':
+            configs = np.array([config for config in configs if config.startswith('D') or config.startswith('B')])
+            
         # finally, create simulations and time-bin per run.
         # first, prep result dictionaries.
         if add_run_counts_model == True:
@@ -326,19 +329,20 @@ for sub in subjects:
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False)
                     elif RDM_version == '06':
                         result_model_dict =  mc.simulation.predictions.create_reward_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False)
-                    elif RDM_version == '07' or RDM_version == '09' or RDM_version == '10':
+                    elif RDM_version in ['07', '09', '10', '09-9']:
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True)
                     # elif RDM_version == '11':
                     #     result_model_dict = mc.analyse.analyse_MRI_behav.similarity_of_tasks(rew_list)
                     
                     # test if this function gives the same as the models you want, otherwise break!
-                    if RDM_version not in ['09','10','11']:
+                    if RDM_version not in ['09','10','11', '09-9']:
                         model_list = list(result_model_dict.keys())
                         if model_list != models_I_want:
                             print('careful! the model dictionary did not output your defined models!')
                             print(f"These are the models you wanted: {models_I_want}. And these are the ones you got: {model_list}")
                             import pdb; pdb.set_trace()
-                        
+                    
+                    
                     # models  need to be concatenated for each run and task
                     if no_run == 0:
                         for model in result_model_dict:
@@ -353,13 +357,11 @@ for sub in subjects:
                     models_I_want.append('run_count_model')
                     repeats_model_dict['run_count_model'] = run_count_repeats
                 # INCLUDE THIS COUNT-RUNS MODEL AT SOME POINT!!
-    
-                    
-                # I believe that here at latest I need to do the future reward model.
                 
                 
                 # NEXT STEP: prepare the regression- select the correct regressors, filter keys starting with 'A1_backw'
                 regressors_curr_task = {key: value for key, value in regressors.items() if key.startswith(config)}
+                print(f"now looking at regressor for task {config}")
                 
                 # check that all regressors have the same length in case the task wasn't completed.
                 if len(subpath_after_steps[config]) < 20:
@@ -375,7 +377,7 @@ for sub in subjects:
                 
                 # special setting RDM_version 06
                 # if you only want to include rewards:
-                if RDM_version == '06' or RDM_version == '07' or RDM_version == '09' or RDM_version == '10':
+                if RDM_version in ['06', '07', '09', '09-9', '10']:
                     regressors_curr_task = {k: v for k, v in regressors_curr_task.items() if k.endswith('reward')}
                 if RDM_version == '10': # additionally get rid of the A-state.
                     regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key}
@@ -401,11 +403,11 @@ for sub in subjects:
                         # plt.figure(); plt.imshow(repeats_model_dict['run_count_model'], aspect= 'auto', interpolation='none')
                 
                 # import pdb; pdb.set_trace()  
-                if RDM_version == '09' or RDM_version == '10':
+                if RDM_version in ['09', '10', '09-9']:
                     # now do the rotating thing. 
                     all_models_dict['one_future_rew_loc'][config] = np.roll(all_models_dict['reward_location'][config], -1, axis = 1) 
                     all_models_dict['two_future_rew_loc'][config] = np.roll(all_models_dict['reward_location'][config], -2, axis = 1) 
-                    if RDM_version == '09':
+                    if RDM_version in ['09', '09-9']:
                         all_models_dict['three_future_rew_loc'][config] = np.roll(all_models_dict['reward_location'][config], -3, axis = 1) 
 
         
