@@ -197,7 +197,7 @@ for sub in subjects:
     # load the data files I created.
     data_dirs = {}
     for model in models_I_want:
-        if RDM_version == '999':
+        if RDM_version in ['999', '9999']:
             RDM_dir = f"{data_dir}/beh/RDMs_09_glmbase_{regression_version}"
         data_dirs[model]= np.load(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves.npy")) 
 
