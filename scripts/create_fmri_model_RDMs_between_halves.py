@@ -22,7 +22,7 @@ import sys
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '01'
+    subj_no = '03'
 
 # subjects = ['sub-07', 'sub-08', 'sub-09', 'sub-11', 'sub-12', 'sub-13', 'sub-14', 'sub-15', 'sub-16', 'sub-17', 'sub-18','sub-19', 'sub-20',  'sub-22', 'sub-23','sub-24']
 # 'sub-01', 'sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06'
@@ -44,18 +44,28 @@ task_halves = ['1', '2']
 # models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
 # RDM 10 
 # models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
+# 09 or 09-9 or 999 or 9999
+# models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
+
 
 # change this string depending on the RDM version and models you want to include.
 # models_I_want = ['reward_midnight_count', 'reward_clocks_count']
-# 09 or 09-9 or 999 or 9999
-models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
+# 11-1
+models_I_want = ['instruction']
+
+# OK I BELIEVE THAT THE MAIN THING WORKS NOW.
+# BUUUUT I NEED TO NOT DO A CROSS- TASK CORRELATION. ALTHOUGH THIS ISNT' UP TO THIS SCRIPT I THINK BUT THE RSA ONE
+
+# 
 
 # RDM 11
 # models_I_want = ['instruction'] # 11 is only the instruction period, simply 0 and 1 distances.
 
 add_run_counts_model = False
-RDM_version = '09-9' #09-9 is kind-of debugging: try RDM 09 with glm 07 but only include those tasks, where the reward location is the same twice (B and D)
+RDM_version = '11-1' 
 
+#09-9 is kind-of debugging: try RDM 09 with glm 07 but only include those tasks, where the reward location is the same twice (B and D)
+# 11-1 is the instruciton period but in a location model.
 # 11 is only the instruction period, simply 0 and 1 distances.
 # 10 is like 09, so rewards only and the models as well, but excluding the state A (because of the visual feedback) 
 #09 is reward location and future reward location.
@@ -69,11 +79,11 @@ RDM_version = '09-9' #09-9 is kind-of debugging: try RDM 09 with glm 07 but only
 temporal_resolution = 10
 
 
-fmriplotting = False
+fmriplotting = True
 fmriplotting_debug = False
 fmri_save = True
 
-regression_version = '07' # this is the instruction period only.
+regression_version = '09' # this is the instruction period only.
 # 08 is rewards only and without A (because of the visual feedback)
 #'04_pt01+_that_worked' 
 # make all paths relative and adjust to both laptop and server!!
@@ -331,6 +341,8 @@ for sub in subjects:
                         result_model_dict =  mc.simulation.predictions.create_reward_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False)
                     elif RDM_version in ['07', '09', '10', '09-9']:
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True)
+                    elif RDM_version == '11-1':
+                        result_model_dict = mc.simulation.predictions.create_instruction_model(rew_list[config], trial_type=config)
                     # elif RDM_version == '11':
                     #     result_model_dict = mc.analyse.analyse_MRI_behav.similarity_of_tasks(rew_list)
                     
@@ -391,13 +403,16 @@ for sub in subjects:
                 if fmriplotting_debug:
                     plt.figure(); plt.imshow(regressors_matrix, aspect = 'auto')
                 
-                    
+                # import pdb; pdb.set_trace()    
                 # then do the ORDERED time-binning for each model - across the 5 repeats.
                 for model in all_models_dict:
                     if model == 'one_future_rew_loc':
                         print('yey')
-                    if model not in ['one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'addition_clock_model']:
+                    if RDM_version == '11-1':
+                        all_models_dict[model][config] = result_model_dict[model]
+                    elif model not in ['one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'addition_clock_model']:
                         all_models_dict[model][config] = mc.simulation.predictions.transform_data_to_betas(repeats_model_dict[model], regressors_matrix)
+
                     #if model == 'run_count_model':
                         # fig, ax = plt.subplots(figsize=(5,4)); plt.imshow(all_models_dict[model][config], aspect= 'auto'); ax.set_title(config)
                         # plt.figure(); plt.imshow(repeats_model_dict['run_count_model'], aspect= 'auto', interpolation='none')
@@ -410,7 +425,7 @@ for sub in subjects:
                     if RDM_version in ['09', '09-9']:
                         all_models_dict['three_future_rew_loc'][config] = np.roll(all_models_dict['reward_location'][config], -3, axis = 1) 
 
-        
+          
         # once through all task configuration - create the location_between etc. matrix by concatenating the task configurations in alphabetical order
         model_dict_sorted_keys = sorted(configs)
         print(f"I am sorting in this order: {model_dict_sorted_keys}")
@@ -437,7 +452,7 @@ for sub in subjects:
     # (of size 2*nCond X 2*nCond), where the (non-symmetric) nCond X nCond bottom left square (or top right, 
     # doesn't matter because it's symmetric) (i.e. a quarter of the original matrix) has all the correlations 
     # across THs. 
-    # import pdb; pdb.set_trace()
+    
     RSM_dict_betw_TH = {}
     for model in models_between_tasks:
         if model == 'reward_midnight_count':
@@ -445,6 +460,7 @@ for sub in subjects:
         else:
             RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_between_tasks[model]['1'], models_between_tasks[model]['2']),1), plotting = False, titlestring= model)
         # mc.simulation.predictions.plot_without_legends(RSM_dict_betw_TH[model])
+    
 
     # then average the lower triangle and the top triangle of this nCond x nCond matrix, 
     # by adding it to its transpose, dividing by 2, and taking only the lower or 

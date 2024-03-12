@@ -38,8 +38,7 @@ version = '07' # 09 is the instruction period only.
 
 # plotting = True
 analyse_behav = False
-
-
+split_buttons = False
 
 # to debug task_halves = ['1']
 task_halves = ['1', '2']
@@ -113,13 +112,19 @@ for sub in subjects:
             new_task = new_task.reset_index(drop=True)
             
         on_press = []
+        key_press = []
         for i, row in end_task.iterrows():
             curr_presses = row['nav_key_task.rt'] # extract button presses from the rt item with all presses
-            # Split the string into a list using a comma as the separator
-            presses_curr_task = curr_presses.strip('[]').split(', ') 
+            presses_curr_task = curr_presses.strip('[]').split(', ') # Split the string into a list using a comma as the separator
+            curr_buttons = row['nav_key_task.keys']
+            buttons_curr_task = curr_buttons.strip('[]').split(', ') 
             # Convert the elements to floats and add to the point in time where they actually started
             presses_curr_task = [(float(time)+new_task.at[i, 'start_ABCD_screen']) for time in presses_curr_task]
+            buttons_curr_task = [button.strip("''") for button in buttons_curr_task]
+            
             on_press=on_press+presses_curr_task
+            key_press=key_press+buttons_curr_task
+
             
         # the duration can just be something like 20 ms
         dur_press = np.ones(len(on_press)) * 0.02
@@ -127,6 +132,39 @@ for sub in subjects:
         
         button_press_EV = mc.analyse.analyse_MRI_behav.create_EV(on_press, dur_press, mag_press, 'press_EV', EV_folder, first_TR_at)
         
+        
+        # make one that differentiates between buttons
+        
+        # make 4 more specific button-press regressors, instead of the one unspecific one.
+        # think about this.
+        # which times do I want to take for the task-space clocks model???
+        # how do I de-correlate this from the button presses?
+        # probably no button-press nuisance regressor for task-space model.
+        # is locaton model = button press regressors??
+        
+        # careful! Now I need to put 4 additional instead of only 1 in the subject-level GLM.
+        if split_buttons == True:
+            buttons_I_want = ['left', 'up', 'down', 'right']
+            button_press_dict = {f"on_{button}": [] for button in buttons_I_want}
+            for i, time in enumerate(on_press):
+                if key_press[i] == '1':
+                    button_press_dict['on_left'].append(time)
+                elif key_press[i] == '2':
+                    button_press_dict['on_up'].append(time)
+                elif key_press[i] == '3':
+                    button_press_dict['on_down'].append(time)
+                elif key_press[i] == '4':
+                    button_press_dict['on_right'].append(time)
+            
+            for button in buttons_I_want:
+                button_press_dict[f"dur_{button}"] = np.ones(len(button_press_dict[f"on_{button}"])) * 0.02
+                button_press_dict[f"mag_{button}"] = np.ones(len(button_press_dict[f"on_{button}"]))
+            
+            for button in buttons_I_want:
+                button_press_EV = mc.analyse.analyse_MRI_behav.create_EV(button_press_dict[f"on_{button}"], button_press_dict[f"dur_{button}"], button_press_dict[f"mag_{button}"], f"{button}", EV_folder, first_TR_at)
+                              
+            
+
         # check there are no nans 
         deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(button_press_EV)
         if deleted_x_rows > 0:

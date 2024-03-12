@@ -2364,7 +2364,28 @@ def create_counting_reward_models_fmri(dict_config_by_reward):
     return result_dict
 
 
+def create_instruction_model(rewards_of_task, trial_type, grid_size = 3, fire_radius = 0.25):
+    #import pdb; pdb.set_trace()
 
+    reward_fields = []
+    for elem in rewards_of_task:
+        reward_fields.append(mc.simulation.predictions.field_to_number(elem, grid_size))
+    
+    if trial_type.endswith('backw'):
+        reward_fields.reverse()
+    # here, I have 4 positions per location: ABC or D; and fields 1-9.
+    # if backwards, its a -1, forwards they are 1s  
+    rew_loc_matrix = np.zeros([grid_size*grid_size*len(rewards_of_task),1])
+    for position, field in enumerate(reward_fields):
+        if trial_type.endswith('forw'):
+            rew_loc_matrix[position*grid_size*grid_size + field] = 1
+        elif trial_type.endswith('backw'):
+            rew_loc_matrix[position*grid_size*grid_size + field] = -1
+   
+    result_dict = {'instruction': rew_loc_matrix}
+
+    
+    return result_dict
 
 ################################
 ####### PLOTTING ###############

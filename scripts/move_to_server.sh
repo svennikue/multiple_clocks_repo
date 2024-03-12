@@ -14,7 +14,7 @@ scratchDir="/Users/xpsy1114/Documents/projects/multiple_clocks/data"
 
 
 # for subjectTag in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
-for subjectTag in 25 26; do
+for subjectTag in 27 28 29 30 31; do
     mkdir ${scratchDir}/for_server/sub-${subjectTag}
     mkdir ${scratchDir}/for_server/sub-${subjectTag}/beh
     mkdir ${scratchDir}/for_server/sub-${subjectTag}/motion

@@ -388,7 +388,7 @@ def analyse_pathlength_beh(df):
 
 # CONTINUE HERE LATER!!
 def similarity_of_tasks(reward_per_task_per_taskhalf_dict):
-    #import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
 
     all_rewards = []
     for task_half in reward_per_task_per_taskhalf_dict:
@@ -416,5 +416,9 @@ def similarity_of_tasks(reward_per_task_per_taskhalf_dict):
     models_between_tasks['instruction']['2'] = task_similiarity[10:20, :10]
 
     return models_between_tasks
+
+    
+
+        
 
 

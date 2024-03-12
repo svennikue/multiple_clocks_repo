@@ -7,6 +7,7 @@ This script plots the physiology file that I collected for the first participant
 """
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np 
 
 file_path = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/biopack/without_header_Karan.txt"
 file_two = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/biopack/physio_input.txt"
@@ -32,4 +33,31 @@ plt.tight_layout()
 
 # Show the plot
 plt.show()
+
+# OK THIS NEEDS TO BE ADJUSTED NOW 
+
+# Identify the first trigger
+trigger_indexes = df.index[df.iloc[:, 3] > 4].tolist()
+
+# Step 2: Calculate gap sizes between consecutive significant events
+gap_sizes = np.diff(trigger_indexes)
+
+
+# threshold = np.percentile(gap_sizes, 99)  # Example threshold, adjust as needed
+
+# Identifying the long gap based on the threshold
+long_gap_index = np.where(gap_sizes > 250)[0]
+
+# Assuming the first long gap clearly separates the two halves
+first_half_end_index = trigger_indexes[long_gap_index[0]]
+second_half_start_index = trigger_indexes[long_gap_index[0] + 1]
+
+# Step 4: Split the dataset into two halves
+first_half = df.iloc[:first_half_end_index + 1, :]
+second_half = df.iloc[second_half_start_index:, :]
+
+first_half.to_csv("/Users/xpsy1114/Documents/projects/multiple_clocks/data/first_half.txt", sep='\t', index=False)
+
+first_half_path = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/first_half.txt"
+second_half_path = "/mnt/data/second_half.txt"
 
