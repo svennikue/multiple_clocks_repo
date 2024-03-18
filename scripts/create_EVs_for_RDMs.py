@@ -174,8 +174,9 @@ for sub in subjects:
         
         # import pdb; pdb.set_trace()
         if version == '03':
+            import pdb; pdb.set_trace()
             # # Location EVs.
-            list_coords_x = [-0,21, 0, 0.21, -0.21, 0, 0.21, -0.21, 0, 0.21]
+            list_coords_x = [-0.21, 0, 0.21, -0.21, 0, 0.21, -0.21, 0, 0.21]
             list_coords_y = [-0.29, 0, 0.29, -0.29, 0, 0.29, -0.29, 0, 0.29]
             list_names = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
             
