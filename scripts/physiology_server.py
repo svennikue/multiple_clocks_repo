@@ -6,7 +6,6 @@ This script plots the physiology file that I collected for the first participant
 @author: xpsy1114
 """
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np 
 import os
 import sys
@@ -15,14 +14,11 @@ import sys
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '26'
+    subj_no = '07'
 
 subjects = [f"sub-{subj_no}"]
 load_old = False
 visualise_RDMs = False
-
-#subjects = ['sub-01']
-task_halves = ['1', '2']
 
 
 for sub in subjects:
@@ -30,8 +26,11 @@ for sub in subjects:
     output_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}/motion"
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    physio_file = f"{data_dir}/{sub}_physio.txt"
+    physio_file = f"{data_dir}/{sub}_physio_no_header.txt"
     df = pd.read_csv(physio_file, sep ="\t")
+    
+    # delete the last column 
+    df.drop(df.columns[[4]], axis = 1, inplace = True)
     
     # Identify the first trigger: bigger than 4 in column 3 
     trigger_indexes = df.index[df.iloc[:, 3] > 4].tolist()

@@ -33,12 +33,12 @@ import sys
 
 # version = '08' # 08 is rewards only and without A (because of the visual feedback)
 #'07' # GLM number -> 07 is only button press and rewards. | new, better script is now 06. first GLM was 04. retrospectively, version '03' is location_EVs.
-version = '07' # 09 is the instruction period only.
+version = '03' # 09 is the instruction period only.
 
 
 # plotting = True
 analyse_behav = False
-split_buttons = False
+split_buttons = True
 
 # to debug task_halves = ['1']
 task_halves = ['1', '2']
@@ -70,7 +70,7 @@ for sub in subjects:
 
         # define and make paths
         if version == '03':
-            EV_folder = f'{funcDir}/EVs_{version}_pt0{task_half}_press_and_loc/'
+            EV_folder = f'{funcDir}/EVs_{version}_pt0{task_half}/'
         elif version in ['06', '07', '08', '09']:
             EV_folder = f'{funcDir}/EVs_{version}_pt0{task_half}/'
         if os.path.exists(EV_folder):
@@ -125,13 +125,14 @@ for sub in subjects:
             on_press=on_press+presses_curr_task
             key_press=key_press+buttons_curr_task
 
+        
+        if split_buttons == False:    
+            # the duration can just be something like 20 ms
+            dur_press = np.ones(len(on_press)) * 0.02
+            mag_press = np.ones(len(on_press))
             
-        # the duration can just be something like 20 ms
-        dur_press = np.ones(len(on_press)) * 0.02
-        mag_press = np.ones(len(on_press))
-        
-        button_press_EV = mc.analyse.analyse_MRI_behav.create_EV(on_press, dur_press, mag_press, 'press_EV', EV_folder, first_TR_at)
-        
+            button_press_EV = mc.analyse.analyse_MRI_behav.create_EV(on_press, dur_press, mag_press, 'press_EV', EV_folder, first_TR_at)
+            
         
         # make one that differentiates between buttons
         
