@@ -167,17 +167,18 @@ for sub in subjects:
             
 
         # check there are no nans 
-        deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(button_press_EV)
+        deleted_x_rows, button_press_EV_to_save = mc.analyse.analyse_MRI_behav.check_for_nan(button_press_EV)
         if deleted_x_rows > 0:
             print(f"careful! I am saving a cutted EV button press file. Happened for subject {sub} in task half {task_half}")
-            np.savetxt(str(EV_folder) + 'ev_' + 'press_EV' + '.txt', array, delimiter="    ", fmt='%f')
+            np.savetxt(str(EV_folder) + 'ev_' + 'press_EV' + '.txt', button_press_EV_to_save, delimiter="    ", fmt='%f')
         
         # import pdb; pdb.set_trace()
         if version == '03':
-            import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()
             # # Location EVs.
+            location_EVs_dict = {}
             list_coords_x = [-0.21, 0, 0.21, -0.21, 0, 0.21, -0.21, 0, 0.21]
-            list_coords_y = [-0.29, 0, 0.29, -0.29, 0, 0.29, -0.29, 0, 0.29]
+            list_coords_y = [-0.29, -0.29, -0.29, 0, 0, 0, 0.29, 0.29, 0.29]
             list_names = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
             
             for i, name in enumerate(list_names):
@@ -185,10 +186,11 @@ for sub in subjects:
                 coord_y = list_coords_y[i]
                 loc_on, loc_dur, loc_mag = mc.analyse.analyse_MRI_behav.make_loc_EV(df, coord_x, coord_y)
                 loc_EV = mc.analyse.analyse_MRI_behav.create_EV(loc_on, loc_dur, loc_mag, f"loc_{name}_EV", EV_folder, first_TR_at)
-                deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(loc_EV)
+                deleted_x_rows, location_EVs_dict[name] = mc.analyse.analyse_MRI_behav.check_for_nan(loc_EV)
+                location_EVs_dict[name]
                 if deleted_x_rows > 0:
                     print(f"careful! I am saving a cutted EV loc_{name}_EV file. Happened for subject {sub} in task half {task_half}")
-                    np.savetxt(str(EV_folder) + 'ev_' + f"loc_{name}_EV" + '.txt', array, delimiter="    ", fmt='%f')
+                    np.savetxt(str(EV_folder) + 'ev_' + f"loc_{name}_EV" + '.txt', location_EVs_dict[name], delimiter="    ", fmt='%f')
  
         
  

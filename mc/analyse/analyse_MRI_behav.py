@@ -132,6 +132,7 @@ def transform_coord(coord, is_x = False, is_y = False):
 
 # use to check if the EV making went wrong
 def check_for_nan(array):
+    # import pdb; pdb.set_trace()
     count = 0
     while np.isnan(array).any():
         print(f"Careful! There are Nans in {array}. Pausing script")
