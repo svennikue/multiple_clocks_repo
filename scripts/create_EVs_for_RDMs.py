@@ -26,6 +26,7 @@ import matplotlib.pyplot as plt
 import pickle
 import re
 import sys
+import shutil
 
 
 #import pdb; pdb.set_trace()
@@ -33,12 +34,12 @@ import sys
 
 # version = '08' # 08 is rewards only and without A (because of the visual feedback)
 #'07' # GLM number -> 07 is only button press and rewards. | new, better script is now 06. first GLM was 04. retrospectively, version '03' is location_EVs.
-version = '03' # 09 is the instruction period only.
+version = '06' # 09 is the instruction period only.
 
 
 # plotting = True
 analyse_behav = False
-split_buttons = True
+split_buttons = False
 
 # to debug task_halves = ['1']
 task_halves = ['1', '2']
@@ -74,7 +75,9 @@ for sub in subjects:
         elif version in ['06', '07', '08', '09']:
             EV_folder = f'{funcDir}/EVs_{version}_pt0{task_half}/'
         if os.path.exists(EV_folder):
-            print("careful, the EV folder does exist- there might be other EVs and thus not all files will be output correctly!")
+            print("careful, the EV folder does exist- there might be other EVs and thus not all files will be output correctly! Deleting dir.")
+            shutil.rmtree(EV_folder)
+            os.makedirs(EV_folder)
         if not os.path.exists(EV_folder):
             os.makedirs(EV_folder)
         
