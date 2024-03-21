@@ -415,7 +415,7 @@ for sub in subjects:
                 else:
                     text_to_write_cleaned.append(line)
         
-            with open(f"{funcDir}/{sub}_my_RDM_GLM_0{task_half}_{version}.fsf", "w") as fout:
+            with open(f"{funcDir}/{sub}_draft_GLM_0{task_half}_{version}.fsf", "w") as fout:
                 for line in text_to_write_cleaned:
                     fout.write(line)
    
