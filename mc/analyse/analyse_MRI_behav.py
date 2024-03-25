@@ -21,6 +21,39 @@ import statsmodels.api as sm
 import rsatoolbox.data as rsd
 from rsatoolbox.rdm.calc import _build_rdms
 from rsatoolbox.rdm import RDMs
+import shutil
+from datetime import datetime
+
+
+
+def move_files_to_subfolder(folder_path):
+    # import pdb; pdb.set_trace()
+    # Get today's date in the format YYYY-MM-DD
+    today_date = datetime.today().strftime('%Y-%m-%d')
+    subfolder_name = f"results_pre_{today_date}"
+    
+    # Create the sub-folder if it doesn't exist
+    subfolder_path = os.path.join(folder_path, subfolder_name)
+    if not os.path.exists(subfolder_path):
+        os.makedirs(subfolder_path)
+    
+    # List all files in the source folder
+    files = [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
+    
+    # Filter files that end with .nii.gz
+    nii_gz_files = [f for f in files if f.endswith('.nii.gz')]
+    
+    # Move .nii.gz files to the target sub-folder
+    for file in nii_gz_files:
+        shutil.move(os.path.join(folder_path, file), subfolder_path)
+        print(f"Moved {file} to {subfolder_path}/")
+    
+    if not nii_gz_files:
+        print("No .nii.gz files found to move.")
+    
+        
+        
+
 
 def print_stuff(string_input):
     print(string_input)
@@ -250,7 +283,7 @@ def save_RSA_result(result_file, data_RDM_file, file_path, file_name, mask, numb
     t_result_brain = t_result_brain.reshape([x,y,z])
     
     t_result_brain_nifti = nib.Nifti1Image(t_result_brain, affine=affine_matrix)
-    t_result_brain_file = f"{file_path}/t_val_{file_name}.nii.gz"
+    t_result_brain_file = f"{file_path}/{file_name}_t_val.nii.gz"
     nib.save(t_result_brain_nifti, t_result_brain_file)
     
     b_result_brain = np.zeros([x*y*z])
@@ -258,7 +291,7 @@ def save_RSA_result(result_file, data_RDM_file, file_path, file_name, mask, numb
     b_result_brain = b_result_brain.reshape([x,y,z])
     
     b_result_brain_nifti = nib.Nifti1Image(b_result_brain, affine=affine_matrix)
-    b_result_brain_file = f"{file_path}/beta_{file_name}.nii.gz"
+    b_result_brain_file = f"{file_path}/{file_name}_beta.nii.gz"
     nib.save(b_result_brain_nifti, b_result_brain_file)
     
     p_result_brain = np.zeros([x*y*z])
@@ -266,7 +299,7 @@ def save_RSA_result(result_file, data_RDM_file, file_path, file_name, mask, numb
     p_result_brain = p_result_brain.reshape([x,y,z])
     
     p_result_brain_nifti = nib.Nifti1Image(p_result_brain, affine=affine_matrix)
-    p_result_brain_file = f"{file_path}/p_val_{file_name}.nii.gz"
+    p_result_brain_file = f"{file_path}/{file_name}_p_val.nii.gz"
     nib.save(p_result_brain_nifti, p_result_brain_file)
 
 

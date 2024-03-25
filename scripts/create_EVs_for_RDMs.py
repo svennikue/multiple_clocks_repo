@@ -34,7 +34,7 @@ import shutil
 
 # version = '08' # 08 is rewards only and without A (because of the visual feedback)
 #'07' # GLM number -> 07 is only button press and rewards. | new, better script is now 06. first GLM was 04. retrospectively, version '03' is location_EVs.
-version = '06' # 09 is the instruction period only.
+version = '07' # 09 is the instruction period only.
 
 
 # plotting = True

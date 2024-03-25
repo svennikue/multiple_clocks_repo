@@ -25,6 +25,8 @@ import mc
 import pickle
 import sys
 import random
+import shutil
+from datetime import datetime
 
 # import pdb; pdb.set_trace()  
 
@@ -104,12 +106,16 @@ for sub in subjects:
     if not os.path.exists(RDM_dir):
         os.makedirs(RDM_dir)
         
+
+        
     results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}"   
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
         os.makedirs(f"{results_dir}/results")
     results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results"  
-    
+    if os.path.exists(results_dir):
+        # move pre-existing files into a different folder.
+        mc.analyse.analyse_MRI_behav.move_files_to_subfolder(results_dir)
     # get a reference image to later project the results onto. This is usually
     # example_func from half 1, as this is where the data is corrected to.
     ref_img = load_img(f"{data_dir}/func/preproc_clean_01.feat/example_func.nii.gz")
@@ -126,7 +132,7 @@ for sub in subjects:
         with open(f"{RDM_dir}/searchlight_neighbors.pkl", 'rb') as file:
             neighbors = pickle.load(file)
         #centers = np.load(f"{RDM_dir}/searchlight_centers.npy", allow_pickle=True)
-        #neighbors = np.load(f"{RDM_dir}/searchlight_neihbors.npy", allow_pickle=True)
+        #neighbors = np.load(f"{RDM_dir}/searchlight_neighbors.npy", allow_pickle=True)
     else:
         # creating the searchlights
         centers, neighbors = get_volume_searchlight(mask, radius=3, threshold=0.5) # Found 175.483 searchlights
@@ -137,7 +143,7 @@ for sub in subjects:
         with open(f"{RDM_dir}/searchlight_neighbors.pkl", 'wb') as file:
             pickle.dump(neighbors, file)   
         #np.save(f"{RDM_dir}/searchlight_centers.npy", centers)
-        #np.save(f"{RDM_dir}/searchlight_neihbors.npy", neighbors)
+        #np.save(f"{RDM_dir}/searchlight_neighbors.npy", neighbors)
             
     # Step 2: loading and computing the data RDMs
     if load_old:
@@ -219,6 +225,7 @@ for sub in subjects:
         if RDM_version in ['999', '9999']:
             RDM_dir = f"{data_dir}/beh/RDMs_09_glmbase_{regression_version}"
         data_dirs[model]= np.load(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves.npy")) 
+    
 
     # step 3: create model RDMs.
     model_RDM_dir = {}

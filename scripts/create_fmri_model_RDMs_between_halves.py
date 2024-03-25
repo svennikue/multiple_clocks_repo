@@ -22,7 +22,7 @@ import sys
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '03'
+    subj_no = '01'
 
 # subjects = ['sub-07', 'sub-08', 'sub-09', 'sub-11', 'sub-12', 'sub-13', 'sub-14', 'sub-15', 'sub-16', 'sub-17', 'sub-18','sub-19', 'sub-20',  'sub-22', 'sub-23','sub-24']
 # 'sub-01', 'sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06'
@@ -33,7 +33,7 @@ task_halves = ['1', '2']
 
 # change this string depending on the RDM version and models you want to include.
 # RDM 05 
-models_I_want = ['location', 'phase', 'phase_state', 'midnight', 'clocks', 'state', 'task_prog']
+# models_I_want = ['location', 'phase', 'phase_state', 'midnight', 'clocks', 'state', 'task_prog']
 # RDM 06 
 # models_I_want = ['reward_midnight', 'reward_clocks', 'state', 'task_prog']
 # RDM 07
@@ -41,7 +41,7 @@ models_I_want = ['location', 'phase', 'phase_state', 'midnight', 'clocks', 'stat
 # RDM 08
 # ??? (the model is using combination models (GLMs with several models in the do RSA script))
 # RDM 09 
-# models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
+models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
 # RDM 10 
 # models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
 # 09 or 09-9 or 999 or 9999
@@ -60,7 +60,7 @@ models_I_want = ['location', 'phase', 'phase_state', 'midnight', 'clocks', 'stat
 # models_I_want = ['instruction'] # 11 is only the instruction period, simply 0 and 1 distances.
 
 add_run_counts_model = False
-RDM_version = '05' 
+RDM_version = '09' 
 
 #09-9 is kind-of debugging: try RDM 09 with glm 07 but only include those tasks, where the reward location is the same twice (B and D)
 # 11-1 is the instruciton period but in a location model.
@@ -81,8 +81,8 @@ fmriplotting = False
 fmriplotting_debug = False
 fmri_save = True
 
-regression_version = '06' 
-# 11 is the instruction period only.
+regression_version = '07' 
+# 11 this is the instruction period only.
 # 08 is rewards only and without A (because of the visual feedback)
 #'04_pt01+_that_worked' 
 # make all paths relative and adjust to both laptop and server!!
