@@ -81,7 +81,8 @@ fmriplotting = False
 fmriplotting_debug = False
 fmri_save = True
 
-regression_version = '06' # this is the instruction period only.
+regression_version = '06' 
+# 11 is the instruction period only.
 # 08 is rewards only and without A (because of the visual feedback)
 #'04_pt01+_that_worked' 
 # make all paths relative and adjust to both laptop and server!!
