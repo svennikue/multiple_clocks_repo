@@ -33,7 +33,8 @@ else:
     
     
 #subjects = [f"sub-{subj_no}"]
-subjects = ['sub-01', 'sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06', 'sub-07', 'sub-08', 'sub-09', 'sub-10', 'sub-11', 'sub-12', 'sub-13', 'sub-14', 'sub-15', 'sub-16', 'sub-17', 'sub-18','sub-19', 'sub-20', 'sub-21', 'sub-22', 'sub-23','sub-24']
+# subj 21 is an outlier.
+subjects = ['sub-01', 'sub-02', 'sub-03', 'sub-04', 'sub-05', 'sub-06', 'sub-07', 'sub-08', 'sub-09', 'sub-11', 'sub-12', 'sub-13', 'sub-14', 'sub-15', 'sub-16', 'sub-17', 'sub-18','sub-19', 'sub-20', 'sub-22', 'sub-23','sub-24', 'sub-25', 'sub-26', 'sub-27', 'sub-28', 'sub-29', 'sub-30', 'sub-31', 'sub-32', 'sub-33', 'sub-34']
 #subjects = ['sub-01']
 
 
@@ -235,6 +236,29 @@ mean_data['sort_key'] = mean_data['config_type'].apply(custom_sort_key)
 std_data['sort_key'] = std_data['config_type'].apply(custom_sort_key)
 mean_data.sort_values(by='sort_key', inplace=True)
 std_data.sort_values(by='sort_key', inplace=True)
+
+# then analyse if any of the subjects were an outlier.
+content_outlier_dict_outer = subjects.copy()
+content_outlier_dict_outer.append('mean_plus_std')
+content_outlier_dict_inner = task_names.copy()
+content_outlier_dict_inner.append('sum_outlier')
+outlier_subj = {subject: {task_name: None for task_name in content_outlier_dict_inner} for subject in content_outlier_dict_outer}
+
+# import pdb; pdb.set_trace()
+for sub in subjects:
+    subj_df = sorted_df[sub]
+    count_is_outlier = 0
+    for task_name in task_names:
+        mean = mean_data[mean_data['config_type'] == task_name]['task_length'].values[0]
+        std = std_data[std_data['config_type'] == task_name]['task_length'].values[0] 
+        outlier_subj['mean_plus_std']['config_type'] = mean + std
+        if subj_df[subj_df['config_type'] == task_name]['task_length'].values[0] < outlier_subj['mean_plus_std']['config_type']:
+            outlier_subj[sub][task_name] = 'no outlier'
+        elif subj_df[subj_df['config_type'] == task_name]['task_length'].values[0] > outlier_subj['mean_plus_std']['config_type']:
+            outlier_subj[sub][task_name] = 'is outlier'
+            count_is_outlier = count_is_outlier + 1
+    outlier_subj[sub]['sum_outlier'] = count_is_outlier
+
 
 
 sns.set(style="whitegrid") 

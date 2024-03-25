@@ -31,9 +31,9 @@ subjects = [f"sub-{subj_no}"]
 #subjects = ['sub-01']
 task_halves = ['1', '2']
 
-
+# change this string depending on the RDM version and models you want to include.
 # RDM 05 
-# models_I_want = ['location', 'phase', 'phase_state', 'midnight', 'clocks', 'state', 'task_prog']
+models_I_want = ['location', 'phase', 'phase_state', 'midnight', 'clocks', 'state', 'task_prog']
 # RDM 06 
 # models_I_want = ['reward_midnight', 'reward_clocks', 'state', 'task_prog']
 # RDM 07
@@ -47,11 +47,9 @@ task_halves = ['1', '2']
 # 09 or 09-9 or 999 or 9999
 # models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
 
-
-# change this string depending on the RDM version and models you want to include.
 # models_I_want = ['reward_midnight_count', 'reward_clocks_count']
 # 11-1
-models_I_want = ['instruction']
+# models_I_want = ['instruction']
 
 # OK I BELIEVE THAT THE MAIN THING WORKS NOW.
 # BUUUUT I NEED TO NOT DO A CROSS- TASK CORRELATION. ALTHOUGH THIS ISNT' UP TO THIS SCRIPT I THINK BUT THE RSA ONE
@@ -62,7 +60,7 @@ models_I_want = ['instruction']
 # models_I_want = ['instruction'] # 11 is only the instruction period, simply 0 and 1 distances.
 
 add_run_counts_model = False
-RDM_version = '11-1' 
+RDM_version = '05' 
 
 #09-9 is kind-of debugging: try RDM 09 with glm 07 but only include those tasks, where the reward location is the same twice (B and D)
 # 11-1 is the instruciton period but in a location model.
@@ -79,11 +77,11 @@ RDM_version = '11-1'
 temporal_resolution = 10
 
 
-fmriplotting = True
+fmriplotting = False
 fmriplotting_debug = False
 fmri_save = True
 
-regression_version = '09' # this is the instruction period only.
+regression_version = '06' # this is the instruction period only.
 # 08 is rewards only and without A (because of the visual feedback)
 #'04_pt01+_that_worked' 
 # make all paths relative and adjust to both laptop and server!!
