@@ -340,7 +340,7 @@ for sub in subjects:
                     # KEY STEP
                     # create all models.
                     if RDM_version in ['05']:
-                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, split_clock = False)
+                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path= False, split_clock = False)
                     elif RDM_version == '06':
                         result_model_dict =  mc.simulation.predictions.create_reward_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False)
                     elif RDM_version in ['07', '09', '10', '09-9']:
@@ -348,7 +348,7 @@ for sub in subjects:
                     elif RDM_version == '11-1':
                         result_model_dict = mc.simulation.predictions.create_instruction_model(rew_list[config], trial_type=config)
                     elif RDM_version in ['12']:
-                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, split_clock=True)
+                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path = True, split_clock=True)
                     
                     # elif RDM_version == '11':
                     #     result_model_dict = mc.analyse.analyse_MRI_behav.similarity_of_tasks(rew_list)
