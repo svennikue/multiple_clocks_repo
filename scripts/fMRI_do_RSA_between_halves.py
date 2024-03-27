@@ -84,10 +84,11 @@ print(f"Now running RSA for RDM version {RDM_version} based on subj GLM {regress
 if regression_version == '09':
     no_RDM_conditions = 10
     
-if regression_version == '07' or regression_version == '06':
+if regression_version == '07':
     no_RDM_conditions = 40
-    if RDM_version == '09-9':
-        no_RDM_conditions = 16
+    
+if RDM_version == '09-9':
+    no_RDM_conditions = 16
     
 elif regression_version == '08':
     no_RDM_conditions = 30
@@ -123,7 +124,8 @@ for sub in subjects:
     # Step 1: creating the searchlights
     # mask will define the searchlight positions, in pt01 space because that is 
     # where the functional files have been registered to.
-    mask = load_img(f"{data_dir}/anat/grey_matter_mask_func_01.nii.gz")
+    # mask = load_img(f"{data_dir}/anat/grey_matter_mask_func_01.nii.gz")
+    mask = load_img(f"{data_dir}/anat/{sub}_T1w_noCSF_brain_mask_bin_func_01.nii.gz")
     mask = mask.get_fdata()  
     # save this file to save time
     if load_old:

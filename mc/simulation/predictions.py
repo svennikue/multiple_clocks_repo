@@ -1869,8 +1869,8 @@ def set_location_ephys(walked_path, reward_fields, grid_size = 3, plotting = Fal
 
 
 # to create the model RDMs.
-def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, temporal_resolution = 10, plot = False, only_rew = False):
-    #import pdb; pdb.set_trace()
+def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, temporal_resolution = 10, plot = False, only_rew = False, split_clock = False):
+    # import pdb; pdb.set_trace()
     
     cumsumsteps = np.cumsum(step_number)
     
@@ -1963,6 +1963,7 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
         for index, elem in enumerate(coords_over_time):
             coords_over_time[index] = all_coords[elem]
         
+        
         # third step: location model.
         # make the location matrix
         loc_matrix = np.empty([grid_size*grid_size,len(coords_over_time)])
@@ -2038,6 +2039,45 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     # I am going to fuse the midnight and the phas_stat model. Thus they need to be equally 'strong' > normalise!
     norm_midn = (midn_model.copy()-np.min(midn_model))/(np.max(midn_model)-np.min(midn_model))
     norm_phas_stat = (phas_stat.copy()-np.min(phas_stat))/(np.max(phas_stat)-np.min(phas_stat))
+
+    # import pdb; pdb.set_trace()
+
+    if split_clock == True:  
+        # for the current reward vs. 1 future, 2 future etc; I need to somehow split this norm_phas_stat.
+        # norm_phas_stat basically shows where to go in the future. This is what distinguishes midnight and clocks:
+            # midnight is onlye now, but clock has activity for all future steps as well
+            # so maybe, what I could do; is create one 'futur subpath' model for each state.
+            # this means cutting out the respective 3 neurons I am interested in.
+            # important: midnight is still the only 'presence' model, as even the first subpath is 'a bit in the future'!
+            # also: I need to fill the split clocks in the same way as before, but I need to somehow delete midnight out of it!!
+            # can I just subtract???
+            # ok but unfortunately I don't think this is correct. 
+            # I believe that it will have to do with the rotations
+            # ok no this is still not correct.
+            # basically what I think I need to do is the following:
+                    # first, do the rotation
+                    # second, delete all neurons that are not + 3/ +6/ +9 etc form the current reward.
+                    # basically, take a similar approach to below here where I delete parts of the phas_stat matrix
+                    # but do this dynamically, respective to the current reward location!
+                    # so essentially, take every of the rotated phas-stat matrix, but save different parts of it in different matrices
+                    
+        # this commented part is probably not needed! :)
+        # make this a dict so that this code doesn't explode.
+        split_clock_strings = ['curr_path_split_cl_prep', 'one_fut_path_split_cl_prep', 'two_fut_path_split_cl_prep', 'three_fut_path_split_cl_prep']
+        # split_clock_dict = {}
+        split_clock_model_dict = {}
+        for model in split_clock_strings:
+            # split_clock_dict[model] = np.zeros((len(norm_phas_stat), len(norm_phas_stat[0])))
+            split_clock_model_dict[model] = np.zeros([len(norm_midn)*len(norm_phas_stat),len(norm_midn[0])])
+            # if model == 'curr_path_split_cl_prep':
+            #     split_clock_dict[model][:, 0: step_number[0]*temporal_resolution] = norm_phas_stat[:, 0: step_number[0]*temporal_resolution]      
+            # elif model == 'one_fut_path_split_cl_prep':
+            #     split_clock_dict[model][:, (cumsumsteps[0]*temporal_resolution):(cumsumsteps[1]*temporal_resolution)] = norm_phas_stat[:, (cumsumsteps[0]*temporal_resolution):(cumsumsteps[1]*temporal_resolution)]
+            # elif model == 'two_fut_path_split_cl_prep':
+            #     split_clock_dict[model][:, (cumsumsteps[1]*temporal_resolution):(cumsumsteps[2]*temporal_resolution)] = norm_phas_stat[:, (cumsumsteps[1]*temporal_resolution):(cumsumsteps[2]*temporal_resolution)]
+            # elif model == 'three_fut_path_split_cl_prep':
+            #     split_clock_dict[model][:, (cumsumsteps[2]*temporal_resolution):-1] = norm_phas_stat[:, (cumsumsteps[2]*temporal_resolution):-1]
+    
     # 6. stick the neuron-clock matrices in 
     full_clock_matrix_dummy = np.zeros([len(norm_midn)*len(norm_phas_stat),len(norm_midn[0])]) # fields times phases.
     # for ever 12th row, stick a row of the midnight matrix in (corresponds to the respective first neuron of the clock)
@@ -2047,9 +2087,12 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     # copy the neuron per clock firing pattern
     # I will manipulate clocks_per_step, and use clocks_per_step.dummy as control to check for overwritten stuff.
     clo_model =  full_clock_matrix_dummy.copy()
-    
-    
     # now loop through the already filled columns (every 12th one) and fill the clocks if activated.
+    dummylist = []
+    dummylist_one = []
+    dummylist_two = []
+    dummylist_three = []
+    dummylist_four = []
     for row in range(0, len(norm_midn)):
         local_maxima = argrelextrema(norm_midn[row,:], np.greater_equal, order = 5, mode = 'wrap')
         # delete if the local maxima are neighbouring
@@ -2057,11 +2100,31 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
         for index, maxima in enumerate(local_maxima):
             if maxima == local_maxima[index-1]+1:
                 # print(maxima, index)
-                local_maxima = np.delete(local_maxima, index)
-                
+                local_maxima = np.delete(local_maxima, index)        
         for activation_neuron in local_maxima:
             # import pdb; pdb.set_trace()
             horizontal_shift_by = np.argmax(norm_phas_stat[:,activation_neuron])
+            
+            #if split_clock == True: 
+                # let's see if this works.
+                # it should have the 
+                # for model in split_clock_model_dict:
+                #     import pdb; pdb.set_trace()
+                #     # shift the clock around so that the activation neuron comes first
+                #     shifted_clock = np.roll(split_clock_dict[model], horizontal_shift_by*-1, axis = 0)
+                #     # adjust the firing strength according to the local maxima
+                #     firing_factor = norm_midn[row, activation_neuron].copy()
+                #     #firing_factor = norm_midn[row,activation_neuron]/ max_firing
+                #     shifted_adjusted_clock = shifted_clock.copy()*firing_factor
+                #     # then add the values to the existing clocks, but also replace the first row by 0!!
+                #     shifted_adjusted_clock[0] = np.zeros((len(shifted_adjusted_clock[0])))
+                #     # Q: IS THIS WAY OF DEALING WIHT DOUBLE ACTIVATION OK???
+                #     split_clock_model_dict[model][row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = split_clock_model_dict[model][row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()        
+                # # ok I try an alternative. if this one works, delete the other one.
+                #for model in split_clock_model_dict:
+                #    import pdb; pdb.set_trace()
+                    
+            
             # shift the clock around so that the activation neuron comes first
             shifted_clock = np.roll(norm_phas_stat, horizontal_shift_by*-1, axis = 0)
             # adjust the firing strength according to the local maxima
@@ -2072,8 +2135,45 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
             shifted_adjusted_clock[0] = np.zeros((len(shifted_adjusted_clock[0])))
             # Q: IS THIS WAY OF DEALING WIHT DOUBLE ACTIVATION OK???
             clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()
-    
-    # import pdb; pdb.set_trace()
+            
+            
+            if split_clock == True: 
+                # I think this works!!!
+                # think about this again. maybe create one easily checkable example???
+                dummylist.append(horizontal_shift_by)
+                if horizontal_shift_by < 3:
+                    dummylist_one.append(horizontal_shift_by)
+                    split_clock_model_dict['curr_path_split_cl_prep'][row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = split_clock_model_dict['curr_path_split_cl_prep'][row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()
+                elif horizontal_shift_by >= 3 and horizontal_shift_by < 6:
+                    dummylist_two.append(horizontal_shift_by)
+                    split_clock_model_dict['one_fut_path_split_cl_prep'][row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = split_clock_model_dict['one_fut_path_split_cl_prep'][row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()
+                elif horizontal_shift_by >= 6 and horizontal_shift_by < 9:
+                    dummylist_three.append(horizontal_shift_by)
+                    split_clock_model_dict['two_fut_path_split_cl_prep'][row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = split_clock_model_dict['two_fut_path_split_cl_prep'][row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()
+                elif horizontal_shift_by >= 9:
+                    dummylist_four.append(horizontal_shift_by)
+                    split_clock_model_dict['three_fut_path_split_cl_prep'][row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = split_clock_model_dict['three_fut_path_split_cl_prep'][row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()
+             
+                    
+                # let's see if this works.
+                # it should have the 
+                # for model in split_clock_model_dict:
+                #     import pdb; pdb.set_trace()
+                #     # shift the clock around so that the activation neuron comes first
+                #     shifted_clock = np.roll(split_clock_dict[model], horizontal_shift_by*-1, axis = 0)
+                #     # adjust the firing strength according to the local maxima
+                #     firing_factor = norm_midn[row, activation_neuron].copy()
+                #     #firing_factor = norm_midn[row,activation_neuron]/ max_firing
+                #     shifted_adjusted_clock = shifted_clock.copy()*firing_factor
+                #     # then add the values to the existing clocks, but also replace the first row by 0!!
+                #     shifted_adjusted_clock[0] = np.zeros((len(shifted_adjusted_clock[0])))
+                #     # Q: IS THIS WAY OF DEALING WIHT DOUBLE ACTIVATION OK???
+                #     split_clock_model_dict[model][row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = split_clock_model_dict[model][row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()        
+                # # ok I try an alternative. if this one works, delete the other one.
+
+            
+            
+    import pdb; pdb.set_trace()
     
     if plot == True:
         mc.simulation.predictions.plot_without_legends(loc_model, titlestring='Location_model')
@@ -2103,6 +2203,12 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
         result_dict['clocks'] = clo_model
         result_dict['state'] = stat_model
         result_dict['task_prog'] = task_prog_matrix
+    if split_clock == True:
+        # look up how to add an additional dictionary into a pre-existing one!
+        x = 3
+        # delete this!!!
+        
+        
     #['clocks', 'midnight', 'location', 'phase', 'state', 'task_prog']
     return result_dict
     # return loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat, task_prog_matrix

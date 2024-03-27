@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import pickle
 import sys
 
-#import pdb; pdb.set_trace()
+# import pdb; pdb.set_trace()
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -37,11 +37,11 @@ task_halves = ['1', '2']
 # RDM 06 
 # models_I_want = ['reward_midnight', 'reward_clocks', 'state', 'task_prog']
 # RDM 07
-# models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog', 'reward_location']
+# model s_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog', 'reward_location']
 # RDM 08
 # ??? (the model is using combination models (GLMs with several models in the do RSA script))
 # RDM 09 
-models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
+# models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
 # RDM 10 
 # models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
 # 09 or 09-9 or 999 or 9999
@@ -51,16 +51,20 @@ models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 
 # 11-1
 # models_I_want = ['instruction']
 
+# RDM 12 
+models_I_want = ['location', 'phase', 'phase_state', 'midnight', 'clocks', 'state', 'task_prog', 'reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
+
+
 # OK I BELIEVE THAT THE MAIN THING WORKS NOW.
 # BUUUUT I NEED TO NOT DO A CROSS- TASK CORRELATION. ALTHOUGH THIS ISNT' UP TO THIS SCRIPT I THINK BUT THE RSA ONE
 
-# 
+
 
 # RDM 11
 # models_I_want = ['instruction'] # 11 is only the instruction period, simply 0 and 1 distances.
 
 add_run_counts_model = False
-RDM_version = '09' 
+RDM_version = '12' 
 
 #09-9 is kind-of debugging: try RDM 09 with glm 07 but only include those tasks, where the reward location is the same twice (B and D)
 # 11-1 is the instruciton period but in a location model.
@@ -81,9 +85,10 @@ fmriplotting = False
 fmriplotting_debug = False
 fmri_save = True
 
-regression_version = '07' 
+regression_version = '06' 
 # 11 this is the instruction period only.
 # 08 is rewards only and without A (because of the visual feedback)
+# 06 is reward + path phase per task [80 EVs]
 #'04_pt01+_that_worked' 
 # make all paths relative and adjust to both laptop and server!!
       
@@ -334,19 +339,22 @@ for sub in subjects:
                     
                     # KEY STEP
                     # create all models.
-                    if RDM_version == '05':
-                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False)
+                    if RDM_version in ['05']:
+                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, split_clock = False)
                     elif RDM_version == '06':
                         result_model_dict =  mc.simulation.predictions.create_reward_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False)
                     elif RDM_version in ['07', '09', '10', '09-9']:
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True)
                     elif RDM_version == '11-1':
                         result_model_dict = mc.simulation.predictions.create_instruction_model(rew_list[config], trial_type=config)
+                    elif RDM_version in ['12']:
+                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, split_clock=True)
+                    
                     # elif RDM_version == '11':
                     #     result_model_dict = mc.analyse.analyse_MRI_behav.similarity_of_tasks(rew_list)
                     
                     # test if this function gives the same as the models you want, otherwise break!
-                    if RDM_version not in ['09','10','11', '09-9']:
+                    if RDM_version not in ['09','10','11', '09-9', '12']:
                         model_list = list(result_model_dict.keys())
                         if model_list != models_I_want:
                             print('careful! the model dictionary did not output your defined models!')
@@ -402,13 +410,14 @@ for sub in subjects:
                 if fmriplotting_debug:
                     plt.figure(); plt.imshow(regressors_matrix, aspect = 'auto')
                 
-                # import pdb; pdb.set_trace()    
+                import pdb; pdb.set_trace()    
                 # then do the ORDERED time-binning for each model - across the 5 repeats.
                 for model in all_models_dict:
                     if model == 'one_future_rew_loc':
                         print('yey')
                     if RDM_version == '11-1':
                         all_models_dict[model][config] = result_model_dict[model]
+                    # this might be wrong. This might need to be if RDM_version in ['09', '10', '09-9']:
                     elif model not in ['one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'addition_clock_model']:
                         all_models_dict[model][config] = mc.simulation.predictions.transform_data_to_betas(repeats_model_dict[model], regressors_matrix)
 

@@ -34,8 +34,9 @@ import shutil
 
 # version = '08' # 08 is rewards only and without A (because of the visual feedback)
 #'07' # GLM number -> 07 is only button press and rewards. | new, better script is now 06. first GLM was 04. retrospectively, version '03' is location_EVs.
-version = '07' # 09 is the instruction period only.
-
+#version = '07' # 09 is the instruction period only.
+# 10 is only paths; 11 is only rewards as a stick function.
+version = '11'
 
 # plotting = True
 analyse_behav = False
@@ -70,10 +71,7 @@ for sub in subjects:
         
 
         # define and make paths
-        if version == '03':
-            EV_folder = f'{funcDir}/EVs_{version}_pt0{task_half}/'
-        elif version in ['06', '07', '08', '09']:
-            EV_folder = f'{funcDir}/EVs_{version}_pt0{task_half}/'
+        EV_folder = f'{funcDir}/EVs_{version}_pt0{task_half}/'
         if os.path.exists(EV_folder):
             print("careful, the EV folder does exist- there might be other EVs and thus not all files will be output correctly! Deleting dir.")
             shutil.rmtree(EV_folder)
@@ -238,7 +236,8 @@ for sub in subjects:
                 
                 
             
-        if version in ['06','07','08']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward
+        if version in ['06','07','08','10','11']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward
+            # 10 is only paths
             # identify where the next task begins by iterating through the DataFrame 
             # and collecting the indices where the column is not empty
             index_next_task = []
@@ -296,45 +295,41 @@ for sub in subjects:
             # e.g. for 06 I want 80 EVs in the end -> 160 elements in the dictionary (duration + onset)
             for i, task in enumerate(task_names):
                 for s, state in enumerate(state_names):
-                    EV_rewardname_onset = f"{task}_{state}_reward_onset"
-                    EV_rewardname_dur = f"{task}_{state}_reward_dur"
-                    if version == '06': # inlude subpaths
+                    if version in ['07', '06','11']:
+                        EV_rewardname_onset = f"{task}_{state}_reward_onset"
+                        EV_rewardname_dur = f"{task}_{state}_reward_dur"
+                    if version in ['06', '10']: # inlude subpaths
                         EV_subpathname_onset = f"{task}_{state}_subpath_onset"
                         EV_subpathname_dur = f"{task}_{state}_subpath_dur"
 
                     partial_df = df[((df['config_type'] == task) & (df['state'] == state))]
-                    taskEV_dic[EV_rewardname_onset] = partial_df['reward_onset'].dropna().to_list()
-                    taskEV_dic[EV_rewardname_dur] = partial_df['reward_duration'].dropna().to_list()
-                    if version == '06': #include subpaths
+                    if version in ['07', '06','11']:
+                        taskEV_dic[EV_rewardname_onset] = partial_df['reward_onset'].dropna().to_list()
+                        # I will change the duration of all rewards to 500ms, so that all regressors will be equally long.
+                        if version in ['07', '06']:
+                            taskEV_dic[EV_rewardname_dur] = partial_df['reward_duration'].dropna().to_list()
+                        elif version in ['11']:
+                            taskEV_dic[EV_rewardname_dur] = np.ones(len(taskEV_dic[EV_rewardname_onset])) * 0.5
+                        mag_reward = np.ones(len(taskEV_dic[EV_rewardname_onset]))
+                        # if len(mag_reward) < 3:
+                        #     print(f"Careful! {task} x {state} reward is not complete and will be excluded.")
+                        #     excluded = excluded + 1
+                        #     continue
+                        reward_EV = mc.analyse.analyse_MRI_behav.create_EV(taskEV_dic[f"{task}_{state}_reward_onset"], taskEV_dic[f"{task}_{state}_reward_dur"], mag_reward, f"{task}_{state}_reward", EV_folder, first_TR_at)
+                        deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(reward_EV)
+                        if deleted_x_rows > 0:
+                            print(f"careful! I am saving a cutted EV {task}{state} reward file. Happened for subject {sub} in task half {task_half}")
+                            np.savetxt(str(EV_folder) + 'ev_' + f"{task}_{state}_reward" + '.txt', array, delimiter="    ", fmt='%f')
+                        
+                    if version in ['06', '10']: #include subpaths
                         taskEV_dic[EV_subpathname_onset] = partial_df['subpath_onset'].dropna().to_list()
                         taskEV_dic[EV_subpathname_dur] = partial_df['subpath_dur_without_rew'].dropna().to_list()
-                    
-                    # I need a stratgey for this on how to include empty regressors.
-                    # in the future: only include those regressors that actually have more than 2 activations.
-                    # excluded = 0
-                    # for i, task in enumerate(task_names):
-                    #     for s, state in enumerate(state_names):
-                        
-                    mag_reward = np.ones(len(taskEV_dic[f"{task}_{state}_reward_onset"]))
-                    # if len(mag_reward) < 3:
-                    #     print(f"Careful! {task} x {state} reward is not complete and will be excluded.")
-                    #     excluded = excluded + 1
-                    #     continue
-                    reward_EV = mc.analyse.analyse_MRI_behav.create_EV(taskEV_dic[f"{task}_{state}_reward_onset"], taskEV_dic[f"{task}_{state}_reward_dur"], mag_reward, f"{task}_{state}_reward", EV_folder, first_TR_at)
-                    if version == '06': #include subpaths
                         mag_subpath = np.ones(len(taskEV_dic[f"{task}_{state}_subpath_onset"]))
                         # if len(mag_subpath) < 3:
                         #     print(f"Careful! {task} x {state} subpath and reward is not complete and will be excluded.")
                         #     excluded = excluded + 2 # bc reward will also be exluded
                         #     continue
                         subpath_EV = mc.analyse.analyse_MRI_behav.create_EV(taskEV_dic[f"{task}_{state}_subpath_onset"], taskEV_dic[f"{task}_{state}_subpath_dur"], mag_subpath, f"{task}_{state}_path", EV_folder, first_TR_at)
-                           
-                    deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(reward_EV)
-                    if deleted_x_rows > 0:
-                        print(f"careful! I am saving a cutted EV {task}{state} reward file. Happened for subject {sub} in task half {task_half}")
-                        np.savetxt(str(EV_folder) + 'ev_' + f"{task}_{state}_reward" + '.txt', array, delimiter="    ", fmt='%f')
-                    
-                    if version == '06': #include subpaths
                         deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(subpath_EV)
                         if deleted_x_rows > 0:
                             print(f"careful! I am saving a cutted EV {task}{state} subpath file. Happened for subject {sub} in task half {task_half}")
@@ -345,7 +340,7 @@ for sub in subjects:
                 pickle.dump(taskEV_dic, f)
      
         # then, lastly, adjust the .fsf file I will use for the regression.
-        if version in ['06','07','08','09']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward, 09 is instruction period
+        if version in ['06','07','08','09', '10','11']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward, 09 is instruction period
             # collect all filepaths I just created.
             # this is a bit risky in case there have been other EVs in there that I didnt want...
             # optimise if you have time!
