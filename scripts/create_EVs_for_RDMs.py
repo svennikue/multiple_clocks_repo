@@ -14,7 +14,17 @@ making sure to order the EVs correctly.
 
 06.12.2023: version 06 for RDM GLM. TR is different, made the script nicer. Everything else should be the same. 
 
-@author: Svenja KUechenhoff
+GLM settings (creating the 'bins'):
+    03 was location_EVs. (very long back)
+    06 is reward + path phase per task [80 EVs] new, better script is now 06 #'04_pt01+_that_worked' 
+    07 is only button press and rewards.
+    08 is rewards only and without A (because of the visual feedback)
+    09 is the instruction period only.
+    10 is only paths
+    11 is only rewards as a stick function
+    
+
+@author: Svenja Küchenhoff, 2024
 """
 
 

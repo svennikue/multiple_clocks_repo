@@ -2013,7 +2013,6 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
             midnight_model_subpath = np.repeat(loc_rew_matrix, repeats = no_phase_neurons, axis = 0)
         # if this filter is on, there will only be 'bumps' for those rings that are not at a reward (at the path)
         elif only_path == True:
-            import pdb; pdb.set_trace()
             # 0 all non-path neurons!
             path_mask = np.append(np.ones(len(fields_path)-1),0)
             path_mask = np.repeat(path_mask, repeats = temporal_resolution)
@@ -2063,7 +2062,7 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     
     # if you also want a split clock, then prepare those as well as a dicitonary
     if split_clock == True:  
-        split_clock_strings = ['curr_path_split_cl_prep', 'one_fut_path_split_cl_prep', 'two_fut_path_split_cl_prep', 'three_fut_path_split_cl_prep']
+        split_clock_strings = ['curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock']
         split_clock_model_dict = {}
         for model in split_clock_strings:
             # length of the future clock model will be 3x midnight: predicting the subpaths, not only the reward.
@@ -2089,10 +2088,10 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
             shifted_adjusted_clock = shifted_clock.copy()*firing_factor
             # before 0ing out the first row (= musicboxneuron), first save the specific rows (i.e. now, next future, 2 future, 3 future) in the split clocks model.
             if split_clock == True:
-                split_clock_model_dict['curr_path_split_cl_prep'][row*3:row*3+3, :] = shifted_adjusted_clock[0:3] + split_clock_model_dict['three_fut_path_split_cl_prep'][row*3:row*3+3, :]
-                split_clock_model_dict['one_fut_path_split_cl_prep'][row*3:row*3+3, :] = shifted_adjusted_clock[3:6] + split_clock_model_dict['three_fut_path_split_cl_prep'][row*3:row*3+3, :]
-                split_clock_model_dict['two_fut_path_split_cl_prep'][row*3:row*3+3, :] = shifted_adjusted_clock[6:9] + split_clock_model_dict['three_fut_path_split_cl_prep'][row*3:row*3+3, :]
-                split_clock_model_dict['three_fut_path_split_cl_prep'][row*3:row*3+3, :] = shifted_adjusted_clock[9:] + split_clock_model_dict['three_fut_path_split_cl_prep'][row*3:row*3+3, :]
+                split_clock_model_dict['curr_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[0:3] + split_clock_model_dict['three_fut_rings_split_clock'][row*3:row*3+3, :]
+                split_clock_model_dict['one_fut_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[3:6] + split_clock_model_dict['three_fut_rings_split_clock'][row*3:row*3+3, :]
+                split_clock_model_dict['two_fut_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[6:9] + split_clock_model_dict['three_fut_rings_split_clock'][row*3:row*3+3, :]
+                split_clock_model_dict['three_fut_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[9:] + split_clock_model_dict['three_fut_rings_split_clock'][row*3:row*3+3, :]
                 
             # then, for the full clock model, add the values to the existing clocks, but also replace the first row by 0!!
             shifted_adjusted_clock[0] = np.zeros((len(shifted_adjusted_clock[0])))
@@ -2121,7 +2120,6 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     
     if split_clock == True:
         result_dict.update(split_clock_model_dict)
-        import pdb; pdb.set_trace()
         
     # if only_rew == True:
     #     result_dict['midn_model'] = midn_model

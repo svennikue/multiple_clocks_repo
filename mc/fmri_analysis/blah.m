@@ -1,3 +1,4 @@
+% this is tim's lesson in regressions: matrix multiplication method.
 
 for i=1:100
 x1=randn(100,1);

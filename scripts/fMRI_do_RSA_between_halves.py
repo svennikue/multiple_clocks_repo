@@ -5,8 +5,32 @@ Created on Tue Oct 31 15:25:52 2023
 
 create fMRI data RDMs
 
-
-@author: xpsy1114
+RDM settings (creating the representations):
+    02 was for the transfer of status report. It evolved from here.
+    03 is teporal resolution = 1
+    04 is another try of bringing the results back...
+    05 is both task halves combined, with clocks, midnight, phase, state, loc model.
+    06 is both task halves combined, with the reduced midnight and clocks: only coding for rewards, and only considering reward times
+    07 is the second version of having midnight/clocks but only at reward locations: by 0-ing all non-reward ones
+    08 is using combination models (GLMs with several models in the do RSA script)
+    09 is looking at the split musicbox, when only reward locations are coded for.
+    09-9 is kind-of debugging: try RDM 09 with glm 07 but only include those tasks, where the reward location is the same twice (B and D)
+    999 is debugging: using 09 - reward locations and future rew model; but EVs are scrambled.
+    9999 is debugging 2.0: using 09 - reward locations and future rew model; but the voxels are scrambled.
+    10 is like 09, so rewards only and the split musicbox models as well, but excluding the state A (because of the visual feedback) 
+    11 is only the instruction period, simply 0 and 1 distances
+    11-1 is the instruciton period but in a location model: are the location-sequences similar
+    
+GLM settings (creating the 'bins'):
+    03 was location_EVs. (very long back)
+    06 is reward + path phase per task [80 EVs] new, better script is now 06 #'04_pt01+_that_worked' 
+    07 is only button press and rewards.
+    08 is rewards only and without A (because of the visual feedback)
+    09 is the instruction period only.
+    10 is only paths
+    11 is only rewards as a stick function
+    
+@author: Svenja Küchenhoff, 2024
 """
 
 
@@ -68,7 +92,7 @@ elif RDM_version in ['09','999', '9999', '09-9']:
     models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
 elif RDM_version == '10':
     models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
-elif RDM_version == '11':
+elif RDM_version in ['11', '11-1']:  # 11 doesnt work yet! 
     models_I_want = ['instruction'] 
 
 regression_version = '07' 
