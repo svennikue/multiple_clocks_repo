@@ -5,16 +5,19 @@ Created on Tue Oct 31 15:25:52 2023
 
 create fMRI data RDMs
 
-RDM settings (creating the representations):
-01 -> instruction periods, similarity by order of execution, order of seeing, all backw presentations
-01-1 -> instruction periods, location similarity
-02 -> modelling paths + rewards, creating all possible models
-03 -> modelling only rewards + splitting model in the same function.
-03-1 -> modelling only rewards + splitting the model after regression 
-03-2 -> same as 03-1 but only considering task D and B (where 2 rew locs are the same)
-03-3 -> same as 03-1 but only considering B,C,D [excluding rew A] -> important to be paired with GLM 03-3!
-04 -> modelling only paths
+28.03.: I am changing something in the preprocessing. This is THE day to change the naming such that it all works well :)
 
+RDM settings (creating the representations):
+    01 -> instruction periods, similarity by order of execution, order of seeing, all backw presentations
+    01-1 -> instruction periods, location similarity
+    02 -> modelling paths + rewards, creating all possible models
+    03 -> modelling only rewards + splitting model in the same function.
+    03-1 -> modelling only rewards + splitting the model after regression 
+    03-2 -> same as 03-1 but only considering task D and B (where 2 rew locs are the same)
+    03-3 -> same as 03-1 but only considering B,C,D [excluding rew A] -> important to be paired with GLM 03-3!
+    03-99 ->  using 03-1 - reward locations and future rew model; but EVs are scrambled.
+    03-999 ->  is debugging 2.0: using 03-1 - reward locations and future rew model; but the voxels are scrambled.
+    04 -> modelling only paths
 
 
 GLM ('regression') settings (creating the 'bins'):
@@ -23,36 +26,8 @@ GLM ('regression') settings (creating the 'bins'):
     03 - 40 regressors; for every tasks, only the rewards are modelled [using a stick function]
     03-2 - 40 regressors; for every task, only the rewards are modelled (in their original time)
     03-3 - 30 regressors; for every task, only the rewards are modelled (in their original time), except for A (because of visual feedback)
-    03 - 40 regressors; for every task, only the paths are modelled
-    04 - locations + button presses 
-    
-
-OLD!!!
-
-RDM settings (creating the representations):
-    02 was for the transfer of status report. It evolved from here.
-    03 is teporal resolution = 1
-    04 is another try of bringing the results back...
-    05 is both task halves combined, with clocks, midnight, phase, state, loc model.
-    06 is both task halves combined, with the reduced midnight and clocks: only coding for rewards, and only considering reward times
-    07 is the second version of having midnight/clocks but only at reward locations: by 0-ing all non-reward ones
-    08 is using combination models (GLMs with several models in the do RSA script)
-    09 is looking at the split musicbox, when only reward locations are coded for.
-    09-9 is kind-of debugging: try RDM 09 with glm 07 but only include those tasks, where the reward location is the same twice (B and D)
-    999 is debugging: using 09 - reward locations and future rew model; but EVs are scrambled.
-    9999 is debugging 2.0: using 09 - reward locations and future rew model; but the voxels are scrambled.
-    10 is like 09, so rewards only and the split musicbox models as well, but excluding the state A (because of the visual feedback) 
-    11 is only the instruction period, simply 0 and 1 distances
-    11-1 is the instruciton period but in a location model: are the location-sequences similar
-    
-GLM settings (creating the 'bins'):
-    03 was location_EVs. (very long back)
-    06 is reward + path phase per task [80 EVs] new, better script is now 06 #'04_pt01+_that_worked' 
-    07 is only button press and rewards.
-    08 is rewards only and without A (because of the visual feedback)
-    09 is the instruction period only.
-    10 is only paths
-    11 is only rewards as a stick function
+    04 - 40 regressors; for every task, only the paths are modelled
+    05 - locations + button presses 
     
 @author: Svenja Küchenhoff, 2024
 """
@@ -62,7 +37,6 @@ from tqdm import tqdm
 import numpy as np
 import nibabel as nib
 import os
-import re
 import rsatoolbox.rdm as rsr
 import rsatoolbox
 from rsatoolbox.util.searchlight import get_volume_searchlight, get_searchlight_RDMs
@@ -73,73 +47,63 @@ import mc
 import pickle
 import sys
 import random
-import shutil
-from datetime import datetime
 
-# import pdb; pdb.set_trace()  
+RDM_version = '09' 
+regression_version = '07' 
 
+
+# import pdb; pdb.set_trace() 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
     subj_no = '01'
 
 subjects = [f"sub-{subj_no}"]
+#subjects = ['sub-01']
+
 load_old = False
 visualise_RDMs = False
 
-#subjects = ['sub-01']
+
 task_halves = ['1', '2']
-RDM_version = '09' 
-
-# 11 is only the instruction period, simply 0 and 1 distances.
-# 10 is like 09 but leaving out the A-State.
-# 9999 is debugging 2.0 - using 09 - reward locations and future rew model; but the voxels are scrambled.
-# 999 is debugging: using 09 - reward locations and future rew model; but EVs are scrambled.
-# 09-9 is kind-of debugging: try RDM 09 with glm 07 but only include those tasks, where the reward location is the same twice (B and D)
-# 09 is reward location and future reward location.
-# 07 is the reward based model -> 7 and 6 are a bit redundant
-# 06 is both task halves combined and only looking at reward times. -> 7 and 6 are a bit redundant
-# RDM_version = '05' # 05 is both task halves combined
-# 04 is another try to bring the results back...'03' # 03 is teporal resolution = 1. 02 is for the report.
-
-# models_I_want = ['reward_midnight', 'reward_clocks', 'state', 'task_prog']
-
-if RDM_version == '05': 
-    models_I_want = ['location', 'phase', 'phase_state', 'midnight', 'clocks', 'state', 'task_prog']
-elif RDM_version == '06':
-    models_I_want = ['reward_midnight', 'reward_clocks', 'state', 'task_prog']
-elif RDM_version == '07':
-    models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog']
-elif RDM_version == '08':
-    models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog']
-elif RDM_version in ['09','999', '9999', '09-9']:
-    models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
-elif RDM_version == '10':
-    models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
-elif RDM_version in ['11', '11-1']:  # 11 doesnt work yet! 
-    models_I_want = ['instruction'] 
-
-regression_version = '07' 
-# 09 is the instruction period only.
-# 08 is rewards only and without A (because of the visual feedback)
-# 07 is only button press and rewards.
-# regression_version = '06' new, better script is now 06 #'04_pt01+_that_worked' 
-# make all paths relative and adjust to both laptop and server!!
-no_RDM_conditions = 80
 
 print(f"Now running RSA for RDM version {RDM_version} based on subj GLM {regression_version} for subj {subj_no}")
 
-if regression_version == '09':
-    no_RDM_conditions = 10
-    
-if regression_version == '07':
-    no_RDM_conditions = 40
-    
-if RDM_version == '09-9':
+
+if RDM_version in ['01', '01-1']: # 01 doesnt work yet! 
+    models_I_want = ['instruction']
+
+elif RDM_version in ['02']: #modelling paths + rewards, creating all possible models 
+    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight', 'clocks']
+
+elif RDM_version in ['03']: # modelling only rewards, splitting clocks within the same function
+    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew']
+elif RDM_version in ['03-1', '03-2']:  # modelling only rewards, splitting clocks later in a different way - after the regression.
+    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
+elif RDM_version in ['03-3']:  # modelling only rewards, splitting clocks later in a different way - after the regression; ignoring reward A
+    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc']
+elif RDM_version in ['03-99']:  # using 03-1 - reward locations and future rew model; but EVs are scrambled.
+    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
+elif RDM_version in ['03-999']:  # is debugging 2.0: using 03-1 - reward locations and future rew model; but the voxels are scrambled.
+    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
+
+elif RDM_version in ['04']: # only paths. to see if the human brain represents also only those rings anchored at no-reward locations
+    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_no-rew', 'clocks_no-rew']
+      
+# based on GLM
+if regression_version == '01':
+    no_RDM_conditions = 10 # including all instruction periods
+elif regression_version == '02':
+    no_RDM_conditions = 80 # including all paths and rewards
+elif regression_version in ['03', '04']:
+    no_RDM_conditions = 40 # only including rewards or only paths
+elif regression_version == '03-3': #excluding reward A
+    no_RDM_conditions = 30
+  
+# based on RDM
+elif RDM_version == '03-2': # only including task D and B and only rewards
     no_RDM_conditions = 16
     
-elif regression_version == '08':
-    no_RDM_conditions = 30
 
 
     
@@ -150,7 +114,6 @@ for sub in subjects:
     else:
         data_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}"
         print(f"Running on Cluster, setting {data_dir} as data directory")
-       
     RDM_dir = f"{data_dir}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
     if not os.path.exists(RDM_dir):
         os.makedirs(RDM_dir)
@@ -215,8 +178,8 @@ for sub in subjects:
             data_RDM_file[task_half] = [None] * no_RDM_conditions  # Initialize a list
             image_paths = [None] * no_RDM_conditions
             
-            # if debug mode, scramble randomly
-            if RDM_version == '999':
+            
+            if RDM_version == '03-99': # if debug mode, scramble EVs randomly
                 random_index = list(range(1, no_RDM_conditions+1))
                 random.shuffle(random_index)
                 for reg_index in range(0, no_RDM_conditions):
@@ -226,9 +189,9 @@ for sub in subjects:
                 print(f"This is the order now: {image_paths}")
             
             # only take those that start with D or B. Use the file you created in create_EVs_for_RDMs to be sure.
-            if RDM_version == '09-9':
+            if RDM_version == '03-2':
                 RDM_conditions = []
-                with open(f"{data_dir}/func/EVs_07_pt0{task_half}/task-to-EV.txt", 'r') as file:
+                with open(f"{data_dir}/func/EVs_{RDM_version}_pt0{task_half}/task-to-EV.txt", 'r') as file:
                     for line in file:
                         index, name = line.strip().split(' ', 1)
                         if name.startswith('ev_B') or name.startswith('ev_D'):
@@ -250,7 +213,7 @@ for sub in subjects:
             # reshape data so we have n_observations x n_voxels
             data_RDM_file_2d[task_half] = data_RDM_file[task_half].reshape([data_RDM_file[task_half].shape[0], -1])
             data_RDM_file_2d[task_half] = np.nan_to_num(data_RDM_file_2d[task_half]) # now this is 80timepoints x 746.496 voxels
-            if RDM_version == '9999':
+            if RDM_version == '03-999': # scramble voxels randomly
                 data_RDM_file_1d[task_half] = data_RDM_file_2d[task_half].flatten()
                 np.random.shuffle(data_RDM_file_1d[task_half]) #shuffle all voxels randomly
                 data_RDM_file_2d[task_half] = data_RDM_file_1d[task_half].reshape(data_RDM_file_2d[task_half].shape) # and reshape
@@ -272,12 +235,13 @@ for sub in subjects:
     # load the data files I created.
     data_dirs = {}
     for model in models_I_want:
-        if RDM_version in ['999', '9999']:
-            RDM_dir = f"{data_dir}/beh/RDMs_09_glmbase_{regression_version}"
+        if RDM_version in ['999', '9999']: # potentially delete?? this is now 03-99 nd 03-999
+            RDM_dir = f"{data_dir}/beh/RDMs_09_glmbase_{regression_version}" # potentially delete??
         data_dirs[model]= np.load(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves.npy")) 
     
 
-    # step 3: create model RDMs.
+    # step 3: create model RDMs
+    # first, each model gets its own, separate estimation.
     model_RDM_dir = {}
     RDM_my_model_dir = {}
     for model in data_dirs:
@@ -290,7 +254,16 @@ for sub in subjects:
         RDM_my_model_dir[model] = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(model_model, d) for d in tqdm(data_RDM, desc=f"running GLM for all searchlights in {model}"))
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_model_dir[model], data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
        
-
+    # second, if I am interested in combo-models, write them here!
+    # think about this, but I believe I can write the same combo functions for different RDMs!
+    # I am basically interested in the same models, except for the small differences how I split the clocks; and if there are less rewards of course (for the one leaving A out)
+    # also I called the clock and musicbox differently depending on if I model the whole clocks, or only reward rings, or only no-reward rings.
+    # but, what I am interested in is always: 
+        # combo clocks with midnight, phase, state and location included
+        # combo split clocks with now, one future, two future, [three future]
+        
+    # CONTINUE HERE!!!
+    
     if RDM_version == '05': 
         
         clocks_midn_states_loc_ph_RDM = rsatoolbox.rdm.concat(model_RDM_dir['clocks'], model_RDM_dir['midnight'], model_RDM_dir['state'], model_RDM_dir['location'], model_RDM_dir['phase'])

@@ -7,7 +7,7 @@ from the behavioural files I collected in the experiment, extract behaviour
 and use behavioural data to model simulations for the model RDMs. Finally, bin the
 simulations according to the GLM I am using for the fMRI data.
 
-28.03.: I am changing something in the preprocessing. This is THE change to change the naming such that it all works well :)
+28.03.: I am changing something in the preprocessing. This is THE day to change the naming such that it all works well :)
 
 RDM settings (creating the representations):
     01 -> instruction periods, similarity by order of execution, order of seeing, all backw presentations
@@ -17,6 +17,8 @@ RDM settings (creating the representations):
     03-1 -> modelling only rewards + splitting the model after regression 
     03-2 -> same as 03-1 but only considering task D and B (where 2 rew locs are the same)
     03-3 -> same as 03-1 but only considering B,C,D [excluding rew A] -> important to be paired with GLM 03-3!
+    03-99 ->  using 03-1 - reward locations and future rew model; but EVs are scrambled.
+    03-999 ->  is debugging 2.0: using 03-1 - reward locations and future rew model; but the voxels are scrambled.
     04 -> modelling only paths
 
 
