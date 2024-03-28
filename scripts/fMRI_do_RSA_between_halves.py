@@ -6,6 +6,30 @@ Created on Tue Oct 31 15:25:52 2023
 create fMRI data RDMs
 
 RDM settings (creating the representations):
+01 -> instruction periods, similarity by order of execution, order of seeing, all backw presentations
+01-1 -> instruction periods, location similarity
+02 -> modelling paths + rewards, creating all possible models
+03 -> modelling only rewards + splitting model in the same function.
+03-1 -> modelling only rewards + splitting the model after regression 
+03-2 -> same as 03-1 but only considering task D and B (where 2 rew locs are the same)
+03-3 -> same as 03-1 but only considering B,C,D [excluding rew A] -> important to be paired with GLM 03-3!
+04 -> modelling only paths
+
+
+
+GLM ('regression') settings (creating the 'bins'):
+    01 - instruction EVs
+    02 - 80 regressors; every task is divided into 4 rewards + 4 paths
+    03 - 40 regressors; for every tasks, only the rewards are modelled [using a stick function]
+    03-2 - 40 regressors; for every task, only the rewards are modelled (in their original time)
+    03-3 - 30 regressors; for every task, only the rewards are modelled (in their original time), except for A (because of visual feedback)
+    03 - 40 regressors; for every task, only the paths are modelled
+    04 - locations + button presses 
+    
+
+OLD!!!
+
+RDM settings (creating the representations):
     02 was for the transfer of status report. It evolved from here.
     03 is teporal resolution = 1
     04 is another try of bringing the results back...

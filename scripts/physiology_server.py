@@ -14,16 +14,22 @@ import sys
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '07'
+    subj_no = '01'
 
 subjects = [f"sub-{subj_no}"]
 load_old = False
 visualise_RDMs = False
 
 
-for sub in subjects:
-    data_dir = f"/home/fs0/xpsy1114/scratch/data/pilot/{sub}/motion"
-    output_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}/motion"
+for sub in subjects:   
+    data_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/pilot/{sub}/motion"
+    output_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/motion"
+    
+    if os.path.isdir(data_dir):
+            print("Running on laptop.")
+    else:
+        data_dir = f"/home/fs0/xpsy1114/scratch/data/pilot/{sub}/motion"
+        output_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}/motion"
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     physio_file = f"{data_dir}/{sub}_physio_no_header.txt"

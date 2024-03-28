@@ -12,6 +12,18 @@ it should create and give the GLM a version number.
 It saves EV files for FEAT, as well as an .fsf file that can be used as an input for the EVs,
 making sure to order the EVs correctly.
 
+NEW:
+GLM ('regression') settings (creating the 'bins'):
+    01 - instruction EVs
+    02 - 80 regressors; every task is divided into 4 rewards + 4 paths
+    03 - 40 regressors; for every tasks, only the rewards are modelled [using a stick function]
+    03-2 - 40 regressors; for every task, only the rewards are modelled (in their original time)
+    03-3 - 30 regressors; for every task, only the rewards are modelled (in their original time), except for A (because of visual feedback)
+    04 - 40 regressors; for every task, only the paths are modelled
+    05 - locations + button presses 
+    
+
+OLD
 06.12.2023: version 06 for RDM GLM. TR is different, made the script nicer. Everything else should be the same. 
 
 GLM settings (creating the 'bins'):
@@ -46,22 +58,31 @@ import shutil
 #'07' # GLM number -> 07 is only button press and rewards. | new, better script is now 06. first GLM was 04. retrospectively, version '03' is location_EVs.
 #version = '07' # 09 is the instruction period only.
 # 10 is only paths; 11 is only rewards as a stick function.
-version = '11'
+version = '05'
 
 # plotting = True
-analyse_behav = False
-split_buttons = False
-
 # to debug task_halves = ['1']
+
+
+
 task_halves = ['1', '2']
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '01'
-    
+    subj_no = '02'
+
 # subjects = ['sub-07', 'sub-08', 'sub-09', 'sub-11', 'sub-12', 'sub-13', 'sub-14', 'sub-15', 'sub-16', 'sub-17', 'sub-18','sub-19', 'sub-20',  'sub-22', 'sub-23','sub-24']
 #subjects = ['sub-01']    
 subjects = [f"sub-{subj_no}"]
+
+    
+if version == '05':
+    split_buttons = True
+else:
+    split_buttons = False
+analyse_behav = True
+    
+
 
 for sub in subjects:
     for task_half in task_halves:
@@ -184,7 +205,7 @@ for sub in subjects:
             np.savetxt(str(EV_folder) + 'ev_' + 'press_EV' + '.txt', button_press_EV_to_save, delimiter="    ", fmt='%f')
         
         # import pdb; pdb.set_trace()
-        if version == '03':
+        if version == '05':
             # import pdb; pdb.set_trace()
             # # Location EVs.
             location_EVs_dict = {}
@@ -205,7 +226,7 @@ for sub in subjects:
  
         
  
-        if version == '09':
+        if version == '01': # instruction
             # extract the timings of where a task has ended: t_reward_afterwait & repeat == '4' 
             # + 3.5 reward text + instruction period lasts 12 seconds; 
             # so t_reward_afterwait + 3.5 rew + 12 sec should be ca. start_ABCD screen
@@ -246,7 +267,7 @@ for sub in subjects:
                 
                 
             
-        if version in ['06','07','08','10','11']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward
+        if version in ['02', '03', '03-2', '03-3', '04']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward
             # 10 is only paths
             # identify where the next task begins by iterating through the DataFrame 
             # and collecting the indices where the column is not empty
@@ -298,28 +319,27 @@ for sub in subjects:
             task_names = df['config_type'].dropna().unique().tolist()
             state_names = df['state'].dropna().unique().tolist()
             
-            if version == '08': # without the A-state because of visual feedback
+            if version == '03-3': # without the A-state because of visual feedback
                 state_names.remove('A')
                     
             taskEV_dic = {}
             # e.g. for 06 I want 80 EVs in the end -> 160 elements in the dictionary (duration + onset)
             for i, task in enumerate(task_names):
                 for s, state in enumerate(state_names):
-                    if version in ['07', '06','11']:
+                    if version in ['02', '03', '03-3', '03-2']:
                         EV_rewardname_onset = f"{task}_{state}_reward_onset"
                         EV_rewardname_dur = f"{task}_{state}_reward_dur"
-                    if version in ['06', '10']: # inlude subpaths
+                    if version in ['02', '04']: # inlude subpaths
                         EV_subpathname_onset = f"{task}_{state}_subpath_onset"
                         EV_subpathname_dur = f"{task}_{state}_subpath_dur"
 
                     partial_df = df[((df['config_type'] == task) & (df['state'] == state))]
-                    if version in ['07', '06','11']:
+                    if version in ['02', '03', '03-2', '03-3']:
                         taskEV_dic[EV_rewardname_onset] = partial_df['reward_onset'].dropna().to_list()
-                        # I will change the duration of all rewards to 500ms, so that all regressors will be equally long.
-                        if version in ['07', '06']:
-                            taskEV_dic[EV_rewardname_dur] = partial_df['reward_duration'].dropna().to_list()
-                        elif version in ['11']:
+                        if version in ['02', '03']: # reward as stick-function: duration of all rewards to 500ms -> all regressors will be equally long.
                             taskEV_dic[EV_rewardname_dur] = np.ones(len(taskEV_dic[EV_rewardname_onset])) * 0.5
+                        elif version in ['03-2', '03-3']:
+                            taskEV_dic[EV_rewardname_dur] = partial_df['reward_duration'].dropna().to_list()  
                         mag_reward = np.ones(len(taskEV_dic[EV_rewardname_onset]))
                         # if len(mag_reward) < 3:
                         #     print(f"Careful! {task} x {state} reward is not complete and will be excluded.")
@@ -331,7 +351,7 @@ for sub in subjects:
                             print(f"careful! I am saving a cutted EV {task}{state} reward file. Happened for subject {sub} in task half {task_half}")
                             np.savetxt(str(EV_folder) + 'ev_' + f"{task}_{state}_reward" + '.txt', array, delimiter="    ", fmt='%f')
                         
-                    if version in ['06', '10']: #include subpaths
+                    if version in ['02', '04']: #include subpaths
                         taskEV_dic[EV_subpathname_onset] = partial_df['subpath_onset'].dropna().to_list()
                         taskEV_dic[EV_subpathname_dur] = partial_df['subpath_dur_without_rew'].dropna().to_list()
                         mag_subpath = np.ones(len(taskEV_dic[f"{task}_{state}_subpath_onset"]))
@@ -350,7 +370,7 @@ for sub in subjects:
                 pickle.dump(taskEV_dic, f)
      
         # then, lastly, adjust the .fsf file I will use for the regression.
-        if version in ['06','07','08','09', '10','11']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward, 09 is instruction period
+        if version in ['01', '02', '03', '03-2', '03-3', '04', '05']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward, 09 is instruction period
             # collect all filepaths I just created.
             # this is a bit risky in case there have been other EVs in there that I didnt want...
             # optimise if you have time!

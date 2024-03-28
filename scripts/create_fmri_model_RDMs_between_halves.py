@@ -7,56 +7,27 @@ from the behavioural files I collected in the experiment, extract behaviour
 and use behavioural data to model simulations for the model RDMs. Finally, bin the
 simulations according to the GLM I am using for the fMRI data.
 
-RDM settings (creating the representations):
-    
-    right. so actually, all RDM versions that are taken rn are:
-        02 -> modelling only reward rings, new way of model splitting.
-        03 -> modelling only no-reward rings, new way of model splitting.
-        05 -> default RDM, modelling everything
-        09 -> RDM only modelling rewards, different way of model splitting (after regression), and some debugging modes
-        10 -> like 09, but only including the tasks with 2 same reward locations.
-        11 -> instruction periods.
-    
-    02 [new] is model only the rewards, and split the clocks in the same function; this result should be the same as RDM 09
-    03 [new] is to see if the human brain represents also only those rings anchored at no-reward locations; splitting the clocks in the same function
-    
-    02 was for the transfer of status report. It evolved from here.
-    03 is teporal resolution = 1
-    04 is another try of bringing the results back...
-    05 is both task halves combined, with clocks, midnight, phase, state, loc model. default, modelling all and splitting clocks
-    
-    # DELELTE 06 -> replace with something new
-    06 is both task halves combined, with the reduced midnight and clocks: only coding for rewards, and only considering reward times
-        this might have been different in the past, but I didn't pull through with it anyways.
-        now, 06 is now kind of redudant because it is the same as 05, but just the regression changes (representing both rew and paths in clock)
+28.03.: I am changing something in the preprocessing. This is THE change to change the naming such that it all works well :)
 
-    DELTE 07 -> replace with something new. Is redundant with 09!!   
-    07 is the second version of having midnight/clocks but only at reward locations: by 0-ing all non-reward ones
-        [modelling only clocks + splitting clocks later in different way]
-        
-        
-    DELETE 08 -> replace with something new.     
-    08 is using combination models (GLMs with several models in the do RSA script)
-    09 is looking at the split musicbox, when only reward locations are coded for.
-        [modelling only clocks + splitting clocks later in different way] -> are 7 and 9 redundant???
-    09-9 is kind-of debugging: try RDM 09 with glm 07 but only include those tasks, where the reward location is the same twice (B and D)
-    999 is debugging: using 09 - reward locations and future rew model; but EVs are scrambled.
-    9999 is debugging 2.0: using 09 - reward locations and future rew model; but the voxels are scrambled.
-    10 is like 09, so rewards only and the split musicbox models as well, but excluding the state A (because of the visual feedback) 
-        [modelling only clocks + splitting clocks later in different way]
-        # ok this is actually dependent on the glm. it's glm 08. delete this one!
-    11 is only the instruction period, simply 0 and 1 distances
-    11-1 is the instruciton period but in a location model: are the location-sequences similar
-    12 is modelling everything, including a split musicbox model of path + reward representations.
-    
+RDM settings (creating the representations):
+    01 -> instruction periods, similarity by order of execution, order of seeing, all backw presentations
+    01-1 -> instruction periods, location similarity
+    02 -> modelling paths + rewards, creating all possible models
+    03 -> modelling only rewards + splitting model in the same function.
+    03-1 -> modelling only rewards + splitting the model after regression 
+    03-2 -> same as 03-1 but only considering task D and B (where 2 rew locs are the same)
+    03-3 -> same as 03-1 but only considering B,C,D [excluding rew A] -> important to be paired with GLM 03-3!
+    04 -> modelling only paths
+
+
 GLM ('regression') settings (creating the 'bins'):
-    03 was location_EVs. (very long back)
-    06 is reward + path phase per task [80 EVs] new, better script is now 06 #'04_pt01+_that_worked' 
-    07 is only button press and rewards.
-    08 is rewards only and without A (because of the visual feedback)
-    09 is the instruction period only.
-    10 is only paths
-    11 is only rewards as a stick function
+    01 - instruction EVs
+    02 - 80 regressors; every task is divided into 4 rewards + 4 paths
+    03 - 40 regressors; for every tasks, only the rewards are modelled [using a stick function]
+    03-2 - 40 regressors; for every task, only the rewards are modelled (in their original time)
+    03-3 - 30 regressors; for every task, only the rewards are modelled (in their original time), except for A (because of visual feedback)
+    04 - 40 regressors; for every task, only the paths are modelled
+    05 - locations + button presses 
     
 
 @author: Svenja Küchenhoff, 2024
@@ -72,8 +43,8 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '09' 
-RDM_version = '11-1' 
+regression_version = '04' 
+RDM_version = '04' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -84,25 +55,46 @@ subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10
 
 task_halves = ['1', '2']
-fmriplotting = True
+fmriplotting = False
 fmriplotting_debug = False
 fmri_save = True
 
 add_run_counts_model = False # this doesn't work with the current analysis
 
-if RDM_version in ['02']: # 2 was still free. so use this to model only the rewards, and split the clocks in the same function.
-    # this result should be the same as RDM 09
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew']
-elif RDM_version in ['03']: # 3 was still free. to see if the human brain represents also only those rings anchored at no-reward locations
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_no-rew', 'clocks_no-rew']
-    
-elif RDM_version in ['05']:
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight', 'clocks']
-elif RDM_version in ['09','09-9', '999', '9999', '10']:  # delete 10 at some point
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
-    #models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
-elif RDM_version in ['11', '11-1']: # 11 doesnt work yet! 
+if RDM_version in ['01', '01-1']: # 01 doesnt work yet! 
     models_I_want = ['instruction']
+
+elif RDM_version in ['02']: #modelling paths + rewards, creating all possible models 
+    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight', 'clocks']
+
+elif RDM_version in ['03']: # modelling only rewards, splitting clocks within the same function
+    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew']
+elif RDM_version in ['03-1', '03-2']:  # modelling only rewards, splitting clocks later in a different way - after the regression.
+    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
+elif RDM_version in ['03-3']:  # modelling only rewards, splitting clocks later in a different way - after the regression; ignoring reward A
+    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc']
+elif RDM_version in ['03-99']:  # using 03-1 - reward locations and future rew model; but EVs are scrambled.
+    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
+elif RDM_version in ['03-999']:  # is debugging 2.0: using 03-1 - reward locations and future rew model; but the voxels are scrambled.
+    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
+
+elif RDM_version in ['04']: # only paths. to see if the human brain represents also only those rings anchored at no-reward locations
+    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_no-rew', 'clocks_no-rew']
+      
+ 
+# # THESE ARE OLD
+# elif RDM_version in ['02']: # 2 was still free. so use this to model only the rewards, and split the clocks in the same function.
+#     # this result should be the same as RDM 09
+#     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew']
+# elif RDM_version in ['03']: # 3 was still free. to see if the human brain represents also only those rings anchored at no-reward locations
+#     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_no-rew', 'clocks_no-rew']
+    
+# elif RDM_version in ['05']:
+#     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight', 'clocks']
+# elif RDM_version in ['09','09-9', '999', '9999', '10']:  # delete 10 at some point
+#     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
+#     #models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
+
 
 
 #elif RDM_version == '07':
@@ -305,7 +297,7 @@ for sub in subjects:
                         steps.insert(0, (subpath[0]- subpath_after_steps[config][r-1]))
                     steps_subpath_alltasks[config].append(steps)    
 
-        if RDM_version == '09-9':
+        if RDM_version == '03-2':
             configs = np.array([config for config in configs if config.startswith('D') or config.startswith('B')])
             
         # finally, create simulations and time-bin per run.
@@ -316,7 +308,7 @@ for sub in subjects:
             all_models_dict = {f"{model}": {key: "" for key in configs} for model in models_I_want}
         # and prepare the between-tasks dictionary.
         
-        if not RDM_version == '11':
+        if not RDM_version == '01':
             for config in configs:
                 # import pdb; pdb.set_trace()
                 print(f"the config is {rew_list[config]} for {config}")
@@ -356,21 +348,23 @@ for sub in subjects:
                     
                     # KEY STEP
                     # create all models.
-                    if RDM_version in ['02']: # modelling only rewards + splitting clocks [new]
-                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path = False, split_clock=True)
-                    elif RDM_version in ['03']: # modelling only paths + splitting clocks [new]
-                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path = True, split_clock=True)
-                    elif RDM_version in ['05', '06']: # default, modelling all and splitting clocks. probs delete 06 at some point
-                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path= False, split_clock = True)
-                    elif RDM_version in ['07', '09', '09-9','10']:# modelling only clocks + splitting clocks later in different way. prons delete 07 at some point.
-                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)
-                    elif RDM_version == '11':
+                    if RDM_version == '01':
                          result_model_dict = mc.analyse.analyse_MRI_behav.similarity_of_tasks(rew_list)
-                    elif RDM_version == '11-1': # creating location instruction stuff
+                    elif RDM_version == '01-1': # creating location instruction stuff
                         result_model_dict = mc.simulation.predictions.create_instruction_model(rew_list[config], trial_type=config)
+                    elif RDM_version in ['02']: # default, modelling all and splitting clocks.
+                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path= False, split_clock = True)
+                    elif RDM_version in ['03']: # modelling only rewards + splitting clocks [new]
+                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path = False, split_clock=True)
+                    elif RDM_version in ['03-1', '03-2', '03-3']:# modelling only clocks + splitting clocks later in different way.
+                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
+                    elif RDM_version in ['04']: # modelling only paths + splitting clocks [new]
+                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path = True, split_clock=True)
+                    
+
                     
                     # now for all models that are creating or not creating the splits models with my default function, this checking should work.
-                    if RDM_version not in ['07', '09', '09-9','10']:
+                    if RDM_version not in ['03-1', '03-2', '03-3']:
                         # test if this function gives the same as the models you want, otherwise break!
                         model_list = list(result_model_dict.keys())
                         if model_list != models_I_want:
@@ -411,11 +405,11 @@ for sub in subjects:
                     raise ValueError("All lists must have the same length.")
                 
                 # if not all regressors shall be included, filter them according to the regression setting.
-                if regression_version in ['07', '11']:
+                if regression_version in ['03', '03-2']:
                     regressors_curr_task = {k: v for k, v in regressors_curr_task.items() if k.endswith('reward')}
-                elif regression_version == '08': # additionally get rid of the A-state.
+                elif regression_version == '03-3' and RDM_version == '03-3': # additionally get rid of the A-state.
                     regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key}
-                elif regression_version == '10':
+                elif regression_version == '04':
                     regressors_curr_task = {k: v for k, v in regressors_curr_task.items() if k.endswith('path')}
                     
                 # sort alphabetically.
@@ -428,7 +422,7 @@ for sub in subjects:
                 
                 # then do the ORDERED time-binning for each model - across the 5 repeats.
                 for model in all_models_dict:
-                    if RDM_version == '11-1':
+                    if RDM_version == '01-1':
                         all_models_dict[model][config] = result_model_dict[model]
                     # run the regression on all simulated data, except for those as I have a different way of creating them:
                     elif model not in ['one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']:
@@ -437,11 +431,11 @@ for sub in subjects:
 
                 # once the regression took place, the location model is the same as the midnight model.
                 # thus, it will also be the same as predicting future rewards, if we rotate it accordingly!
-                if RDM_version in ['09', '10', '09-9']:
+                if RDM_version in ['03-1', '03-2', '03-3']:
                     # now do the rotating thing. 
                     all_models_dict['one_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -1, axis = 1) 
                     all_models_dict['two_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -2, axis = 1) 
-                    if RDM_version in ['09', '09-9']:
+                    if RDM_version in ['03-1', '03-2']:
                         all_models_dict['three_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -3, axis = 1) 
 
           
@@ -452,7 +446,7 @@ for sub in subjects:
         configs_dict[task_half] = rew_list
         
         # concatenate the model simulations of all tasks in the same order.
-        if not RDM_version == '11':
+        if not RDM_version == '01':
             for model in all_models_dict:
                 if model == 'reward_midnight_count': # this can probably go at some point
                     models_between_tasks[model][task_half] = np.concatenate([all_models_dict[model][key] for key in model_dict_sorted_keys])
@@ -461,7 +455,7 @@ for sub in subjects:
                 # THEN DO IT ALL AGAIN FOR THE NEXT TASK HALF
             
     # this one has to be done between task halves, so it's outside of this loop.
-    if RDM_version == '11': # I have to work on this one further for the replay analysis (temporal + spatial)
+    if RDM_version == '01': # I have to work on this one further for the replay analysis (temporal + spatial)
         models_between_tasks = mc.analyse.analyse_MRI_behav.similarity_of_tasks(configs_dict)
     
         
