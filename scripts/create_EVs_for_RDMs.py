@@ -53,16 +53,10 @@ import shutil
 
 #import pdb; pdb.set_trace()
 
-
-# version = '08' # 08 is rewards only and without A (because of the visual feedback)
-#'07' # GLM number -> 07 is only button press and rewards. | new, better script is now 06. first GLM was 04. retrospectively, version '03' is location_EVs.
-#version = '07' # 09 is the instruction period only.
-# 10 is only paths; 11 is only rewards as a stick function.
 version = '05'
 
 # plotting = True
 # to debug task_halves = ['1']
-
 
 
 task_halves = ['1', '2']
@@ -389,8 +383,12 @@ for sub in subjects:
                     EV_file_name = EV_path.split('/')[-1].replace('.txt', '')
                     file.write(f'{i} {EV_file_name}\n')
                     
-                    
-            with open(f"{analysisDir}/templates/my_RDM_GLM_v2.fsf", "r") as fin:                    
+            if sub in ['sub-04', 'sub-06', 'sub-30', 'sub-31', 'sub-34']:
+                template_name = 'my_RDM_GLM_v2.fsf'
+            else:
+                template_name = 'my_RDM_GLM_pnm.fsf'
+                
+            with open(f"{analysisDir}/templates/{template_name}", "r") as fin:                    
                 for line in fin:
                     for i, EV_path in enumerate(sorted_EVs): 
                         if line.startswith(f"set fmri(custom{i+1})"):
