@@ -215,6 +215,9 @@ for sub in subjects:
                 np.random.shuffle(data_RDM_file_1d[task_half]) #shuffle all voxels randomly
                 data_RDM_file_2d[task_half] = data_RDM_file_1d[task_half].reshape(data_RDM_file_2d[task_half].shape) # and reshape
         
+        if RDM_version in ['01']:
+            data_RDM_file_2d = np.concatenate((data_RDM_file_2d['1'], data_RDM_file_2d['2']),0)
+            
         # define the conditions, combine both task halves
         data_conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(no_RDM_conditions)])), (1,2)).transpose(),2*no_RDM_conditions)  
         # now prepare the data RDM file.
@@ -246,7 +249,7 @@ for sub in subjects:
     model_RDM_dir = {}
     RDM_my_model_dir = {}
     for model in data_dirs:
-        model_data = mc.analyse.analyse_MRI_behav.prepare_model_data(data_dirs[model], no_RDM_conditions)
+        model_data = mc.analyse.analyse_MRI_behav.prepare_model_data(data_dirs[model], no_RDM_conditions, RDM_version)
         if RDM_version in ['01', '01-1']:
             model_RDM_dir[model] = rsr.calc_rdm(model_data, method='corr', descriptor='conds')
         else:
