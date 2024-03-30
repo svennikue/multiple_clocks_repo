@@ -420,23 +420,53 @@ def analyse_pathlength_beh(df):
 
 
 
-# CONTINUE HERE LATER!!
 def similarity_of_tasks(reward_per_task_per_taskhalf_dict):
-    import pdb; pdb.set_trace()
-
+    # import pdb; pdb.set_trace()    
+    # create 3 binary RDMs:
+        # first, those that are backwards vs those that are forwards.
+        # second, those that are executed in the same order.
+        # third, those that are presented in the same order.
+    
     all_rewards = []
+    all_names = []
     for task_half in reward_per_task_per_taskhalf_dict:
         #  make sure that the dictionary is alphabetically sorted.
         for task in sorted(reward_per_task_per_taskhalf_dict[task_half].keys()):
             all_rewards.append(reward_per_task_per_taskhalf_dict[task_half][task])
+            all_names.append(task)
     
+    # first, all those that are presented in a forward or backward way are equal.
+    # direction_presentation = np.zeros((len(all_names), 2)) this will yield -1 and 1.
+    direction_presentation = np.zeros((len(all_rewards), len(all_rewards)*4)) # this is -0.012658227848101285 and 1
+    for i, task_name in enumerate(all_names):
+        if task_name.endswith('forw'):
+            direction_presentation[i, 0] = 1
+        elif task_name.endswith('backw'):
+            direction_presentation[i, 1] = 1
     
-    task_similiarity = np.zeros((len(all_rewards), len(all_rewards)))
-    
+    # second, all those that are executed in the same order are the same.
+    execution_similiarity = np.zeros((len(all_rewards), len(all_rewards)*4)) # this is -0.012658227848101285 and 1
     for i in range(len(all_rewards)):
         for j in range(len(all_rewards)):
             if all_rewards[i] == all_rewards[j]:
-                task_similiarity[i, j] = 1
+                execution_similiarity[i, j] = 1
+            
+            
+    # third, all those that are presented in the same order are the same.
+    # careful, this also changes all_rewards!! do this last.
+    presented_rewards = all_rewards.copy()
+    for i, task_name in enumerate(all_names):
+        if task_name.endswith('backw'):
+            presented_rewards[i].reverse()
+
+    
+    presentation_similiarity = np.zeros((len(all_rewards), len(all_rewards)*4)) # this is -0.012658227848101285 and 1
+    for i in range(len(presented_rewards)):
+        for j in range(len(presented_rewards)):
+            if presented_rewards[i] == presented_rewards[j]:
+                presentation_similiarity[i, j] = 1
+    
+    
 
     # np.corrcoef(task_similiarity[:, :10])
     # corrected_model = (task_similiarity[:, :10] + np.transpose(task_similiarity[:, :10]))/2
@@ -444,11 +474,22 @@ def similarity_of_tasks(reward_per_task_per_taskhalf_dict):
    
         
     # to create the right format, split this into two task halves again
-    models_between_tasks = {'instruction': {key: "" for key in ['1', '2']}}
+    # import pdb; pdb.set_trace() 
+    models_between_tasks = {'execution_similiarity': {key: "" for key in ['1', '2']},
+                            'presentation_similiarity': {key: "" for key in ['1', '2']},
+                            'direction_presentation': {key: "" for key in ['1', '2']}}
     
-    models_between_tasks['instruction']['1'] = task_similiarity[:10, :10]
-    models_between_tasks['instruction']['2'] = task_similiarity[10:20, :10]
+    models_between_tasks['execution_similiarity']['1'] = execution_similiarity[:10].T
+    models_between_tasks['execution_similiarity']['2'] = execution_similiarity[10:20].T
+    
+    models_between_tasks['presentation_similiarity']['1'] = presentation_similiarity[:10].T
+    models_between_tasks['presentation_similiarity']['2'] = presentation_similiarity[10:20].T
+    
+    models_between_tasks['direction_presentation']['1'] = direction_presentation[:10].T
+    models_between_tasks['direction_presentation']['2'] = direction_presentation[10:20].T
 
+    # import pdb; pdb.set_trace()   
+    # CONTINUE HERE!!! THE  PRESENT SIM ISNT QUITE RIGHT YET!
     return models_between_tasks
 
     

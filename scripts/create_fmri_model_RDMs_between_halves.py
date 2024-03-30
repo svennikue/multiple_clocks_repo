@@ -45,13 +45,13 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '04' 
-RDM_version = '04' 
+regression_version = '01' 
+RDM_version = '01' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '01'
+    subj_no = '02'
 
 subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10
@@ -64,7 +64,7 @@ fmri_save = True
 add_run_counts_model = False # this doesn't work with the current analysis
 
 if RDM_version in ['01', '01-1']: # 01 doesnt work yet! 
-    models_I_want = ['instruction']
+    models_I_want = ['direction_presentation', 'execution_similarity', 'presentation_similarity']
 
 elif RDM_version in ['02']: #modelling paths + rewards, creating all possible models 
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight', 'clocks']
@@ -459,6 +459,7 @@ for sub in subjects:
     # this one has to be done between task halves, so it's outside of this loop.
     if RDM_version == '01': # I have to work on this one further for the replay analysis (temporal + spatial)
         models_between_tasks = mc.analyse.analyse_MRI_behav.similarity_of_tasks(configs_dict)
+        # import pdb; pdb.set_trace()  
     
         
     # then, in a last step, create the RDMs
