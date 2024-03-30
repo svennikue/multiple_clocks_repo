@@ -225,7 +225,7 @@ for sub in subjects:
         sessions = np.concatenate((np.zeros(int(data_RDM_file['1'].shape[0])), np.ones(int(data_RDM_file['2'].shape[0]))))   
         # final data RDM file; 
         if RDM_version in ['01', '01-1']:
-            data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='corr')
+            data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='correlation')
         else:
             # for all other cases, cross correlated between task-halves.
             data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='crosscorr', cv_descr=sessions)
@@ -251,7 +251,7 @@ for sub in subjects:
     for model in data_dirs:
         model_data = mc.analyse.analyse_MRI_behav.prepare_model_data(data_dirs[model], no_RDM_conditions, RDM_version)
         if RDM_version in ['01', '01-1']:
-            model_RDM_dir[model] = rsr.calc_rdm(model_data, method='corr', descriptor='conds')
+            model_RDM_dir[model] = rsr.calc_rdm(model_data, method='correlation', descriptor='conds')
         else:
             model_RDM_dir[model] = rsr.calc_rdm(model_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
         fig, ax, ret_vla = rsatoolbox.vis.show_rdm(model_RDM_dir[model])
