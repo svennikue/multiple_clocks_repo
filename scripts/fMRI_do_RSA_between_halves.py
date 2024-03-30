@@ -92,7 +92,7 @@ elif RDM_version in ['04']: # only paths. to see if the human brain represents a
       
 # based on GLM
 if regression_version == '01':
-    no_RDM_conditions = 10 # including all instruction periods
+    no_RDM_conditions = 20 # including all instruction periods
 elif regression_version == '02':
     no_RDM_conditions = 80 # including all paths and rewards
 elif regression_version in ['03', '04']:
@@ -116,10 +116,7 @@ for sub in subjects:
         print(f"Running on Cluster, setting {data_dir} as data directory")
     RDM_dir = f"{data_dir}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
     if not os.path.exists(RDM_dir):
-        os.makedirs(RDM_dir)
-        
-
-        
+        os.makedirs(RDM_dir)  
     results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}"   
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
@@ -217,17 +214,21 @@ for sub in subjects:
                 data_RDM_file_1d[task_half] = data_RDM_file_2d[task_half].flatten()
                 np.random.shuffle(data_RDM_file_1d[task_half]) #shuffle all voxels randomly
                 data_RDM_file_2d[task_half] = data_RDM_file_1d[task_half].reshape(data_RDM_file_2d[task_half].shape) # and reshape
-
+        
         # define the conditions, combine both task halves
         data_conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(no_RDM_conditions)])), (1,2)).transpose(),2*no_RDM_conditions)  
         # now prepare the data RDM file.
         # this is defining both task halves/ runs: 0 is first half, the second one is 1s
         sessions = np.concatenate((np.zeros(int(data_RDM_file['1'].shape[0])), np.ones(int(data_RDM_file['2'].shape[0]))))   
-        # final data RDM file; cross correlated between task-halves.
-        data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='crosscorr', cv_descr=sessions)
-        # save  so that I don't need to recompute - or don't save bc it's massive
-        # with open(f"{results_dir}/data_RDM.pkl", 'wb') as file:
-            # pickle.dump(data_RDM, file)
+        # final data RDM file; 
+        if RDM_version in ['01', '01-1']:
+            data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='corr')
+        else:
+            # for all other cases, cross correlated between task-halves.
+            data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='crosscorr', cv_descr=sessions)
+            # save  so that I don't need to recompute - or don't save bc it's massive
+            # with open(f"{results_dir}/data_RDM.pkl", 'wb') as file:
+                # pickle.dump(data_RDM, file)
 
  
     # Step 3: load and compute the model RDMs.
@@ -246,7 +247,10 @@ for sub in subjects:
     RDM_my_model_dir = {}
     for model in data_dirs:
         model_data = mc.analyse.analyse_MRI_behav.prepare_model_data(data_dirs[model], no_RDM_conditions)
-        model_RDM_dir[model] = rsr.calc_rdm(model_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
+        if RDM_version in ['01', '01-1']:
+            model_RDM_dir[model] = rsr.calc_rdm(model_data, method='corr', descriptor='conds')
+        else:
+            model_RDM_dir[model] = rsr.calc_rdm(model_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
         fig, ax, ret_vla = rsatoolbox.vis.show_rdm(model_RDM_dir[model])
         # then compute the location model.
         model_model = rsatoolbox.model.ModelFixed(f"{model}_only", model_RDM_dir[model])
