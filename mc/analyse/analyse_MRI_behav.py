@@ -314,13 +314,20 @@ def evaluate_model(model, data):
     
 
 
-def prepare_model_data(model_data, number_conditions):
+def prepare_model_data(model_data, number_conditions, RDM_version):
+    # import pdb; pdb.set_trace()
     model_data = model_data.transpose()
-    nCond = model_data.shape[0]/2
+    if RDM_version in ['01', '01-1']:
+        nCond = model_data.shape[0]
+    else:
+        nCond = model_data.shape[0]/2
     nVox = model_data.shape[1]
     sessions = np.concatenate((np.zeros(int(np.shape(model_data)[0]/2)), np.ones(int(np.shape(model_data)[0]/2))))
     des = {'subj': 1}
-    conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(nCond)])), (1,2)).transpose(),number_conditions*2)
+    if RDM_version in ['01', '01-1']:
+        conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(nCond)])),(1)).transpose(),number_conditions)
+    else: 
+        conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(nCond)])), (1,2)).transpose(),number_conditions*2)
     obs_des = {'conds': conds, 'sessions': sessions}
     chn_des = {'voxels': np.array(['voxel_' + str(x) for x in np.arange(nVox)])}
     RSA_tb_model_data_object = rsd.Dataset(measurements=model_data,
