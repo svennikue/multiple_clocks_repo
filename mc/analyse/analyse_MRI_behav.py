@@ -445,11 +445,11 @@ def similarity_of_tasks(reward_per_task_per_taskhalf_dict):
             direction_presentation[i, 1] = 1
     
     # second, all those that are executed in the same order are the same.
-    execution_similiarity = np.zeros((len(all_rewards), len(all_rewards)*4)) # this is -0.012658227848101285 and 1
+    execution_similarity = np.zeros((len(all_rewards), len(all_rewards)*4)) # this is -0.012658227848101285 and 1
     for i in range(len(all_rewards)):
         for j in range(len(all_rewards)):
             if all_rewards[i] == all_rewards[j]:
-                execution_similiarity[i, j] = 1
+                execution_similarity[i, j] = 1
             
             
     # third, all those that are presented in the same order are the same.
@@ -460,11 +460,11 @@ def similarity_of_tasks(reward_per_task_per_taskhalf_dict):
             presented_rewards[i].reverse()
 
     
-    presentation_similiarity = np.zeros((len(all_rewards), len(all_rewards)*4)) # this is -0.012658227848101285 and 1
+    presentation_similarity = np.zeros((len(all_rewards), len(all_rewards)*4)) # this is -0.012658227848101285 and 1
     for i in range(len(presented_rewards)):
         for j in range(len(presented_rewards)):
             if presented_rewards[i] == presented_rewards[j]:
-                presentation_similiarity[i, j] = 1
+                presentation_similarity[i, j] = 1
     
     
 
@@ -475,15 +475,15 @@ def similarity_of_tasks(reward_per_task_per_taskhalf_dict):
         
     # to create the right format, split this into two task halves again
     # import pdb; pdb.set_trace() 
-    models_between_tasks = {'execution_similiarity': {key: "" for key in ['1', '2']},
-                            'presentation_similiarity': {key: "" for key in ['1', '2']},
+    models_between_tasks = {'execution_similarity': {key: "" for key in ['1', '2']},
+                            'presentation_similarity': {key: "" for key in ['1', '2']},
                             'direction_presentation': {key: "" for key in ['1', '2']}}
     
-    models_between_tasks['execution_similiarity']['1'] = execution_similiarity[:10].T
-    models_between_tasks['execution_similiarity']['2'] = execution_similiarity[10:20].T
+    models_between_tasks['execution_similarity']['1'] = execution_similarity[:10].T
+    models_between_tasks['execution_similarity']['2'] = execution_similarity[10:20].T
     
-    models_between_tasks['presentation_similiarity']['1'] = presentation_similiarity[:10].T
-    models_between_tasks['presentation_similiarity']['2'] = presentation_similiarity[10:20].T
+    models_between_tasks['presentation_similarity']['1'] = presentation_similarity[:10].T
+    models_between_tasks['presentation_similarity']['2'] = presentation_similarity[10:20].T
     
     models_between_tasks['direction_presentation']['1'] = direction_presentation[:10].T
     models_between_tasks['direction_presentation']['2'] = direction_presentation[10:20].T
