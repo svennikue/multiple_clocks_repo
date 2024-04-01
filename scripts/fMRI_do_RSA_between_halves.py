@@ -225,26 +225,26 @@ for sub in subjects:
         
         
         if RDM_version in ['01']:
+            data_RDM_file_2d = {}
+            data_RDM_file = {}
             # sort across task_halves
             for i, task in enumerate(sorted(reading_in_EVs_dict.keys())):
                 if task not in ['ev_press_EV_EV_index']:
                     image_paths[i] = reading_in_EVs_dict[task]
                     data_RDM_file[task_half][i] = nib.load(image_paths[i]).get_fdata()
-                
+            data_RDM_file_2d = data_RDM_file.reshape([data_RDM_file.shape[0], -1])
             print(f"This is the order now: {image_paths}")  
-                
-                
-            data_RDM_file_2d = np.concatenate((data_RDM_file_2d['1'], data_RDM_file_2d['2']),0)
+
             
         # define the conditions, combine both task halves
         data_conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(no_RDM_conditions)])), (1,2)).transpose(),2*no_RDM_conditions)  
-        # now prepare the data RDM file.
-        # this is defining both task halves/ runs: 0 is first half, the second one is 1s
-        sessions = np.concatenate((np.zeros(int(data_RDM_file['1'].shape[0])), np.ones(int(data_RDM_file['2'].shape[0]))))   
+        # now prepare the data RDM file. 
         # final data RDM file; 
         if RDM_version in ['01', '01-1']:
             data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='correlation')
         else:
+            # this is defining both task halves/ runs: 0 is first half, the second one is 1s
+            sessions = np.concatenate((np.zeros(int(data_RDM_file['1'].shape[0])), np.ones(int(data_RDM_file['2'].shape[0]))))  
             # for all other cases, cross correlated between task-halves.
             data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='crosscorr', cv_descr=sessions)
             # save  so that I don't need to recompute - or don't save bc it's massive
