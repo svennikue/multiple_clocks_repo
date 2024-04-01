@@ -206,7 +206,7 @@ for sub in subjects:
                 with open(f"{data_dir}/func/EVs_{RDM_version}_pt0{task_half}/task-to-EV.txt", 'r') as file:
                     for line in file:
                         index, name = line.strip().split(' ', 1)
-                        reading_in_EVs_dict[f"{name}_EV_index"] = os.path.join(pe_path, f"pe{int(reg_index)}.nii.gz")
+                        reading_in_EVs_dict[f"{name}_EV_index"] = os.path.join(pe_path, f"pe{int(index)+1}.nii.gz")
             else:
                 for reg_index in range(1, no_RDM_conditions+1):
                     file_path = os.path.join(pe_path, f"pe{reg_index}.nii.gz")
@@ -226,9 +226,9 @@ for sub in subjects:
         
         if RDM_version in ['01']:
             # sort across task_halves
-            for task in sorted(reading_in_EVs_dict.keys()):
+            for i, task in enumerate(sorted(reading_in_EVs_dict.keys())):
                 image_paths[i] = reading_in_EVs_dict[task]
-                data_RDM_file[task_half][i] = nib.load(file_path).get_fdata()
+                data_RDM_file[task_half][i] = nib.load(image_paths[i]).get_fdata()
                 
             print(f"This is the order now: {image_paths}")  
                 
