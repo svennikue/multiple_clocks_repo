@@ -51,7 +51,7 @@ RDM_version = '01'
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '02'
+    subj_no = '03'
 
 subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10
@@ -474,7 +474,7 @@ for sub in subjects:
         if model == 'reward_midnight_count':
             RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_between_tasks[model]['1'], models_between_tasks[model]['2'])), plotting = False, titlestring= model)
         else:
-            RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_between_tasks[model]['1'], models_between_tasks[model]['2']),1), plotting = False, titlestring= model)
+            RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_between_tasks[model]['1'], models_between_tasks[model]['2']),1), plotting = True, titlestring= model)
         # mc.simulation.predictions.plot_without_legends(RSM_dict_betw_TH[model])
     
 

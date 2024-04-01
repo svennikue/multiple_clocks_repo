@@ -56,7 +56,7 @@ regression_version = '01'
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '02'
+    subj_no = '01'
 
 subjects = [f"sub-{subj_no}"]
 #subjects = ['sub-01']
@@ -198,7 +198,15 @@ for sub in subjects:
                     image_paths[i] = file_path  # save path to check if everything went fine later
                     data_RDM_file[task_half][i] = nib.load(file_path).get_fdata()
                 print(f"This is the order now: {image_paths}") 
-                    
+            
+            if RDM_version == '01':
+                # for condition 1, I am ignoring taks halves. to make sure everything goes fine, use the .txt file
+                # and only load the conditions in after the task-half loop.
+                reading_in_EVs_dict = {}
+                with open(f"{data_dir}/func/EVs_{RDM_version}_pt0{task_half}/task-to-EV.txt", 'r') as file:
+                    for line in file:
+                        index, name = line.strip().split(' ', 1)
+                        reading_in_EVs_dict[f"{name}_EV_index"] = os.path.join(pe_path, f"pe{int(reg_index)}.nii.gz")
             else:
                 for reg_index in range(1, no_RDM_conditions+1):
                     file_path = os.path.join(pe_path, f"pe{reg_index}.nii.gz")
@@ -215,7 +223,16 @@ for sub in subjects:
                 np.random.shuffle(data_RDM_file_1d[task_half]) #shuffle all voxels randomly
                 data_RDM_file_2d[task_half] = data_RDM_file_1d[task_half].reshape(data_RDM_file_2d[task_half].shape) # and reshape
         
+        
         if RDM_version in ['01']:
+            # sort across task_halves
+            for task in sorted(reading_in_EVs_dict.keys()):
+                image_paths[i] = reading_in_EVs_dict[task]
+                data_RDM_file[task_half][i] = nib.load(file_path).get_fdata()
+                
+            print(f"This is the order now: {image_paths}")  
+                
+                
             data_RDM_file_2d = np.concatenate((data_RDM_file_2d['1'], data_RDM_file_2d['2']),0)
             
         # define the conditions, combine both task halves

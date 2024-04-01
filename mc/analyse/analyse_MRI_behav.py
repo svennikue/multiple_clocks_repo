@@ -428,19 +428,33 @@ def analyse_pathlength_beh(df):
 
 
 def similarity_of_tasks(reward_per_task_per_taskhalf_dict):
-    # import pdb; pdb.set_trace()    
+    # import pdb; pdb.set_trace() 
+    
+    # first, put the contents of the task-half dict into one.
+    def flatten_nested_dict(nested_dict):
+        flattened_dict = {}
+        for key, value in nested_dict.items():
+            if isinstance(value, dict):  # If the value is a dictionary, extend the flat dictionary with its items
+                flattened_dict.update(value)
+            else:
+                flattened_dict[key] = value
+        return flattened_dict
+    
+    rewards_experiment = flatten_nested_dict(reward_per_task_per_taskhalf_dict)
+    
+    all_rewards = []
+    all_names = []
+    #  make sure that the dictionary is alphabetically sorted.
+    for task in sorted(rewards_experiment.keys()):
+        all_rewards.append(rewards_experiment[task])
+        all_names.append(task)
+    
+    
     # create 3 binary RDMs:
         # first, those that are backwards vs those that are forwards.
         # second, those that are executed in the same order.
         # third, those that are presented in the same order.
     
-    all_rewards = []
-    all_names = []
-    for task_half in reward_per_task_per_taskhalf_dict:
-        #  make sure that the dictionary is alphabetically sorted.
-        for task in sorted(reward_per_task_per_taskhalf_dict[task_half].keys()):
-            all_rewards.append(reward_per_task_per_taskhalf_dict[task_half][task])
-            all_names.append(task)
     
     # first, all those that are presented in a forward or backward way are equal.
     # direction_presentation = np.zeros((len(all_names), 2)) this will yield -1 and 1.
