@@ -166,6 +166,7 @@ for sub in subjects:
         data_RDM_file_2d = {}
         data_RDM_file = {}
         data_RDM_file_1d = {}
+        reading_in_EVs_dict = {}
         for task_half in task_halves:
             # import pdb; pdb.set_trace()  
             # load the relevant pre-processed task-half
@@ -202,7 +203,6 @@ for sub in subjects:
             if RDM_version == '01':
                 # for condition 1, I am ignoring taks halves. to make sure everything goes fine, use the .txt file
                 # and only load the conditions in after the task-half loop.
-                reading_in_EVs_dict = {}
                 with open(f"{data_dir}/func/EVs_{RDM_version}_pt0{task_half}/task-to-EV.txt", 'r') as file:
                     for line in file:
                         index, name = line.strip().split(' ', 1)
@@ -227,8 +227,9 @@ for sub in subjects:
         if RDM_version in ['01']:
             # sort across task_halves
             for i, task in enumerate(sorted(reading_in_EVs_dict.keys())):
-                image_paths[i] = reading_in_EVs_dict[task]
-                data_RDM_file[task_half][i] = nib.load(image_paths[i]).get_fdata()
+                if task not in ['ev_press_EV_EV_index']:
+                    image_paths[i] = reading_in_EVs_dict[task]
+                    data_RDM_file[task_half][i] = nib.load(image_paths[i]).get_fdata()
                 
             print(f"This is the order now: {image_paths}")  
                 
