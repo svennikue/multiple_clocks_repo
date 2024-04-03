@@ -45,19 +45,19 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '01' 
-RDM_version = '01' 
+regression_version = '02' 
+RDM_version = '02' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '03'
+    subj_no = '01'
 
 subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10
 
 task_halves = ['1', '2']
-fmriplotting = False
+fmriplotting = True
 fmriplotting_debug = False
 fmri_save = True
 
@@ -84,34 +84,11 @@ elif RDM_version in ['04']: # only paths. to see if the human brain represents a
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_no-rew', 'clocks_no-rew']
       
  
-# # THESE ARE OLD
-# elif RDM_version in ['02']: # 2 was still free. so use this to model only the rewards, and split the clocks in the same function.
-#     # this result should be the same as RDM 09
-#     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew']
-# elif RDM_version in ['03']: # 3 was still free. to see if the human brain represents also only those rings anchored at no-reward locations
-#     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_no-rew', 'clocks_no-rew']
-    
-# elif RDM_version in ['05']:
-#     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight', 'clocks']
-# elif RDM_version in ['09','09-9', '999', '9999', '10']:  # delete 10 at some point
-#     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
-#     #models_I_want = ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'reward_midnight_v2', 'reward_clocks_v2']
-
-
-
-#elif RDM_version == '07':
-#    models_I_want = ['reward_midnight_v2', 'reward_clocks_v2', 'state', 'task_prog', 'reward_location']
-# RDM 08
-# ??? (the model is using combination models (GLMs with several models in the do RSA script))
-
     
 for sub in subjects:
-    if add_run_counts_model == True:
-        temp_models_I_want = models_I_want.copy()
-        temp_models_I_want.append('run_count_model')
-        models_between_tasks = {f"{model}": {key: "" for key in ['1', '2']} for model in temp_models_I_want}
-    else:
-        models_between_tasks = {f"{model}": {key: "" for key in ['1', '2']} for model in models_I_want}
+    # initialize some dictionaries
+    models_between_task_halves = {}
+    sorted_models_split = {}
     configs_dict = {}
     for task_half in task_halves:
         data_dir_beh = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/pilot/{sub}/beh/"
@@ -274,8 +251,6 @@ for sub in subjects:
                
         
         # next step: create subpath files with rew_index and how many steps there are per subpath.
-
-        
         for config in subpath_after_steps:
             # if task is completed
             if (len(subpath_after_steps[config])%4) == 0:
@@ -304,10 +279,7 @@ for sub in subjects:
             
         # finally, create simulations and time-bin per run.
         # first, prep result dictionaries.
-        if add_run_counts_model == True:
-            all_models_dict = {f"{model}": {key: "" for key in configs} for model in temp_models_I_want}
-        else:
-            all_models_dict = {f"{model}": {key: "" for key in configs} for model in models_I_want}
+        all_models_dict = {f"{model}": {key: "" for key in configs} for model in models_I_want}
         # and prepare the between-tasks dictionary.
         
         if not RDM_version == '01':
@@ -382,13 +354,6 @@ for sub in subjects:
                         for model in result_model_dict:
                             repeats_model_dict[model] = np.concatenate((repeats_model_dict[model], result_model_dict[model]), 1)
                 
-                # and create a run-counter-model.
-                if add_run_counts_model == True:
-                    run_count_repeats = mc.simulation.predictions.create_run_count_model_fmri(step_number, len(step_number), norm_number_of_runs=5, wrap_around = 1, temporal_resolution = 10, plot = False)
-                    models_I_want.append('run_count_model')
-                    repeats_model_dict['run_count_model'] = run_count_repeats
-                # INCLUDE THIS COUNT-RUNS MODEL AT SOME POINT - but in a different analysis way. requires a very different glm
-                
                 
                 # NEXT STEP: prepare the regression- select the correct regressors, filter keys starting with 'A1_backw'
                 regressors_curr_task = {key: value for key, value in regressors.items() if key.startswith(config)}
@@ -439,28 +404,32 @@ for sub in subjects:
                     all_models_dict['two_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -2, axis = 1) 
                     if RDM_version in ['03-1', '03-2']:
                         all_models_dict['three_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -3, axis = 1) 
+                
+                # then, lastly, safe the all_models_dict in the respective task_half.
+                models_between_task_halves[task_half] = all_models_dict
+                configs_dict[task_half] = rew_list
+        
 
-          
-        # once through all task configuration - create the location_between etc. matrix by concatenating the task configurations in alphabetical order
-        model_dict_sorted_keys = sorted(configs)
-        print(f"I am sorting in this order: {model_dict_sorted_keys}")
-        
-        configs_dict[task_half] = rew_list
-        
-        # concatenate the model simulations of all tasks in the same order.
-        if not RDM_version == '01':
-            for model in all_models_dict:
-                if model == 'reward_midnight_count': # this can probably go at some point
-                    models_between_tasks[model][task_half] = np.concatenate([all_models_dict[model][key] for key in model_dict_sorted_keys])
-                else:
-                    models_between_tasks[model][task_half] = np.concatenate([all_models_dict[model][key] for key in model_dict_sorted_keys], 1)
-                # THEN DO IT ALL AGAIN FOR THE NEXT TASK HALF
-            
-    # this one has to be done between task halves, so it's outside of this loop.
+
+    # out of the between-halves loop.
     if RDM_version == '01': # I have to work on this one further for the replay analysis (temporal + spatial)
-        models_between_tasks = mc.analyse.analyse_MRI_behav.similarity_of_tasks(configs_dict)
-        # import pdb; pdb.set_trace()  
-    
+        models_between_tasks = mc.analyse.analyse_MRI_behav.similarity_of_tasks(configs_dict)    
+    elif not RDM_version == '01':
+        # first, sort the models into two equivalent halves, just in case this went wrong before.
+        sorted_keys_dict = mc.analyse.extract_and_clean.order_task_according_to_rewards(configs_dict)
+        models_sorted_into_splits = {task_half: {model: {config: "" for config in sorted_keys_dict[task_half]} for model in models_I_want} for task_half in task_halves}
+        for half in models_between_task_halves:
+            for model in models_between_task_halves[half]:
+                for task in models_between_task_halves[half][model]:
+                    if task in sorted_keys_dict['1']:
+                        models_sorted_into_splits['1'][model][task] = models_between_task_halves[half][model][task]
+                    elif task in sorted_keys_dict['2']:
+                        models_sorted_into_splits['2'][model][task] = models_between_task_halves[half][model][task]                
+        # then, do the concatenation across the ordered tasks.
+        for split in models_sorted_into_splits:
+            for model in models_sorted_into_splits[split]:
+                models_sorted_into_splits[split][model] = np.concatenate([models_sorted_into_splits[split][model][task] for task in sorted_keys_dict[split]], 1)
+
         
     # then, in a last step, create the RDMs
     # concatenate the conditions from the two task halves (giving you 2*nCond X nVoxels matrix), 
@@ -470,11 +439,8 @@ for sub in subjects:
     # across THs. 
     
     RSM_dict_betw_TH = {}
-    for model in models_between_tasks:
-        if model == 'reward_midnight_count':
-            RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_between_tasks[model]['1'], models_between_tasks[model]['2'])), plotting = False, titlestring= model)
-        else:
-            RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_between_tasks[model]['1'], models_between_tasks[model]['2']),1), plotting = False, titlestring= model)
+    for model in models_sorted_into_splits[split]:
+        RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_sorted_into_splits['1'][model], models_sorted_into_splits['2'][model]),1), plotting = False, titlestring= model)
         # mc.simulation.predictions.plot_without_legends(RSM_dict_betw_TH[model])
     
 
@@ -493,7 +459,7 @@ for sub in subjects:
     if fmriplotting:
         if not os.path.exists(RDM_dir):
             os.makedirs(RDM_dir)
-        mc.simulation.RDMs.plot_RDMs(corrected_RSM_dict, len(configs), RDM_dir, model_dict_sorted_keys)
+        mc.simulation.RDMs.plot_RDMs(corrected_RSM_dict, len(configs), RDM_dir, sorted_keys_dict['1'])
     
         # make my own correlation matrix.
         # Schema - Partial Schema - Subgoal Progress - Location - State
@@ -518,5 +484,11 @@ for sub in subjects:
             np.save(os.path.join(RDM_dir, f"RSM_{RDM}_{sub}_fmri_both_halves"), corrected_RSM_dict[RDM])
             
         # also save the regression files
-        for model in models_between_tasks:
-            np.save(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves"), np.concatenate((models_between_tasks[model]['1'],models_between_tasks[model]['2']),1))
+        for model in models_sorted_into_splits['1']:
+            np.save(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves"), np.concatenate((models_sorted_into_splits['1'][model], models_sorted_into_splits['2'][model]),1))
+        
+        # and lastly, save the order in which I put the RDMs.
+
+        with open(f"{RDM_dir}/sorted_keys-model_RDMs.pkl", 'wb') as file:
+            pickle.dump(sorted_keys_dict, file)
+                

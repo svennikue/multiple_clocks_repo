@@ -16,8 +16,10 @@ RDM settings (creating the representations):
     03-2 -> same as 03-1 but only considering task D and B (where 2 rew locs are the same)
     03-3 -> same as 03-1 but only considering B,C,D [excluding rew A] -> important to be paired with GLM 03-3!
     03-99 ->  using 03-1 - reward locations and future rew model; but EVs are scrambled.
-    03-999 ->  is debugging 2.0: using 03-1 - reward locations and future rew model; but the voxels are scrambled.
+    
     04 -> modelling only paths
+    
+    xx-999 ->  is debugging 2.0: using whatever, but the voxels are scrambled.
 
 
 GLM ('regression') settings (creating the 'bins'):
@@ -48,8 +50,8 @@ import pickle
 import sys
 import random
 
-RDM_version = '01' 
-regression_version = '01' 
+RDM_version = '02' 
+regression_version = '02' 
 
 
 # import pdb; pdb.set_trace() 
@@ -129,6 +131,27 @@ for sub in subjects:
     # example_func from half 1, as this is where the data is corrected to.
     ref_img = load_img(f"{data_dir}/func/preproc_clean_01.feat/example_func.nii.gz")
     
+    # load the file which defines the order of the model RDMs, and hence the data RDMs
+    with open(f"{RDM_dir}/sorted_keys-model_RDMs.pkl", 'rb') as file:
+        sorted_keys = pickle.load(file)
+    # also store 2 dictionaries of the EVs
+    
+    pe_path_01 = f"{data_dir}/func/glm_{regression_version}_pt01.feat/stats"
+    reading_in_EVs_dict_01 = {}
+    with open(f"{data_dir}/func/EVs_{RDM_version}_pt01/task-to-EV.txt", 'r') as file:
+        for line in file:
+            index, name_ev = line.strip().split(' ', 1)
+            name = name_ev.replace('ev_', '')
+            reading_in_EVs_dict_01[f"{name}_EV_{int(index)+1}"] = os.path.join(pe_path_01, f"pe{int(index)+1}.nii.gz")
+            
+    pe_path_02 = f"{data_dir}/func/glm_{regression_version}_pt02.feat/stats"     
+    reading_in_EVs_dict_02 = {}
+    with open(f"{data_dir}/func/EVs_{RDM_version}_pt02/task-to-EV.txt", 'r') as file:
+        for line in file:
+            index, name_ev = line.strip().split(' ', 1)
+            name = name_ev.replace('ev_', '')
+            reading_in_EVs_dict_02[f"{name}_EV_{int(index)+1}"] = os.path.join(pe_path_02, f"pe{int(index)+1}.nii.gz")
+           
     # Step 1: creating the searchlights
     # mask will define the searchlight positions, in pt01 space because that is 
     # where the functional files have been registered to.
@@ -167,80 +190,77 @@ for sub in subjects:
         data_RDM_file = {}
         data_RDM_file_1d = {}
         reading_in_EVs_dict = {}
-        for task_half in task_halves:
-            # import pdb; pdb.set_trace()  
-            # load the relevant pre-processed task-half
-            fmri_data_dir = f"{data_dir}/func/preproc_clean_0{task_half}.feat"
-            pe_path = f"{data_dir}/func/glm_{regression_version}_pt0{task_half}.feat/stats"
-            # define the naming conventions in this folder
-            data_RDM_file[task_half] = [None] * no_RDM_conditions  # Initialize a list
-            image_paths = [None] * no_RDM_conditions
-            
-            
-            if RDM_version == '03-99': # if debug mode, scramble EVs randomly
-                random_index = list(range(1, no_RDM_conditions+1))
-                random.shuffle(random_index)
-                for reg_index in range(0, no_RDM_conditions):
-                    file_path = os.path.join(pe_path, f"pe{random_index[reg_index]}.nii.gz")
-                    image_paths[reg_index-1] = file_path  # save path to check if everything went fine later
-                    data_RDM_file[task_half][reg_index-1] = nib.load(file_path).get_fdata()
-                print(f"This is the order now: {image_paths}")
-            
-            # only take those that start with D or B. Use the file you created in create_EVs_for_RDMs to be sure.
-            if RDM_version == '03-2':
-                RDM_conditions = []
-                with open(f"{data_dir}/func/EVs_{RDM_version}_pt0{task_half}/task-to-EV.txt", 'r') as file:
-                    for line in file:
-                        index, name = line.strip().split(' ', 1)
-                        if name.startswith('ev_B') or name.startswith('ev_D'):
-                            RDM_conditions.append(int(index))
-                for i, reg_index in enumerate(RDM_conditions):
-                    file_path = os.path.join(pe_path, f"pe{reg_index}.nii.gz")
-                    image_paths[i] = file_path  # save path to check if everything went fine later
-                    data_RDM_file[task_half][i] = nib.load(file_path).get_fdata()
-                print(f"This is the order now: {image_paths}") 
-            
-            if RDM_version == '01':
-                # for condition 1, I am ignoring taks halves. to make sure everything goes fine, use the .txt file
-                # and only load the conditions in after the task-half loop.
-                with open(f"{data_dir}/func/EVs_{RDM_version}_pt0{task_half}/task-to-EV.txt", 'r') as file:
-                    for line in file:
-                        index, name = line.strip().split(' ', 1)
-                        reading_in_EVs_dict[f"{name}_EV_index"] = os.path.join(pe_path, f"pe{int(index)+1}.nii.gz")
-            else:
-                for reg_index in range(1, no_RDM_conditions+1):
-                    file_path = os.path.join(pe_path, f"pe{reg_index}.nii.gz")
-                    image_paths[reg_index-1] = file_path  # save path to check if everything went fine later
-                    data_RDM_file[task_half][reg_index-1] = nib.load(file_path).get_fdata()
-                print(f"This is the order now: {image_paths}") 
-            # Convert the list to a NumPy array
-            data_RDM_file[task_half] = np.array(data_RDM_file[task_half])
-            # reshape data so we have n_observations x n_voxels
-            data_RDM_file_2d[task_half] = data_RDM_file[task_half].reshape([data_RDM_file[task_half].shape[0], -1])
-            data_RDM_file_2d[task_half] = np.nan_to_num(data_RDM_file_2d[task_half]) # now this is 80timepoints x 746.496 voxels
-            if RDM_version == '03-999': # scramble voxels randomly
-                data_RDM_file_1d[task_half] = data_RDM_file_2d[task_half].flatten()
-                np.random.shuffle(data_RDM_file_1d[task_half]) #shuffle all voxels randomly
-                data_RDM_file_2d[task_half] = data_RDM_file_1d[task_half].reshape(data_RDM_file_2d[task_half].shape) # and reshape
+        image_paths = {}
         
+        
+        # I need to do this slightly differently. I want to be super careful that I create 2 'identical' splits of data.
+        # thus, check which folder has the respective task.
+        for split in sorted_keys:
+            if RDM_version == '01':
+                # DOUBLE CHECK IF THIS IS EVEN STILL CORRECT!!!
+                # for condition 1, I am ignoring task halves. to make sure everything goes fine, use the .txt file
+                # and only load the conditions in after the task-half loop.
+                pe_path = f"{data_dir}/func/glm_{regression_version}_pt0{split}.feat/stats"
+                with open(f"{data_dir}/func/EVs_{RDM_version}_pt0{split}/task-to-EV.txt", 'r') as file:
+                    for line in file:
+                        index, name = line.strip().split(' ', 1)
+                        reading_in_EVs_dict[f"{name}_EV_{index}"] = os.path.join(pe_path, f"pe{int(index)+1}.nii.gz")
+            else:           
+                i = -1
+                image_paths[split] = [None] * no_RDM_conditions # Initialize a list for each half of the dictionary
+                data_RDM_file[split] = [None] * no_RDM_conditions  # Initialize a list for each half of the dictionary
+                for EV_no, task in enumerate(sorted_keys[split]):
+                    # print(f"now looking for {task}")
+                    for EV_01 in reading_in_EVs_dict_01:
+                        if EV_01.startswith(task):
+                            i = i + 1
+                            # print(f"looking for {task} and found it in 01 {EV_01}, index {i}")
+                            image_paths[split][i] = reading_in_EVs_dict_01[EV_01]  # save path to check if everything went fine later
+                            data_RDM_file[split][i] = nib.load(reading_in_EVs_dict_01[EV_01]).get_fdata()
+                    for EV_02 in reading_in_EVs_dict_02:
+                        if EV_02.startswith(task):
+                            i = i + 1
+                            # print(f"looking for {task} and found it in 01 {EV_02}, index {i}")
+                            image_paths[split][i] = reading_in_EVs_dict_02[EV_02]
+                            data_RDM_file[split][i] = nib.load(reading_in_EVs_dict_02[EV_02]).get_fdata() 
+                            # Convert the list to a NumPy array
+                
+                print(f"This is the order now: {image_paths[split]}")
+                data_RDM_file[split] = np.array(data_RDM_file[split])
+                # reshape data so we have n_observations x n_voxels
+                data_RDM_file_2d[split] = data_RDM_file[split].reshape([data_RDM_file[split].shape[0], -1])
+                data_RDM_file_2d[split] = np.nan_to_num(data_RDM_file_2d[split]) # now this is 80timepoints x 746.496 voxels
+                
+                if RDM_version == f"{RDM_version}_999": # scramble voxels randomly
+                    data_RDM_file_1d[split] = data_RDM_file_2d[split].flatten()
+                    np.random.shuffle(data_RDM_file_1d[split]) #shuffle all voxels randomly
+                    data_RDM_file_2d[split] = data_RDM_file_1d[split].reshape(data_RDM_file_2d[split].shape) # and reshape
+
         
         if RDM_version in ['01']:
             data_RDM_file_2d = {}
             data_RDM_file = {}
+            data_RDM_file[RDM_version] = [None] * no_RDM_conditions
             # sort across task_halves
             for i, task in enumerate(sorted(reading_in_EVs_dict.keys())):
                 if task not in ['ev_press_EV_EV_index']:
                     image_paths[i] = reading_in_EVs_dict[task]
-                    data_RDM_file[task_half][i] = nib.load(image_paths[i]).get_fdata()
-            data_RDM_file_2d = data_RDM_file.reshape([data_RDM_file.shape[0], -1])
+                    data_RDM_file[RDM_version][i] = nib.load(image_paths[i]).get_fdata()
+            # Convert the list to a NumPy array
+            data_RDM_file_np = np.array(data_RDM_file[RDM_version])
+            # reshape data so we have n_observations x n_voxels
+            data_RDM_file_2d = data_RDM_file_np.reshape([data_RDM_file_np.shape[0], -1])
+            data_RDM_file_2d = np.nan_to_num(data_RDM_file_2d) # now this is 20timepoints x 746.496 voxels
+
             print(f"This is the order now: {image_paths}")  
 
-            
+    
         # define the conditions, combine both task halves
         data_conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(no_RDM_conditions)])), (1,2)).transpose(),2*no_RDM_conditions)  
         # now prepare the data RDM file. 
         # final data RDM file; 
         if RDM_version in ['01', '01-1']:
+            data_conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(no_RDM_conditions)])), (1)).transpose(),no_RDM_conditions)  
             data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='correlation')
         else:
             # this is defining both task halves/ runs: 0 is first half, the second one is 1s
@@ -253,7 +273,6 @@ for sub in subjects:
 
  
     # Step 3: load and compute the model RDMs.
-
     # load the data files I created.
     data_dirs = {}
     for model in models_I_want:
@@ -333,7 +352,7 @@ for sub in subjects:
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "CLOCKrw-combo-cl-mid-st-ph", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "MIDNrw-combo_cl-mid-st-ph", mask=mask, number_regr = 1, ref_image_for_affine_path=ref_img)
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "STATE-combo_cl-mid-st-ph", mask=mask, number_regr = 2, ref_image_for_affine_path=ref_img)
-        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "PHASE-combo_cl-mid-st-ph", mask=mask, number_regr = 4, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "PHASE-combo_cl-mid-st-ph", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
 
 
     if RDM_version == '04': #modelling only path rings

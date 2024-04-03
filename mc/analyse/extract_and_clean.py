@@ -17,8 +17,40 @@ import scipy.special as sps
 
 def print_stuff(string_input):
     print(string_input)
+   
     
-    
+   
+def flatten_nested_dict(nested_dict):
+    flattened_dict = {}
+    for key, value in nested_dict.items():
+        if isinstance(value, dict):  # If the value is a dictionary, extend the flat dictionary with its items
+            flattened_dict.update(value)
+        else:
+            flattened_dict[key] = value
+    return flattened_dict
+ 
+
+   
+def order_task_according_to_rewards(reward_per_task_per_taskhalf_dict):  
+    # import pdb; pdb.set_trace() 
+    rewards_experiment = mc.analyse.extract_and_clean.flatten_nested_dict(reward_per_task_per_taskhalf_dict)
+    ordered_config_names = {half: [] for half in reward_per_task_per_taskhalf_dict}  
+
+    no_duplicates_list = []    
+    for i, task_reference in enumerate(sorted(rewards_experiment.keys())):
+        if task_reference not in no_duplicates_list:
+            for task_comp in rewards_experiment:
+                if task_comp not in no_duplicates_list:
+                    if not task_reference == task_comp:
+                        if rewards_experiment[task_reference] == rewards_experiment[task_comp]:
+                            ordered_config_names['1'].append(task_reference)
+                            ordered_config_names['2'].append(task_comp)
+                            no_duplicates_list.append(task_reference)
+                            no_duplicates_list.append(task_comp)
+                            
+    return ordered_config_names
+
+
 
 def jitter(expected_step_no):
     # first randomly sample from a gamma distribution
@@ -44,7 +76,7 @@ def jitter(expected_step_no):
 
     
     
-# plotting how I draw the randomly jittered steps
+    #   plotting how I draw the randomly jittered steps
     
     # # first randomly sample from a gamma distribution
     # # or from an exponantial

@@ -28,28 +28,28 @@ from datetime import datetime
 
 def move_files_to_subfolder(folder_path):
     # import pdb; pdb.set_trace()
-    # Get today's date in the format YYYY-MM-DD
-    today_date = datetime.today().strftime('%Y-%m-%d')
-    subfolder_name = f"results_pre_{today_date}"
-    
-    # Create the sub-folder if it doesn't exist
-    subfolder_path = os.path.join(folder_path, subfolder_name)
-    if not os.path.exists(subfolder_path):
-        os.makedirs(subfolder_path)
-    
+
     # List all files in the source folder
     files = [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
-    
     # Filter files that end with .nii.gz
     nii_gz_files = [f for f in files if f.endswith('.nii.gz')]
-    
-    # Move .nii.gz files to the target sub-folder
-    for file in nii_gz_files:
-        shutil.move(os.path.join(folder_path, file), subfolder_path)
-        print(f"Moved {file} to {subfolder_path}/")
-    
+
     if not nii_gz_files:
         print("No .nii.gz files found to move.")
+    else:
+        # Get today's date in the format YYYY-MM-DD
+        today_date = datetime.today().strftime('%Y-%m-%d')
+        subfolder_name = f"results_pre_{today_date}"
+        
+        # Create the sub-folder if it doesn't exist
+        subfolder_path = os.path.join(folder_path, subfolder_name)
+        if not os.path.exists(subfolder_path):
+            os.makedirs(subfolder_path)
+        # Move .nii.gz files to the target sub-folder
+        for file in nii_gz_files:
+            shutil.move(os.path.join(folder_path, file), subfolder_path)
+            print(f"Moved {file} to {subfolder_path}/")
+         
     
         
         
