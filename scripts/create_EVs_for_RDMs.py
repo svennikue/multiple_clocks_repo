@@ -53,7 +53,7 @@ import shutil
 
 #import pdb; pdb.set_trace()
 
-version = '02'
+version = '03'
 
 # plotting = True
 # to debug task_halves = ['1']

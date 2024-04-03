@@ -51,7 +51,7 @@ import sys
 import random
 
 RDM_version = '02' 
-regression_version = '02' 
+regression_version = '03' 
 
 
 # import pdb; pdb.set_trace() 
@@ -138,7 +138,7 @@ for sub in subjects:
     
     pe_path_01 = f"{data_dir}/func/glm_{regression_version}_pt01.feat/stats"
     reading_in_EVs_dict_01 = {}
-    with open(f"{data_dir}/func/EVs_{RDM_version}_pt01/task-to-EV.txt", 'r') as file:
+    with open(f"{data_dir}/func/EVs_{regression_version}_pt01/task-to-EV.txt", 'r') as file:
         for line in file:
             index, name_ev = line.strip().split(' ', 1)
             name = name_ev.replace('ev_', '')
@@ -146,7 +146,7 @@ for sub in subjects:
             
     pe_path_02 = f"{data_dir}/func/glm_{regression_version}_pt02.feat/stats"     
     reading_in_EVs_dict_02 = {}
-    with open(f"{data_dir}/func/EVs_{RDM_version}_pt02/task-to-EV.txt", 'r') as file:
+    with open(f"{data_dir}/func/EVs_{regression_version}_pt02/task-to-EV.txt", 'r') as file:
         for line in file:
             index, name_ev = line.strip().split(' ', 1)
             name = name_ev.replace('ev_', '')

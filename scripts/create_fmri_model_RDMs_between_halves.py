@@ -45,7 +45,7 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '02' 
+regression_version = '03' 
 RDM_version = '02' 
 
 if len (sys.argv) > 1:
@@ -57,7 +57,7 @@ subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10
 
 task_halves = ['1', '2']
-fmriplotting = True
+fmriplotting = False
 fmriplotting_debug = False
 fmri_save = True
 
