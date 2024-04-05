@@ -50,8 +50,8 @@ import pickle
 import sys
 import random
 
-RDM_version = '02' 
-regression_version = '03' 
+RDM_version = '03-999' 
+regression_version = '02' 
 
 
 # import pdb; pdb.set_trace() 
@@ -97,7 +97,7 @@ if regression_version == '01':
     no_RDM_conditions = 20 # including all instruction periods
 elif regression_version == '02':
     no_RDM_conditions = 80 # including all paths and rewards
-elif regression_version in ['03', '04']:
+elif regression_version in ['03', '04', '03-4']:
     no_RDM_conditions = 40 # only including rewards or only paths
 elif regression_version == '03-3': #excluding reward A
     no_RDM_conditions = 30
@@ -116,7 +116,10 @@ for sub in subjects:
     else:
         data_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}"
         print(f"Running on Cluster, setting {data_dir} as data directory")
-    RDM_dir = f"{data_dir}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
+    if RDM_version in ['03-999']:
+        RDM_dir = f"{data_dir}/beh/RDMs_03_glmbase_{regression_version}"
+    else:
+        RDM_dir = f"{data_dir}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
     if not os.path.exists(RDM_dir):
         os.makedirs(RDM_dir)  
     results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}"   
