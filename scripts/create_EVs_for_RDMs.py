@@ -19,6 +19,7 @@ GLM ('regression') settings (creating the 'bins'):
     03 - 40 regressors; for every tasks, only the rewards are modelled [using a stick function]
     03-2 - 40 regressors; for every task, only the rewards are modelled (in their original time)
     03-3 - 30 regressors; for every task, only the rewards are modelled (in their original time), except for A (because of visual feedback)
+    03-4 - 40 regressors; for every task, only the rewards are modelled; and NO button-press regressor!
     04 - 40 regressors; for every task, only the paths are modelled
     05 - locations + button presses 
     
@@ -53,7 +54,7 @@ import shutil
 
 #import pdb; pdb.set_trace()
 
-version = '03'
+version = '03-4'
 
 # plotting = True
 # to debug task_halves = ['1']
@@ -74,6 +75,14 @@ if version == '05':
     split_buttons = True
 else:
     split_buttons = False
+    
+    
+if version in ['03-4']:
+    no_buttons = True
+else:
+    no_buttons = False
+    
+    
 analyse_behav = True
     
 
@@ -136,67 +145,68 @@ for sub in subjects:
             drop_last_row_index = new_task.index[-1]
             new_task = new_task.drop(drop_last_row_index)
             new_task = new_task.reset_index(drop=True)
+        
+        if no_buttons == False:
+            on_press = []
+            key_press = []
+            for i, row in end_task.iterrows():
+                curr_presses = row['nav_key_task.rt'] # extract button presses from the rt item with all presses
+                presses_curr_task = curr_presses.strip('[]').split(', ') # Split the string into a list using a comma as the separator
+                curr_buttons = row['nav_key_task.keys']
+                buttons_curr_task = curr_buttons.strip('[]').split(', ') 
+                # Convert the elements to floats and add to the point in time where they actually started
+                presses_curr_task = [(float(time)+new_task.at[i, 'start_ABCD_screen']) for time in presses_curr_task]
+                buttons_curr_task = [button.strip("''") for button in buttons_curr_task]
+                
+                on_press=on_press+presses_curr_task
+                key_press=key_press+buttons_curr_task
+    
             
-        on_press = []
-        key_press = []
-        for i, row in end_task.iterrows():
-            curr_presses = row['nav_key_task.rt'] # extract button presses from the rt item with all presses
-            presses_curr_task = curr_presses.strip('[]').split(', ') # Split the string into a list using a comma as the separator
-            curr_buttons = row['nav_key_task.keys']
-            buttons_curr_task = curr_buttons.strip('[]').split(', ') 
-            # Convert the elements to floats and add to the point in time where they actually started
-            presses_curr_task = [(float(time)+new_task.at[i, 'start_ABCD_screen']) for time in presses_curr_task]
-            buttons_curr_task = [button.strip("''") for button in buttons_curr_task]
+            if split_buttons == False:    
+                # the duration can just be something like 20 ms
+                dur_press = np.ones(len(on_press)) * 0.02
+                mag_press = np.ones(len(on_press))
+                
+                button_press_EV = mc.analyse.analyse_MRI_behav.create_EV(on_press, dur_press, mag_press, 'press_EV', EV_folder, first_TR_at)
+                
             
-            on_press=on_press+presses_curr_task
-            key_press=key_press+buttons_curr_task
+            # make one that differentiates between buttons
+            
+            # make 4 more specific button-press regressors, instead of the one unspecific one.
+            # think about this.
+            # which times do I want to take for the task-space clocks model???
+            # how do I de-correlate this from the button presses?
+            # probably no button-press nuisance regressor for task-space model.
+            # is locaton model = button press regressors??
+            
+            # careful! Now I need to put 4 additional instead of only 1 in the subject-level GLM.
+            if split_buttons == True:
+                buttons_I_want = ['left', 'up', 'down', 'right']
+                button_press_dict = {f"on_{button}": [] for button in buttons_I_want}
+                for i, time in enumerate(on_press):
+                    if key_press[i] == '1':
+                        button_press_dict['on_left'].append(time)
+                    elif key_press[i] == '2':
+                        button_press_dict['on_up'].append(time)
+                    elif key_press[i] == '3':
+                        button_press_dict['on_down'].append(time)
+                    elif key_press[i] == '4':
+                        button_press_dict['on_right'].append(time)
+                
+                for button in buttons_I_want:
+                    button_press_dict[f"dur_{button}"] = np.ones(len(button_press_dict[f"on_{button}"])) * 0.02
+                    button_press_dict[f"mag_{button}"] = np.ones(len(button_press_dict[f"on_{button}"]))
+                
+                for button in buttons_I_want:
+                    button_press_EV = mc.analyse.analyse_MRI_behav.create_EV(button_press_dict[f"on_{button}"], button_press_dict[f"dur_{button}"], button_press_dict[f"mag_{button}"], f"{button}", EV_folder, first_TR_at)
+                                  
+                
 
-        
-        if split_buttons == False:    
-            # the duration can just be something like 20 ms
-            dur_press = np.ones(len(on_press)) * 0.02
-            mag_press = np.ones(len(on_press))
-            
-            button_press_EV = mc.analyse.analyse_MRI_behav.create_EV(on_press, dur_press, mag_press, 'press_EV', EV_folder, first_TR_at)
-            
-        
-        # make one that differentiates between buttons
-        
-        # make 4 more specific button-press regressors, instead of the one unspecific one.
-        # think about this.
-        # which times do I want to take for the task-space clocks model???
-        # how do I de-correlate this from the button presses?
-        # probably no button-press nuisance regressor for task-space model.
-        # is locaton model = button press regressors??
-        
-        # careful! Now I need to put 4 additional instead of only 1 in the subject-level GLM.
-        if split_buttons == True:
-            buttons_I_want = ['left', 'up', 'down', 'right']
-            button_press_dict = {f"on_{button}": [] for button in buttons_I_want}
-            for i, time in enumerate(on_press):
-                if key_press[i] == '1':
-                    button_press_dict['on_left'].append(time)
-                elif key_press[i] == '2':
-                    button_press_dict['on_up'].append(time)
-                elif key_press[i] == '3':
-                    button_press_dict['on_down'].append(time)
-                elif key_press[i] == '4':
-                    button_press_dict['on_right'].append(time)
-            
-            for button in buttons_I_want:
-                button_press_dict[f"dur_{button}"] = np.ones(len(button_press_dict[f"on_{button}"])) * 0.02
-                button_press_dict[f"mag_{button}"] = np.ones(len(button_press_dict[f"on_{button}"]))
-            
-            for button in buttons_I_want:
-                button_press_EV = mc.analyse.analyse_MRI_behav.create_EV(button_press_dict[f"on_{button}"], button_press_dict[f"dur_{button}"], button_press_dict[f"mag_{button}"], f"{button}", EV_folder, first_TR_at)
-                              
-            
-
-        # check there are no nans 
-        deleted_x_rows, button_press_EV_to_save = mc.analyse.analyse_MRI_behav.check_for_nan(button_press_EV)
-        if deleted_x_rows > 0:
-            print(f"careful! I am saving a cutted EV button press file. Happened for subject {sub} in task half {task_half}")
-            np.savetxt(str(EV_folder) + 'ev_' + 'press_EV' + '.txt', button_press_EV_to_save, delimiter="    ", fmt='%f')
+            # check there are no nans 
+            deleted_x_rows, button_press_EV_to_save = mc.analyse.analyse_MRI_behav.check_for_nan(button_press_EV)
+            if deleted_x_rows > 0:
+                print(f"careful! I am saving a cutted EV button press file. Happened for subject {sub} in task half {task_half}")
+                np.savetxt(str(EV_folder) + 'ev_' + 'press_EV' + '.txt', button_press_EV_to_save, delimiter="    ", fmt='%f')
         
         # import pdb; pdb.set_trace()
         if version == '05':
@@ -261,7 +271,8 @@ for sub in subjects:
                 
                 
             
-        if version in ['02', '03', '03-2', '03-3', '04']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward
+        if version in ['02', '03', '03-2', '03-3', '03-4', '04']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward
+            print('start loop one')
             # 10 is only paths
             # identify where the next task begins by iterating through the DataFrame 
             # and collecting the indices where the column is not empty
@@ -320,7 +331,7 @@ for sub in subjects:
             # e.g. for 06 I want 80 EVs in the end -> 160 elements in the dictionary (duration + onset)
             for i, task in enumerate(task_names):
                 for s, state in enumerate(state_names):
-                    if version in ['02', '03', '03-3', '03-2']:
+                    if version in ['02', '03', '03-3', '03-2', '03-4']:
                         EV_rewardname_onset = f"{task}_{state}_reward_onset"
                         EV_rewardname_dur = f"{task}_{state}_reward_dur"
                     if version in ['02', '04']: # inlude subpaths
@@ -328,11 +339,11 @@ for sub in subjects:
                         EV_subpathname_dur = f"{task}_{state}_subpath_dur"
 
                     partial_df = df[((df['config_type'] == task) & (df['state'] == state))]
-                    if version in ['02', '03', '03-2', '03-3']:
+                    if version in ['02', '03', '03-2', '03-3', '03-4']:
                         taskEV_dic[EV_rewardname_onset] = partial_df['reward_onset'].dropna().to_list()
                         if version in ['02', '03']: # reward as stick-function: duration of all rewards to 500ms -> all regressors will be equally long.
                             taskEV_dic[EV_rewardname_dur] = np.ones(len(taskEV_dic[EV_rewardname_onset])) * 0.5
-                        elif version in ['03-2', '03-3']:
+                        elif version in ['03-2', '03-3', '03-4']:
                             taskEV_dic[EV_rewardname_dur] = partial_df['reward_duration'].dropna().to_list()  
                         mag_reward = np.ones(len(taskEV_dic[EV_rewardname_onset]))
                         # if len(mag_reward) < 3:
@@ -364,7 +375,8 @@ for sub in subjects:
                 pickle.dump(taskEV_dic, f)
      
         # then, lastly, adjust the .fsf file I will use for the regression.
-        if version in ['01', '02', '03', '03-2', '03-3', '04', '05']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward, 09 is instruction period
+        if version in ['01', '02', '03', '03-2', '03-3', '03-4', '04', '05']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward, 09 is instruction period
+            print('start loop 2')
             # collect all filepaths I just created.
             # this is a bit risky in case there have been other EVs in there that I didnt want...
             # optimise if you have time!

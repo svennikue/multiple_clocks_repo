@@ -45,8 +45,8 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '03' 
-RDM_version = '02' 
+regression_version = '01' 
+RDM_version = '01' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -322,9 +322,7 @@ for sub in subjects:
                     
                     # KEY STEP
                     # create all models.
-                    if RDM_version == '01':
-                         result_model_dict = mc.analyse.analyse_MRI_behav.similarity_of_tasks(rew_list)
-                    elif RDM_version == '01-1': # creating location instruction stuff
+                    if RDM_version == '01-1': # creating location instruction stuff
                         result_model_dict = mc.simulation.predictions.create_instruction_model(rew_list[config], trial_type=config)
                     elif RDM_version in ['02']: # default, modelling all and splitting clocks.
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path= False, split_clock = True)
@@ -335,7 +333,7 @@ for sub in subjects:
                     elif RDM_version in ['04']: # modelling only paths + splitting clocks [new]
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path = True, split_clock=True)
                     
-
+    
                     
                     # now for all models that are creating or not creating the splits models with my default function, this checking should work.
                     if RDM_version not in ['03-1', '03-2', '03-3']:
@@ -394,8 +392,8 @@ for sub in subjects:
                     # run the regression on all simulated data, except for those as I have a different way of creating them:
                     elif model not in ['one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']:
                         all_models_dict[model][config] = mc.simulation.predictions.transform_data_to_betas(repeats_model_dict[model], regressors_matrix)
-
-
+    
+    
                 # once the regression took place, the location model is the same as the midnight model.
                 # thus, it will also be the same as predicting future rewards, if we rotate it accordingly!
                 if RDM_version in ['03-1', '03-2', '03-3']:
@@ -405,15 +403,17 @@ for sub in subjects:
                     if RDM_version in ['03-1', '03-2']:
                         all_models_dict['three_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -3, axis = 1) 
                 
-                # then, lastly, safe the all_models_dict in the respective task_half.
-                models_between_task_halves[task_half] = all_models_dict
-                configs_dict[task_half] = rew_list
+        # then, lastly, safe the all_models_dict in the respective task_half.
+        models_between_task_halves[task_half] = all_models_dict
+        print(f"task half {task_half}")
+        configs_dict[task_half] = rew_list
         
 
 
     # out of the between-halves loop.
     if RDM_version == '01': # I have to work on this one further for the replay analysis (temporal + spatial)
-        models_between_tasks = mc.analyse.analyse_MRI_behav.similarity_of_tasks(configs_dict)    
+        models_between_tasks = mc.analyse.analyse_MRI_behav.similarity_of_tasks(configs_dict) 
+        import pdb; pdb.set_trace()
     elif not RDM_version == '01':
         # first, sort the models into two equivalent halves, just in case this went wrong before.
         sorted_keys_dict = mc.analyse.extract_and_clean.order_task_according_to_rewards(configs_dict)
@@ -440,7 +440,7 @@ for sub in subjects:
     
     RSM_dict_betw_TH = {}
     for model in models_sorted_into_splits[split]:
-        RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_sorted_into_splits['1'][model], models_sorted_into_splits['2'][model]),1), plotting = False, titlestring= model)
+        RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_sorted_into_splits['1'][model], models_sorted_into_splits['2'][model]),1), plotting = True, titlestring= model)
         # mc.simulation.predictions.plot_without_legends(RSM_dict_betw_TH[model])
     
 
