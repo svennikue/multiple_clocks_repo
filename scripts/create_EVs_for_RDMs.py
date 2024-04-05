@@ -20,6 +20,9 @@ GLM ('regression') settings (creating the 'bins'):
     03-2 - 40 regressors; for every task, only the rewards are modelled (in their original time)
     03-3 - 30 regressors; for every task, only the rewards are modelled (in their original time), except for A (because of visual feedback)
     03-4 - 40 regressors; for every task, only the rewards are modelled; and NO button-press regressor!
+    03-99 - 40 regressors; no button press; I allocate the reward onsets randomly to different state/task combos  -> shuffled through whole task; [using a stick function]
+    03-999 - 40 regressors; no button press; created a random but sorted sample of onsets that I am using -> still somewhat sorted by time, still [using a stick function]
+    03-9999 - 40 regressors; no button press; shift all regressors 6 seconds earlier
     04 - 40 regressors; for every task, only the paths are modelled
     05 - locations + button presses 
     
@@ -50,11 +53,12 @@ import pickle
 import re
 import sys
 import shutil
+import random
 
 
 #import pdb; pdb.set_trace()
 
-version = '03-4'
+version = '03-99'
 
 # plotting = True
 # to debug task_halves = ['1']
@@ -77,7 +81,7 @@ else:
     split_buttons = False
     
     
-if version in ['03-4']:
+if version in ['03-4', '03-99', '03-999', '03-9999']:
     no_buttons = True
 else:
     no_buttons = False
@@ -271,8 +275,7 @@ for sub in subjects:
                 
                 
             
-        if version in ['02', '03', '03-2', '03-3', '03-4', '04']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward
-            print('start loop one')
+        if version in ['02', '03', '03-2', '03-3', '03-4','03-99','03-999','03-9999', '04']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward
             # 10 is only paths
             # identify where the next task begins by iterating through the DataFrame 
             # and collecting the indices where the column is not empty
@@ -326,12 +329,24 @@ for sub in subjects:
             
             if version == '03-3': # without the A-state because of visual feedback
                 state_names.remove('A')
-                    
+            
+            if version in ['03-99']:
+                shuffled_df = df['reward_onset'].dropna().to_list()
+                np.random.shuffle(shuffled_df)
+            
+            if version in ['03-999']:
+                valid_onset_times = df['reward_onset'].dropna().to_list()
+                earliest_onset = min(valid_onset_times)
+                latest_onset = max(valid_onset_times)
+                random_onsets = sorted(random.sample(range(int(earliest_onset), int(latest_onset)), len(valid_onset_times)))
+            
+            
             taskEV_dic = {}
             # e.g. for 06 I want 80 EVs in the end -> 160 elements in the dictionary (duration + onset)
+            counter = 0
             for i, task in enumerate(task_names):
                 for s, state in enumerate(state_names):
-                    if version in ['02', '03', '03-3', '03-2', '03-4']:
+                    if version in ['02', '03', '03-3', '03-2', '03-4', '03-99', '03-999', '03-9999']:
                         EV_rewardname_onset = f"{task}_{state}_reward_onset"
                         EV_rewardname_dur = f"{task}_{state}_reward_dur"
                     if version in ['02', '04']: # inlude subpaths
@@ -339,13 +354,32 @@ for sub in subjects:
                         EV_subpathname_dur = f"{task}_{state}_subpath_dur"
 
                     partial_df = df[((df['config_type'] == task) & (df['state'] == state))]
-                    if version in ['02', '03', '03-2', '03-3', '03-4']:
+                    
+                    if version in ['02', '03', '03-2', '03-3', '03-4', '03-99', '03-999', '03-9999']:
+                        # import pdb; pdb.set_trace()
                         taskEV_dic[EV_rewardname_onset] = partial_df['reward_onset'].dropna().to_list()
-                        if version in ['02', '03']: # reward as stick-function: duration of all rewards to 500ms -> all regressors will be equally long.
+                        if version in ['03-99']:
+                            taskEV_dic[EV_rewardname_onset] = shuffled_df[counter: counter+len(taskEV_dic[EV_rewardname_onset])]
+                        if version in ['03-999']:
+                            taskEV_dic[EV_rewardname_onset] = random_onsets[counter:counter+len(taskEV_dic[EV_rewardname_onset])]
+                        if version in ['03-9999']:
+                            taskEV_dic[EV_rewardname_onset] = [elem - 6 for elem in taskEV_dic[EV_rewardname_onset]]
+                            # # be careful to not make this longer than the actual fMRI file!
+                            # if taskEV_dic[EV_rewardname_onset][-1] > df['reward_onset'].dropna().to_list()[-1]:
+                            #     taskEV_dic[EV_rewardname_onset][-1] =  df['reward_onset'].dropna().to_list()[-1]
+                        if version in ['02', '03', '03-99', '03-999', '03-9999']: # reward as stick-function: duration of all rewards to 500ms -> all regressors will be equally long.
                             taskEV_dic[EV_rewardname_dur] = np.ones(len(taskEV_dic[EV_rewardname_onset])) * 0.5
                         elif version in ['03-2', '03-3', '03-4']:
-                            taskEV_dic[EV_rewardname_dur] = partial_df['reward_duration'].dropna().to_list()  
+                            taskEV_dic[EV_rewardname_dur] = partial_df['reward_duration'].dropna().to_list()
                         mag_reward = np.ones(len(taskEV_dic[EV_rewardname_onset]))
+                        # if version in ['03-99']:
+                        #     # maybe better than this is to just take the entire dataset and shuffle it, because then there
+                        #     # is not the possibility of creating crazy overlapping regressors.
+                            
+                        #     task_start = min(taskEV_dic[EV_rewardname_onset])
+                        #     task_end = max(taskEV_dic[EV_rewardname_onset]) + taskEV_dic[EV_rewardname_dur][-1]
+                        #     new_onset = random.sample(range(int(task_start), int(task_end)), 5)
+                            
                         # if len(mag_reward) < 3:
                         #     print(f"Careful! {task} x {state} reward is not complete and will be excluded.")
                         #     excluded = excluded + 1
@@ -369,13 +403,15 @@ for sub in subjects:
                         if deleted_x_rows > 0:
                             print(f"careful! I am saving a cutted EV {task}{state} subpath file. Happened for subject {sub} in task half {task_half}")
                             np.savetxt(str(EV_folder) + 'ev_' + f"{task}_{state}_path" + '.txt', array, delimiter="    ", fmt='%f')
-                        
+                    
+                    counter = counter + 1  
+                    
             # lastly, save the taskEV_dic so that I can also use it as data regressors.
             with open(f"{EV_folder}my_EV_dict", 'wb') as f:
                 pickle.dump(taskEV_dic, f)
      
         # then, lastly, adjust the .fsf file I will use for the regression.
-        if version in ['01', '02', '03', '03-2', '03-3', '03-4', '04', '05']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward, 09 is instruction period
+        if version in ['01', '02', '03', '03-2', '03-3', '03-4', '04', '05', '03-99', '03-999']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward, 09 is instruction period
             print('start loop 2')
             # collect all filepaths I just created.
             # this is a bit risky in case there have been other EVs in there that I didnt want...
