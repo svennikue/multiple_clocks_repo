@@ -14,7 +14,7 @@ RDM settings (creating the representations):
     03 -> modelling only rewards + splitting model in the same function.
     03-1 -> modelling only rewards + splitting the model after regression 
     03-2 -> same as 03-1 but only considering task D and B (where 2 rew locs are the same)
-    03-3 -> same as 03-1 but only considering B,C,D [excluding rew A] -> important to be paired with GLM 03-3!
+    03-3 -> same as 03-1 but only considering B,C,D [excluding rew A]
     03-99 ->  using 03-1 - reward locations and future rew model; but EVs are scrambled.
     
     04 -> modelling only paths
@@ -28,6 +28,7 @@ GLM ('regression') settings (creating the 'bins'):
     03 - 40 regressors; for every tasks, only the rewards are modelled [using a stick function]
     03-2 - 40 regressors; for every task, only the rewards are modelled (in their original time)
     03-3 - 30 regressors; for every task, only the rewards are modelled (in their original time), except for A (because of visual feedback)
+    03-4 - 24 regressors; for the tasks where every reward is at a different location (A,C,E), only the rewards are modelled (stick function)
     03-99 - 40 regressors; no button press; I allocate the reward onsets randomly to different state/task combos  -> shuffled through whole task; [using a stick function]
     03-999 - 40 regressors; no button press; created a random but sorted sample of onsets that I am using -> still somewhat sorted by time, still [using a stick function]
     03-9999 - 40 regressors; no button press; shift all regressors 6 seconds earlier
@@ -53,8 +54,8 @@ import pickle
 import sys
 import random
 
-RDM_version = '03-3' 
-regression_version = '03' 
+RDM_version = '03' 
+regression_version = '03-4' 
 
 
 # import pdb; pdb.set_trace() 
@@ -105,8 +106,8 @@ elif regression_version == '03-3': #excluding reward A
     no_RDM_conditions = 30
   
 # based on RDM
-elif RDM_version == '03-2': # only including task D and B and only rewards
-    no_RDM_conditions = 16
+elif regression_version == '03-4': # only including task A,C,D  and only rewards
+    no_RDM_conditions = 24
     
 
 
@@ -139,6 +140,7 @@ for sub in subjects:
     # load the file which defines the order of the model RDMs, and hence the data RDMs
     with open(f"{RDM_dir}/sorted_keys-model_RDMs.pkl", 'rb') as file:
         sorted_keys = pickle.load(file)
+        import pdb; pdb.set_trace() 
     # also store 2 dictionaries of the EVs
     
     pe_path_01 = f"{data_dir}/func/glm_{regression_version}_pt01.feat/stats"

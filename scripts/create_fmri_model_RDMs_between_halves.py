@@ -49,8 +49,8 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '03-4' 
-RDM_version = '03' 
+regression_version = '03-3' 
+RDM_version = '03-3' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -386,11 +386,11 @@ for sub in subjects:
                 if len(list_lengths) != 1:
                     raise ValueError("All lists must have the same length.")
                 
-                # if not all regressors shall be included, filter them according to the regression setting.
-                if regression_version in ['03', '03-2']:
+                # if not all regressors shall be included, filter them according to the regression setting.                
+                if regression_version in ['03','03-1','03-2', '03-4', '03-99', '03-999']:
                     regressors_curr_task = {k: v for k, v in regressors_curr_task.items() if k.endswith('reward')}
-                elif regression_version == '03-3' and RDM_version == '03-3': # additionally get rid of the A-state.
-                    regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key}
+                if regression_version == '03-3' and RDM_version == '03-3': # additionally get rid of the A-state.
+                    regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key and key.endswith('reward')}
                 elif regression_version == '04':
                     regressors_curr_task = {k: v for k, v in regressors_curr_task.items() if k.endswith('path')}
                     
