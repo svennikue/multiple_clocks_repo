@@ -28,6 +28,9 @@ GLM ('regression') settings (creating the 'bins'):
     03 - 40 regressors; for every tasks, only the rewards are modelled [using a stick function]
     03-2 - 40 regressors; for every task, only the rewards are modelled (in their original time)
     03-3 - 30 regressors; for every task, only the rewards are modelled (in their original time), except for A (because of visual feedback)
+    03-99 - 40 regressors; no button press; I allocate the reward onsets randomly to different state/task combos  -> shuffled through whole task; [using a stick function]
+    03-999 - 40 regressors; no button press; created a random but sorted sample of onsets that I am using -> still somewhat sorted by time, still [using a stick function]
+    03-9999 - 40 regressors; no button press; shift all regressors 6 seconds earlier
     04 - 40 regressors; for every task, only the paths are modelled
     05 - locations + button presses 
     
@@ -50,8 +53,8 @@ import pickle
 import sys
 import random
 
-RDM_version = '03-999' 
-regression_version = '02' 
+RDM_version = '03' 
+regression_version = '03-99' 
 
 
 # import pdb; pdb.set_trace() 
@@ -96,7 +99,7 @@ if regression_version == '01':
     no_RDM_conditions = 20 # including all instruction periods
 elif regression_version == '02':
     no_RDM_conditions = 80 # including all paths and rewards
-elif regression_version in ['03', '04', '03-4']:
+elif regression_version in ['03', '04', '03-4', '03-99', '03-999', '03-9999']:
     no_RDM_conditions = 40 # only including rewards or only paths
 elif regression_version == '03-3': #excluding reward A
     no_RDM_conditions = 30

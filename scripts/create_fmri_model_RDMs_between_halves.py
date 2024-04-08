@@ -28,6 +28,9 @@ GLM ('regression') settings (creating the 'bins'):
     03 - 40 regressors; for every tasks, only the rewards are modelled [using a stick function]
     03-2 - 40 regressors; for every task, only the rewards are modelled (in their original time)
     03-3 - 30 regressors; for every task, only the rewards are modelled (in their original time), except for A (because of visual feedback)
+    03-99 - 40 regressors; no button press; I allocate the reward onsets randomly to different state/task combos  -> shuffled through whole task; [using a stick function]
+    03-999 - 40 regressors; no button press; created a random but sorted sample of onsets that I am using -> still somewhat sorted by time, still [using a stick function]
+    03-9999 - 40 regressors; no button press; shift all regressors 6 seconds earlier
     04 - 40 regressors; for every task, only the paths are modelled
     05 - locations + button presses 
     
@@ -45,8 +48,8 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '01' 
-RDM_version = '01' 
+regression_version = '03' 
+RDM_version = '03-3' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -413,6 +416,8 @@ for sub in subjects:
     # out of the between-halves loop.
     if RDM_version == '01': # I have to work on this one further for the replay analysis (temporal + spatial)
         models_between_tasks = mc.analyse.analyse_MRI_behav.similarity_of_tasks(configs_dict) 
+        models_sorted_into_splits = models_between_tasks.copy()
+        # this doens't work anymore now after the changes!! continue working on it
         import pdb; pdb.set_trace()
     elif not RDM_version == '01':
         # first, sort the models into two equivalent halves, just in case this went wrong before.

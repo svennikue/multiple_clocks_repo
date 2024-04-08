@@ -488,10 +488,10 @@ def similarity_of_tasks(reward_per_task_per_taskhalf_dict):
                 presentation_similarity[i, j] = 1
     
     
-
-    # np.corrcoef(task_similiarity[:, :10])
-    # corrected_model = (task_similiarity[:, :10] + np.transpose(task_similiarity[:, :10]))/2
-    # corrected_RSM_dict[model] = corrected_model[0:int(len(corrected_model)/2), int(len(corrected_model)/2):]
+    import pdb; pdb.set_trace() 
+    np.corrcoef(presentation_similarity[:, :10])
+    corrected_model = (presentation_similarity[:, :10] + np.transpose(presentation_similarity[:, :10]))/2
+    corrected_RSM_dict[model] = corrected_model[0:int(len(corrected_model)/2), int(len(corrected_model)/2):]
    
         
     # to create the right format, split this into two task halves again
