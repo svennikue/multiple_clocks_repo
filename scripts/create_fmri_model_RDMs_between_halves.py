@@ -28,6 +28,7 @@ GLM ('regression') settings (creating the 'bins'):
     03 - 40 regressors; for every tasks, only the rewards are modelled [using a stick function]
     03-2 - 40 regressors; for every task, only the rewards are modelled (in their original time)
     03-3 - 30 regressors; for every task, only the rewards are modelled (in their original time), except for A (because of visual feedback)
+    03-4 - 24 regressors; for the tasks where every reward is at a different location (A,C,E), only the rewards are modelled (stick function)
     03-99 - 40 regressors; no button press; I allocate the reward onsets randomly to different state/task combos  -> shuffled through whole task; [using a stick function]
     03-999 - 40 regressors; no button press; created a random but sorted sample of onsets that I am using -> still somewhat sorted by time, still [using a stick function]
     03-9999 - 40 regressors; no button press; shift all regressors 6 seconds earlier
@@ -48,8 +49,8 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '03' 
-RDM_version = '03-3' 
+regression_version = '03-4' 
+RDM_version = '03' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -60,7 +61,7 @@ subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10
 
 task_halves = ['1', '2']
-fmriplotting = False
+fmriplotting = True
 fmriplotting_debug = False
 fmri_save = True
 
@@ -277,8 +278,21 @@ for sub in subjects:
                         steps.insert(0, (subpath[0]- subpath_after_steps[config][r-1]))
                     steps_subpath_alltasks[config].append(steps)    
 
-        if RDM_version == '03-2':
-            configs = np.array([config for config in configs if config.startswith('D') or config.startswith('B')])
+        if regression_version == '03-4':
+            for config in configs:
+                if config.startswith('B') or config.startswith('D'):
+                    del rew_list[config]
+                
+            configs = np.array([config for config in configs if config.startswith('A') or config.startswith('C') or config.startswith('E')])
+            # update reward list accordingly
+            # for config in rew_list:
+            #     if config.startswith('A') or config.startswith('C') or config.startswith('E')
+            #         del rew_list[task]
+                    
+            # for config in configs:
+            #     if config not in rew_list:
+            #         del rew_list[config]
+
             
         # finally, create simulations and time-bin per run.
         # first, prep result dictionaries.
@@ -410,6 +424,7 @@ for sub in subjects:
         models_between_task_halves[task_half] = all_models_dict
         print(f"task half {task_half}")
         configs_dict[task_half] = rew_list
+        
         
 
 

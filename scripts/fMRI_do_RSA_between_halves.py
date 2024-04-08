@@ -53,8 +53,8 @@ import pickle
 import sys
 import random
 
-RDM_version = '03' 
-regression_version = '03-99' 
+RDM_version = '03-3' 
+regression_version = '03' 
 
 
 # import pdb; pdb.set_trace() 
