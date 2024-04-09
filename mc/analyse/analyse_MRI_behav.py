@@ -308,7 +308,13 @@ def evaluate_model(model, data):
     
     X = sm.add_constant(model.rdm.transpose());
     Y = data.dissimilarities.transpose();
-    est = sm.OLS(Y, X).fit(missing='drop')
+    
+    # to filter out potential nans in the model part
+    nan_filter = np.isnan(X).any(axis=1)
+    filtered_X = X[~nan_filter]
+    filtered_Y = Y[~nan_filter]
+    
+    est = sm.OLS(filtered_Y, filtered_X).fit()
     # import pdb; pdb.set_trace()
     return est.tvalues[1:], est.params[1:], est.pvalues[1:]
     
