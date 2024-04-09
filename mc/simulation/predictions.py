@@ -2142,6 +2142,41 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     return result_dict
 
 
+def create_mask_same_tasks(curr_RDM, reward_per_task_per_taskhalf_dict):
+    # import pdb; pdb.set_trace() 
+    rewards_experiment = mc.analyse.extract_and_clean.flatten_nested_dict(reward_per_task_per_taskhalf_dict)
+    ordered_config_names = {half: [] for half in reward_per_task_per_taskhalf_dict}  
+
+    no_duplicates_list = []    
+    for i, task_reference in enumerate(sorted(rewards_experiment.keys())):
+        if task_reference not in no_duplicates_list:
+            for task_comp in rewards_experiment:
+                if task_comp not in no_duplicates_list:
+                    if not task_reference == task_comp:
+                        if rewards_experiment[task_reference] == rewards_experiment[task_comp]:
+                            ordered_config_names['1'].append(task_reference)
+                            ordered_config_names['2'].append(task_comp)
+                            no_duplicates_list.append(task_reference)
+                            no_duplicates_list.append(task_comp)
+    
+    ordered_configs_concat = np.concatenate((ordered_config_names['1'], ordered_config_names['2']))
+                      
+    mask_RDM = np.ones((len(curr_RDM), len(curr_RDM)))
+    len_task = len(curr_RDM)/ len(no_duplicates_list)
+    for ix, x in enumerate(ordered_configs_concat):
+        for iy, y in enumerate(ordered_configs_concat):
+            if x.startswith(y.split("2",1)[0]):
+                mask_RDM[ix*4:ix*4 + 4, iy*4:iy*4 + 4] = 0
+            if x.startswith(y.split("1",1)[0]):
+                mask_RDM[ix*4:ix*4 + 4, iy*4:iy*4 + 4] = 0
+            if y.startswith(x.split("2",1)[0]):
+                mask_RDM[ix*4:ix*4 + 4, iy*4:iy*4 + 4] = 0
+            if y.startswith(x.split("1",1)[0]):
+                mask_RDM[ix*4:ix*4 + 4, iy*4:iy*4 + 4] = 0
+                
+    return mask_RDM
+
+
 
 def create_run_count_model_fmri(number_of_steps, number_of_runs, norm_number_of_runs=5, wrap_around = 1, temporal_resolution = 10, plot = False): 
     # define where the mean of these function shall be

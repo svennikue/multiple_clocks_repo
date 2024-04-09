@@ -17,6 +17,7 @@ RDM settings (creating the representations):
     03-1 -> modelling only rewards + splitting the model after regression 
     03-2 -> same as 03-1 but only considering task D and B (where 2 rew locs are the same)
     03-3 -> same as 03-1 but only considering B,C,D [excluding rew A] -> important to be paired with GLM 03-3!
+    03-5 - STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw. 
     03-99 ->  using 03-1 - reward locations and future rew model; but EVs are scrambled.
     03-999 ->  is debugging 2.0: using 03-1 - reward locations and future rew model; but the voxels are scrambled.
     04 -> modelling only paths
@@ -49,8 +50,8 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '03-3' 
-RDM_version = '03-3' 
+regression_version = '03' 
+RDM_version = '03-5' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -61,8 +62,7 @@ subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10
 
 task_halves = ['1', '2']
-fmriplotting = True
-fmriplotting_debug = False
+fmriplotting = False
 fmri_save = True
 
 add_run_counts_model = False # this doesn't work with the current analysis
@@ -77,6 +77,8 @@ elif RDM_version in ['03']: # modelling only rewards, splitting clocks within th
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew']
 elif RDM_version in ['03-1', '03-2']:  # modelling only rewards, splitting clocks later in a different way - after the regression.
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
+elif RDM_version in ['03-5']:
+    models_I_want = ['state']
 elif RDM_version in ['03-3']:  # modelling only rewards, splitting clocks later in a different way - after the regression; ignoring reward A
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc']
 elif RDM_version in ['03-99']:  # using 03-1 - reward locations and future rew model; but EVs are scrambled.
@@ -86,8 +88,7 @@ elif RDM_version in ['03-999']:  # is debugging 2.0: using 03-1 - reward locatio
 
 elif RDM_version in ['04']: # only paths. to see if the human brain represents also only those rings anchored at no-reward locations
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_no-rew', 'clocks_no-rew']
-      
- 
+
     
 for sub in subjects:
     # initialize some dictionaries
@@ -228,31 +229,7 @@ for sub in subjects:
         # overview of the reward fields per task.
         for config in rew_list:
             rew_list[config] = [[int(value) for value in sub_list] for sub_list in rew_list[config][0:4]]
-      
-        
-        # [delete later - this is a debug step]
-        # check if the regressors and extracted runs are aligned: the length of each regressor should be equal to len(elem) for elem in walked_path
-        if fmriplotting_debug:
-            # first check if regressors are all euqal, only plot if so
-            # first check if C1_backw exists.
-            if 'C1_backw' in configs:
-                if len(regressors['C1_backw_A_subpath']) == len(regressors['C1_backw_A_reward']) == len(regressors['C1_backw_B_subpath']) == len (regressors['C1_backw_B_reward']) == len(regressors['C1_backw_C_subpath']) ==  len(regressors['C1_backw_C_reward']) ==  len(regressors['C1_backw_D_subpath']) == len(regressors['C1_backw_D_reward']):
-                    plot_dict = np.concatenate((regressors['C1_backw_A_subpath'], regressors['C1_backw_A_reward'], regressors['C1_backw_B_subpath'], regressors['C1_backw_B_reward'], regressors['C1_backw_C_subpath'], regressors['C1_backw_C_reward'], regressors['C1_backw_D_subpath'], regressors['C1_backw_D_reward'])).reshape(8, -1)
-                    plt.figure(); plt.imshow(plot_dict, aspect = 'auto')           
-                     
-                    # write a test figure for the regressors   
-                    for config in configs:
-                        #config = 'C1'
-                        count = 0
-                        to_plot = np.zeros((8,100)) + 3
-                        for key in regressors.keys():
-                            if key.startswith(config):
-                                to_plot[count, 0 : len(regressors[key])] = regressors[key]
-                                count += 1
-                        plt.figure(); plt.imshow(to_plot, aspect = 'auto')   
-                        for index in rew_index_per_config[config]:
-                            plt.plot([index, index,index,index], [1,3,5,7], color = 'black', marker = 'x', markersize =8)
-               
+          
         
         # next step: create subpath files with rew_index and how many steps there are per subpath.
         for config in subpath_after_steps:
@@ -284,16 +261,8 @@ for sub in subjects:
                     del rew_list[config]
                 
             configs = np.array([config for config in configs if config.startswith('A') or config.startswith('C') or config.startswith('E')])
-            # update reward list accordingly
-            # for config in rew_list:
-            #     if config.startswith('A') or config.startswith('C') or config.startswith('E')
-            #         del rew_list[task]
-                    
-            # for config in configs:
-            #     if config not in rew_list:
-            #         del rew_list[config]
 
-            
+    
         # finally, create simulations and time-bin per run.
         # first, prep result dictionaries.
         all_models_dict = {f"{model}": {key: "" for key in configs} for model in models_I_want}
@@ -343,7 +312,7 @@ for sub in subjects:
                         result_model_dict = mc.simulation.predictions.create_instruction_model(rew_list[config], trial_type=config)
                     elif RDM_version in ['02']: # default, modelling all and splitting clocks.
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path= False, split_clock = True)
-                    elif RDM_version in ['03']: # modelling only rewards + splitting clocks [new]
+                    elif RDM_version in ['03', '03-5']: # modelling only rewards + splitting clocks [new]
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path = False, split_clock=True)
                     elif RDM_version in ['03-1', '03-2', '03-3']:# modelling only clocks + splitting clocks later in different way.
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
@@ -353,7 +322,7 @@ for sub in subjects:
     
                     
                     # now for all models that are creating or not creating the splits models with my default function, this checking should work.
-                    if RDM_version not in ['03-1', '03-2', '03-3']:
+                    if RDM_version not in ['03-1', '03-2', '03-3', '03-5']:
                         # test if this function gives the same as the models you want, otherwise break!
                         model_list = list(result_model_dict.keys())
                         if model_list != models_I_want:
@@ -399,8 +368,7 @@ for sub in subjects:
                 # Create a list of lists sorted by keys
                 sorted_regs = [regressors_curr_task[key] for key in sorted_regnames_curr_task]
                 regressors_matrix = np.array(sorted_regs)
-                if fmriplotting_debug:
-                    plt.figure(); plt.imshow(regressors_matrix, aspect = 'auto')
+
                 
                 # then do the ORDERED time-binning for each model - across the 5 repeats.
                 for model in all_models_dict:
@@ -424,7 +392,8 @@ for sub in subjects:
         models_between_task_halves[task_half] = all_models_dict
         print(f"task half {task_half}")
         configs_dict[task_half] = rew_list
-        
+    
+    
         
 
 
@@ -457,18 +426,26 @@ for sub in subjects:
     # (of size 2*nCond X 2*nCond), where the (non-symmetric) nCond X nCond bottom left square (or top right, 
     # doesn't matter because it's symmetric) (i.e. a quarter of the original matrix) has all the correlations 
     # across THs. 
+    # import pdb; pdb.set_trace()
     
     RSM_dict_betw_TH = {}
     for model in models_sorted_into_splits[split]:
-        RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_sorted_into_splits['1'][model], models_sorted_into_splits['2'][model]),1), plotting = True, titlestring= model)
+        RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_sorted_into_splits['1'][model], models_sorted_into_splits['2'][model]),1), plotting = False, titlestring= model)
         # mc.simulation.predictions.plot_without_legends(RSM_dict_betw_TH[model])
-    
+        if RDM_version == '03-5':
+            # this is really just playing around. the proper work will be in fmri_do_RSA!!!
+            RSM_dict_betw_TH_mask = mc.simulation.predictions.create_mask_same_tasks(RSM_dict_betw_TH[model], configs_dict)
+            RSM_dict_betw_TH['state_masked'] = np.where(RSM_dict_betw_TH_mask == 1, RSM_dict_betw_TH[model], np.nan)
+            # import pdb; pdb.set_trace()
+            #RSM_dict_betw_TH['state_masked'] = RSM_dict_betw_TH[model]* RSM_dict_betw_TH_mask
+            
 
     # then average the lower triangle and the top triangle of this nCond x nCond matrix, 
     # by adding it to its transpose, dividing by 2, and taking only the lower or 
     # upper triangle of the result.    
     corrected_RSM_dict = {}
     for model in RSM_dict_betw_TH:
+        # import pdb; pdb.set_trace()
         corrected_model = (RSM_dict_betw_TH[model] + np.transpose(RSM_dict_betw_TH[model]))/2
         corrected_RSM_dict[model] = corrected_model[0:int(len(corrected_model)/2), int(len(corrected_model)/2):]
    
@@ -494,12 +471,14 @@ for sub in subjects:
                 corr_RDMs[x,y] = mc.simulation.RDMs.corr_matrices_pearson(corrected_RSM_dict[RDM_one], corrected_RSM_dict[RDM_two])[0][1]               
         intercorr_RDM_dict['correlation_try_two'] = corr_RDMs
         mc.simulation.RDMs.plot_RDMs(intercorr_RDM_dict, len(corr_RDMs), RDM_dir, string_for_ticks = tick_string)       
-        
 
+    
     if fmri_save: 
         # then save these matrices.
         if not os.path.exists(RDM_dir):
             os.makedirs(RDM_dir)
+        if RDM_version in ['03-5']:
+            np.save(os.path.join(RDM_dir, f"RSM_state_mask_across_halves"), RSM_dict_betw_TH_mask)
         for RDM in corrected_RSM_dict:
             np.save(os.path.join(RDM_dir, f"RSM_{RDM}_{sub}_fmri_both_halves"), corrected_RSM_dict[RDM])
             

@@ -308,7 +308,7 @@ def evaluate_model(model, data):
     
     X = sm.add_constant(model.rdm.transpose());
     Y = data.dissimilarities.transpose();
-    est = sm.OLS(Y, X).fit()
+    est = sm.OLS(Y, X).fit(missing='drop')
     # import pdb; pdb.set_trace()
     return est.tvalues[1:], est.params[1:], est.pvalues[1:]
     

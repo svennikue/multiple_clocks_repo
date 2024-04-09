@@ -54,8 +54,8 @@ import pickle
 import sys
 import random
 
-RDM_version = '03' 
-regression_version = '03-4' 
+RDM_version = '03-5' 
+regression_version = '03' 
 
 
 # import pdb; pdb.set_trace() 
@@ -88,6 +88,8 @@ elif RDM_version in ['03-1', '03-2']:  # modelling only rewards, splitting clock
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
 elif RDM_version in ['03-3']:  # modelling only rewards, splitting clocks later in a different way - after the regression; ignoring reward A
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc']
+elif RDM_version in ['03-5']:
+    models_I_want = ['state']
 elif RDM_version in ['03-99']:  # using 03-1 - reward locations and future rew model; but EVs are scrambled.
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
 elif RDM_version in ['03-999']:  # is debugging 2.0: using 03-1 - reward locations and future rew model; but the voxels are scrambled.
@@ -100,7 +102,7 @@ if regression_version == '01':
     no_RDM_conditions = 20 # including all instruction periods
 elif regression_version == '02':
     no_RDM_conditions = 80 # including all paths and rewards
-elif regression_version in ['03', '04', '03-4', '03-99', '03-999', '03-9999']:
+elif regression_version in ['03', '04','03-99', '03-999', '03-9999']:
     no_RDM_conditions = 40 # only including rewards or only paths
 elif regression_version == '03-3': #excluding reward A
     no_RDM_conditions = 30
@@ -130,9 +132,9 @@ for sub in subjects:
         os.makedirs(results_dir)
         os.makedirs(f"{results_dir}/results")
     results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results"  
-    if os.path.exists(results_dir):
-        # move pre-existing files into a different folder.
-        mc.analyse.analyse_MRI_behav.move_files_to_subfolder(results_dir)
+    # if os.path.exists(results_dir):
+    #     # move pre-existing files into a different folder.
+    #     mc.analyse.analyse_MRI_behav.move_files_to_subfolder(results_dir)
     # get a reference image to later project the results onto. This is usually
     # example_func from half 1, as this is where the data is corrected to.
     ref_img = load_img(f"{data_dir}/func/preproc_clean_01.feat/example_func.nii.gz")
@@ -140,11 +142,13 @@ for sub in subjects:
     # load the file which defines the order of the model RDMs, and hence the data RDMs
     with open(f"{RDM_dir}/sorted_keys-model_RDMs.pkl", 'rb') as file:
         sorted_keys = pickle.load(file)
-        import pdb; pdb.set_trace() 
+        # import pdb; pdb.set_trace() 
     # also store 2 dictionaries of the EVs
+    if regression_version == '03-3':
+        regression_version = '03'
     
     pe_path_01 = f"{data_dir}/func/glm_{regression_version}_pt01.feat/stats"
-    reading_in_EVs_dict_01 = {}
+    reading_in_EVs_dict_01 = {}   
     with open(f"{data_dir}/func/EVs_{regression_version}_pt01/task-to-EV.txt", 'r') as file:
         for line in file:
             index, name_ev = line.strip().split(' ', 1)
@@ -158,7 +162,7 @@ for sub in subjects:
             index, name_ev = line.strip().split(' ', 1)
             name = name_ev.replace('ev_', '')
             reading_in_EVs_dict_02[f"{name}_EV_{int(index)+1}"] = os.path.join(pe_path_02, f"pe{int(index)+1}.nii.gz")
-           
+    
     # Step 1: creating the searchlights
     # mask will define the searchlight positions, in pt01 space because that is 
     # where the functional files have been registered to.
@@ -261,7 +265,7 @@ for sub in subjects:
 
             print(f"This is the order now: {image_paths}")  
 
-    
+        
         # define the conditions, combine both task halves
         data_conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(no_RDM_conditions)])), (1,2)).transpose(),2*no_RDM_conditions)  
         # now prepare the data RDM file. 
@@ -278,7 +282,7 @@ for sub in subjects:
             # with open(f"{results_dir}/data_RDM.pkl", 'wb') as file:
                 # pickle.dump(data_RDM, file)
 
- 
+    
     # Step 3: load and compute the model RDMs.
     # load the data files I created.
     data_dirs = {}
@@ -287,7 +291,7 @@ for sub in subjects:
             RDM_dir = f"{data_dir}/beh/RDMs_09_glmbase_{regression_version}" # potentially delete??
         data_dirs[model]= np.load(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves.npy")) 
     
-
+    
     # step 3: create model RDMs
     # first, each model gets its own, separate estimation.
     model_RDM_dir = {}
@@ -298,13 +302,24 @@ for sub in subjects:
             model_RDM_dir[model] = rsr.calc_rdm(model_data, method='correlation', descriptor='conds')
         else:
             model_RDM_dir[model] = rsr.calc_rdm(model_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
+        
+        if RDM_version in ['03-5']:
+            state_mask = np.load(os.path.join(RDM_dir, f"RSM_state_masked_{sub}_fmri_both_halves.npy"))
+            state_mask_flat = list(state_mask[np.triu_indices(len(state_mask), 1)])
+            # state_mask_flat = [int(x) for x in state_mask_flat]
+            boolean_mask = np.isnan(state_mask_flat)
+            model_RDM_dir[model].dissimilarities[0][boolean_mask] = np.nan
+            #model_RDM_dir[model].dissimilarities = np.where(state_mask_flat == 1, model_RDM_dir[model].dissimilarities, np.nan)
+            #test = np.where(state_mask_flat == 1, model_RDM_dir[model].dissimilarities, np.nan)
+
+        # import pdb; pdb.set_trace()
         fig, ax, ret_vla = rsatoolbox.vis.show_rdm(model_RDM_dir[model])
         # then compute the location model.
         model_model = rsatoolbox.model.ModelFixed(f"{model}_only", model_RDM_dir[model])
         # Step 4: evaluate the model fit between model and data RDMs.
         RDM_my_model_dir[model] = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(model_model, d) for d in tqdm(data_RDM, desc=f"running GLM for all searchlights in {model}"))
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_model_dir[model], data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
-       
+      
     # second, combo models.
     # I am interested in:
         # combo clocks with midnight, phase, state and location included

@@ -58,7 +58,7 @@ import random
 
 #import pdb; pdb.set_trace()
 
-version = '03-99'
+version = '03-3'
 
 # plotting = True
 # to debug task_halves = ['1']
