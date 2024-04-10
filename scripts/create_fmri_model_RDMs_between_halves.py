@@ -13,12 +13,14 @@ RDM settings (creating the representations):
     01 -> instruction periods, similarity by order of execution, order of seeing, all backw presentations
     01-1 -> instruction periods, location similarity
     02 -> modelling paths + rewards, creating all possible models
+    02-A -> modelling everything but excluding state A
+    
     03 -> modelling only rewards + splitting model in the same function.
     03-A -> same as 03 but only considering B,C,D [excluding rew A]
 
     03-1 -> modelling only rewards + splitting the model after regression 
     03-2 -> same as 03-1 but only considering task D and B (where 2 rew locs are the same)
-        03-5 - STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw. 
+    03-5 - STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw. 
     03-5-A -> STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw. ; EXCLUDING reward A
     03-99 ->  using 03-1 - reward locations and future rew model; but EVs are scrambled.
     03-999 ->  is debugging 2.0: using 03-1 - reward locations and future rew model; but the voxels are scrambled.
@@ -57,7 +59,7 @@ import sys
 # import pdb; pdb.set_trace()
 
 regression_version = '04-4' 
-RDM_version = '04-5-A' 
+RDM_version = '02-A' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -92,7 +94,7 @@ elif RDM_version in ['03-99']:  # using 03-1 - reward locations and future rew m
 elif RDM_version in ['03-999']:  # is debugging 2.0: using 03-1 - reward locations and future rew model; but the voxels are scrambled.
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
 
-elif RDM_version in ['04']: # only paths. to see if the human brain represents also only those rings anchored at no-reward locations
+elif RDM_version in ['04', '04-A']: # only paths. to see if the human brain represents also only those rings anchored at no-reward locations
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_no-rew', 'clocks_no-rew']
 
     
@@ -324,7 +326,7 @@ for sub in subjects:
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path = False, split_clock=True)
                     elif RDM_version in ['03-1', '03-2', '03-3']:# modelling only clocks + splitting clocks later in different way.
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
-                    elif RDM_version in ['04', '04-5-A']: # modelling only paths + splitting clocks [new]
+                    elif RDM_version in ['04', '04-5-A', '04-A']: # modelling only paths + splitting clocks [new]
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path = True, split_clock=True)
                     
     
@@ -377,7 +379,7 @@ for sub in subjects:
                         regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if key.endswith('reward')}
                 
                 if regression_version in ['04', '04-4']:
-                    if RDM_version in ['04-5-A']:
+                    if RDM_version in ['04-5-A', '02-A', '04-A']:
                         regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key and key.endswith('path')}    
                     else:
                         regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if key.endswith('path')}
