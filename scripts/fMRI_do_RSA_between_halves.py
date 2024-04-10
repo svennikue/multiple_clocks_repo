@@ -61,7 +61,7 @@ import pickle
 import sys
 import random
 
-RDM_version = '03-5-A' 
+RDM_version = '02-A' 
 regression_version = '03-4' 
 
 
@@ -86,7 +86,7 @@ print(f"Now running RSA for RDM version {RDM_version} based on subj GLM {regress
 if RDM_version in ['01', '01-1']: # 01 doesnt work yet! 
     models_I_want = ['direction_presentation', 'execution_similarity', 'presentation_similarity']
 
-elif RDM_version in ['02']: #modelling paths + rewards, creating all possible models 
+elif RDM_version in ['02', '02-A']: #modelling paths + rewards, creating all possible models 
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight', 'clocks']
 
 elif RDM_version in ['03']: # modelling only rewards, splitting clocks within the same function
@@ -116,9 +116,10 @@ elif regression_version == '03-3': #excluding reward A
 elif regression_version == '03-4': # only including tasks without double reward locs: A,C,D  and only rewards
     no_RDM_conditions = 24
     
-if regression_version == '03-4' and RDM_version == '03-5-A': # only TASK A,C,D, only rewards B-C-D
+if regression_version == '03-4' and RDM_version in ['03-5-A', '02-A', '03-A']: # only TASK A,C,D, only rewards B-C-D
     no_RDM_conditions = 18
-    
+
+
 
 
     
@@ -362,6 +363,17 @@ for sub in subjects:
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "STATE-combo_cl-mid-st-loc-ph", mask=mask, number_regr = 2, ref_image_for_affine_path=ref_img)
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "LOC-combo_cl-mid-st-loc-ph", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "PHASE-combo_cl-mid-st-loc-ph", mask=mask, number_regr = 4, ref_image_for_affine_path=ref_img)
+
+    if RDM_version in ['02', '02-A'] and regression_version in ['03', '03-4']: # don't model location and midnight together if reduced to reward times as they are the same.
+        # first: clocks with midnight, phase, state and location.
+        clocks_midn_states_ph_RDM = rsatoolbox.rdm.concat(model_RDM_dir['clocks'], model_RDM_dir['midnight'], model_RDM_dir['state'], model_RDM_dir['phase'])
+        clocks_midn_states_ph_model = rsatoolbox.model.ModelWeighted('clocks_midn_states_RDM', clocks_midn_states_ph_RDM)
+        # the first is t, the second beta. [est.tvalues[1:], est.params[1:]]
+        results_clocks_midn_states_ph_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(clocks_midn_states_ph_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model - clocks vs. phase, midn, state')) 
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "CLOCK-combo-cl-mid-st-ph", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "MIDN-combo_cl-mid-st-ph", mask=mask, number_regr = 1, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "STATE-combo_cl-mid-st-ph", mask=mask, number_regr = 2, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "PHASE-combo_cl-mid-st-ph", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
 
 
     if RDM_version == '03' and regression_version in ['02', '04']: # modeling only reward rings

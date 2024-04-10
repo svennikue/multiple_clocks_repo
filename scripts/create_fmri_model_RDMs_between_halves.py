@@ -14,10 +14,11 @@ RDM settings (creating the representations):
     01-1 -> instruction periods, location similarity
     02 -> modelling paths + rewards, creating all possible models
     03 -> modelling only rewards + splitting model in the same function.
+    03-A -> same as 03 but only considering B,C,D [excluding rew A]
+
     03-1 -> modelling only rewards + splitting the model after regression 
     03-2 -> same as 03-1 but only considering task D and B (where 2 rew locs are the same)
-    03-3 -> same as 03-1 but only considering B,C,D [excluding rew A] -> important to be paired with GLM 03-3!
-    03-5 - STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw. 
+        03-5 - STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw. 
     03-5-A -> STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw. ; EXCLUDING reward A
     03-99 ->  using 03-1 - reward locations and future rew model; but EVs are scrambled.
     03-999 ->  is debugging 2.0: using 03-1 - reward locations and future rew model; but the voxels are scrambled.
@@ -52,7 +53,7 @@ import sys
 # import pdb; pdb.set_trace()
 
 regression_version = '03-4' 
-RDM_version = '03-5-A' 
+RDM_version = '02-A' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -71,10 +72,10 @@ add_run_counts_model = False # this doesn't work with the current analysis
 if RDM_version in ['01', '01-1']: # 01 doesnt work yet! 
     models_I_want = ['direction_presentation', 'execution_similarity', 'presentation_similarity']
 
-elif RDM_version in ['02']: #modelling paths + rewards, creating all possible models 
+elif RDM_version in ['02', '02-A']: #modelling paths + rewards, creating all possible models 
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight', 'clocks']
 
-elif RDM_version in ['03']: # modelling only rewards, splitting clocks within the same function
+elif RDM_version in ['03', '03-A']: # modelling only rewards, splitting clocks within the same function
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew']
 elif RDM_version in ['03-1', '03-2']:  # modelling only rewards, splitting clocks later in a different way - after the regression.
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
@@ -313,9 +314,9 @@ for sub in subjects:
                     # create all models.
                     if RDM_version == '01-1': # creating location instruction stuff
                         result_model_dict = mc.simulation.predictions.create_instruction_model(rew_list[config], trial_type=config)
-                    elif RDM_version in ['02']: # default, modelling all and splitting clocks.
+                    elif RDM_version in ['02', '02-A']: # default, modelling all and splitting clocks.
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path= False, split_clock = True)
-                    elif RDM_version in ['03', '03-5', '03-5-A']: # modelling only rewards + splitting clocks [new]
+                    elif RDM_version in ['03', '03-5', '03-5-A', '03-A']: # modelling only rewards + splitting clocks [new]
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path = False, split_clock=True)
                     elif RDM_version in ['03-1', '03-2', '03-3']:# modelling only clocks + splitting clocks later in different way.
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
@@ -325,7 +326,7 @@ for sub in subjects:
     
                     
                     # now for all models that are creating or not creating the splits models with my default function, this checking should work.
-                    if RDM_version not in ['03-1', '03-2', '03-3', '03-5', '03-5-A' ]:
+                    if RDM_version not in ['03-1', '03-2', '03-3', '03-5', '03-5-A']:
                         # test if this function gives the same as the models you want, otherwise break!
                         model_list = list(result_model_dict.keys())
                         if model_list != models_I_want:
@@ -358,10 +359,16 @@ for sub in subjects:
                 if len(list_lengths) != 1:
                     raise ValueError("All lists must have the same length.")
                 
-                # if not all regressors shall be included, filter them according to the regression setting.                
+                # if not all regressors shall be included, filter them according to the regression setting
+                if RDM_version == '02-A':
+                    regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key}
+                
+                if RDM_version == '02-A' and regression_version in ['03','03-1','03-2', '03-4', '03-99', '03-999']:
+                    regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key and key.endswith('reward')}
+                
                 if regression_version in ['03','03-1','03-2', '03-4', '03-99', '03-999']:
-                    regressors_curr_task = {k: v for k, v in regressors_curr_task.items() if k.endswith('reward')}
-                if (regression_version == '03-3' and RDM_version == '03-3') or (regression_version == '03-4' and RDM_version == '03-5-A'): # additionally get rid of the A-state.
+                    regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if key.endswith('reward')}
+                if (RDM_version == '03-A') or (regression_version == '03-4' and RDM_version == '03-5-A'): # additionally get rid of the A-state.
                     regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key and key.endswith('reward')}
                 elif regression_version == '04':
                     regressors_curr_task = {k: v for k, v in regressors_curr_task.items() if k.endswith('path')}
