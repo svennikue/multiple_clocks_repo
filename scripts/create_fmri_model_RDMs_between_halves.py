@@ -18,6 +18,7 @@ RDM settings (creating the representations):
     03-2 -> same as 03-1 but only considering task D and B (where 2 rew locs are the same)
     03-3 -> same as 03-1 but only considering B,C,D [excluding rew A] -> important to be paired with GLM 03-3!
     03-5 - STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw. 
+    03-5-A -> STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw. ; EXCLUDING reward A
     03-99 ->  using 03-1 - reward locations and future rew model; but EVs are scrambled.
     03-999 ->  is debugging 2.0: using 03-1 - reward locations and future rew model; but the voxels are scrambled.
     04 -> modelling only paths
@@ -50,8 +51,8 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '03' 
-RDM_version = '03-5' 
+regression_version = '03-4' 
+RDM_version = '03-5-A' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -77,7 +78,7 @@ elif RDM_version in ['03']: # modelling only rewards, splitting clocks within th
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew']
 elif RDM_version in ['03-1', '03-2']:  # modelling only rewards, splitting clocks later in a different way - after the regression.
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
-elif RDM_version in ['03-5']:
+elif RDM_version in ['03-5', '03-5-A']:
     models_I_want = ['state']
 elif RDM_version in ['03-3']:  # modelling only rewards, splitting clocks later in a different way - after the regression; ignoring reward A
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc']
@@ -95,6 +96,7 @@ for sub in subjects:
     models_between_task_halves = {}
     sorted_models_split = {}
     configs_dict = {}
+    reg_list = []
     for task_half in task_halves:
         data_dir_beh = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/pilot/{sub}/beh/"
         RDM_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
@@ -142,7 +144,8 @@ for sub in subjects:
            
 
         configs = df['config_type'].dropna().unique()
-         
+        
+        
         walked_path = {}
         timings = {}
         rew_list = {}
@@ -312,7 +315,7 @@ for sub in subjects:
                         result_model_dict = mc.simulation.predictions.create_instruction_model(rew_list[config], trial_type=config)
                     elif RDM_version in ['02']: # default, modelling all and splitting clocks.
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path= False, split_clock = True)
-                    elif RDM_version in ['03', '03-5']: # modelling only rewards + splitting clocks [new]
+                    elif RDM_version in ['03', '03-5', '03-5-A']: # modelling only rewards + splitting clocks [new]
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path = False, split_clock=True)
                     elif RDM_version in ['03-1', '03-2', '03-3']:# modelling only clocks + splitting clocks later in different way.
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
@@ -322,7 +325,7 @@ for sub in subjects:
     
                     
                     # now for all models that are creating or not creating the splits models with my default function, this checking should work.
-                    if RDM_version not in ['03-1', '03-2', '03-3', '03-5']:
+                    if RDM_version not in ['03-1', '03-2', '03-3', '03-5', '03-5-A' ]:
                         # test if this function gives the same as the models you want, otherwise break!
                         model_list = list(result_model_dict.keys())
                         if model_list != models_I_want:
@@ -358,7 +361,7 @@ for sub in subjects:
                 # if not all regressors shall be included, filter them according to the regression setting.                
                 if regression_version in ['03','03-1','03-2', '03-4', '03-99', '03-999']:
                     regressors_curr_task = {k: v for k, v in regressors_curr_task.items() if k.endswith('reward')}
-                if regression_version == '03-3' and RDM_version == '03-3': # additionally get rid of the A-state.
+                if (regression_version == '03-3' and RDM_version == '03-3') or (regression_version == '03-4' and RDM_version == '03-5-A'): # additionally get rid of the A-state.
                     regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key and key.endswith('reward')}
                 elif regression_version == '04':
                     regressors_curr_task = {k: v for k, v in regressors_curr_task.items() if k.endswith('path')}
@@ -368,7 +371,7 @@ for sub in subjects:
                 # Create a list of lists sorted by keys
                 sorted_regs = [regressors_curr_task[key] for key in sorted_regnames_curr_task]
                 regressors_matrix = np.array(sorted_regs)
-
+                reg_list.append(sorted_regnames_curr_task)
                 
                 # then do the ORDERED time-binning for each model - across the 5 repeats.
                 for model in all_models_dict:
@@ -392,19 +395,20 @@ for sub in subjects:
         models_between_task_halves[task_half] = all_models_dict
         print(f"task half {task_half}")
         configs_dict[task_half] = rew_list
-    
+
     
         
 
-
+    
     # out of the between-halves loop.
     if RDM_version == '01': # I have to work on this one further for the replay analysis (temporal + spatial)
         models_between_tasks = mc.analyse.analyse_MRI_behav.similarity_of_tasks(configs_dict) 
         models_sorted_into_splits = models_between_tasks.copy()
         # this doens't work anymore now after the changes!! continue working on it
-        import pdb; pdb.set_trace()
+        
     elif not RDM_version == '01':
         # first, sort the models into two equivalent halves, just in case this went wrong before.
+        # import pdb; pdb.set_trace()
         sorted_keys_dict = mc.analyse.extract_and_clean.order_task_according_to_rewards(configs_dict)
         models_sorted_into_splits = {task_half: {model: {config: "" for config in sorted_keys_dict[task_half]} for model in models_I_want} for task_half in task_halves}
         for half in models_between_task_halves:
@@ -432,9 +436,14 @@ for sub in subjects:
     for model in models_sorted_into_splits[split]:
         RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_sorted_into_splits['1'][model], models_sorted_into_splits['2'][model]),1), plotting = False, titlestring= model)
         # mc.simulation.predictions.plot_without_legends(RSM_dict_betw_TH[model])
-        if RDM_version == '03-5':
+        if RDM_version in ['03-5', '03-5-A']:
+            if RDM_version == '03-5':
+                exclude = 0
+            elif RDM_version == '03-5-A':
+                exclude = 1
             # this is really just playing around. the proper work will be in fmri_do_RSA!!!
-            RSM_dict_betw_TH_mask = mc.simulation.predictions.create_mask_same_tasks(RSM_dict_betw_TH[model], configs_dict)
+            RSM_dict_betw_TH_mask = mc.simulation.predictions.create_mask_same_tasks(RSM_dict_betw_TH[model], configs_dict, exclude)
+            # import pdb; pdb.set_trace()
             RSM_dict_betw_TH['state_masked'] = np.where(RSM_dict_betw_TH_mask == 1, RSM_dict_betw_TH[model], np.nan)
             # import pdb; pdb.set_trace()
             #RSM_dict_betw_TH['state_masked'] = RSM_dict_betw_TH[model]* RSM_dict_betw_TH_mask
@@ -477,7 +486,7 @@ for sub in subjects:
         # then save these matrices.
         if not os.path.exists(RDM_dir):
             os.makedirs(RDM_dir)
-        if RDM_version in ['03-5']:
+        if RDM_version in ['03-5', '03-5-A']:
             np.save(os.path.join(RDM_dir, f"RSM_state_mask_across_halves"), RSM_dict_betw_TH_mask)
         for RDM in corrected_RSM_dict:
             np.save(os.path.join(RDM_dir, f"RSM_{RDM}_{sub}_fmri_both_halves"), corrected_RSM_dict[RDM])
@@ -487,7 +496,10 @@ for sub in subjects:
             np.save(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves"), np.concatenate((models_sorted_into_splits['1'][model], models_sorted_into_splits['2'][model]),1))
         
         # and lastly, save the order in which I put the RDMs.
-
+        
         with open(f"{RDM_dir}/sorted_keys-model_RDMs.pkl", 'wb') as file:
             pickle.dump(sorted_keys_dict, file)
+            
+        with open(f"{RDM_dir}/sorted_regs.pkl", 'wb') as file:
+            pickle.dump(reg_list, file)
                 

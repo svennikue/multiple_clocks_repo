@@ -2142,8 +2142,9 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     return result_dict
 
 
-def create_mask_same_tasks(curr_RDM, reward_per_task_per_taskhalf_dict):
+def create_mask_same_tasks(curr_RDM, reward_per_task_per_taskhalf_dict, excluding):
     # import pdb; pdb.set_trace() 
+    no_rewards = 4-excluding
     rewards_experiment = mc.analyse.extract_and_clean.flatten_nested_dict(reward_per_task_per_taskhalf_dict)
     ordered_config_names = {half: [] for half in reward_per_task_per_taskhalf_dict}  
 
@@ -2166,13 +2167,13 @@ def create_mask_same_tasks(curr_RDM, reward_per_task_per_taskhalf_dict):
     for ix, x in enumerate(ordered_configs_concat):
         for iy, y in enumerate(ordered_configs_concat):
             if x.startswith(y.split("2",1)[0]):
-                mask_RDM[ix*4:ix*4 + 4, iy*4:iy*4 + 4] = 0
+                mask_RDM[ix*no_rewards:ix*no_rewards + no_rewards, iy*no_rewards:iy*no_rewards + no_rewards] = 0
             if x.startswith(y.split("1",1)[0]):
-                mask_RDM[ix*4:ix*4 + 4, iy*4:iy*4 + 4] = 0
+                mask_RDM[ix*no_rewards:ix*no_rewards + no_rewards, iy*no_rewards:iy*no_rewards + no_rewards] = 0
             if y.startswith(x.split("2",1)[0]):
-                mask_RDM[ix*4:ix*4 + 4, iy*4:iy*4 + 4] = 0
+                mask_RDM[ix*no_rewards:ix*no_rewards + no_rewards, iy*no_rewards:iy*no_rewards + no_rewards] = 0
             if y.startswith(x.split("1",1)[0]):
-                mask_RDM[ix*4:ix*4 + 4, iy*4:iy*4 + 4] = 0
+                mask_RDM[ix*no_rewards:ix*no_rewards + no_rewards, iy*no_rewards:iy*no_rewards + no_rewards] = 0
                 
     return mask_RDM
 

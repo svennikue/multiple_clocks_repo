@@ -10,12 +10,17 @@ create fMRI data RDMs
 RDM settings (creating the representations):
     01 -> instruction periods, similarity by order of execution, order of seeing, all backw presentations
     01-1 -> instruction periods, location similarity
+    
     02 -> modelling paths + rewards, creating all possible models
+    
     03 -> modelling only rewards + splitting model in the same function.
     03-1 -> modelling only rewards + splitting the model after regression 
     03-2 -> same as 03-1 but only considering task D and B (where 2 rew locs are the same)
-    03-3 -> same as 03-1 but only considering B,C,D [excluding rew A]
+    03-3 -> same as 03-1 but only considering B,C,D [excluding rew A] -> important to be paired with GLM 03-3!
+    03-5 - STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw. 
+    03-5-A -> STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw. ; EXCLUDING reward A
     03-99 ->  using 03-1 - reward locations and future rew model; but EVs are scrambled.
+    03-999 ->  is debugging 2.0: using 03-1 - reward locations and future rew model; but the voxels are scrambled.    
     
     04 -> modelling only paths
     
@@ -29,6 +34,8 @@ GLM ('regression') settings (creating the 'bins'):
     03-2 - 40 regressors; for every task, only the rewards are modelled (in their original time)
     03-3 - 30 regressors; for every task, only the rewards are modelled (in their original time), except for A (because of visual feedback)
     03-4 - 24 regressors; for the tasks where every reward is at a different location (A,C,E), only the rewards are modelled (stick function)
+        Careful! I computed one data (subject-level) GLM called 03-4. This is simply a 03 without button presses!
+        Not the same as 03-4 in this sense, but ok to be used.
     03-99 - 40 regressors; no button press; I allocate the reward onsets randomly to different state/task combos  -> shuffled through whole task; [using a stick function]
     03-999 - 40 regressors; no button press; created a random but sorted sample of onsets that I am using -> still somewhat sorted by time, still [using a stick function]
     03-9999 - 40 regressors; no button press; shift all regressors 6 seconds earlier
@@ -54,8 +61,8 @@ import pickle
 import sys
 import random
 
-RDM_version = '03-5' 
-regression_version = '03' 
+RDM_version = '03-5-A' 
+regression_version = '03-4' 
 
 
 # import pdb; pdb.set_trace() 
@@ -88,7 +95,7 @@ elif RDM_version in ['03-1', '03-2']:  # modelling only rewards, splitting clock
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
 elif RDM_version in ['03-3']:  # modelling only rewards, splitting clocks later in a different way - after the regression; ignoring reward A
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc']
-elif RDM_version in ['03-5']:
+elif RDM_version in ['03-5', '03-5-A']:
     models_I_want = ['state']
 elif RDM_version in ['03-99']:  # using 03-1 - reward locations and future rew model; but EVs are scrambled.
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
@@ -106,10 +113,11 @@ elif regression_version in ['03', '04','03-99', '03-999', '03-9999']:
     no_RDM_conditions = 40 # only including rewards or only paths
 elif regression_version == '03-3': #excluding reward A
     no_RDM_conditions = 30
-  
-# based on RDM
-elif regression_version == '03-4': # only including task A,C,D  and only rewards
+elif regression_version == '03-4': # only including tasks without double reward locs: A,C,D  and only rewards
     no_RDM_conditions = 24
+    
+if regression_version == '03-4' and RDM_version == '03-5-A': # only TASK A,C,D, only rewards B-C-D
+    no_RDM_conditions = 18
     
 
 
@@ -142,11 +150,12 @@ for sub in subjects:
     # load the file which defines the order of the model RDMs, and hence the data RDMs
     with open(f"{RDM_dir}/sorted_keys-model_RDMs.pkl", 'rb') as file:
         sorted_keys = pickle.load(file)
-        # import pdb; pdb.set_trace() 
+    with open(f"{RDM_dir}/sorted_regs.pkl", 'rb') as file:
+        reg_keys = pickle.load(file)
     # also store 2 dictionaries of the EVs
-    if regression_version == '03-3':
+    if regression_version in ['03-3', '03-4']:
         regression_version = '03'
-    
+
     pe_path_01 = f"{data_dir}/func/glm_{regression_version}_pt01.feat/stats"
     reading_in_EVs_dict_01 = {}   
     with open(f"{data_dir}/func/EVs_{regression_version}_pt01/task-to-EV.txt", 'r') as file:
@@ -221,20 +230,24 @@ for sub in subjects:
                 image_paths[split] = [None] * no_RDM_conditions # Initialize a list for each half of the dictionary
                 data_RDM_file[split] = [None] * no_RDM_conditions  # Initialize a list for each half of the dictionary
                 for EV_no, task in enumerate(sorted_keys[split]):
-                    # print(f"now looking for {task}")
-                    for EV_01 in reading_in_EVs_dict_01:
-                        if EV_01.startswith(task):
-                            i = i + 1
-                            # print(f"looking for {task} and found it in 01 {EV_01}, index {i}")
-                            image_paths[split][i] = reading_in_EVs_dict_01[EV_01]  # save path to check if everything went fine later
-                            data_RDM_file[split][i] = nib.load(reading_in_EVs_dict_01[EV_01]).get_fdata()
-                    for EV_02 in reading_in_EVs_dict_02:
-                        if EV_02.startswith(task):
-                            i = i + 1
-                            # print(f"looking for {task} and found it in 01 {EV_02}, index {i}")
-                            image_paths[split][i] = reading_in_EVs_dict_02[EV_02]
-                            data_RDM_file[split][i] = nib.load(reading_in_EVs_dict_02[EV_02]).get_fdata() 
-                            # Convert the list to a NumPy array
+                    for regressor_sets in reg_keys:
+                        if regressor_sets[0].startswith(task):
+                            curr_reg_keys = regressor_sets
+                    for reg_key in curr_reg_keys:
+                        # print(f"now looking for {task}")
+                        for EV_01 in reading_in_EVs_dict_01:
+                            if EV_01.startswith(reg_key):
+                                i = i + 1
+                                # print(f"looking for {task} and found it in 01 {EV_01}, index {i}")
+                                image_paths[split][i] = reading_in_EVs_dict_01[EV_01]  # save path to check if everything went fine later
+                                data_RDM_file[split][i] = nib.load(reading_in_EVs_dict_01[EV_01]).get_fdata()
+                        for EV_02 in reading_in_EVs_dict_02:
+                            if EV_02.startswith(reg_key):
+                                i = i + 1
+                                # print(f"looking for {task} and found it in 01 {EV_02}, index {i}")
+                                image_paths[split][i] = reading_in_EVs_dict_02[EV_02]
+                                data_RDM_file[split][i] = nib.load(reading_in_EVs_dict_02[EV_02]).get_fdata() 
+                                # Convert the list to a NumPy array
                 
                 print(f"This is the order now: {image_paths[split]}")
                 data_RDM_file[split] = np.array(data_RDM_file[split])
@@ -303,7 +316,7 @@ for sub in subjects:
         else:
             model_RDM_dir[model] = rsr.calc_rdm(model_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
         
-        if RDM_version in ['03-5']:
+        if RDM_version in ['03-5', '03-5-A']:
             state_mask = np.load(os.path.join(RDM_dir, f"RSM_state_masked_{sub}_fmri_both_halves.npy"))
             state_mask_flat = list(state_mask[np.triu_indices(len(state_mask), 1)])
             # state_mask_flat = [int(x) for x in state_mask_flat]
