@@ -22,7 +22,10 @@ RDM settings (creating the representations):
     03-5-A -> STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw. ; EXCLUDING reward A
     03-99 ->  using 03-1 - reward locations and future rew model; but EVs are scrambled.
     03-999 ->  is debugging 2.0: using 03-1 - reward locations and future rew model; but the voxels are scrambled.
+    
     04 -> modelling only paths
+    04-5 -> STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw.
+    04-5-A -> STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw. ; EXCLUDING state A
 
 
 GLM ('regression') settings (creating the 'bins'):
@@ -36,6 +39,7 @@ GLM ('regression') settings (creating the 'bins'):
     03-999 - 40 regressors; no button press; created a random but sorted sample of onsets that I am using -> still somewhat sorted by time, still [using a stick function]
     03-9999 - 40 regressors; no button press; shift all regressors 6 seconds earlier
     04 - 40 regressors; for every task, only the paths are modelled
+    04-4 - 24 regressors; for the tasks where every reward is at a different location (A,C,E)
     05 - locations + button presses 
     
 
@@ -52,8 +56,8 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '03-4' 
-RDM_version = '02-A' 
+regression_version = '04-4' 
+RDM_version = '04-5-A' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -79,7 +83,7 @@ elif RDM_version in ['03', '03-A']: # modelling only rewards, splitting clocks w
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew']
 elif RDM_version in ['03-1', '03-2']:  # modelling only rewards, splitting clocks later in a different way - after the regression.
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
-elif RDM_version in ['03-5', '03-5-A']:
+elif RDM_version in ['03-5', '03-5-A', '04-5', '04-5-A']:
     models_I_want = ['state']
 elif RDM_version in ['03-3']:  # modelling only rewards, splitting clocks later in a different way - after the regression; ignoring reward A
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc']
@@ -259,7 +263,7 @@ for sub in subjects:
                         steps.insert(0, (subpath[0]- subpath_after_steps[config][r-1]))
                     steps_subpath_alltasks[config].append(steps)    
 
-        if regression_version == '03-4':
+        if regression_version in ['03-4', '04-4']:
             for config in configs:
                 if config.startswith('B') or config.startswith('D'):
                     del rew_list[config]
@@ -320,13 +324,13 @@ for sub in subjects:
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path = False, split_clock=True)
                     elif RDM_version in ['03-1', '03-2', '03-3']:# modelling only clocks + splitting clocks later in different way.
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
-                    elif RDM_version in ['04']: # modelling only paths + splitting clocks [new]
+                    elif RDM_version in ['04', '04-5-A']: # modelling only paths + splitting clocks [new]
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path = True, split_clock=True)
                     
     
                     
                     # now for all models that are creating or not creating the splits models with my default function, this checking should work.
-                    if RDM_version not in ['03-1', '03-2', '03-3', '03-5', '03-5-A']:
+                    if RDM_version not in ['03-1', '03-2', '03-3', '03-5', '03-5-A','04-5', '04-5-A']:
                         # test if this function gives the same as the models you want, otherwise break!
                         model_list = list(result_model_dict.keys())
                         if model_list != models_I_want:
@@ -360,18 +364,24 @@ for sub in subjects:
                     raise ValueError("All lists must have the same length.")
                 
                 # if not all regressors shall be included, filter them according to the regression setting
-                if RDM_version == '02-A':
-                    regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key}
-                
-                if RDM_version == '02-A' and regression_version in ['03','03-1','03-2', '03-4', '03-99', '03-999']:
-                    regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key and key.endswith('reward')}
+                if regression_version in ['02']:
+                    if RDM_version == '02-A':
+                        regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key}
+                    else:
+                        regressors_curr_task = {key: value for key, value in regressors_curr_task.items()}
                 
                 if regression_version in ['03','03-1','03-2', '03-4', '03-99', '03-999']:
-                    regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if key.endswith('reward')}
-                if (RDM_version == '03-A') or (regression_version == '03-4' and RDM_version == '03-5-A'): # additionally get rid of the A-state.
-                    regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key and key.endswith('reward')}
-                elif regression_version == '04':
-                    regressors_curr_task = {k: v for k, v in regressors_curr_task.items() if k.endswith('path')}
+                    if RDM_version in ['02-A', '03-A', '03-5-A']: # additionally get rid of the A-state.
+                        regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key and key.endswith('reward')}
+                    else:
+                        regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if key.endswith('reward')}
+                
+                if regression_version in ['04', '04-4']:
+                    if RDM_version in ['04-5-A']:
+                        regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key and key.endswith('path')}    
+                    else:
+                        regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if key.endswith('path')}
+     
                     
                 # sort alphabetically.
                 sorted_regnames_curr_task = sorted(regressors_curr_task.keys())
@@ -443,10 +453,10 @@ for sub in subjects:
     for model in models_sorted_into_splits[split]:
         RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_sorted_into_splits['1'][model], models_sorted_into_splits['2'][model]),1), plotting = False, titlestring= model)
         # mc.simulation.predictions.plot_without_legends(RSM_dict_betw_TH[model])
-        if RDM_version in ['03-5', '03-5-A']:
-            if RDM_version == '03-5':
+        if RDM_version in ['03-5', '03-5-A', '04-5', '04-5-A']:
+            if RDM_version in ['03-5','04-5']:
                 exclude = 0
-            elif RDM_version == '03-5-A':
+            elif RDM_version in ['03-5-A', '04-5-A']:
                 exclude = 1
             # this is really just playing around. the proper work will be in fmri_do_RSA!!!
             RSM_dict_betw_TH_mask = mc.simulation.predictions.create_mask_same_tasks(RSM_dict_betw_TH[model], configs_dict, exclude)
@@ -493,7 +503,7 @@ for sub in subjects:
         # then save these matrices.
         if not os.path.exists(RDM_dir):
             os.makedirs(RDM_dir)
-        if RDM_version in ['03-5', '03-5-A']:
+        if RDM_version in ['03-5', '03-5-A', '04-5', '04-5-A']:
             np.save(os.path.join(RDM_dir, f"RSM_state_mask_across_halves"), RSM_dict_betw_TH_mask)
         for RDM in corrected_RSM_dict:
             np.save(os.path.join(RDM_dir, f"RSM_{RDM}_{sub}_fmri_both_halves"), corrected_RSM_dict[RDM])
