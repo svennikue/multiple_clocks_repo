@@ -2060,6 +2060,7 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     # I will manipulate clocks_per_step, and use clocks_per_step.dummy as control to check for overwritten stuff.
     clo_model =  full_clock_matrix_dummy.copy()
     
+    
     # if you also want a split clock, then prepare those as well as a dicitonary
     if split_clock == True:  
         split_clock_strings = ['curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock']
@@ -2087,10 +2088,11 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
             #firing_factor = norm_midn[row,activation_neuron]/ max_firing
             shifted_adjusted_clock = shifted_clock.copy()*firing_factor
             # before 0ing out the first row (= musicboxneuron), first save the specific rows (i.e. now, next future, 2 future, 3 future) in the split clocks model.
+            # import pdb; pdb.set_trace()
             if split_clock == True:
-                split_clock_model_dict['curr_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[0:3] + split_clock_model_dict['three_fut_rings_split_clock'][row*3:row*3+3, :]
-                split_clock_model_dict['one_fut_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[3:6] + split_clock_model_dict['three_fut_rings_split_clock'][row*3:row*3+3, :]
-                split_clock_model_dict['two_fut_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[6:9] + split_clock_model_dict['three_fut_rings_split_clock'][row*3:row*3+3, :]
+                split_clock_model_dict['curr_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[0:3] + split_clock_model_dict['curr_rings_split_clock'][row*3:row*3+3, :]
+                split_clock_model_dict['one_fut_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[3:6] + split_clock_model_dict['one_fut_rings_split_clock'][row*3:row*3+3, :]
+                split_clock_model_dict['two_fut_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[6:9] + split_clock_model_dict['two_fut_rings_split_clock'][row*3:row*3+3, :]
                 split_clock_model_dict['three_fut_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[9:] + split_clock_model_dict['three_fut_rings_split_clock'][row*3:row*3+3, :]
                 
             # then, for the full clock model, add the values to the existing clocks, but also replace the first row by 0!!

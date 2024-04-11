@@ -58,8 +58,8 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '04-4' 
-RDM_version = '02-A' 
+regression_version = '03' 
+RDM_version = '03' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
