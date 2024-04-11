@@ -429,7 +429,7 @@ for sub in subjects:
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_split_clocks_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "THRE-FUTR-RINGS_combo_split_clock", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
 
         
-    if RDM_version in ['03-1'] and regression_version in ['03']:
+    if RDM_version in ['03-1'] and regression_version in ['03', '03-4']:
         split_clocks_RDM = rsatoolbox.rdm.concat(model_RDM_dir['location'], model_RDM_dir['one_future_rew_loc'], model_RDM_dir['two_future_rew_loc'], model_RDM_dir['three_future_rew_loc'])
         split_clocks_model = rsatoolbox.model.ModelWeighted('split_clocks_RDM', split_clocks_RDM)
         
