@@ -319,7 +319,7 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
         #         curr_corr = f"{curr_RSM_one}_with_{curr_RSM_two}"
         #         temp_corr = mc.simulation.RDMs.corr_matrices_pearson(regressors[curr_RSM_one], regressors[curr_RSM_two], no_tasks = task_no, mask_within= True, exclude_diag=True)
         #         similarities_exclude_autocorr[curr_corr] = temp_corr[0,1]
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         if plotting:
           
             regressors['data'] = RSM_neurons
@@ -1615,7 +1615,7 @@ def plotting_hist_scat(data_list, label_string_list, label_tick_list, title_stri
     sigma = 0.08
     mu = 0.01
     #cmaps.Pastel1
-    #cmap = plt.get_cmap('Pastel1')
+    cmap = plt.get_cmap('Pastel1')
     for index, contrast in enumerate(data_list):
         noise = np.ones(len(data_list[index])) + sigma * np.random.randn(len(data_list[index])) + mu
         data_to_plot = contrast.copy()

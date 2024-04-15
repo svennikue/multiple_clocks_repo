@@ -24,7 +24,7 @@ import colormaps as cmaps
 #
 save = True
 load_old = False
-do_per_run = True
+do_per_run = False
 do_neuron_subset = False
 
 # Part 1: load data

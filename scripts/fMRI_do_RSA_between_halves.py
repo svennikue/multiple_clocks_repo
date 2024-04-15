@@ -13,8 +13,8 @@ RDM settings (creating the representations):
     
     02 -> modelling paths + rewards, creating all possible models
     
-    03 -> modelling only rewards + splitting model in the same function.
-    03-1 -> modelling only rewards + splitting the model after regression 
+    03 -> modelling only reward anchors/rings + splitting clocks model in the same py function.
+    03-1 -> modelling only reward rings + split ‘clocks model’ = just rotating the reward location around. 
     03-2 -> same as 03-1 but only considering task D and B (where 2 rew locs are the same)
     03-3 -> same as 03-1 but only considering B,C,D [excluding rew A] -> important to be paired with GLM 03-3!
     03-5 - STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw. 
@@ -111,11 +111,11 @@ if regression_version == '01':
     no_RDM_conditions = 20 # including all instruction periods
 elif regression_version == '02':
     no_RDM_conditions = 80 # including all paths and rewards
-elif regression_version in ['03', '04','03-99', '03-999', '03-9999']:
+elif regression_version in ['03', '04','03-99', '03-999', '03-9999', '03-l', '03-e']:
     no_RDM_conditions = 40 # only including rewards or only paths
 elif regression_version == '03-3': #excluding reward A
     no_RDM_conditions = 30
-elif regression_version == '03-4': # only including tasks without double reward locs: A,C,D  and only rewards
+elif regression_version in ['03-4', '04-4']: # only including tasks without double reward locs: A,C,D  and only rewards
     no_RDM_conditions = 24
     
 if regression_version in ['03-4', '04-4'] and RDM_version in ['03-5-A', '02-A', '03-A', '04-A', '04-5-A']: # only TASK A,C,D, only rewards B-C-D
