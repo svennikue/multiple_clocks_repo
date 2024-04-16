@@ -2099,7 +2099,7 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
             shifted_adjusted_clock[0] = np.zeros((len(shifted_adjusted_clock[0])))
             clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()
         
-    
+    # import pdb; pdb.set_trace()
     if plot == True:
         mc.simulation.predictions.plot_without_legends(loc_model, titlestring='Location_model')
         mc.simulation.predictions.plot_without_legends(phas_model, titlestring='Phase Model')

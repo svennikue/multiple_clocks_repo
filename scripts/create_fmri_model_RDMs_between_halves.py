@@ -59,7 +59,7 @@ import sys
 # import pdb; pdb.set_trace()
 
 regression_version = '03-4' 
-RDM_version = '03' 
+RDM_version = '03-1' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -70,7 +70,7 @@ subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10
 
 task_halves = ['1', '2']
-fmriplotting = False
+fmriplotting = True
 fmri_save = True
 
 add_run_counts_model = False # this doesn't work with the current analysis
@@ -84,7 +84,7 @@ elif RDM_version in ['02', '02-A']: #modelling paths + rewards, creating all pos
 elif RDM_version in ['03', '03-A', '03-l', '03-e']: # modelling only rewards, splitting clocks within the same function
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew']
 elif RDM_version in ['03-1', '03-2']:  # modelling only rewards, splitting clocks later in a different way - after the regression.
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
+    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs']
 elif RDM_version in ['03-5', '03-5-A', '04-5', '04-5-A']:
     models_I_want = ['state']
 elif RDM_version in ['03-3']:  # modelling only rewards, splitting clocks later in a different way - after the regression; ignoring reward A
@@ -397,7 +397,7 @@ for sub in subjects:
                     if RDM_version == '01-1':
                         all_models_dict[model][config] = result_model_dict[model]
                     # run the regression on all simulated data, except for those as I have a different way of creating them:
-                    elif model not in ['one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']:
+                    elif model not in ['one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs']:
                         all_models_dict[model][config] = mc.simulation.predictions.transform_data_to_betas(repeats_model_dict[model], regressors_matrix)
     
     
@@ -409,7 +409,10 @@ for sub in subjects:
                     all_models_dict['two_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -2, axis = 1) 
                     if RDM_version in ['03-1', '03-2']:
                         all_models_dict['three_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -3, axis = 1) 
-                
+                    
+                    # try something.
+                    all_models_dict['curr-and-future-rew-locs'][config] = np.concatenate((all_models_dict['one_future_rew_loc'][config], all_models_dict['two_future_rew_loc'][config], all_models_dict['three_future_rew_loc'][config]), 0)
+                    
         # then, lastly, safe the all_models_dict in the respective task_half.
         models_between_task_halves[task_half] = all_models_dict
         print(f"task half {task_half}")

@@ -63,8 +63,8 @@ import pickle
 import sys
 import random
 
-RDM_version = '02-A' 
-regression_version = '04-4' 
+RDM_version = '03-1' 
+regression_version = '03-4' 
 
 
 # import pdb; pdb.set_trace() 
@@ -94,7 +94,7 @@ elif RDM_version in ['02', '02-A']: #modelling paths + rewards, creating all pos
 elif RDM_version in ['03']: # modelling only rewards, splitting clocks within the same function
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew']
 elif RDM_version in ['03-1', '03-2']:  # modelling only rewards, splitting clocks later in a different way - after the regression.
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
+    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs']
 elif RDM_version in ['03-3']:  # modelling only rewards, splitting clocks later in a different way - after the regression; ignoring reward A
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc']
 elif RDM_version in ['03-5', '03-5-A', '04-5', '04-5-A']:
@@ -403,7 +403,18 @@ for sub in subjects:
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "STATE-combo_cl-mid-st-ph", mask=mask, number_regr = 2, ref_image_for_affine_path=ref_img)
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "PHASE-combo_cl-mid-st-ph", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
 
+    if RDM_version == '03-1' and regression_version in ['03', '03-4']:
+        added_rew_locs_loc_ph_st_RDM = rsatoolbox.rdm.concat(model_RDM_dir['curr-and-future-rew-locs'], model_RDM_dir['location'], model_RDM_dir['phase'], model_RDM_dir['state'])
+        added_rew_locs_loc_ph_st_model = rsatoolbox.model.ModelWeighted('added_rew_locs_loc_ph_st_RDM', added_rew_locs_loc_ph_st_RDM)
+        results_added_rew_locs_loc_ph_st_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(added_rew_locs_loc_ph_st_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model - current/fut rew locs clock vs. phase, state, loc'))
+        
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_added_rew_locs_loc_ph_st_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "CLOCKrewloc-combo-clrw-loc-ph-st", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_added_rew_locs_loc_ph_st_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "LOC-combo-clrw-loc-ph-st", mask=mask, number_regr = 1, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_added_rew_locs_loc_ph_st_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "PHASE-combo-clrw-loc-ph-st", mask=mask, number_regr = 2, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_added_rew_locs_loc_ph_st_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "STATE-combo-clrw-loc-ph-st", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
 
+    
+    
     if RDM_version == '04': #modelling only path rings
         # first: clocks with midnight, phase, state and location.
         clocks_midn_states_loc_ph_RDM = rsatoolbox.rdm.concat(model_RDM_dir['clocks_no-rew'], model_RDM_dir['midnight_no-rew'], model_RDM_dir['state'], model_RDM_dir['location'], model_RDM_dir['phase'])
