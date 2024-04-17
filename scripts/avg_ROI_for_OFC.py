@@ -82,7 +82,8 @@ fig.suptitle('Betas per subject, reward and ROI')
 # Colors for scatter plots
 #colors = ['#00BFFF', '#1E90FF', '#20B2AA']  # Deep Sky Blue, Dodger Blue, Light Sea Green
 # colors = ['#008080', '#1E90FF', '#5F9EA0', '#00008B']  # Teal, Dark Cyan, Cadet Blue, dark night blue
-colors = ['#042E33','#04403D', '#035E4C', '#23877C' ]
+# colors = ['#042E33','#04403D', '#035E4C', '#23877C' ] # shades of blue
+colors = ['#FFC222','#D3A7B5', '#AF6280', '#921D56' ]# from the poster
 matplotlib.rcParams['font.size'] = 30  # Increasing font size; adjust as needed
 
 

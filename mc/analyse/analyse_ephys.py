@@ -890,7 +890,7 @@ def reg_between_tasks_singleruns(task_configs, locations_all, neurons, timings_a
 
 # with this one, I want to compare different models and find the optimal output for my analysis.
 def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_recday, plotting = False, continuous = True, no_bins_per_state = 3, number_phase_neurons = 3, mask_within = True, split_by_phase = True):
-    # import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
     # this is now all  based on creating an average across runs first.
     
     # find out which is the largest shared trial number between all task configs
@@ -989,7 +989,9 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
             if split_by_phase:
                 sum_phase_separation = sum_phase_separation.copy() + phase_separation.copy()
         
-        
+    
+    # import pdb; pdb.set_trace()
+    
     ave_location_between = sum_location_between/no_trial_in_each_task
     ave_clocks_between = sum_clocks_between/no_trial_in_each_task
     ave_midnight_between = sum_midnight_between/no_trial_in_each_task
@@ -1005,7 +1007,7 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
         mid_mask = np.where(ave_phase_separation[1,:] == max_val)[0]
         late_mask = np.where(ave_phase_separation[2,:] == max_val)[0]
     
-    # import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
     if plotting == True:
         import pdb; pdb.set_trace()
         # plot the averaged simulated and cleaned data
@@ -1016,13 +1018,19 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
         mc.simulation.predictions.plot_without_legends(ave_neurons_between, titlestring= 'Recorded neurons, averaged across runs in mouse a', intervalline= 4*no_bins_per_state, saving_file='/Users/xpsy1114/Documents/projects/multiple_clocks/output/')
         mc.simulation.predictions.plot_without_legends(ave_state_between, titlestring= 'State model, averaged across runs in mouse a', intervalline= 4*no_bins_per_state, saving_file='/Users/xpsy1114/Documents/projects/multiple_clocks/output/')
         
-    
-    
-        RSM_location_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_location_between, plotting = True, titlestring = 'Between tasks Location RSM, 12*12, averaged over runs', intervalline= 4*no_bins_per_state)
-        RSM_clock_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_clocks_between, plotting = True, titlestring = 'Between tasks Musicbox RSM, 12*12, averaged over runs', intervalline= 4*no_bins_per_state)
-        RSM_midnight_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_midnight_between, plotting = True, titlestring = 'Between tasks Midnight RSM, 12*12, averaged over runs', intervalline= 4*no_bins_per_state)
-        RSM_phase_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_phase_between, plotting = True, titlestring = 'Between tasks Phase RSM, 12*12, averaged over runs', intervalline= 4*no_bins_per_state)
-        RSM_neurons_betas_ave = mc.simulation.RDMs.within_task_RDM(ave_neurons_between, plotting = True, titlestring = 'Between tasks Data RSM, 12*12, averaged over runs', intervalline= 4*no_bins_per_state)
+        
+        RDM_dict = {}
+        
+        RDM_dict['RSM_location_betas_ave'] = mc.simulation.RDMs.within_task_RDM(ave_location_between, plotting = True, titlestring = 'Between tasks Location RSM, 12*12, averaged over runs', intervalline= 4*no_bins_per_state)
+        RDM_dict['RSM_clock_betas_ave'] = mc.simulation.RDMs.within_task_RDM(ave_clocks_between, plotting = True, titlestring = 'Between tasks Musicbox RSM, 12*12, averaged over runs', intervalline= 4*no_bins_per_state)
+        RDM_dict['RSM_midnight_betas_ave'] = mc.simulation.RDMs.within_task_RDM(ave_midnight_between, plotting = True, titlestring = 'Between tasks Midnight RSM, 12*12, averaged over runs', intervalline= 4*no_bins_per_state)
+        RDM_dict['RSM_phase_betas_ave'] = mc.simulation.RDMs.within_task_RDM(ave_phase_between, plotting = True, titlestring = 'Between tasks Phase RSM, 12*12, averaged over runs', intervalline= 4*no_bins_per_state)
+        RDM_dict['RSM_neurons_betas_ave'] = mc.simulation.RDMs.within_task_RDM(ave_neurons_between, plotting = True, titlestring = 'Between tasks Data RSM, 12*12, averaged over runs', intervalline= 4*no_bins_per_state)
+        
+        
+        mc.simulation.RDMs.plot_RDMs(RDM_dict, len(task_configs))       
+
+        
         
         # separately per phase
         if split_by_phase:

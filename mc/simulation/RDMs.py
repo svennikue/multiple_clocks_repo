@@ -19,7 +19,7 @@ from scipy import stats
 import statsmodels.api as sm
 import colormaps as cmaps
 
-def plot_RDMs(RDM_dict, no_tasks, save_dir, string_for_ticks = None):
+def plot_RDMs(RDM_dict, no_tasks, save_dir = None, string_for_ticks = None):
     for RDM in RDM_dict:
         # import pdb; pdb.set_trace()
         indexline_after = int(len(RDM_dict[RDM])/no_tasks)
@@ -68,8 +68,9 @@ def plot_RDMs(RDM_dict, no_tasks, save_dir, string_for_ticks = None):
         
         # Adjust the layout to prevent cutoff of labels and colorbar
         plt.tight_layout()
-        fig.savefig(f"{save_dir}{RDM}.png", dpi=300, bbox_inches='tight')
-        fig.savefig(f"{save_dir}{RDM}.tiff", dpi=300, bbox_inches='tight')
+        if save_dir:
+            fig.savefig(f"{save_dir}{RDM}.png", dpi=300, bbox_inches='tight')
+            fig.savefig(f"{save_dir}{RDM}.tiff", dpi=300, bbox_inches='tight')
         
     
     
@@ -96,7 +97,7 @@ def within_task_RDM(activation_matrix, ax=None, plotting = False, titlestring = 
         if ax is None:
             plt.figure()
             ax = plt.axes()   
-        plt.imshow(RSM, interpolation = 'none')
+        plt.imshow(RSM, interpolation = 'none', cmap='ocean')
         plt.title(f'{titlestring}')
         if intervalline:
             intervalline = int(intervalline)
