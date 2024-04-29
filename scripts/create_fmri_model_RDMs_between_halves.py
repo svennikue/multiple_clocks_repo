@@ -34,6 +34,9 @@ GLM ('regression') settings (creating the 'bins'):
     01 - instruction EVs
     02 - 80 regressors; every task is divided into 4 rewards + 4 paths
     03 - 40 regressors; for every tasks, only the rewards are modelled [using a stick function]
+    03-e 40 regressors; for evert task, only take the first 2 repeats.
+    03-l 40 regressors; for every task, only take the last 3 repeats.
+        careful! sometimes, some trials are not finished and thus don't have any last runs. these are then empty regressors.
     03-2 - 40 regressors; for every task, only the rewards are modelled (in their original time)
     03-3 - 30 regressors; for every task, only the rewards are modelled (in their original time), except for A (because of visual feedback)
     03-4 - 24 regressors; for the tasks where every reward is at a different location (A,C,E), only the rewards are modelled (stick function)
@@ -58,19 +61,19 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '03-4' 
+regression_version = '03-4-e' 
 RDM_version = '03-1' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '01'
+    subj_no = '06'
 
 subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10
 
 task_halves = ['1', '2']
-fmriplotting = True
+fmriplotting = False
 fmri_save = True
 
 add_run_counts_model = False # this doesn't work with the current analysis
@@ -97,6 +100,8 @@ elif RDM_version in ['03-999']:  # is debugging 2.0: using 03-1 - reward locatio
 elif RDM_version in ['04', '04-A']: # only paths. to see if the human brain represents also only those rings anchored at no-reward locations
     models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_no-rew', 'clocks_no-rew']
 
+# DEBUG
+# models_I_want = ['location']
     
 for sub in subjects:
     # initialize some dictionaries
@@ -265,7 +270,7 @@ for sub in subjects:
                         steps.insert(0, (subpath[0]- subpath_after_steps[config][r-1]))
                     steps_subpath_alltasks[config].append(steps)    
 
-        if regression_version in ['03-4', '04-4']:
+        if regression_version in ['03-4', '03-4-e', '03-4-l','04-4']:
             for config in configs:
                 if config.startswith('B') or config.startswith('D'):
                     del rew_list[config]
@@ -280,27 +285,42 @@ for sub in subjects:
         
         if not RDM_version == '01':
             for config in configs:
-                # import pdb; pdb.set_trace()
+                
                 print(f"the config is {rew_list[config]} for {config}")
                 # select complete trajectory of current task.
                 trajectory = walked_path[config]
                 trajectory = [[int(value) for value in sub_list] for sub_list in trajectory]
                 # select the timings of this task
                 timings_curr_run = timings[config]
-                
+  
                 # select file that shows step no per subpath
                 step_number = steps_subpath_alltasks[config]
                 step_number = [[int(value) for value in sub_list] for sub_list in step_number]
+                index_run_no = np.array(range(len(step_number)))
+    
                 # make file that shows cumulative steps per subpath
                 cumsteps_per_run = [np.cumsum(task)[-1] for task in step_number]
                 cumsteps_task = np.cumsum(cumsteps_per_run)
+        
+        
+                # only consider some of the repeats for the only later or only early trials!
+                if regression_version in ['03-e', '03-4-e']:
+                    # step_number = step_number[0:2].copy()
+                    index_run_no = index_run_no[0:2].copy()
+                elif regression_version in ['03-l', '03-4-l']:
+                    # step_number = step_number[2:].copy()
+                    index_run_no = index_run_no[2:].copy()
+                       
+
                 
                 # then start looping through each subpath within one task
                 repeats_model_dict = {}
-                for no_run in range(len(step_number)):
+                # import pdb; pdb.set_trace() 
+                
+                for no_run in index_run_no:
                     # first check if the run is not completed. if so, skip the uncomplete part.
-                    if len(subpath_after_steps[config]) < 20:
-                        stop_after_x_runs = len(subpath_after_steps[config]) // 4
+                    if len(subpath_after_steps[config]) < 20: # 5 runs a 4 subpaths
+                        stop_after_x_runs = len(subpath_after_steps[config]) // 4 # 4 subpaths
                         if no_run >= stop_after_x_runs:
                             continue
                     
@@ -322,14 +342,13 @@ for sub in subjects:
                         result_model_dict = mc.simulation.predictions.create_instruction_model(rew_list[config], trial_type=config)
                     elif RDM_version in ['02', '02-A']: # default, modelling all and splitting clocks.
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path= False, split_clock = True)
-                    elif RDM_version in ['03', '03-5', '03-5-A', '03-A', '03-l', '03-e']: # modelling only rewards + splitting clocks [new]
+                    elif RDM_version in ['03', '03-5', '03-5-A', '03-A']: # modelling only rewards + splitting clocks [new]
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path = False, split_clock=True)
                     elif RDM_version in ['03-1', '03-2', '03-3']:# modelling only clocks + splitting clocks later in different way.
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
                     elif RDM_version in ['04', '04-5-A', '04-A']: # modelling only paths + splitting clocks [new]
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path = True, split_clock=True)
                     
-    
                     
                     # now for all models that are creating or not creating the splits models with my default function, this checking should work.
                     if RDM_version not in ['03-1', '03-2', '03-3', '03-5', '03-5-A','04-5', '04-5-A']:
@@ -341,16 +360,23 @@ for sub in subjects:
                             import pdb; pdb.set_trace()
                     
                     # models  need to be concatenated for each run and task
-                    if no_run == 0:
+                    if no_run == 0 or (regression_version in ['03-l', '03-4-l'] and no_run == 2):
                         for model in result_model_dict:
                             repeats_model_dict[model] = result_model_dict[model].copy()
                     else:
                         for model in result_model_dict:
                             repeats_model_dict[model] = np.concatenate((repeats_model_dict[model], result_model_dict[model]), 1)
                 
-                
+                    
                 # NEXT STEP: prepare the regression- select the correct regressors, filter keys starting with 'A1_backw'
                 regressors_curr_task = {key: value for key, value in regressors.items() if key.startswith(config)}
+                
+                if regression_version in ['03-e', '03-4-e']:
+                    regressors_curr_task = {regressor: regressors_curr_task[regressor][0:len(repeats_model_dict[model][2])] for regressor in regressors_curr_task}
+
+                if regression_version in ['03-l', '03-4-l']:
+                    regressors_curr_task = {regressor: regressors_curr_task[regressor][(-1*len(repeats_model_dict[model][2])):] for regressor in regressors_curr_task}
+
                 print(f"now looking at regressor for task {config}")
                 
                 # check that all regressors have the same length in case the task wasn't completed.
@@ -372,7 +398,7 @@ for sub in subjects:
                     else:
                         regressors_curr_task = {key: value for key, value in regressors_curr_task.items()}
                 
-                if regression_version in ['03','03-1','03-2', '03-4', '03-99', '03-999', '03-l', '03-e']:
+                if regression_version in ['03','03-1','03-2', '03-4', '03-99', '03-999', '03-l', '03-e', '03-4-e', '03-4-l']:
                     if RDM_version in ['02-A', '03-A', '03-5-A']: # additionally get rid of the A-state.
                         regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key and key.endswith('reward')}
                     else:
@@ -403,6 +429,8 @@ for sub in subjects:
     
                 # once the regression took place, the location model is the same as the midnight model.
                 # thus, it will also be the same as predicting future rewards, if we rotate it accordingly!
+                # temporally not do this
+                
                 if RDM_version in ['03-1', '03-2', '03-3']:
                     # now do the rotating thing. 
                     all_models_dict['one_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -1, axis = 1) 
@@ -417,9 +445,7 @@ for sub in subjects:
         models_between_task_halves[task_half] = all_models_dict
         print(f"task half {task_half}")
         configs_dict[task_half] = rew_list
-
-    
-        
+  
 
     
     # out of the between-halves loop.
@@ -430,9 +456,12 @@ for sub in subjects:
         
     elif not RDM_version == '01':
         # first, sort the models into two equivalent halves, just in case this went wrong before.
-        # import pdb; pdb.set_trace()
+        # DOUBLE CHECK IF THIS SORTING ACTUALLY WORKS!!!!
+        
         sorted_keys_dict = mc.analyse.extract_and_clean.order_task_according_to_rewards(configs_dict)
         models_sorted_into_splits = {task_half: {model: {config: "" for config in sorted_keys_dict[task_half]} for model in models_I_want} for task_half in task_halves}
+        test = {task_half: {model: "" for model in models_I_want} for task_half in task_halves}
+        
         for half in models_between_task_halves:
             for model in models_between_task_halves[half]:
                 for task in models_between_task_halves[half][model]:
@@ -443,9 +472,12 @@ for sub in subjects:
         # then, do the concatenation across the ordered tasks.
         for split in models_sorted_into_splits:
             for model in models_sorted_into_splits[split]:
-                models_sorted_into_splits[split][model] = np.concatenate([models_sorted_into_splits[split][model][task] for task in sorted_keys_dict[split]], 1)
+                test[split][model] = np.concatenate([models_sorted_into_splits[split][model][task] for task in sorted_keys_dict[split]], 1)
 
+                models_sorted_into_splits[split][model] = np.concatenate([models_sorted_into_splits[split][model][task] for task in sorted_keys_dict[split]], 1)
+                
         
+
     # then, in a last step, create the RDMs
     # concatenate the conditions from the two task halves (giving you 2*nCond X nVoxels matrix), 
     # and calculate the correlations between all rows of this matrix. This gives you a symmetric matrix 
@@ -483,7 +515,7 @@ for sub in subjects:
 
     # just for me. what happens if I add the ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']?
     # addition_model = corrected_RSM_dict['reward_location'] + corrected_RSM_dict['one_future_rew_loc'] + corrected_RSM_dict['two_future_rew_loc'] + corrected_RSM_dict['three_future_rew_loc'] 
-
+    
     if fmriplotting:
         if not os.path.exists(RDM_dir):
             os.makedirs(RDM_dir)

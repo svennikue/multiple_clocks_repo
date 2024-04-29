@@ -1009,7 +1009,7 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
     
     import pdb; pdb.set_trace()
     if plotting == True:
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
         # plot the averaged simulated and cleaned data
         mc.simulation.predictions.plot_without_legends(ave_location_between, titlestring= 'Location model, averaged across runs in mouse a', intervalline= 4*no_bins_per_state, saving_file='/Users/xpsy1114/Documents/projects/multiple_clocks/output/')
         mc.simulation.predictions.plot_without_legends(ave_clocks_between, titlestring= 'Schema model, averaged across runs in mouse a', intervalline= 4*no_bins_per_state, saving_file='/Users/xpsy1114/Documents/projects/multiple_clocks/output/')
@@ -1618,36 +1618,71 @@ import colormaps as cmaps
 
 def plotting_hist_scat(data_list, label_string_list, label_tick_list, title_string, save_fig = False):
     # import pdb; pdb.set_trace()
+    
+
     fig, ax = plt.subplots(figsize=(8,6))
-    ax.boxplot(data_list)
+    ax.boxplot(data_list, medianprops=dict(color='black'))
+    
     sigma = 0.08
     mu = 0.01
-    #cmaps.Pastel1
-    cmap = plt.get_cmap('Pastel1')
+    # cmap = plt.get_cmap('Pastel1')
+    # colors = cmap(np.linspace(0, 1, len(data_list)))
+    # Custom colors
+    colors = ['#96C5D8'] + ['#882048'] * (len(data_list) - 1)  # First color for the first group, the rest in another color
+
     for index, contrast in enumerate(data_list):
-        noise = np.ones(len(data_list[index])) + sigma * np.random.randn(len(data_list[index])) + mu
-        data_to_plot = contrast.copy()
-        for i, elem in enumerate(data_to_plot):
-            data_to_plot[i] = elem +noise[index]     
-        ax.scatter(noise+index, data_to_plot, cmap=cmap, marker='o', s=100, edgecolors = 'black', linewidth = 1)
+        noise = sigma * np.random.randn(len(contrast)) + mu
+        data_to_plot = np.array(contrast)  # Ensure data_to_plot is an array for direct operations
+        x_positions = index + 1 + noise  # Adjust index for boxplot's 1-based index
     
-    ax.set_xticks(label_tick_list)
-    plt.xticks(rotation = 45)
-    ax.set_xticklabels(label_string_list, fontsize = 18)
-    #ax.set_yticklabels(fontsize = 18)
-    plt.axhline(0, color='grey', ls='dashed', linewidth = 1)
+        ax.scatter(x_positions, data_to_plot, color=colors[index], marker='o', s=100, edgecolors='black', linewidth=1)
+    
+    ax.set_xticks(range(1, len(data_list) + 1))
+    plt.xticks(rotation=45)
+    #ax.set_xticklabels(label_string_list, fontsize=26)
+    ax.set_xticklabels(label_string_list)
+    ax.set_ylabel('Betas')
+    plt.axhline(0, color='grey', ls='dashed', linewidth=1)
+    
     plt.title(title_string)
+    
+    plt.rcParams.update({'font.size': 30})
+    # Customize grid lines
+    ax.grid(True, linestyle='--', alpha=0.7)
+    
+    # Adjust the layout
+    plt.tight_layout()
+    
+    plt.show()
+
+
+
+    # fig, ax = plt.subplots(figsize=(8,6))
+    # ax.boxplot(data_list)
+    # sigma = 0.08
+    # mu = 0.01
+    # #cmaps.Pastel1
+    # cmap = plt.get_cmap('Pastel1')
+    # for index, contrast in enumerate(data_list):
+    #     noise = np.ones(len(data_list[index])) + sigma * np.random.randn(len(data_list[index])) + mu
+    #     data_to_plot = contrast.copy()
+    #     for i, elem in enumerate(data_to_plot):
+    #         data_to_plot[i] = elem +noise[index]     
+    #     ax.scatter(noise+index, data_to_plot, cmap=cmap, marker='o', s=100, edgecolors = 'black', linewidth = 1)
+    
+    # ax.set_xticks(label_tick_list)
+    # plt.xticks(rotation = 45)
+    # ax.set_xticklabels(label_string_list, fontsize = 18)
+    # #ax.set_yticklabels(fontsize = 18)
+    # plt.axhline(0, color='grey', ls='dashed', linewidth = 1)
+    # plt.title(title_string)
     
 
     #ax.set_yticklabels([str(f) for f in field_names], fontsize = 16)
     
     
     
-    # Customize grid lines
-    ax.grid(True, linestyle='--', alpha=0.7)
-    
-    # Adjust the layout
-    plt.tight_layout()
+
     
     if save_fig:
         fig.savefig(f"{save_fig}{title_string}.png", dpi=300, bbox_inches='tight')

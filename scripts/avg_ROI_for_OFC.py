@@ -96,7 +96,7 @@ for index, key in enumerate(['mpfc_mask.nii.gz', 'ofc_mask.nii.gz']):
         # Scatter plot
         y = results_dict[group]
         x = np.random.normal(i + 1, 0.1, size=len(y))  # Add jitter to x-axis for clarity
-        ax.scatter(x, y, s=80, alpha=0.6, color=colors[i])
+        ax.scatter(x, y, s=80, alpha=0.6, color=colors[i], marker='o', edgecolors='black', linewidth=1)
         
         # Boxplot
         ax.boxplot(y, positions=[i + 1], widths=0.7, showcaps=True, boxprops=dict(color=colors[i]),
@@ -113,6 +113,9 @@ for index, key in enumerate(['mpfc_mask.nii.gz', 'ofc_mask.nii.gz']):
     ax.set_ylabel('Betas')
     ax.axhline(0, color='grey', ls='dashed')
     
+    ax.grid(True, linestyle='--', alpha=0.7)
+
+
 
 # Adjust layout
 plt.tight_layout(rect=[0, 0.03, 1, 0.95])  # Adjust the rect to fit the overall title

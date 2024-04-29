@@ -613,6 +613,7 @@ for mouse_res in all_results:
     data_normal_all_phas_t.append(all_results[mouse_res]['normal']['t_vals'][3])
     data_normal_all_loc_t.append(all_results[mouse_res]['normal']['t_vals'][4])
     data_normal_all_state_t.append(all_results[mouse_res]['normal']['t_vals'][5])
+    
     data_normal_all_clocks_b.append(all_results[mouse_res]['normal']['coefs'][0])
     data_normal_all_midn_b.append(all_results[mouse_res]['normal']['coefs'][1])
     data_normal_all_phas_b.append(all_results[mouse_res]['normal']['coefs'][2])
@@ -623,10 +624,15 @@ for mouse_res in all_results:
 #data_comp = [data_normal_all_clocks, data_normal_all_midn, data_normal_all_phas, data_normal_all_loc, data_normal_midn_clocks, data_normal_midn_midn, data_normal_midn_phas, data_normal_midn_loc]
 #label_string_list_comp = ['all_clocks', 'all_midn', 'all_phas', 'all_loc', 'mid_clocks', 'mid_midn', 'mid_phas', 'mid_loc']
 
+# betas
+data_to_plot = [data_normal_all_clocks_b, data_normal_all_midn_b, data_normal_all_phas_b, data_normal_all_loc_b, data_normal_all_state_b]
+
+# t-vals
 data_to_plot = [data_normal_all_clocks_t, data_normal_all_midn_t, data_normal_all_phas_t, data_normal_all_loc_t, data_normal_all_state_t]
+
 label_string_list_plot = ['Schema', 'Partial Schema', 'Subgoal-Progress', 'Location', 'State']
 label_tick_list_plot = [1,2,3,4,5]
-title_string_plot = 'tvals per complete mouse dataset, regression with 5 models, across tasks, averaged over runs'
+title_string_plot = 'betas per complete mouse dataset, regression with 5 models, across tasks, averaged over runs'
 
 
 data_to_test = [data_normal_all_clocks_b, data_normal_all_midn_b, data_normal_all_phas_b, data_normal_all_loc_b, data_normal_all_state_b]

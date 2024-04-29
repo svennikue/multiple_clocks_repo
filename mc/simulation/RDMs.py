@@ -49,8 +49,8 @@ def plot_RDMs(RDM_dict, no_tasks, save_dir = None, string_for_ticks = None):
         ax.set_xticks(ticks)
         ax.set_yticks(ticks)
         if string_for_ticks == None:
-            ax.set_xticklabels(['Task {}'.format(i // indexline_after + 1) for i in ticks], rotation=45, ha = 'right', fontsize=16)
-            ax.set_yticklabels(['Task {}'.format(i // indexline_after + 1) for i in ticks], fontsize=16)
+            ax.set_xticklabels(['Task {}'.format(int(i // indexline_after + 1)) for i in ticks], rotation=45, ha = 'right', fontsize=16)
+            ax.set_yticklabels(['Task {}'.format(int(i // indexline_after + 1)) for i in ticks], fontsize=16)
         else:
             ax.set_xticklabels(string_for_ticks, rotation=45, ha = 'right', fontsize=16)
             ax.set_yticklabels(string_for_ticks, fontsize=16)
