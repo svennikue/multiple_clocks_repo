@@ -85,31 +85,13 @@ task_halves = ['1', '2']
 print(f"Now running RSA for RDM version {RDM_version} based on subj GLM {regression_version} for subj {subj_no}")
 
 
-if RDM_version in ['01', '01-1']: # 01 doesnt work yet! 
-    models_I_want = ['direction_presentation', 'execution_similarity', 'presentation_similarity']
+models_I_want = mc.analyse.analyse_MRI_behav.models_I_want(RDM_version)
 
-elif RDM_version in ['02', '02-A']: #modelling paths + rewards, creating all possible models 
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight', 'clocks']
 
-elif RDM_version in ['03']: # modelling only rewards, splitting clocks within the same function
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew']
-elif RDM_version in ['03-1', '03-2']:  # modelling only rewards, splitting clocks later in a different way - after the regression.
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs']
-elif RDM_version in ['03-3']:  # modelling only rewards, splitting clocks later in a different way - after the regression; ignoring reward A
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc']
-elif RDM_version in ['03-5', '03-5-A', '04-5', '04-5-A']:
-    models_I_want = ['state']
-elif RDM_version in ['03-99']:  # using 03-1 - reward locations and future rew model; but EVs are scrambled.
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
-elif RDM_version in ['03-999']:  # is debugging 2.0: using 03-1 - reward locations and future rew model; but the voxels are scrambled.
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew']
-elif RDM_version in ['04', '04-A']: # only paths. to see if the human brain represents also only those rings anchored at no-reward locations
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_no-rew', 'clocks_no-rew']
-      
 # based on GLM
 if regression_version == '01':
     no_RDM_conditions = 20 # including all instruction periods
-elif regression_version == '02':
+elif regression_version in ['02', '02-e', '02-l']:
     no_RDM_conditions = 80 # including all paths and rewards
 elif regression_version in ['03', '04','03-99', '03-999', '03-9999', '03-l', '03-e']:
     no_RDM_conditions = 40 # only including rewards or only paths

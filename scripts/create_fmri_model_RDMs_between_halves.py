@@ -61,13 +61,13 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '03-4-e' 
-RDM_version = '03-1' 
+regression_version = '03' 
+RDM_version = '02' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '05'
+    subj_no = '07'
 
 subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10
@@ -78,31 +78,12 @@ fmri_save = True
 
 add_run_counts_model = False # this doesn't work with the current analysis
 
-if RDM_version in ['01', '01-1']: # 01 doesnt work yet! 
-    models_I_want = ['direction_presentation', 'execution_similarity', 'presentation_similarity']
+  
+models_I_want = mc.analyse.analyse_MRI_behav.models_I_want(RDM_version)
 
-elif RDM_version in ['02', '02-A']: #modelling paths + rewards, creating all possible models 
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight', 'clocks']
 
-elif RDM_version in ['03', '03-A', '03-l', '03-e']: # modelling only rewards, splitting clocks within the same function
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew']
-elif RDM_version in ['03-1', '03-2']:  # modelling only rewards, splitting clocks later in a different way - after the regression.
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs']
-elif RDM_version in ['03-5', '03-5-A', '04-5', '04-5-A']:
-    models_I_want = ['state']
-elif RDM_version in ['03-3']:  # modelling only rewards, splitting clocks later in a different way - after the regression; ignoring reward A
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc']
-elif RDM_version in ['03-99']:  # using 03-1 - reward locations and future rew model; but EVs are scrambled.
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
-elif RDM_version in ['03-999']:  # is debugging 2.0: using 03-1 - reward locations and future rew model; but the voxels are scrambled.
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']
-
-elif RDM_version in ['04', '04-A']: # only paths. to see if the human brain represents also only those rings anchored at no-reward locations
-    models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_no-rew', 'clocks_no-rew']
-
-# DEBUG
-# models_I_want = ['location']
-    
+import pdb; pdb.set_trace()
+        
 for sub in subjects:
     # initialize some dictionaries
     models_between_task_halves = {}
@@ -119,156 +100,17 @@ for sub in subjects:
             RDM_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
             print(f"Running on Cluster, setting {data_dir_beh} as data directory")
             
-        file = f"{sub}_fmri_pt{task_half}"
-        file_all = f"{sub}_fmri_pt{task_half}_all.csv"
+        file = data_dir_beh + f"{sub}_fmri_pt{task_half}.csv"
         
-        # load the two required excel sheets
-        df = pd.read_csv(data_dir_beh + f"{file}.csv")
-        # the first row is empty so delete to get indices right
-        df = df.iloc[1:].reset_index(drop=True)
-        # fill gapss
-        df['round_no'] = df['round_no'].fillna(method='ffill')
-        df['task_config'] = df['task_config'].fillna(method='ffill')
-        df['repeat'] = df['repeat'].fillna(method='ffill')
-        # so that I cann differenatiate task config and direction
-        df['config_type'] = df['task_config'] + '_' + df['type']
-        
-        # add columns whith field numbers 
-        for index, row in df.iterrows():
-            # current locations
-            df.at[index, 'curr_loc_y_coord'] = mc.analyse.analyse_MRI_behav.transform_coord(df.at[index,'curr_loc_y'], is_y=True, is_x = False)
-            df.at[index, 'curr_loc_x_coord'] = mc.analyse.analyse_MRI_behav.transform_coord(df.at[index,'curr_loc_x'], is_x=True, is_y = False)
-            df.at[index, 'curr_rew_y_coord'] = mc.analyse.analyse_MRI_behav.transform_coord(df.at[index,'curr_rew_y'], is_y=True, is_x = False)
-            df.at[index, 'curr_rew_x_coord'] = mc.analyse.analyse_MRI_behav.transform_coord(df.at[index,'curr_rew_x'], is_x=True, is_y = False)
-            # and prepare the regressors: config type, state and reward/walking specific.
-            if not pd.isna(row['state']):
-                if not np.isnan(row['rew_loc_x']):
-                    df.at[index, 'time_bin_type'] =  df.at[index, 'config_type'] + '_' + df.at[index, 'state'] + '_reward'
-                elif np.isnan(row['rew_loc_x']):
-                    df.at[index, 'time_bin_type'] = df.at[index, 'config_type'] + '_' + df.at[index, 'state'] + '_path'
-        
+        # crucial step 1: get the behavioural data I need from the subject files.
+        configs, rew_list, rew_index, walked_path, steps_subpath_alltasks_empty, subpath_after_steps, timings, regressors = mc.analyse.analyse_MRI_behav.extract_behaviour(file)
 
-        # create a dictionnary with all future regressors, to make sure the names are not messed up.
-        time_bin_types = df['time_bin_type'].dropna().unique()
-        regressors = {}
-        for time_bin_type in time_bin_types:
-            regressors[time_bin_type] = []
-           
-
-        configs = df['config_type'].dropna().unique()
-        
-        
-        walked_path = {}
-        timings = {}
-        rew_list = {}
-        rew_timing = {}
-        rew_index = {}
-        subpath_after_steps = {}
-        steps_subpath_alltasks = {}
-        for config in configs:
-            walked_path[config] = []
-            timings[config] = []
-            rew_list[config] = []
-            rew_timing[config] = []
-            rew_index[config] = []
-            subpath_after_steps[config] = []
-            steps_subpath_alltasks[config] = []
-        
-        
-        for index, row in df.iterrows():
-            task_config = row['config_type']
-            time_bin_type = row['time_bin_type']
-            
-            #iterate through the regression dictionary first
-            for key in regressors.keys():
-                # check if the key starts with the task_config value
-                if key.startswith(task_config):
-                    if time_bin_type == key:
-                        regressors[key].append(1)
-                    elif pd.notna(time_bin_type):
-                        regressors[key].append(0) 
-
-            # in case a new task has just started
-            if not np.isnan(row['next_task']): 
-                # first check if this is the first task of several repeats.
-                if (index == 0) or (row['config_type'] != df.at[index -1, 'config_type']):
-                    timings[task_config].append(row['next_task'])
-                else: # if it isnt, then take the reward start time from last rew D as start field.
-                    timings[task_config].append(df.at[index -1, 't_step_press_global'])
-                walked_path[task_config].append([row['curr_loc_x_coord'], row['curr_loc_y_coord']])
-            
-            # if this is just a normal walking field
-            elif not np.isnan(row['t_step_press_global']): # always except if this is reward D 
-                # if its reward D, then it will be covered by the first if: if not np.isnan(row['next_task']): 
-                timings[task_config].append(df.at[index - 1, 't_step_press_global'])  # Extract value from index-1
-                walked_path[task_config].append([row['curr_loc_x_coord'], row['curr_loc_y_coord']])
-           
-            # next check if its a reward field
-            if not np.isnan(row['rew_loc_x']): # if this is a reward field.
-                # check if this is either at reward D(thus complete) or ignore interrupted trials
-                # ignore these as they are not complete.
-                if (index+2 < len(df)) or (row['state'] == 'D'):
-                    rew_timing[task_config].append(row['t_reward_start'])
-                    rew_list[task_config].append([row['curr_rew_x_coord'], row['curr_rew_y_coord']])
-                    subpath_after_steps[task_config].append(int(index-row['repeat']))  
-                    if row['state'] == 'D':
-                        rew_index[task_config].append(len(walked_path[task_config])) #bc step has not been added yet
-                        # if this is the last run of a task
-                        if (index+2 < len(df)):
-                            # first check if there are more tasks coming after, otherwise error
-                            if (row['config_type'] != df.at[index +1, 'config_type']):
-                                walked_path[task_config].append([row['curr_loc_x_coord'], row['curr_loc_y_coord']])
-                                timings[task_config].append(df.at[index -1, 't_reward_start'])
-                        else:
-                            # however also add these fields if this is the very last reward!
-                            if row['repeat'] == 4:
-                                walked_path[task_config].append([row['curr_loc_x_coord'], row['curr_loc_y_coord']])
-                                timings[task_config].append(df.at[index -1, 't_step_press_global'])
-                                
-                    else:
-                        rew_index[task_config].append(len(walked_path[task_config])-1) 
-                else:
-                    continue
-
-        
         # so now, account for the temporal resolution that you want:
         for reg in regressors:
             regressors[reg] = np.repeat(regressors[reg], repeats = temporal_resolution)
         
-        # this is the end of the loop in which I go through the table, extract rows and 
-        # create these behavioural files.
-        # put the results from this loop in dictionaries for better usability.
-        rew_index_per_config = dict(zip(configs, rew_index))
-        subpath_per_config = dict(zip(configs, subpath_after_steps))
-        
         # overview of the reward fields per task.
-        for config in rew_list:
-            rew_list[config] = [[int(value) for value in sub_list] for sub_list in rew_list[config][0:4]]
-          
-        
-        # next step: create subpath files with rew_index and how many steps there are per subpath.
-        for config in subpath_after_steps:
-            # if task is completed
-            if (len(subpath_after_steps[config])%4) == 0:
-                for r in range(0, len(subpath_after_steps[config]), 4):
-                    subpath = subpath_after_steps[config][r:r+4]
-                    steps = [subpath[j] - subpath[j-1] for j in range(1,4)]
-                    if r == 0:
-                        steps.insert(0, rew_index[config][r])
-                    if r > 0:
-                        steps.insert(0, (subpath[0]- subpath_after_steps[config][r-1]))
-                    steps_subpath_alltasks[config].append(steps)
-            # if task not completed
-            elif (len(subpath_after_steps[config])%4) > 0:
-                completed_tasks = len(subpath_after_steps[config])-(len(subpath_after_steps[config])%4)
-                for r in range(0, completed_tasks, 4):
-                    subpath = subpath_after_steps[config][r:r+4]
-                    steps = [subpath[j] - subpath[j-1] for j in range(1,4)]
-                    if r == 0:
-                        steps.insert(0, rew_index[config][r])
-                    if r > 0:
-                        steps.insert(0, (subpath[0]- subpath_after_steps[config][r-1]))
-                    steps_subpath_alltasks[config].append(steps)    
+        steps_subpath_alltasks = mc.analyse.analyse_MRI_behav.subpath_files(configs, subpath_after_steps, rew_list, rew_index, steps_subpath_alltasks_empty)
 
         if regression_version in ['03-4', '03-4-e', '03-4-l','04-4']:
             for config in configs:
@@ -279,13 +121,11 @@ for sub in subjects:
 
     
         # finally, create simulations and time-bin per run.
-        # first, prep result dictionaries.
+        # prepare the between-tasks dictionary.
         all_models_dict = {f"{model}": {key: "" for key in configs} for model in models_I_want}
-        # and prepare the between-tasks dictionary.
-        
+
         if not RDM_version == '01':
             for config in configs:
-                
                 print(f"the config is {rew_list[config]} for {config}")
                 # select complete trajectory of current task.
                 trajectory = walked_path[config]
@@ -294,29 +134,21 @@ for sub in subjects:
                 timings_curr_run = timings[config]
   
                 # select file that shows step no per subpath
-                step_number = steps_subpath_alltasks[config]
-                step_number = [[int(value) for value in sub_list] for sub_list in step_number]
+                step_number = [[int(value) for value in sub_list] for sub_list in steps_subpath_alltasks[config]]
                 index_run_no = np.array(range(len(step_number)))
-    
-                # make file that shows cumulative steps per subpath
-                cumsteps_per_run = [np.cumsum(task)[-1] for task in step_number]
-                cumsteps_task = np.cumsum(cumsteps_per_run)
-        
-        
-                # only consider some of the repeats for the only later or only early trials!
+                # but only consider some of the repeats for the only later or only early trials!
                 if regression_version in ['03-e', '03-4-e']:
                     # step_number = step_number[0:2].copy()
                     index_run_no = index_run_no[0:2].copy()
                 elif regression_version in ['03-l', '03-4-l']:
                     # step_number = step_number[2:].copy()
-                    index_run_no = index_run_no[2:].copy()
-                       
-
-                
+                    index_run_no = index_run_no[2:].copy()   
+                    
+                # make file that shows cumulative steps per subpath
+                cumsteps_task = np.cumsum([np.cumsum(task)[-1] for task in step_number])
+        
                 # then start looping through each subpath within one task
-                repeats_model_dict = {}
-                # import pdb; pdb.set_trace() 
-                
+                repeats_model_dict = {}              
                 for no_run in index_run_no:
                     # first check if the run is not completed. if so, skip the uncomplete part.
                     if len(subpath_after_steps[config]) < 20: # 5 runs a 4 subpaths
@@ -470,6 +302,7 @@ for sub in subjects:
                     elif task in sorted_keys_dict['2']:
                         models_sorted_into_splits['2'][model][task] = models_between_task_halves[half][model][task]                
         # then, do the concatenation across the ordered tasks.
+        import pdb; pdb.set_trace()
         for split in models_sorted_into_splits:
             for model in models_sorted_into_splits[split]:
                 test[split][model] = np.concatenate([models_sorted_into_splits[split][model][task] for task in sorted_keys_dict[split]], 1)
@@ -484,11 +317,11 @@ for sub in subjects:
     # (of size 2*nCond X 2*nCond), where the (non-symmetric) nCond X nCond bottom left square (or top right, 
     # doesn't matter because it's symmetric) (i.e. a quarter of the original matrix) has all the correlations 
     # across THs. 
-    # import pdb; pdb.set_trace()
+    
     
     RSM_dict_betw_TH = {}
     for model in models_sorted_into_splits[split]:
-        RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_sorted_into_splits['1'][model], models_sorted_into_splits['2'][model]),1), plotting = False, titlestring= model)
+        RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_sorted_into_splits['1'][model], models_sorted_into_splits['2'][model]),1), plotting = True, titlestring= model)
         # mc.simulation.predictions.plot_without_legends(RSM_dict_betw_TH[model])
         if RDM_version in ['03-5', '03-5-A', '04-5', '04-5-A']:
             if RDM_version in ['03-5','04-5']:
