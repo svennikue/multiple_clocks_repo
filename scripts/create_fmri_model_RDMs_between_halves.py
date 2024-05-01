@@ -61,7 +61,7 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '03' 
+regression_version = '03-4-e' 
 RDM_version = '02' 
 
 if len (sys.argv) > 1:
@@ -82,7 +82,7 @@ add_run_counts_model = False # this doesn't work with the current analysis
 models_I_want = mc.analyse.analyse_MRI_behav.models_I_want(RDM_version)
 
 
-import pdb; pdb.set_trace()
+# import pdb; pdb.set_trace()
         
 for sub in subjects:
     # initialize some dictionaries
@@ -302,7 +302,7 @@ for sub in subjects:
                     elif task in sorted_keys_dict['2']:
                         models_sorted_into_splits['2'][model][task] = models_between_task_halves[half][model][task]                
         # then, do the concatenation across the ordered tasks.
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         for split in models_sorted_into_splits:
             for model in models_sorted_into_splits[split]:
                 test[split][model] = np.concatenate([models_sorted_into_splits[split][model][task] for task in sorted_keys_dict[split]], 1)

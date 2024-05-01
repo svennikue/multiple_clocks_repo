@@ -1,0 +1,1 @@
+generateGLMgroup('/home/fs0/jacobb/Analysis/Templates/glm_group_20.fsf', '/home/fs0/jacobb/Analysis/Subjects', 's01id01 s02id01 s03id03 s04id02 s05id04 s07id06 s08id07 s09id08 s10id09 s11id10 s12id11 s13id12 s14id13 s15id14 s16id15 s17id16 s18id17 s19id18 s20id19 s23id22 s24id23 s25id24 s26id25 s28id28 s29id28 s30id29 s31id30 s33id27 s34id31 s36id33 s37id05', 8);

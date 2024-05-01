@@ -437,7 +437,7 @@ for sub in subjects:
         split_clocks_RDM = rsatoolbox.rdm.concat(model_RDM_dir['location'], model_RDM_dir['one_future_rew_loc'], model_RDM_dir['two_future_rew_loc'], model_RDM_dir['three_future_rew_loc'])
         split_clocks_model = rsatoolbox.model.ModelWeighted('split_clocks_RDM', split_clocks_RDM)
         
-        results_current_and_all_future_rew_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(split_clocks_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model - split clocks after regressiom'))
+        results_current_and_all_future_rew_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(split_clocks_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model - split clocks after regression'))
         
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_current_and_all_future_rew_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "CURR_REW-combo_split-clock", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_current_and_all_future_rew_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "ONE-FUT-REW_combo_split-clock", mask=mask, number_regr = 1, ref_image_for_affine_path=ref_img)
@@ -445,3 +445,16 @@ for sub in subjects:
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_current_and_all_future_rew_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "THREE-FUT-REW_combo_split-clock", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
         
 
+    # combo split clocks with state to control
+    if RDM_version in ['03-1'] and regression_version in ['03', '03-4','03-l', '03-e']:
+        split_clocks_state_RDM = rsatoolbox.rdm.concat(model_RDM_dir['location'], model_RDM_dir['one_future_rew_loc'], model_RDM_dir['two_future_rew_loc'], model_RDM_dir['three_future_rew_loc'], model_RDM_dir['state'])
+        split_clocks_state_model = rsatoolbox.model.ModelWeighted('split_clocks_RDM', split_clocks_state_RDM)
+        
+        results_current_and_all_future_rew_state_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(split_clocks_state_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model - split clocks after regression plus state'))
+        
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_current_and_all_future_rew_state_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "CURR_REW-combo_split-clock-state", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_current_and_all_future_rew_state_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "ONE-FUT-REW_combo_split-clock-state", mask=mask, number_regr = 1, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_current_and_all_future_rew_state_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "TWO-FUT-REW_combo_split-clock-state", mask=mask, number_regr = 2, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_current_and_all_future_rew_state_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "THREE-FUT-REW_combo_split-clock-state", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_current_and_all_future_rew_state_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "STATE_combo_split-clock-state", mask=mask, number_regr = 4, ref_image_for_affine_path=ref_img)
+        

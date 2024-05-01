@@ -2111,7 +2111,8 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
         if split_clock == True:
             for model in split_clock_model_dict:
                 mc.simulation.predictions.plot_without_legends(split_clock_model_dict[model], titlestring=model)
-                
+    
+    # import pdb; pdb.set_trace()
     # save results as dict
     result_dict = {}
     result_dict['location'] = loc_model

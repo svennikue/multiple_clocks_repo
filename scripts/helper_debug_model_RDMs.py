@@ -23,8 +23,8 @@ import sys
 # import pdb; pdb.set_trace()
 
 regression_version = '03' 
-RDM_version = '02' 
-task_of_interest = 'A'
+RDM_version = '03-1' 
+task_of_interest = 'B'
 fmriplotting = False
 subj_no = '07'
 temporal_resolution = 10
@@ -35,6 +35,7 @@ task_halves = ['1', '2']
 runs = ['0', '1', '2', '3', '4']
 models_I_want = mc.analyse.analyse_MRI_behav.models_I_want(RDM_version)
 
+keep_models = ['location', 'clocks_only-rew', 'midnight_only-rew']
 
 # what I will want to do is create a dicitonary in which I can always have the respective 2 things:
     # per config, for half 1 and 2 the path
@@ -76,7 +77,8 @@ for task_half in task_halves:
     steps_subpath_alltasks = mc.analyse.analyse_MRI_behav.subpath_files(configs, subpath_after_steps, rew_list, rew_index, steps_subpath_alltasks_empty)
     
     # prep result dictionaries.
-    all_models_dict = {f"{model}": {key: "" for key in configs} for model in models_I_want}
+    #all_models_dict = {f"{model}": {key: "" for key in configs} for model in models_I_want}
+    all_models_dict = {f"{model}": {key: "" for key in configs} for model in keep_models}
     trajectories_dict = {f"{config}": {run: [] for run in runs} for config in configs}
     # finally, create simulations and time-bin per run.
     for config in configs:
@@ -141,6 +143,7 @@ for task_half in task_halves:
             elif RDM_version in ['04', '04-5-A', '04-A']: # modelling only paths + splitting clocks [new]
                 result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path = True, split_clock=True)
             
+            
             # now for all models that are creating or not creating the splits models with my default function, this checking should work.
             if RDM_version not in ['03-1', '03-2', '03-3', '03-5', '03-5-A','04-5', '04-5-A']:
                 # test if this function gives the same as the models you want, otherwise break!
@@ -150,6 +153,7 @@ for task_half in task_halves:
                     print(f"These are the models you wanted: {models_I_want}. And these are the ones you got: {model_list}")
                     import pdb; pdb.set_trace()
             
+            result_model_dict = {key: value for key, value in result_model_dict.items() if key in keep_models}
             # models need to be concatenated for each run and task
             if no_run == 0 or (regression_version in ['03-l', '03-4-l'] and no_run == 2):
                 for model in result_model_dict:
@@ -220,26 +224,30 @@ for task_half in task_halves:
         # thus, it will also be the same as predicting future rewards, if we rotate it accordingly!
         # temporally not do this
         
-        if RDM_version in ['03-1', '03-2', '03-3']:
-            # now do the rotating thing. 
-            all_models_dict['one_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -1, axis = 1) 
-            all_models_dict['two_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -2, axis = 1) 
-            if RDM_version in ['03-1', '03-2']:
-                all_models_dict['three_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -3, axis = 1) 
+        # DON"T FORGET TO UNCOMMENT!
+        # if RDM_version in ['03-1', '03-2', '03-3']:
+        #     # now do the rotating thing. 
+        #     all_models_dict['one_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -1, axis = 1) 
+        #     all_models_dict['two_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -2, axis = 1) 
+        #     if RDM_version in ['03-1', '03-2']:
+        #         all_models_dict['three_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -3, axis = 1) 
             
-            # try something.
-            all_models_dict['curr-and-future-rew-locs'][config] = np.concatenate((all_models_dict['one_future_rew_loc'][config], all_models_dict['two_future_rew_loc'][config], all_models_dict['three_future_rew_loc'][config]), 0)
+        #     # try something.
+        #     all_models_dict['curr-and-future-rew-locs'][config] = np.concatenate((all_models_dict['one_future_rew_loc'][config], all_models_dict['two_future_rew_loc'][config], all_models_dict['three_future_rew_loc'][config]), 0)
             
     # then, lastly, safe the all_models_dict in the respective task_half.
     raw_models_betw_task_halves[task_half] = repeats_model_dict
     models_between_task_halves[task_half] = all_models_dict
     configs_dict[task_half] = {config: values for config, values in rew_list.items() if config in configs}
-
+    trajectories[task_half] = trajectories_dict
 
 
 # sort the models into two equivalent halves, just in case this went wrong before.
 sorted_keys_dict = mc.analyse.extract_and_clean.order_task_according_to_rewards(configs_dict)
-models_sorted_into_splits = {task_half: {model: {config: "" for config in sorted_keys_dict[task_half]} for model in models_I_want} for task_half in task_halves}
+#models_sorted_into_splits = {task_half: {model: {config: "" for config in sorted_keys_dict[task_half]} for model in models_I_want} for task_half in task_halves}
+
+models_sorted_into_splits = {task_half: {model: {config: "" for config in sorted_keys_dict[task_half]} for model in keep_models} for task_half in task_halves}
+
 for half in models_between_task_halves:
     for model in models_between_task_halves[half]:
         for task in models_between_task_halves[half][model]:
