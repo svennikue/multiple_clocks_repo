@@ -51,7 +51,6 @@ GLM ('regression') settings (creating the 'bins'):
 @author: Svenja Küchenhoff, 2024
 """
 
-import pandas as pd
 import os
 import numpy as np
 import mc
@@ -61,19 +60,19 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '03-4-e' 
-RDM_version = '02' 
+regression_version = '01' 
+RDM_version = '01' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '07'
+    subj_no = '04'
 
 subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10
 
 task_halves = ['1', '2']
-fmriplotting = False
+fmriplotting = True # incorrect for 01
 fmri_save = True
 
 add_run_counts_model = False # this doesn't work with the current analysis
@@ -279,18 +278,20 @@ for sub in subjects:
         configs_dict[task_half] = rew_list
   
 
-    
+
+
     # out of the between-halves loop.
+    sorted_keys_dict = mc.analyse.extract_and_clean.order_task_according_to_rewards(configs_dict)   
+    
     if RDM_version == '01': # I have to work on this one further for the replay analysis (temporal + spatial)
         models_between_tasks = mc.analyse.analyse_MRI_behav.similarity_of_tasks(configs_dict) 
         models_sorted_into_splits = models_between_tasks.copy()
+        split = list(models_sorted_into_splits.keys())[0]
         # this doens't work anymore now after the changes!! continue working on it
-        
+   
     elif not RDM_version == '01':
         # first, sort the models into two equivalent halves, just in case this went wrong before.
         # DOUBLE CHECK IF THIS SORTING ACTUALLY WORKS!!!!
-        
-        sorted_keys_dict = mc.analyse.extract_and_clean.order_task_according_to_rewards(configs_dict)
         models_sorted_into_splits = {task_half: {model: {config: "" for config in sorted_keys_dict[task_half]} for model in models_I_want} for task_half in task_halves}
         test = {task_half: {model: "" for model in models_I_want} for task_half in task_halves}
         
@@ -302,7 +303,7 @@ for sub in subjects:
                     elif task in sorted_keys_dict['2']:
                         models_sorted_into_splits['2'][model][task] = models_between_task_halves[half][model][task]                
         # then, do the concatenation across the ordered tasks.
-        # import pdb; pdb.set_trace()
+        import pdb; pdb.set_trace()
         for split in models_sorted_into_splits:
             for model in models_sorted_into_splits[split]:
                 test[split][model] = np.concatenate([models_sorted_into_splits[split][model][task] for task in sorted_keys_dict[split]], 1)
@@ -374,10 +375,13 @@ for sub in subjects:
         if not os.path.exists(RDM_dir):
             os.makedirs(RDM_dir)
         if RDM_version in ['03-5', '03-5-A', '04-5', '04-5-A']:
-            np.save(os.path.join(RDM_dir, f"RSM_state_mask_across_halves"), RSM_dict_betw_TH_mask)
-        for RDM in corrected_RSM_dict:
-            np.save(os.path.join(RDM_dir, f"RSM_{RDM}_{sub}_fmri_both_halves"), corrected_RSM_dict[RDM])
-            
+            np.save(os.path.join(RDM_dir, "RSM_state_mask_across_halves"), RSM_dict_betw_TH_mask)
+        if RDM_version not in ['01']:    
+            for RDM in corrected_RSM_dict:
+                np.save(os.path.join(RDM_dir, f"RSM_{RDM}_{sub}_fmri_both_halves"), corrected_RSM_dict[RDM])
+        else:
+            for RDM in RSM_dict_betw_TH:
+                np.save(os.path.join(RDM_dir, f"RSM_{RDM}_{sub}_fmri_across_halves"), RSM_dict_betw_TH[RDM])
         # also save the regression files
         for model in models_sorted_into_splits['1']:
             np.save(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves"), np.concatenate((models_sorted_into_splits['1'][model], models_sorted_into_splits['2'][model]),1))

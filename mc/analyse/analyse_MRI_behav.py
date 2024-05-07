@@ -169,7 +169,7 @@ def extract_behaviour(file):
 
 def models_I_want(RDM_version):
     if RDM_version in ['01', '01-1']: # 01 doesnt work yet! 
-        models_I_want = ['direction_presentation', 'execution_similarity', 'presentation_similarity']
+        models_I_want = ['trial_type_similarity', 'execution_similarity', 'presentation_similarity']
     elif RDM_version in ['02', '02-A']: #modelling paths + rewards, creating all possible models 
         models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight', 'clocks']
     elif RDM_version in ['03', '03-A', '03-l', '03-e']: # modelling only rewards, splitting clocks within the same function
@@ -622,19 +622,19 @@ def similarity_of_tasks(reward_per_task_per_taskhalf_dict):
     
     
     # create 3 binary RDMs:
-        # first, those that are backwards vs those that are forwards.
+        # first, those that are backwards vs those that are forwards trials.
         # second, those that are executed in the same order.
         # third, those that are presented in the same order.
     
     
-    # first, all those that are presented in a forward or backward way are equal.
+    # first, all those that are backwards and those that are forwards trials are equal.
     # direction_presentation = np.zeros((len(all_names), 2)) this will yield -1 and 1.
-    direction_presentation = np.zeros((len(all_rewards), len(all_rewards)*4)) # this is -0.012658227848101285 and 1
+    trial_type_similarity = np.zeros((len(all_rewards), len(all_rewards)*4)) # this is -0.012658227848101285 and 1
     for i, task_name in enumerate(all_names):
         if task_name.endswith('forw'):
-            direction_presentation[i, 0] = 1
+            trial_type_similarity[i, 0] = 1
         elif task_name.endswith('backw'):
-            direction_presentation[i, 1] = 1
+            trial_type_similarity[i, 1] = 1
     
     # second, all those that are executed in the same order are the same.
     execution_similarity = np.zeros((len(all_rewards), len(all_rewards)*4)) # this is -0.012658227848101285 and 1
@@ -659,26 +659,30 @@ def similarity_of_tasks(reward_per_task_per_taskhalf_dict):
                 presentation_similarity[i, j] = 1
     
     
-    import pdb; pdb.set_trace() 
-    np.corrcoef(presentation_similarity[:, :10])
-    corrected_model = (presentation_similarity[:, :10] + np.transpose(presentation_similarity[:, :10]))/2
-    corrected_RSM_dict[model] = corrected_model[0:int(len(corrected_model)/2), int(len(corrected_model)/2):]
+    # import pdb; pdb.set_trace() 
+    # np.corrcoef(presentation_similarity[:, :10])
+    # corrected_model = (presentation_similarity[:, :10] + np.transpose(presentation_similarity[:, :10]))/2
+    #corrected_RSM_dict[model] = corrected_model[0:int(len(corrected_model)/2), int(len(corrected_model)/2):]
    
         
     # to create the right format, split this into two task halves again
     # import pdb; pdb.set_trace() 
-    models_between_tasks = {'execution_similarity': {key: "" for key in ['1', '2']},
-                            'presentation_similarity': {key: "" for key in ['1', '2']},
-                            'direction_presentation': {key: "" for key in ['1', '2']}}
+    models_between_tasks = {'1': {key: "" for key in ['execution_similarity', 'presentation_similarity', 'trial_type_similarity']},
+                            '2': {key: "" for key in ['execution_similarity', 'presentation_similarity', 'trial_type_similarity']}}
     
-    models_between_tasks['execution_similarity']['1'] = execution_similarity[:10].T
-    models_between_tasks['execution_similarity']['2'] = execution_similarity[10:20].T
     
-    models_between_tasks['presentation_similarity']['1'] = presentation_similarity[:10].T
-    models_between_tasks['presentation_similarity']['2'] = presentation_similarity[10:20].T
+   # x = {'execution_similarity': {key: "" for key in ['1', '2']},
+   #      'presentation_similarity': {key: "" for key in ['1', '2']},
+   #      'trial_type_similarity': {key: "" for key in ['1', '2']}}
     
-    models_between_tasks['direction_presentation']['1'] = direction_presentation[:10].T
-    models_between_tasks['direction_presentation']['2'] = direction_presentation[10:20].T
+    models_between_tasks['1']['execution_similarity'] = execution_similarity[:10].T
+    models_between_tasks['2']['execution_similarity'] = execution_similarity[10:20].T
+    
+    models_between_tasks['1']['presentation_similarity'] = presentation_similarity[:10].T
+    models_between_tasks['2']['presentation_similarity'] = presentation_similarity[10:20].T
+    
+    models_between_tasks['1']['trial_type_similarity'] = trial_type_similarity[:10].T
+    models_between_tasks['2']['trial_type_similarity'] = trial_type_similarity[10:20].T
 
     # import pdb; pdb.set_trace()   
     # CONTINUE HERE!!! THE  PRESENT SIM ISNT QUITE RIGHT YET!
