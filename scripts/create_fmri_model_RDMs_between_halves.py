@@ -28,7 +28,9 @@ RDM settings (creating the representations):
     04 -> modelling only paths
     04-5 -> STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw.
     04-5-A -> STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw. ; EXCLUDING state A
-
+    
+    05 -> modelling only baths and only rewards to compare them later!
+    
 
 GLM ('regression') settings (creating the 'bins'):
     01 - instruction EVs
@@ -60,8 +62,8 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '01' 
-RDM_version = '01' 
+regression_version = '03' 
+RDM_version = '05' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -179,10 +181,14 @@ for sub in subjects:
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
                     elif RDM_version in ['04', '04-5-A', '04-A']: # modelling only paths + splitting clocks [new]
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path = True, split_clock=True)
-                    
-                    
+                    elif RDM_version in ['05']:
+                        models_from_03_1 = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
+                        model_from_04 = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path = True, split_clock=True)
+                        # then put both together:
+                        result_model_dict = {**models_from_03_1, **model_from_04}
+                            
                     # now for all models that are creating or not creating the splits models with my default function, this checking should work.
-                    if RDM_version not in ['03-1', '03-2', '03-3', '03-5', '03-5-A','04-5', '04-5-A']:
+                    if RDM_version not in ['03-1', '03-2', '03-3', '03-5', '03-5-A','04-5', '04-5-A', '05']:
                         # test if this function gives the same as the models you want, otherwise break!
                         model_list = list(result_model_dict.keys())
                         if model_list != models_I_want:
@@ -262,11 +268,11 @@ for sub in subjects:
                 # thus, it will also be the same as predicting future rewards, if we rotate it accordingly!
                 # temporally not do this
                 
-                if RDM_version in ['03-1', '03-2', '03-3']:
+                if RDM_version in ['03-1', '03-2', '03-3', '05']:
                     # now do the rotating thing. 
                     all_models_dict['one_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -1, axis = 1) 
                     all_models_dict['two_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -2, axis = 1) 
-                    if RDM_version in ['03-1', '03-2']:
+                    if RDM_version in ['03-1', '03-2', '05']:
                         all_models_dict['three_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -3, axis = 1) 
                     
                     # try something.
@@ -303,7 +309,7 @@ for sub in subjects:
                     elif task in sorted_keys_dict['2']:
                         models_sorted_into_splits['2'][model][task] = models_between_task_halves[half][model][task]                
         # then, do the concatenation across the ordered tasks.
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         for split in models_sorted_into_splits:
             for model in models_sorted_into_splits[split]:
                 test[split][model] = np.concatenate([models_sorted_into_splits[split][model][task] for task in sorted_keys_dict[split]], 1)
@@ -322,7 +328,7 @@ for sub in subjects:
     
     RSM_dict_betw_TH = {}
     for model in models_sorted_into_splits[split]:
-        RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_sorted_into_splits['1'][model], models_sorted_into_splits['2'][model]),1), plotting = True, titlestring= model)
+        RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_sorted_into_splits['1'][model], models_sorted_into_splits['2'][model]),1), plotting = False, titlestring= model)
         # mc.simulation.predictions.plot_without_legends(RSM_dict_betw_TH[model])
         if RDM_version in ['03-5', '03-5-A', '04-5', '04-5-A']:
             if RDM_version in ['03-5','04-5']:
@@ -346,7 +352,7 @@ for sub in subjects:
         corrected_model = (RSM_dict_betw_TH[model] + np.transpose(RSM_dict_betw_TH[model]))/2
         corrected_RSM_dict[model] = corrected_model[0:int(len(corrected_model)/2), int(len(corrected_model)/2):]
    
-
+    
     # just for me. what happens if I add the ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']?
     # addition_model = corrected_RSM_dict['reward_location'] + corrected_RSM_dict['one_future_rew_loc'] + corrected_RSM_dict['two_future_rew_loc'] + corrected_RSM_dict['three_future_rew_loc'] 
     
@@ -394,3 +400,4 @@ for sub in subjects:
         with open(f"{RDM_dir}/sorted_regs.pkl", 'wb') as file:
             pickle.dump(reg_list, file)
                 
+    
