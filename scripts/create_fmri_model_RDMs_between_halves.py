@@ -328,7 +328,7 @@ for sub in subjects:
     
     RSM_dict_betw_TH = {}
     for model in models_sorted_into_splits[split]:
-        RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_sorted_into_splits['1'][model], models_sorted_into_splits['2'][model]),1), plotting = False, titlestring= model)
+        RSM_dict_betw_TH[model] = mc.simulation.RDMs.within_task_RDM(np.concatenate((models_sorted_into_splits['1'][model], models_sorted_into_splits['2'][model]),1), plotting = True, titlestring= model)
         # mc.simulation.predictions.plot_without_legends(RSM_dict_betw_TH[model])
         if RDM_version in ['03-5', '03-5-A', '04-5', '04-5-A']:
             if RDM_version in ['03-5','04-5']:
