@@ -68,13 +68,13 @@ RDM_version = '05'
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '04'
+    subj_no = '07'
 
 subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10
 
 task_halves = ['1', '2']
-fmriplotting = True # incorrect for 01
+fmriplotting = False # incorrect for 01
 fmri_save = True
 
 add_run_counts_model = False # this doesn't work with the current analysis

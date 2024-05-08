@@ -63,8 +63,8 @@ import pickle
 import sys
 import random
 
-regression_version = '03-4-e' 
-RDM_version = '03-1' 
+regression_version = '03' 
+RDM_version = '05' 
 
 
 # import pdb; pdb.set_trace() 
@@ -448,7 +448,7 @@ for sub in subjects:
     # combo split clocks with state to control
     if RDM_version in ['03-1'] and regression_version in ['03', '03-4','03-l', '03-e']:
         split_clocks_state_RDM = rsatoolbox.rdm.concat(model_RDM_dir['location'], model_RDM_dir['one_future_rew_loc'], model_RDM_dir['two_future_rew_loc'], model_RDM_dir['three_future_rew_loc'], model_RDM_dir['state'])
-        split_clocks_state_model = rsatoolbox.model.ModelWeighted('split_clocks_RDM', split_clocks_state_RDM)
+        split_clocks_state_model = rsatoolbox.model.ModelWeighted('split_clocks_state_RDM', split_clocks_state_RDM)
         
         results_current_and_all_future_rew_state_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(split_clocks_state_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model - split clocks after regression plus state'))
         
@@ -457,4 +457,28 @@ for sub in subjects:
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_current_and_all_future_rew_state_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "TWO-FUT-REW_combo_split-clock-state", mask=mask, number_regr = 2, ref_image_for_affine_path=ref_img)
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_current_and_all_future_rew_state_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "THREE-FUT-REW_combo_split-clock-state", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_current_and_all_future_rew_state_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "STATE_combo_split-clock-state", mask=mask, number_regr = 4, ref_image_for_affine_path=ref_img)
+        
+
+    # combo comparing no-reward rings with reward rings.
+    if RDM_version in ['05']:
+        # compare 'clocks_no-rew' and 'clocks_only-rew'
+        rew_vs_no_rew_rings_RDM = rsatoolbox.rdm.concat(model_RDM_dir['clocks_no-rew'], model_RDM_dir['clocks_only-rew'])
+        rew_vs_no_rew_rings_model = rsatoolbox.model.ModelWeighted('rew_vs_no_rew_rings_RDM', rew_vs_no_rew_rings_RDM)
+        results_rew_vs_no_rew_rings_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(rew_vs_no_rew_rings_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model - comparing no rew rings with rew rings in clock'))
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_rew_vs_no_rew_rings_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "NO-REW_combo_onlyrewnowrew-rings", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_rew_vs_no_rew_rings_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "ONLY-REW_combo_onlyrewnowrew-rings", mask=mask, number_regr = 1, ref_image_for_affine_path=ref_img)
+    
+        # compare 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', and 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock'
+        rew_vs_no_rew_split_clocks_RDM = rsatoolbox.rdm.concat(model_RDM_dir['midnight_only-rew'], model_RDM_dir['one_future_rew_loc'], model_RDM_dir['two_future_rew_loc'], model_RDM_dir['three_future_rew_loc'], model_RDM_dir['curr_rings_split_clock'], model_RDM_dir['one_fut_rings_split_clock'], model_RDM_dir['two_fut_rings_split_clock'], model_RDM_dir['three_fut_rings_split_clock'])
+        rew_vs_no_rew_split_clocks_model = rsatoolbox.model.ModelWeighted('rew_vs_no_rew_split_clocks_RDM', rew_vs_no_rew_split_clocks_RDM)
+        results_rew_vs_no_rew_split_clocks_model = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(rew_vs_no_rew_split_clocks_model, d) for d in tqdm(data_RDM, desc='running GLM for all searchlights in combo model - comparing split clocks for no rew rings and only rew rings'))
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_rew_vs_no_rew_split_clocks_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "CURR-ONLY-REW_combo_onlyrewnowrew-split_clocks", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_rew_vs_no_rew_split_clocks_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "ONE-FUT-ONLY-REW_combo_onlyrewnowrew-split_clocks", mask=mask, number_regr = 1, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_rew_vs_no_rew_split_clocks_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "TWO-FUT-ONLY-REW_combo_onlyrewnowrew-split_clocks", mask=mask, number_regr = 2, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_rew_vs_no_rew_split_clocks_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "THREE-FUT-ONLY-REW_combo_onlyrewnowrew-split_clocks", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_rew_vs_no_rew_split_clocks_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "CURR-NO-REW_combo_onlyrewnowrew-split_clocks", mask=mask, number_regr = 4, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_rew_vs_no_rew_split_clocks_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "ONE-FUT-NO-REW_combo_onlyrewnowrew-split_clocks", mask=mask, number_regr = 5, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_rew_vs_no_rew_split_clocks_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "TWO-FUT-NO-REW_combo_onlyrewnowrew-split_clocks", mask=mask, number_regr = 6, ref_image_for_affine_path=ref_img)
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_rew_vs_no_rew_split_clocks_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "THREE-FUT-NO-REW_combo_onlyrewnowrew-split_clocks", mask=mask, number_regr = 7, ref_image_for_affine_path=ref_img)
+        
         

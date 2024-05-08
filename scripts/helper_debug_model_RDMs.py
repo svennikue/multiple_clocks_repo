@@ -23,8 +23,8 @@ import sys
 # import pdb; pdb.set_trace()
 
 regression_version = '03' 
-RDM_version = '03-1' 
-task_of_interest = 'B'
+RDM_version = '04' 
+task_of_interest = 'D'
 fmriplotting = False
 subj_no = '07'
 temporal_resolution = 10
@@ -35,7 +35,7 @@ task_halves = ['1', '2']
 runs = ['0', '1', '2', '3', '4']
 models_I_want = mc.analyse.analyse_MRI_behav.models_I_want(RDM_version)
 
-keep_models = ['location', 'clocks_only-rew', 'midnight_only-rew']
+keep_models = ['location', 'clocks_no-rew', 'curr_rings_split_clock']
 
 # what I will want to do is create a dicitonary in which I can always have the respective 2 things:
     # per config, for half 1 and 2 the path
