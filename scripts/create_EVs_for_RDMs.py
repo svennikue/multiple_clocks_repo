@@ -451,6 +451,8 @@ for sub in subjects:
                     
             if sub in ['sub-04', 'sub-06', 'sub-30', 'sub-31', 'sub-34']:
                 template_name = 'my_RDM_GLM_v2.fsf'
+            elif sub in ['sub-35'] and task_half == '1':
+                template_name = 'my_RDM_GLM_v2.fsf'
             else:
                 template_name = 'my_RDM_GLM_pnm.fsf'
                 
