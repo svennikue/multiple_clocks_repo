@@ -292,15 +292,19 @@ def jitter(expected_step_no):
     
 
 # code snippet to create a regressor
-def create_EV(onset, duration, magnitude, name, folder, TR_at_sec):
-    if len(onset) > len(duration):
-        onset = onset[:len(duration)]
-        magnitude = magnitude[:len(duration)]
-    elif len(duration) > len(onset):
-        duration = onset[:len(onset)]
-        magnitude = magnitude[:len(onset)]
-    regressor_matrix = np.ones((len(magnitude),3))
-    regressor_matrix[:,0] = [(time - TR_at_sec) for time in onset]
+def create_EV(onset, duration, magnitude, name, folder, TR_at_sec, version = None):
+    if version not in ['03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5']:
+        if len(onset) > len(duration):
+            onset = onset[:len(duration)]
+            magnitude = magnitude[:len(duration)]
+        elif len(duration) > len(onset):
+            duration = onset[:len(onset)]
+            magnitude = magnitude[:len(onset)]
+        regressor_matrix = np.ones((len(magnitude),3))
+        regressor_matrix[:,0] = [(time - TR_at_sec) for time in onset]
+    else:
+        regressor_matrix = np.ones((1,3))
+        regressor_matrix[:,0] = onset - TR_at_sec
     regressor_matrix[:,1] = duration
     regressor_matrix[:,2] = magnitude
     # import pdb; pdb.set_trace()

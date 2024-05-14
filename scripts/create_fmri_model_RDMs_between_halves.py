@@ -62,8 +62,8 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '03-4' 
-RDM_version = '05' 
+regression_version = '01' 
+RDM_version = '01' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -74,7 +74,7 @@ subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10
 
 task_halves = ['1', '2']
-fmriplotting = False # incorrect for 01
+fmriplotting = True # incorrect for 01
 fmri_save = True
 
 add_run_counts_model = False # this doesn't work with the current analysis

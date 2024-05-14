@@ -63,7 +63,7 @@ import pickle
 import sys
 import random
 
-regression_version = '03' 
+regression_version = '03-4' 
 RDM_version = '05' 
 
 

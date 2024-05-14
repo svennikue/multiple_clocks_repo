@@ -20,6 +20,11 @@ GLM ('regression') settings (creating the 'bins'):
     03-e 40 regressors; for evert task, only take the first 2 repeats.
     03-l 40 regressors; for every task, only take the last 3 repeats.
         careful! sometimes, some trials are not finished and thus don't have any last runs. these are then empty regressors.
+    03-rep1 40 regressors; for every task, only take the first repeat
+    03-rep2 40 regressors; for every task, only take the second repeat
+    03-rep3 40 regressors; for every task, only take the third repeat
+    03-rep4 40 regressors; for every task, only take the fourth repeat
+    03-rep5 40 regressors; for every task, only take the fifth repeat
     03-2 - 40 regressors; for every task, only the rewards are modelled (in their original time)
     03-3 - 30 regressors; for every task, only the rewards are modelled (in their original time), except for A (because of visual feedback)
     03-4 - 40 regressors; for every task, only the rewards are modelled; and NO button-press regressor!
@@ -61,7 +66,7 @@ import random
 
 #import pdb; pdb.set_trace()
 
-version = '01'
+version = '03-rep5'
 
 # plotting = True
 # to debug task_halves = ['1']
@@ -71,7 +76,7 @@ task_halves = ['1', '2']
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '01'
+    subj_no = '02'
 
 # subjects = ['sub-07', 'sub-08', 'sub-09', 'sub-11', 'sub-12', 'sub-13', 'sub-14', 'sub-15', 'sub-16', 'sub-17', 'sub-18','sub-19', 'sub-20',  'sub-22', 'sub-23','sub-24']
 #subjects = ['sub-01']    
@@ -278,7 +283,7 @@ for sub in subjects:
                 
                 
             
-        if version in ['02','02-e', '02-l', '03', '03-e', '03-l', '03-2', '03-3', '03-4','03-99','03-999','03-9999', '04']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward
+        if version in ['02','02-e', '02-l', '03', '03-e', '03-l', '03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5', '03-2', '03-3', '03-4','03-99','03-999','03-9999', '04']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward
             # 10 is only paths
             # identify where the next task begins by iterating through the DataFrame 
             # and collecting the indices where the column is not empty
@@ -352,7 +357,7 @@ for sub in subjects:
                 #     import pdb; pdb.set_trace()
                 for s, state in enumerate(state_names):
                     # import pdb; pdb.set_trace()
-                    if version in ['02','02-e', '02-l', '03',  '03-e', '03-l','03-3', '03-2', '03-4', '03-99', '03-999', '03-9999']:
+                    if version in ['02','02-e', '02-l', '03',  '03-e', '03-l', '03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5', '03-3', '03-2', '03-4', '03-99', '03-999', '03-9999']:
                         EV_rewardname_onset = f"{task}_{state}_reward_onset"
                         EV_rewardname_dur = f"{task}_{state}_reward_dur"
                     if version in ['02','02-e', '02-l', '04']: # inlude subpaths
@@ -361,10 +366,20 @@ for sub in subjects:
 
                     partial_df = df[((df['config_type'] == task) & (df['state'] == state))]
                     
-                    if version in ['02','02-e', '02-l', '03', '03-e', '03-l', '03-2', '03-3', '03-4', '03-99', '03-999', '03-9999']:
+                    if version in ['02','02-e', '02-l', '03', '03-e', '03-l', '03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5', '03-2', '03-3', '03-4', '03-99', '03-999', '03-9999']:
                         # import pdb; pdb.set_trace()
                         if version in ['02-e','03-e']:
                             taskEV_dic[EV_rewardname_onset] = partial_df['reward_onset'].dropna().to_list()[0:2]
+                        elif version in ['03-rep1']:
+                            taskEV_dic[EV_rewardname_onset] = partial_df['reward_onset'].dropna().to_list()[0]
+                        elif version in ['03-rep2']:
+                            taskEV_dic[EV_rewardname_onset] = partial_df['reward_onset'].dropna().to_list()[1]
+                        elif version in ['03-rep3']:
+                            taskEV_dic[EV_rewardname_onset] = partial_df['reward_onset'].dropna().to_list()[2]
+                        elif version in ['03-rep4']:
+                            taskEV_dic[EV_rewardname_onset] = partial_df['reward_onset'].dropna().to_list()[3]
+                        elif version in ['03-rep5']:
+                            taskEV_dic[EV_rewardname_onset] = partial_df['reward_onset'].dropna().to_list()[4]
                         elif version in ['02-l','03-l']:
                             taskEV_dic[EV_rewardname_onset] = partial_df['reward_onset'].dropna().to_list()[2:]
                         else:
@@ -380,9 +395,14 @@ for sub in subjects:
                             #     taskEV_dic[EV_rewardname_onset][-1] =  df['reward_onset'].dropna().to_list()[-1]
                         if version in ['02', '02-l', '02-e', '03', '03-e', '03-l','03-99', '03-999', '03-9999']: # reward as stick-function: duration of all rewards to 500ms -> all regressors will be equally long.
                             taskEV_dic[EV_rewardname_dur] = np.ones(len(taskEV_dic[EV_rewardname_onset])) * 0.5
+                        elif version in ['03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5']:
+                            taskEV_dic[EV_rewardname_dur] = np.ones(1) * 0.5
                         elif version in ['03-2', '03-3', '03-4']:
                             taskEV_dic[EV_rewardname_dur] = partial_df['reward_duration'].dropna().to_list()
-                        mag_reward = np.ones(len(taskEV_dic[EV_rewardname_onset]))
+                        if version in ['03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5']:
+                            mag_reward = np.ones(1)
+                        else:
+                            mag_reward = np.ones(len(taskEV_dic[EV_rewardname_onset]))
                         # if version in ['03-99']:
                         #     # maybe better than this is to just take the entire dataset and shuffle it, because then there
                         #     # is not the possibility of creating crazy overlapping regressors.
@@ -395,7 +415,7 @@ for sub in subjects:
                         #     print(f"Careful! {task} x {state} reward is not complete and will be excluded.")
                         #     excluded = excluded + 1
                         #     continue
-                        reward_EV = mc.analyse.analyse_MRI_behav.create_EV(taskEV_dic[f"{task}_{state}_reward_onset"], taskEV_dic[f"{task}_{state}_reward_dur"], mag_reward, f"{task}_{state}_reward", EV_folder, first_TR_at)
+                        reward_EV = mc.analyse.analyse_MRI_behav.create_EV(taskEV_dic[f"{task}_{state}_reward_onset"], taskEV_dic[f"{task}_{state}_reward_dur"], mag_reward, f"{task}_{state}_reward", EV_folder, first_TR_at, version)
                         deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(reward_EV)
                         if deleted_x_rows > 0:
                             print(f"careful! I am saving a cutted EV {task}{state} reward file. Happened for subject {sub} in task half {task_half}")
