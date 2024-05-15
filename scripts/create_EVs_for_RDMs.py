@@ -449,7 +449,7 @@ for sub in subjects:
                 pickle.dump(taskEV_dic, f)
      
         # then, lastly, adjust the .fsf file I will use for the regression.
-        if version in ['01', '02','02-e', '02-l', '03', '03-e', '03-l','03-2', '03-3', '03-4', '04', '05', '03-99', '03-999', '03-9999']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward, 09 is instruction period
+        if version in ['01', '02','02-e', '02-l', '03', '03-e', '03-l', '03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5', '03-2', '03-3', '03-4', '04', '05', '03-99', '03-999', '03-9999']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward, 09 is instruction period
             print('start loop 2')
             # collect all filepaths I just created.
             # this is a bit risky in case there have been other EVs in there that I didnt want...

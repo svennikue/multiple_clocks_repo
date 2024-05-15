@@ -23,6 +23,9 @@ from rsatoolbox.rdm.calc import _build_rdms
 from rsatoolbox.rdm import RDMs
 import shutil
 from datetime import datetime
+import rsatoolbox
+from joblib import Parallel, delayed
+from tqdm import tqdm
 
 
 def subpath_files(configs, subpath_after_steps, rew_list, rew_index, steps_subpath_alltasks):
@@ -405,14 +408,20 @@ def make_loc_EV(dataframe, x_coord, y_coord):
             
 # FMRI ANALYSIS
 
-# potentially delete this one
-# def my_eval(model, data):
-#       "Handle one voxel, copy the code that exists already for the neural data"
-#       X = sm.add_constant(model.rdm.transpose());
-#       Y = data.dissimilarities.transpose();
-#       est = sm.OLS(Y, X).fit()
-#       # import pdb; pdb.set_trace()
-#       return est.tvalues[1:], est.params[1:], est.pvalues[1:]
+# set up RSA with multiple regressors.
+def multiple_RDMs_RSA(list_of_regressor_RDMs, model_RDM_dictionary, data_RDM_file):
+    # import pdb; pdb.set_trace()
+    # first, normalise the current model RDM.
+    z_scored_model_RDM_dict = model_RDM_dictionary.copy()
+    for model in list_of_regressor_RDMs:
+        z_scored_model_RDM_dict[model].dissimilarities = (model_RDM_dictionary[model].dissimilarities - model_RDM_dictionary[model].dissimilarities.mean()) / model_RDM_dictionary[model].dissimilarities.std()
+ 
+    arguments = [z_scored_model_RDM_dict[model] for model in list_of_regressor_RDMs]
+    concatenated_RDMs = rsatoolbox.rdm.concat(*arguments)
+    concatenated_RDMs_model = rsatoolbox.model.ModelWeighted('concatenated_RDMs', concatenated_RDMs)
+    result_multiple_RDMs_RSA = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(concatenated_RDMs_model, d) for d in tqdm(data_RDM_file, desc='running GLM for all searchlights in combo model'))
+    
+    return(result_multiple_RDMs_RSA)
 
 # write a visualisation function for data RDMs.
 def visualise_data_RDM(mni_x, mni_y, mni_z, data_RDM_file, mask):
