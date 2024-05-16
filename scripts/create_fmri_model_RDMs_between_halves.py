@@ -70,7 +70,7 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '03-4-rep1' 
+regression_version = '03-4-rep2' 
 RDM_version = '03-1' 
 
 if len (sys.argv) > 1:
@@ -216,14 +216,14 @@ for sub in subjects:
                             import pdb; pdb.set_trace()
                     
                     # models  need to be concatenated for each run and task
-                    if no_run == 0 or (regression_version in ['03-l', '03-4-l'] and no_run == 2) or (regression_version in ['03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5']):
+                    if no_run == 0 or (regression_version in ['03-l', '03-4-l'] and no_run == 2) or (regression_version in ['03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5', '03-4-rep1', '03-4-rep2', '03-4-rep3', '03-4-rep4', '03-4-rep5']):
                         for model in result_model_dict:
                             repeats_model_dict[model] = result_model_dict[model].copy()
                     else:
                         for model in result_model_dict:
                             repeats_model_dict[model] = np.concatenate((repeats_model_dict[model], result_model_dict[model]), 1)
                 
-                # import pdb; pdb.set_trace()    
+                import pdb; pdb.set_trace()    
                 # NEXT STEP: prepare the regression- select the correct regressors, filter keys starting with 'A1_backw'
                 regressors_curr_task = {key: value for key, value in regressors.items() if key.startswith(config)}
                 

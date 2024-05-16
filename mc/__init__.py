@@ -6,6 +6,7 @@ Documents all submodules of mc
 
 import mc.simulation
 import mc.analyse
+import mc.plotting
 
 #import mc.simulation.set_clocks
 #import mc.simulation.walk_steps
