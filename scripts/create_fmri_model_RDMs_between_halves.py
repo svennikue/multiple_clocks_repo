@@ -47,6 +47,9 @@ GLM ('regression') settings (creating the 'bins'):
     03-2 - 40 regressors; for every task, only the rewards are modelled (in their original time)
     03-3 - 30 regressors; for every task, only the rewards are modelled (in their original time), except for A (because of visual feedback)
     03-4 - 24 regressors; for the tasks where every reward is at a different location (A,C,E), only the rewards are modelled (stick function)
+    03-4-e - 24 regressors; for the tasks where every reward is at a different location (A,C,E), only the rewards are modelled (stick function); only early repeats
+    03-4-l - 24 regressors; for the tasks where every reward is at a different location (A,C,E), only the rewards are modelled (stick function); only late repeats
+    03-4-rep1, rep2,.... 24 regressors; for the tasks where every reward is at a different location (A,C,E), only the rewards are modelled (stick function); only one repeat
     03-99 - 40 regressors; no button press; I allocate the reward onsets randomly to different state/task combos  -> shuffled through whole task; [using a stick function]
     03-999 - 40 regressors; no button press; created a random but sorted sample of onsets that I am using -> still somewhat sorted by time, still [using a stick function]
     03-9999 - 40 regressors; no button press; shift all regressors 6 seconds earlier
@@ -67,8 +70,8 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '03-e' 
-RDM_version = '05' 
+regression_version = '03-4-rep1' 
+RDM_version = '03-1' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -118,7 +121,7 @@ for sub in subjects:
         # overview of the reward fields per task.
         steps_subpath_alltasks = mc.analyse.analyse_MRI_behav.subpath_files(configs, subpath_after_steps, rew_list, rew_index, steps_subpath_alltasks_empty)
 
-        if regression_version in ['03-4', '03-4-e', '03-4-l','04-4']:
+        if regression_version in ['03-4', '03-4-e', '03-4-l','04-4', '03-4-rep1', '03-4-rep2', '03-4-rep3', '03-4-rep4', '03-4-rep5']:
             for config in configs:
                 if config.startswith('B') or config.startswith('D'):
                     del rew_list[config]
@@ -149,15 +152,15 @@ for sub in subjects:
                 elif regression_version in ['03-l', '03-4-l']:
                     # step_number = step_number[2:].copy()
                     index_run_no = index_run_no[2:].copy()
-                elif regression_version in ['03-rep1']:
+                elif regression_version in ['03-rep1', '03-4-rep1']:
                     index_run_no = [index_run_no[0]]
-                elif regression_version in ['03-rep2']:
+                elif regression_version in ['03-rep2', '03-4-rep2']:
                     index_run_no = [index_run_no[1]]
-                elif regression_version in ['03-rep3']:
+                elif regression_version in ['03-rep3', '03-4-rep3']:
                     index_run_no = [index_run_no[2]]
-                elif regression_version in ['03-rep4']:
+                elif regression_version in ['03-rep4', '03-4-rep4']:
                     index_run_no = [index_run_no[3]]
-                elif regression_version in ['03-rep5']:
+                elif regression_version in ['03-rep5', '03-4-rep5']:
                     index_run_no = [index_run_no[4]]
                     
                    
@@ -231,19 +234,19 @@ for sub in subjects:
                     if regressors_curr_task[subpath_to_find_indices][i] == 1 and (i == 0 or regressors_curr_task[subpath_to_find_indices][i-1] == 0):
                         index_next_repeat.append(i)
                 
-                if regression_version in ['03-e', '03-4-e', '03-rep1']:
+                if regression_version in ['03-e', '03-4-e', '03-rep1', '03-4-rep1']:
                     regressors_curr_task = {regressor: regressors_curr_task[regressor][0:len(repeats_model_dict[model][2])] for regressor in regressors_curr_task}
 
-                if regression_version in ['03-l', '03-4-l', '03-rep5']:
+                if regression_version in ['03-l', '03-4-l', '03-rep5', '03-4-rep5']:
                     regressors_curr_task = {regressor: regressors_curr_task[regressor][(-1*len(repeats_model_dict[model][2])):] for regressor in regressors_curr_task}
                 
-                if regression_version in ['03-rep2']:
+                if regression_version in ['03-rep2', '03-4-rep2']:
                     regressors_curr_task = {regressor: regressors_curr_task[regressor][index_next_repeat[1]:index_next_repeat[2]] for regressor in regressors_curr_task}
 
-                if regression_version in ['03-rep3']:
+                if regression_version in ['03-rep3', '03-4-rep3']:
                     regressors_curr_task = {regressor: regressors_curr_task[regressor][index_next_repeat[2]:index_next_repeat[3]] for regressor in regressors_curr_task}
 
-                if regression_version in ['03-rep4']:
+                if regression_version in ['03-rep4', '03-4-rep4']:
                     regressors_curr_task = {regressor: regressors_curr_task[regressor][index_next_repeat[3]:index_next_repeat[4]] for regressor in regressors_curr_task}
 
 
@@ -270,7 +273,7 @@ for sub in subjects:
                     else:
                         regressors_curr_task = {key: value for key, value in regressors_curr_task.items()}
                 
-                if regression_version in ['03','03-1','03-2', '03-4', '03-99', '03-999', '03-l', '03-e', '03-4-e', '03-4-l', '03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5']:
+                if regression_version in ['03','03-1','03-2', '03-4', '03-99', '03-999', '03-l', '03-e', '03-4-e', '03-4-l', '03-4-rep1', '03-4-rep2', '03-4-rep3', '03-4-rep4', '03-4-rep5']:
                     if RDM_version in ['02-A', '03-A', '03-5-A']: # additionally get rid of the A-state.
                         regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key and key.endswith('reward')}
                     else:
