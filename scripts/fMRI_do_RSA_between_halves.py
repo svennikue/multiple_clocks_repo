@@ -63,7 +63,7 @@ import pickle
 import sys
 import random
 
-regression_version = '03-e' 
+regression_version = '03-4-rep1' 
 RDM_version = '05' 
 
 
@@ -97,14 +97,12 @@ elif regression_version in ['03', '04','03-99', '03-999', '03-9999', '03-l', '03
     no_RDM_conditions = 40 # only including rewards or only paths
 elif regression_version == '03-3': #excluding reward A
     no_RDM_conditions = 30
-elif regression_version in ['03-4', '04-4', '03-4-e', '03-4-l']: # only including tasks without double reward locs: A,C,D  and only rewards
+elif regression_version in ['03-4', '04-4', '03-4-e', '03-4-l', '03-4-rep1', '03-4-rep2' , '03-4-rep3' , '03-4-rep4' ,'03-4-rep5' ]: # only including tasks without double reward locs: A,C,D  and only rewards
     no_RDM_conditions = 24
     
 if regression_version in ['03-4', '04-4'] and RDM_version in ['03-5-A', '02-A', '03-A', '04-A', '04-5-A']: # only TASK A,C,D, only rewards B-C-D
     no_RDM_conditions = 18
 
-
-    
 for sub in subjects:
     data_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}"
     if os.path.isdir(data_dir):
@@ -144,6 +142,16 @@ for sub in subjects:
         regression_version = '03-e'
     if regression_version in ['03-4-l']:
         regression_version = '03-l'
+    if regression_version in ['03-4-rep1']:
+        regression_version = '03-rep1'
+    if regression_version in ['03-4-rep2']:
+        regression_version = '03-rep2'
+    if regression_version in ['03-4-rep3']:
+        regression_version = '03-rep3'
+    if regression_version in ['03-4-rep4']:
+        regression_version = '03-rep4'
+    if regression_version in ['03-4-rep5']:
+        regression_version = '03-rep5'
        
     pe_path_01 = f"{data_dir}/func/glm_{regression_version}_pt01.feat/stats"
     reading_in_EVs_dict_01 = {}   
@@ -420,7 +428,7 @@ for sub in subjects:
         # mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "PHASE-combo_cl-mid-st-ph", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
         
      # combo clocks and controls
-    elif RDM_version == '03-1' and regression_version in ['03', '03-4', '03-l', '03-e']:
+    elif RDM_version == '03-1' and regression_version in ['03', '03-4', '03-l', '03-e', '03-rep1', '03-rep2','03-rep3','03-rep4','03-rep5']:
         multiple_regressors_first = ['curr-and-future-rew-locs', 'location', 'phase', 'state']
         results_combo_model= mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
         model_name = 'combo-clrw-loc-ph-st'
