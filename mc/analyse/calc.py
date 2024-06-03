@@ -7,6 +7,10 @@ Calculation of RDMs from datasets
 16.01.2024:
     changes made by Svenja Küchenhoff 
     added: cross-validation correlation
+edit 03rd of june 2024 - correction of 
+    rdm = x[int(len(x)/2):,0:int(len(x)/2)]
+    rdm_corr = (rdm + np.transpose(rdm))/2
+
 """
 from __future__ import annotations
 from collections.abc import Iterable
@@ -434,7 +438,7 @@ def calc_rdm_poisson_cv(dataset, descriptor=None, prior_lambda=1,
     return _build_rdms(rdm, dataset, 'poisson_cv', descriptor)
 
 
-# addition by S.K. 16th of january 2024
+# addition by S.K. 16th of january 2024, edit 03rd of june 2024
 def calc_rdm_crosscorr(dataset, descriptor=None, cv_descriptor=None):
     """
     calculates an RDM from an input dataset by creating a concatening the folds,
@@ -462,8 +466,13 @@ def calc_rdm_crosscorr(dataset, descriptor=None, cv_descriptor=None):
         ma_cv = ma_cv - ma_cv.mean(axis=1, keepdims=True)
         ma_cv /= np.sqrt(np.einsum('ij,ij->i', ma_cv, ma_cv))[:, None]       
         rdm_cv = 1 - np.einsum('ik,jk', ma_cv, ma_cv)  
-        rdm = (rdm_cv + np.transpose(rdm_cv))/2
-        rdm = rdm[0:int(len(rdm)/2), int(len(rdm)/2):]
+        # what it should actually be
+        rdm = rdm_cv[int(len(rdm_cv)/2):,0:int(len(rdm_cv)/2)]
+        rdm = (rdm + np.transpose(rdm))/2
+        
+        # what it previously was
+        # rdm = (rdm_cv[0:int(len(rdm)/2), int(len(rdm)/2):] + np.transpose(rdm_cv[0:int(len(rdm)/2), int(len(rdm)/2):]))/2
+        # rdm = rdm[0:int(len(rdm)/2), int(len(rdm)/2):]
     
     return _build_rdms(rdm, dataset, 'crosscorr', descriptor)     
 # end addition

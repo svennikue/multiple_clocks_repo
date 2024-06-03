@@ -70,8 +70,8 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '03-4-rep2' 
-RDM_version = '03-1' 
+regression_version = '03-4' 
+RDM_version = '02' 
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -82,7 +82,7 @@ subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10
 
 task_halves = ['1', '2']
-fmriplotting = False # incorrect for 01
+fmriplotting = True # incorrect for 01
 fmri_save = True
 
 add_run_counts_model = False # this doesn't work with the current analysis
@@ -223,7 +223,7 @@ for sub in subjects:
                         for model in result_model_dict:
                             repeats_model_dict[model] = np.concatenate((repeats_model_dict[model], result_model_dict[model]), 1)
                 
-                import pdb; pdb.set_trace()    
+                # import pdb; pdb.set_trace()    
                 # NEXT STEP: prepare the regression- select the correct regressors, filter keys starting with 'A1_backw'
                 regressors_curr_task = {key: value for key, value in regressors.items() if key.startswith(config)}
                 
@@ -381,14 +381,14 @@ for sub in subjects:
             #RSM_dict_betw_TH['state_masked'] = RSM_dict_betw_TH[model]* RSM_dict_betw_TH_mask
             
 
-    # then average the lower triangle and the top triangle of this nCond x nCond matrix, 
-    # by adding it to its transpose, dividing by 2, and taking only the lower or 
-    # upper triangle of the result.    
+
+    # import pdb; pdb.set_trace()
     corrected_RSM_dict = {}
     for model in RSM_dict_betw_TH:
         # import pdb; pdb.set_trace()
-        corrected_model = (RSM_dict_betw_TH[model] + np.transpose(RSM_dict_betw_TH[model]))/2
-        corrected_RSM_dict[model] = corrected_model[0:int(len(corrected_model)/2), int(len(corrected_model)/2):]
+        corrected_model = RSM_dict_betw_TH[model][int(len(RSM_dict_betw_TH[model])/2):, 0:int(len(RSM_dict_betw_TH[model])/2):]
+        corrected_model = (corrected_model + np.transpose(corrected_model))/2
+
    
     
     # just for me. what happens if I add the ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']?

@@ -63,7 +63,7 @@ import pickle
 import sys
 import random
 
-regression_version = '03-4-rep1' 
+regression_version = '03-4' 
 RDM_version = '05' 
 
 
@@ -287,6 +287,7 @@ for sub in subjects:
             # this is defining both task halves/ runs: 0 is first half, the second one is 1s
             sessions = np.concatenate((np.zeros(int(data_RDM_file['1'].shape[0])), np.ones(int(data_RDM_file['2'].shape[0]))))  
             # for all other cases, cross correlated between task-halves.
+            import pdb; pdb.set_trace()
             data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='crosscorr', cv_descr=sessions)
             # save  so that I don't need to recompute - or don't save bc it's massive
             # with open(f"{results_dir}/data_RDM.pkl", 'wb') as file:

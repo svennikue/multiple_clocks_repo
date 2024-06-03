@@ -66,7 +66,7 @@ import random
 
 #import pdb; pdb.set_trace()
 
-version = '03-rep5'
+version = '03'
 
 # plotting = True
 # to debug task_halves = ['1']
@@ -76,7 +76,7 @@ task_halves = ['1', '2']
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '02'
+    subj_no = '14'
 
 # subjects = ['sub-07', 'sub-08', 'sub-09', 'sub-11', 'sub-12', 'sub-13', 'sub-14', 'sub-15', 'sub-16', 'sub-17', 'sub-18','sub-19', 'sub-20',  'sub-22', 'sub-23','sub-24']
 #subjects = ['sub-01']    
