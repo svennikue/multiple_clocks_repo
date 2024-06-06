@@ -297,8 +297,8 @@ def jitter(expected_step_no):
     
 
 # code snippet to create a regressor
-def create_EV(onset, duration, magnitude, name, folder, TR_at_sec, version = None):
-    if version not in ['03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5']:
+def create_EV(onset, duration, magnitude, name, folder, TR_at_sec, version = None, version_TR = None):
+    if version not in ['03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5', f"01-TR{version_TR}"]:
         if len(onset) > len(duration):
             onset = onset[:len(duration)]
             magnitude = magnitude[:len(duration)]
