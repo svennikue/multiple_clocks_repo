@@ -63,8 +63,8 @@ import pickle
 import sys
 import random
 
-regression_version = '03' 
-RDM_version = '05' 
+regression_version = '03-4' 
+RDM_version = '03-tasklag'
 
 
 # import pdb; pdb.set_trace() 
@@ -411,7 +411,6 @@ for sub in subjects:
         # mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "LOC-combo_cl-mid-st-loc-ph", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
         # mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_loc_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "PHASE-combo_cl-mid-st-loc-ph", mask=mask, number_regr = 4, ref_image_for_affine_path=ref_img)
 
-
      # combo clocks and controls
     elif RDM_version == '03' and regression_version in ['03']: # don't model location and midnight together if reduced to reward times as they are the same.
         # # first: clocks with midnight, phase, state and location.
@@ -427,6 +426,24 @@ for sub in subjects:
         # mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "MIDNrw-combo_cl-mid-st-ph", mask=mask, number_regr = 1, ref_image_for_affine_path=ref_img)
         # mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "STATE-combo_cl-mid-st-ph", mask=mask, number_regr = 2, ref_image_for_affine_path=ref_img)
         # mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_clocks_midn_states_ph_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "PHASE-combo_cl-mid-st-ph", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
+       
+    elif RDM_version == '03-tasklag' and regression_version in ['03', '03-4']:
+        # 'location', 'phase', 'state', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew', 'curr_rings_split_clock_sin', 'one_fut_rings_split_clock_sin', 'two_fut_rings_split_clock_sin', 'three_fut_rings_split_clock_sin', 'clocks_only-rew_sin']
+
+        multiple_regressors_first_cos = ['clocks_only-rew', 'location', 'state', 'phase']
+        results_combo_model_cos = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first_cos, model_RDM_dir, data_RDM)     
+        model_name = 'combo-coscl-loc-st-ph'
+        
+        # already compute the cosine here bc only one will be taken after
+        for i, model in enumerate(multiple_regressors_first):
+            mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model_cos, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+
+
+        multiple_regressors_first = ['clocks_only-rew_sin', 'location', 'state', 'phase']
+        results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)     
+        model_name = 'combo-sincl-loc-st-ph'
+        
+
         
      # combo clocks and controls
     elif RDM_version == '03-1' and regression_version in ['03', '03-4', '03-l', '03-e', '03-rep1', '03-rep2','03-rep3','03-rep4','03-rep5']:
@@ -499,6 +516,21 @@ for sub in subjects:
         # mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_split_clocks_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "ONE-FUTR-RINGS_combo_split_clockh", mask=mask, number_regr = 1, ref_image_for_affine_path=ref_img)
         # mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_split_clocks_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "TWO-FUTR-RINGS_combo_split_clock", mask=mask, number_regr = 2, ref_image_for_affine_path=ref_img)
         # mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_split_clocks_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= "THRE-FUTR-RINGS_combo_split_clock", mask=mask, number_regr = 3, ref_image_for_affine_path=ref_img)
+    
+    elif RDM_version == '03-tasklag' and regression_version in ['03', '03-4']:
+        # 'location', 'phase', 'state', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew', 'curr_rings_split_clock_sin', 'one_fut_rings_split_clock_sin', 'two_fut_rings_split_clock_sin', 'three_fut_rings_split_clock_sin', 'clocks_only-rew_sin']
+        # second: split clock: now/ midnight; one future, two future, three future
+        multiple_regressors = ['curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock']
+        results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
+        model_name = 'combo_split_clock_cos'
+        # do it once bc there need to be 2 combo models
+        for i, model in enumerate(multiple_regressors):
+            mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+        
+        multiple_regressors = ['curr_rings_split_clock_sin', 'one_fut_rings_split_clock_sin', 'two_fut_rings_split_clock_sin', 'three_fut_rings_split_clock_sin',]
+        results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
+        model_name = 'combo_split_clock_sin'
+
 
     # combo split clocks    
     elif RDM_version in ['03-1'] and regression_version in ['03', '03-4','03-l', '03-e', '03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5']:
