@@ -63,7 +63,7 @@ import pickle
 import sys
 import random
 
-regression_version = '03-4' 
+regression_version = '03' 
 RDM_version = '05' 
 
 
@@ -302,7 +302,7 @@ for sub in subjects:
             RDM_dir = f"{data_dir}/beh/RDMs_09_glmbase_{regression_version}" # potentially delete??
         data_dirs[model]= np.load(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves.npy")) 
     
-    
+    import pdb; pdb.set_trace()
     # step 3: create model RDMs
     # first, each model gets its own, separate estimation.
     model_RDM_dir = {}

@@ -1869,8 +1869,8 @@ def set_location_ephys(walked_path, reward_fields, grid_size = 3, plotting = Fal
 
 
 # to create the model RDMs.
-def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, temporal_resolution = 10, plot = False, only_rew = False, only_path = False, split_clock = False):
-    # import pdb; pdb.set_trace()
+def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, temporal_resolution = 10, plot = False, only_rew = False, only_path = False, split_clock = False, imaginary = False, lag_weighting = False):
+    #import pdb; pdb.set_trace()
     
     cumsumsteps = np.cumsum(step_number)
     
@@ -2050,6 +2050,23 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     # I am going to fuse the midnight and the phas_stat model. Thus they need to be equally 'strong' > normalise!
     norm_midn = (midn_model.copy()-np.min(midn_model))/(np.max(midn_model)-np.min(midn_model))
     norm_phas_stat = (phas_stat.copy()-np.min(phas_stat))/(np.max(phas_stat)-np.min(phas_stat))
+    
+    # to weight the neurons depending on their task lag.
+    if imaginary == True:
+        # weight the 12 neurons by e to the power of i*cos(theta), and one for e i*sin(theta) where theta is the angle to 0 degree task lag.
+        # there are 12 angles, one per task-lag neuron. 
+        theta = np.linspace(0, 2*np.pi, len(norm_phas_stat)) #angles
+        weight_compl = np.exp(1j * theta / 2)
+        diag_complex_weights = np.diag(weight_compl)
+        #norm_phas_stat = np.transpose(np.dot(norm_phas_stat.T, diag_complex_weights))
+        
+    if lag_weighting == True:
+        # weight the 12 neurons by e to the power of i*cos(theta), and one for e i*sin(theta) where theta is the angle to 0 degree task lag.
+        # there are 12 angles, one per task-lag neuron. 
+        theta = np.linspace(0, 2*np.pi, len(norm_phas_stat)) #angles
+        weights_cos = np.cos(theta)[:, np.newaxis]
+        weights_sin = np.sin(theta)[:, np.newaxis]
+  
     # stick the neuron-clock matrices in 
     full_clock_matrix_dummy = np.zeros([len(norm_midn)*len(norm_phas_stat),len(norm_midn[0])]) # fields times phases.
     # for ever 12th row, stick a row of the midnight matrix in (corresponds to the respective first neuron of the clock)
@@ -2059,15 +2076,23 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     # copy the neuron per clock firing pattern
     # I will manipulate clocks_per_step, and use clocks_per_step.dummy as control to check for overwritten stuff.
     clo_model =  full_clock_matrix_dummy.copy()
+    if lag_weighting == True:
+        clo_model =  full_clock_matrix_dummy.copy()
+        clo_model_sin =  full_clock_matrix_dummy.copy()
     
-    
+    # import pdb; pdb.set_trace()
     # if you also want a split clock, then prepare those as well as a dicitonary
     if split_clock == True:  
         split_clock_strings = ['curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock']
+        if lag_weighting == True:
+            split_clock_strings = ['curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'curr_rings_split_clock_sin', 'one_fut_rings_split_clock_sin', 'two_fut_rings_split_clock_sin', 'three_fut_rings_split_clock_sin']
         split_clock_model_dict = {}
         for model in split_clock_strings:
             # length of the future clock model will be 3x midnight: predicting the subpaths, not only the reward.
-            split_clock_model_dict[model] = np.zeros([len(norm_midn)*3,len(norm_midn[0])])
+            if imaginary == True:
+                split_clock_model_dict[model] = np.zeros([len(norm_midn)*3,len(norm_midn[0])], dtype=np.complex128) 
+            else:
+               split_clock_model_dict[model] = np.zeros([len(norm_midn)*3,len(norm_midn[0])]) 
 
     # now loop through the already filled columns (every 12th one) and fill the clocks if activated.
     for row in range(0, len(norm_midn)):
@@ -2079,39 +2104,56 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
                 # print(maxima, index)
                 local_maxima = np.delete(local_maxima, index)        
         for activation_neuron in local_maxima:
-            # import pdb; pdb.set_trace()
             horizontal_shift_by = np.argmax(norm_phas_stat[:,activation_neuron])
             # shift the clock around so that the activation neuron comes first
             shifted_clock = np.roll(norm_phas_stat, horizontal_shift_by*-1, axis = 0)
             # adjust the firing strength according to the local maxima
             firing_factor = norm_midn[row, activation_neuron].copy()
+            #if firing_factor > 0.5:
+            #    import pdb; pdb.set_trace()
             #firing_factor = norm_midn[row,activation_neuron]/ max_firing
             shifted_adjusted_clock = shifted_clock.copy()*firing_factor
+            # lastly, if weighting by task-lag desired, compute dot product of weight matrix
+            if imaginary == True:
+                shifted_adjusted_clock = np.transpose(np.dot(shifted_adjusted_clock.T, diag_complex_weights))
+            if lag_weighting == True:
+                shifted_adjusted_clock_sin = shifted_adjusted_clock*weights_sin
+                shifted_adjusted_clock = shifted_adjusted_clock*weights_cos
+                
             # before 0ing out the first row (= musicboxneuron), first save the specific rows (i.e. now, next future, 2 future, 3 future) in the split clocks model.
-            # import pdb; pdb.set_trace()
+
             if split_clock == True:
                 split_clock_model_dict['curr_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[0:3] + split_clock_model_dict['curr_rings_split_clock'][row*3:row*3+3, :]
                 split_clock_model_dict['one_fut_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[3:6] + split_clock_model_dict['one_fut_rings_split_clock'][row*3:row*3+3, :]
                 split_clock_model_dict['two_fut_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[6:9] + split_clock_model_dict['two_fut_rings_split_clock'][row*3:row*3+3, :]
                 split_clock_model_dict['three_fut_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[9:] + split_clock_model_dict['three_fut_rings_split_clock'][row*3:row*3+3, :]
-                
+                if lag_weighting == True:
+                    split_clock_model_dict['curr_rings_split_clock_sin'][row*3:row*3+3, :] = shifted_adjusted_clock_sin[0:3] + split_clock_model_dict['curr_rings_split_clock_sin'][row*3:row*3+3, :]
+                    split_clock_model_dict['one_fut_rings_split_clock_sin'][row*3:row*3+3, :] = shifted_adjusted_clock_sin[3:6] + split_clock_model_dict['one_fut_rings_split_clock_sin'][row*3:row*3+3, :]
+                    split_clock_model_dict['two_fut_rings_split_clock_sin'][row*3:row*3+3, :] = shifted_adjusted_clock_sin[6:9] + split_clock_model_dict['two_fut_rings_split_clock_sin'][row*3:row*3+3, :]
+                    split_clock_model_dict['three_fut_rings_split_clock_sin'][row*3:row*3+3, :] = shifted_adjusted_clock_sin[9:] + split_clock_model_dict['three_fut_rings_split_clock_sin'][row*3:row*3+3, :]
+
+                    
             # then, for the full clock model, add the values to the existing clocks, but also replace the first row by 0!!
             shifted_adjusted_clock[0] = np.zeros((len(shifted_adjusted_clock[0])))
             clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()
-        
+            
+            if lag_weighting == True:
+                shifted_adjusted_clock_sin[0] = np.zeros((len(shifted_adjusted_clock_sin[0])))
+                clo_model_sin[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = clo_model_sin[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock_sin.copy()
+               
     # import pdb; pdb.set_trace()
     if plot == True:
         mc.simulation.predictions.plot_without_legends(loc_model, titlestring='Location_model')
         mc.simulation.predictions.plot_without_legends(phas_model, titlestring='Phase Model')
         mc.simulation.predictions.plot_without_legends(stat_model, titlestring='State Model')
         mc.simulation.predictions.plot_without_legends(midn_model, titlestring='Midnight Model')
-        mc.simulation.predictions.plot_without_legends(clo_model, titlestring='Musicbox model')
-        mc.simulation.predictions.plot_without_legends(phas_stat, titlestring='One ring of musicbox')
+        mc.simulation.predictions.plot_without_legends(np.real(clo_model), titlestring='Musicbox model')
+        mc.simulation.predictions.plot_without_legends(np.real(norm_phas_stat), titlestring='One ring of musicbox')
         mc.simulation.predictions.plot_without_legends(task_prog_matrix, titlestring='Task progress Model')
         if split_clock == True:
             for model in split_clock_model_dict:
-                mc.simulation.predictions.plot_without_legends(split_clock_model_dict[model], titlestring=model)
-    
+                mc.simulation.predictions.plot_without_legends(np.real(split_clock_model_dict[model]), titlestring=model)
     # import pdb; pdb.set_trace()
     # save results as dict
     result_dict = {}
@@ -2130,7 +2172,11 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     #     result_dict['state'] = stat_model
     #     result_dict['task_prog'] = task_prog_matrix
     #     result_dict['location'] = loc_model
-    if only_rew == True:
+    if lag_weighting == True:
+        result_dict['midnight_only-rew'] = midn_model
+        result_dict['clocks_only-rew'] = clo_model
+        result_dict['clocks_only-rew_sin'] = clo_model_sin
+    elif only_rew == True:
         # name all affected models different so that one notices the different representation
         result_dict['midnight_only-rew'] = midn_model
         result_dict['clocks_only-rew'] = clo_model

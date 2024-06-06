@@ -16,6 +16,8 @@ RDM settings (creating the representations):
     02-A -> modelling everything but excluding state A
     
     03 -> modelling only reward anchors/rings + splitting clocks model in the same py function.
+    03-im -> imaginary number model of the clock to check for differences in task-lag, otherwise like 03
+    03-tasklag -> weight the musicbox by tasklags: sine and cosine of task-lag angle.
     03-A -> same as 03 but only considering B,C,D [excluding rew A]
 
     03-1 -> modelling only reward rings + split ‘clocks model’ = just rotating the reward location around.  
@@ -71,7 +73,7 @@ import sys
 # import pdb; pdb.set_trace()
 
 regression_version = '03-4' 
-RDM_version = '02' 
+RDM_version = '03-tasklag'
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -82,7 +84,7 @@ subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10
 
 task_halves = ['1', '2']
-fmriplotting = True # incorrect for 01
+fmriplotting = False # incorrect for 01 false for 03-im!
 fmri_save = True
 
 add_run_counts_model = False # this doesn't work with the current analysis
@@ -196,6 +198,11 @@ for sub in subjects:
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path= False, split_clock = True)
                     elif RDM_version in ['03', '03-5', '03-5-A', '03-A']: # modelling only rewards + splitting clocks [new]
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path = False, split_clock=True)
+                    elif RDM_version in ['03-im']: # modelling the clocks with imaginary numbers
+                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = True, imaginary = True)    
+                    elif RDM_version in ['03-tasklag']: # modelling the clocks with imaginary numbers
+                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = True, imaginary = False, lag_weighting = True)    
+
                     elif RDM_version in ['03-1', '03-2', '03-3']:# modelling only clocks + splitting clocks later in different way.
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
                     elif RDM_version in ['04', '04-5-A', '04-A']: # modelling only paths + splitting clocks [new]
@@ -205,9 +212,10 @@ for sub in subjects:
                         model_from_04 = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path = True, split_clock=True)
                         # then put both together:
                         result_model_dict = {**models_from_03_1, **model_from_04}
-                            
+                    
+                    # import pdb; pdb.set_trace()
                     # now for all models that are creating or not creating the splits models with my default function, this checking should work.
-                    if RDM_version not in ['03-1', '03-2', '03-3', '03-5', '03-5-A','04-5', '04-5-A', '05']:
+                    if RDM_version not in ['03-1', '03-2', '03-3', '03-5', '03-5-A','04-5', '04-5-A', '05', '03-tasklag']:
                         # test if this function gives the same as the models you want, otherwise break!
                         model_list = list(result_model_dict.keys())
                         if model_list != models_I_want:
@@ -388,8 +396,7 @@ for sub in subjects:
         # import pdb; pdb.set_trace()
         corrected_model = RSM_dict_betw_TH[model][int(len(RSM_dict_betw_TH[model])/2):, 0:int(len(RSM_dict_betw_TH[model])/2):]
         corrected_model = (corrected_model + np.transpose(corrected_model))/2
-
-   
+        corrected_RSM_dict[model] = corrected_model
     
     # just for me. what happens if I add the ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']?
     # addition_model = corrected_RSM_dict['reward_location'] + corrected_RSM_dict['one_future_rew_loc'] + corrected_RSM_dict['two_future_rew_loc'] + corrected_RSM_dict['three_future_rew_loc'] 

@@ -16,12 +16,15 @@ import rsatoolbox.rdm as rsr
 import rsatoolbox
 from rsatoolbox.util.searchlight import get_volume_searchlight, get_searchlight_RDMs
 from nilearn.image import load_img
+from nilearn import plotting
 from joblib import Parallel, delayed
 import matplotlib.pyplot as plt
 import mc
 import pickle
 import sys
 import random
+
+from surfer import Brain
 
 regression_version = '03' 
 RDM_version = '02' 
@@ -75,16 +78,24 @@ for sub in subjects:
     reading_in_EVs_dict = {task_half: "" for task_half in ['01', '02']}
     for task_half in ['01', '02']:
         pe_path = f"{fs_dir}/glm_{regression_version}_pt{task_half}.feat"
-        with open(f"{data_dir}/derivatives/{sub}/func/EVs_{regression_version}_pt{task_half}/task-to-EV.txt", 'r') as file:
-            for line in file:
-                index, name_ev = line.strip().split(' ', 1)
-                name = name_ev.replace('ev_', '')
-                reading_in_EVs_dict[task_half][f"{name}_EV_{int(index)+1}"] = os.path.join(pe_path, f"pe{int(index)+1}.nii.gz")
-#                reading_in_EVs_dict_01[f"{name}_EV_{int(index)+1}"] = os.path.join(pe_path_01, f"pe{int(index)+1}.nii.gz")
+#         with open(f"{data_dir}/derivatives/{sub}/func/EVs_{regression_version}_pt{task_half}/task-to-EV.txt", 'r') as file:
+#             for line in file:
+#                 index, name_ev = line.strip().split(' ', 1)
+#                 name = name_ev.replace('ev_', '')
+#                 reading_in_EVs_dict[task_half][f"{name}_EV_{int(index)+1}"] = os.path.join(pe_path, f"pe{int(index)+1}.nii.gz")
+# #                reading_in_EVs_dict_01[f"{name}_EV_{int(index)+1}"] = os.path.join(pe_path_01, f"pe{int(index)+1}.nii.gz")
                 
     
 
-    surface = nib.freesurfer.io.read_geometry(f"{pe_path}/rh.pe40.mgh")
+    # surface = nib.freesurfer.io.read_geometry(f"{pe_path}/rh.pe40.mgh")
+    surface = nib.load(f"{fs_dir}/testmri_vol2surf.mgz")
+    pial = nib.freesurfer.read_geometry(f"{fs_dir}/surf/lh.pial.T1")
+    vertices, faces = pial
+    
+    # ok this doesnt work... find another way.
+    plotting.plot_surf_stat_map((vertices, faces), surface, hemi='left', view='lateral', colorbar=True)
+    plotting.show()
+    
     # surface = nib.load(f"{fs_dir}/test-vol2surf.gii")
     # surface = nib.load(f"{pe_path}/rh.pe40.mgh")
     

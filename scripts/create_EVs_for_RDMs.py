@@ -15,6 +15,7 @@ making sure to order the EVs correctly.
 NEW:
 GLM ('regression') settings (creating the 'bins'):
     01 - instruction EVs
+    01-TR1 - instruction EV, first TR- modelled as a stick function
     02 - 80 regressors; every task is divided into 4 rewards + 4 paths
     03 - 40 regressors; for every tasks, only the rewards are modelled [using a stick function]
     03-e 40 regressors; for evert task, only take the first 2 repeats.
@@ -34,18 +35,6 @@ GLM ('regression') settings (creating the 'bins'):
     04 - 40 regressors; for every task, only the paths are modelled
     05 - locations + button presses 
     
-
-OLD
-06.12.2023: version 06 for RDM GLM. TR is different, made the script nicer. Everything else should be the same. 
-
-GLM settings (creating the 'bins'):
-    03 was location_EVs. (very long back)
-    06 is reward + path phase per task [80 EVs] new, better script is now 06 #'04_pt01+_that_worked' 
-    07 is only button press and rewards.
-    08 is rewards only and without A (because of the visual feedback)
-    09 is the instruction period only.
-    10 is only paths
-    11 is only rewards as a stick function
     
 
 @author: Svenja Küchenhoff, 2024
@@ -66,7 +55,11 @@ import random
 
 #import pdb; pdb.set_trace()
 
-version = '03'
+
+version_TR = 1 # can be between 1 and 12
+version = f"01-TR{version_TR}" 
+if version == '01':
+    version_TR = 0
 
 # plotting = True
 # to debug task_halves = ['1']
@@ -242,12 +235,13 @@ for sub in subjects:
  
         
  
-        if version == '01': # instruction
+        if version == ['01', f"01-TR{version_TR}"]: # instruction
             # extract the timings of where a task has ended: t_reward_afterwait & repeat == '4' 
             # + 3.5 reward text + instruction period lasts 12 seconds; 
             # so t_reward_afterwait + 3.5 rew + 12 sec should be ca. start_ABCD screen
             # first, for the first task do:
-            df.loc[df.index[~df['start_ABCD_screen'].isna()][0], 'instruct_start'] = df.loc[df.index[~df['start_ABCD_screen'].isna()][0], 'start_ABCD_screen'] - 12
+            import pdb; pdb.set_trace()
+            df.loc[df.index[~df['start_ABCD_screen'].isna()][0], 'instruct_start'] = df.loc[df.index[~df['start_ABCD_screen'].isna()][0], 'start_ABCD_screen'] - 12 - version_TR
             # for the other tasks, loop through table:
             for index, row in df.iterrows():
                 if (row['rep_runs.thisN'] == 5) and (~pd.isna(row['t_reward_afterwait'])):
