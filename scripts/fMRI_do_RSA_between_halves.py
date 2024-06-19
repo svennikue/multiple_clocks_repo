@@ -321,6 +321,7 @@ for sub in subjects:
         elif neuron_weighting == True and model in ['clocks_only-rew', 'clocks', 'clocks_no-rew']:
             model_RDM_dir[f"{model}-sin"] = rsr.calc_rdm(model_data, method='weight_crosscorr', descriptor='conds', cv_descriptor='sessions', weighting = 'sin')
             model_RDM_dir[f"{model}-cos"] = rsr.calc_rdm(model_data, method='weight_crosscorr', descriptor='conds', cv_descriptor='sessions', weighting = 'cos')
+            model_RDM_dir[model] = rsr.calc_rdm(model_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
         else:
             model_RDM_dir[model] = rsr.calc_rdm(model_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
 
@@ -601,14 +602,14 @@ for sub in subjects:
     
     # THIRD COMBO MODEL
     if RDM_version in ['05'] and neuron_weighting == True:
-        multiple_regressors_first = ['clocks_no-rew-cos', 'clocks_only-rew-cos', 'clocks_no-rew-cos', 'clocks_only-rew-cos']
+        multiple_regressors_first = ['clocks_no-rew-cos', 'clocks_only-rew-cos', 'clocks_no-rew-sin', 'clocks_only-rew-sin']
         results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
         model_name = 'combo_onlyrew-nowrew-cos-sin'
     
         for i, model in enumerate(multiple_regressors):
             mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
         
-        multiple_regressors_first = ['location', 'state', 'clocks_only-rew-cos', 'clocks_only-rew-cos']
+        multiple_regressors_first = ['location', 'state', 'clocks_only-rew-cos', 'clocks_only-rew-sin']
         results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
         model_name = 'combo_onlyrew-cos-sin-loc-st'
     
