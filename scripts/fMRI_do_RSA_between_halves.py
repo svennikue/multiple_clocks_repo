@@ -304,10 +304,10 @@ for sub in subjects:
             RDM_dir = f"{data_dir}/beh/RDMs_09_glmbase_{regression_version}" # potentially delete??
         data_dirs[model]= np.load(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves.npy")) 
     
-    # add keys for the 2 weighted models
-    if neuron_weighting == True and model in ['clocks_only-rew', 'clocks', 'clocks_no-rew']:
-        data_dirs[f"{model}-sin"] = 0
-        data_dirs[f"{model}-cos"] = 0
+        # add keys for the 2 weighted models
+        if neuron_weighting == True and model in ['clocks_only-rew', 'clocks', 'clocks_no-rew']:
+            data_dirs[f"{model}-sin"] = 0
+            data_dirs[f"{model}-cos"] = 0
         
     # import pdb; pdb.set_trace()
     # step 3: create model RDMs
@@ -315,13 +315,22 @@ for sub in subjects:
     model_RDM_dir = {}
     RDM_my_model_dir = {}
     for model in data_dirs:
-        model_data = mc.analyse.analyse_MRI_behav.prepare_model_data(data_dirs[model], no_RDM_conditions, RDM_version)
+        print(model)
+        if model in ['clocks_only-rew-sin', 'clocks-sin', 'clocks_no-rew-sin', 'clocks_only-rew-cos', 'clocks-cos', 'clocks_no-rew-cos']:
+            model_data = mc.analyse.analyse_MRI_behav.prepare_model_data(data_dirs[f"{model[:-4]}"], no_RDM_conditions, RDM_version)
+        else:
+            model_data = mc.analyse.analyse_MRI_behav.prepare_model_data(data_dirs[model], no_RDM_conditions, RDM_version)
         if RDM_version in ['01', '01-1']:
             model_RDM_dir[model] = rsr.calc_rdm(model_data, method='correlation', descriptor='conds')
-        elif neuron_weighting == True and model in ['clocks_only-rew', 'clocks', 'clocks_no-rew']:
-            model_RDM_dir[f"{model}-sin"] = rsr.calc_rdm(model_data, method='weight_crosscorr', descriptor='conds', cv_descriptor='sessions', weighting = 'sin')
-            model_RDM_dir[f"{model}-cos"] = rsr.calc_rdm(model_data, method='weight_crosscorr', descriptor='conds', cv_descriptor='sessions', weighting = 'cos')
-            model_RDM_dir[model] = rsr.calc_rdm(model_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
+        if model.endswith('-sin'):
+            model_RDM_dir[model] = rsr.calc_rdm(model_data, method='weight_crosscorr', descriptor='conds', cv_descriptor='sessions', weighting = 'sin')
+        elif model.endswith('-cos'):
+            model_RDM_dir[model] = rsr.calc_rdm(model_data, method='weight_crosscorr', descriptor='conds', cv_descriptor='sessions', weighting = 'cos')
+      
+        # elif neuron_weighting == True and model in ['clocks_only-rew', 'clocks', 'clocks_no-rew']:
+        #     model_RDM_dir[f"{model}-sin"] = rsr.calc_rdm(model_data, method='weight_crosscorr', descriptor='conds', cv_descriptor='sessions', weighting = 'sin')
+        #     model_RDM_dir[f"{model}-cos"] = rsr.calc_rdm(model_data, method='weight_crosscorr', descriptor='conds', cv_descriptor='sessions', weighting = 'cos')
+        #     model_RDM_dir[model] = rsr.calc_rdm(model_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
         else:
             model_RDM_dir[model] = rsr.calc_rdm(model_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
 

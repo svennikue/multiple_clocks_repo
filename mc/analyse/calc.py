@@ -10,6 +10,8 @@ Calculation of RDMs from datasets
 edit 03rd of june 2024 - correction of 
     rdm = x[int(len(x)/2):,0:int(len(x)/2)]
     rdm_corr = (rdm + np.transpose(rdm))/2
+edit 19th of june 2024-
+    add 'weight_crosscorr'
 
 """
 from __future__ import annotations
@@ -28,7 +30,7 @@ if TYPE_CHECKING:
 
 
 def calc_rdm(dataset, method='euclidean', descriptor=None, noise=None,
-             cv_descriptor=None, prior_lambda=1, prior_weight=0.1):
+             cv_descriptor=None, prior_lambda=1, prior_weight=0.1, weighting=None):
     """
     calculates an RDM from an input dataset
 
@@ -102,6 +104,8 @@ def calc_rdm(dataset, method='euclidean', descriptor=None, noise=None,
         # added by S.K. 16.01.2023
         elif method == 'crosscorr':
             rdm = calc_rdm_crosscorr(dataset, descriptor, cv_descriptor)
+        elif method == 'weight_crosscorr':
+            rdm = calc_rdm_weight_crosscorr(dataset, descriptor, cv_descriptor, weighting)
         # end addition
         else:
             raise NotImplementedError
@@ -442,9 +446,9 @@ def calc_rdm_poisson_cv(dataset, descriptor=None, prior_lambda=1,
 def calc_rdm_crosscorr(dataset, descriptor=None, cv_descriptor=None):
     """
     calculates an RDM from an input dataset by creating a concatening the folds,
-    creating a correlation matrix, and then averaging the lower left square
-    of this nCond x nCond matrix by adding it to its transpose, 
-    dividing by 2, and taking only the lower triangle of the result.      
+    creating a correlation matrix, and then averaging the lower triangle and 
+    the top triangle of this nCond x nCond matrix by adding it to its transpose, 
+    dividing by 2, and taking only the lower or upper triangle of the result.    
     
     """
     datasetCopy = deepcopy(dataset)
@@ -475,6 +479,69 @@ def calc_rdm_crosscorr(dataset, descriptor=None, cv_descriptor=None):
         # rdm = rdm[0:int(len(rdm)/2), int(len(rdm)/2):]
     
     return _build_rdms(rdm, dataset, 'crosscorr', descriptor)     
+
+
+# second addition, for weighted neurons - 19th of June 2024
+def calc_rdm_weight_crosscorr(dataset, descriptor=None, cv_descriptor=None, weighting=None):
+    """
+    computes similarity by doing: X_w_cov1 = X * diagWeights * transpose(X).
+    
+    Then averages the lower triangle of this nCond x nCond matrix by adding 
+    it to its transpose, dividing by 2, and taking only the lower or 
+    upper triangle of the result (i.e. the TH1 - TH2 correlations)
+    
+    """
+    datasetCopy = deepcopy(dataset) 
+    if cv_descriptor is None:
+        cv_desc = _gen_default_cv_descriptor(datasetCopy, descriptor)
+        datasetCopy.obs_descriptors['cv_desc'] = cv_desc
+        cv_descriptor = 'cv_desc'
+    datasetCopy.sort_by(descriptor)
+    cv_folds = np.unique(np.array(datasetCopy.obs_descriptors[cv_descriptor]))
+    if len(cv_folds) > 2:
+        print('Careful! there are more than 2 cv folds, but the function is written for only 2 folds.')
+    elif len(cv_folds) == 2:
+        data_test = datasetCopy.subset_obs(cv_descriptor, cv_folds[0])
+        data_train = datasetCopy.subset_obs(
+            cv_descriptor,
+            np.setdiff1d(cv_folds, cv_folds[0])
+        )
+
+        # concatenate both task halves
+        ma_cv = np.concatenate((data_test.measurements, data_train.measurements), 0)
+        # ma_cv has neurons as columns and rows as timepoints
+        # deamean timpoints (substract mean of each row)
+        ma_cv = ma_cv - ma_cv.mean(axis=1, keepdims=True) 
+        # divide each timpoint by it's standard deviation
+        ma_cv /= np.sqrt(np.einsum('ij,ij->i', ma_cv, ma_cv))[:, None]  
+
+
+        # prep the weighting
+        n_ring_neurons = 12
+        # angles
+        theta = np.linspace(0, 2 * np.pi, n_ring_neurons)  
+        # make weights as long as my clocks model matrix
+        theta_complete_clock = np.tile((theta), (1, 3*9))
+        # theta_complete_clock = np.tile((theta), (3*9*2, 1)).flatten() 
+        if weighting == 'sin':
+            weights = np.sin(theta_complete_clock)
+            diagWeights = np.diag(weights.flatten())
+        if weighting == 'cos':
+            weights = np.cos(theta_complete_clock)
+            diagWeights = np.diag(weights.flatten())
+        
+        # compute RDM: 1 - covariance matrix
+        # here I can include the weighting, instead of X XT
+        rdm_cv = 1 - np.einsum('ik, kk, jk->ij', ma_cv, diagWeights, ma_cv)
+        
+        # only consider the lower square (TH 1 w TH 2) and make it symmetric
+        rdm = rdm_cv[int(len(rdm_cv)/2):,0:int(len(rdm_cv)/2)]
+        rdm = (rdm + np.transpose(rdm))/2
+
+
+    return _build_rdms(rdm, dataset, 'crosscorr', descriptor)   
+
+
 # end addition
 
 def _calc_rdm_crossnobis_single(meas1, meas2, noise) -> NDArray:
