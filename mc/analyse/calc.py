@@ -525,10 +525,10 @@ def calc_rdm_weight_crosscorr(dataset, descriptor=None, cv_descriptor=None, weig
         # theta_complete_clock = np.tile((theta), (3*9*2, 1)).flatten() 
         if weighting == 'sin':
             weights = np.sin(theta_complete_clock)
-            diagWeights = np.diag(weights.flatten())
-        if weighting == 'cos':
+        elif weighting == 'cos':
             weights = np.cos(theta_complete_clock)
-            diagWeights = np.diag(weights.flatten())
+            
+        diagWeights = np.diag(weights.flatten())
         
         # compute RDM: 1 - covariance matrix
         # here I can include the weighting, instead of X XT
