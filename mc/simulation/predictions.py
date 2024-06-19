@@ -2066,6 +2066,9 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
         theta = np.linspace(0, 2*np.pi, len(norm_phas_stat)) #angles
         weights_cos = np.cos(theta)[:, np.newaxis]
         weights_sin = np.sin(theta)[:, np.newaxis]
+        # alternative, easier option: do 
+        # compl_clock_weights_cos = np.tile((weights_cos), (27,1))
+        # and in the end clocks_weighted = clo_model * compl_clock_weights_cos
   
     # stick the neuron-clock matrices in 
     full_clock_matrix_dummy = np.zeros([len(norm_midn)*len(norm_phas_stat),len(norm_midn[0])]) # fields times phases.
@@ -2121,7 +2124,8 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
                 shifted_adjusted_clock = shifted_adjusted_clock*weights_cos
                 
             # before 0ing out the first row (= musicboxneuron), first save the specific rows (i.e. now, next future, 2 future, 3 future) in the split clocks model.
-
+            # if firing_factor > 0.7:
+            #     import pdb; pdb.set_trace()
             if split_clock == True:
                 split_clock_model_dict['curr_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[0:3] + split_clock_model_dict['curr_rings_split_clock'][row*3:row*3+3, :]
                 split_clock_model_dict['one_fut_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[3:6] + split_clock_model_dict['one_fut_rings_split_clock'][row*3:row*3+3, :]

@@ -64,7 +64,9 @@ import sys
 import random
 
 regression_version = '03-4' 
-RDM_version = '03-tasklag'
+RDM_version = '05'
+
+neuron_weighting = True
 
 
 # import pdb; pdb.set_trace() 
@@ -287,7 +289,7 @@ for sub in subjects:
             # this is defining both task halves/ runs: 0 is first half, the second one is 1s
             sessions = np.concatenate((np.zeros(int(data_RDM_file['1'].shape[0])), np.ones(int(data_RDM_file['2'].shape[0]))))  
             # for all other cases, cross correlated between task-halves.
-            import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()
             data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='crosscorr', cv_descr=sessions)
             # save  so that I don't need to recompute - or don't save bc it's massive
             # with open(f"{results_dir}/data_RDM.pkl", 'wb') as file:
@@ -302,7 +304,12 @@ for sub in subjects:
             RDM_dir = f"{data_dir}/beh/RDMs_09_glmbase_{regression_version}" # potentially delete??
         data_dirs[model]= np.load(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves.npy")) 
     
-    import pdb; pdb.set_trace()
+    # add keys for the 2 weighted models
+    if neuron_weighting == True and model in ['clocks_only-rew', 'clocks', 'clocks_no-rew']:
+        data_dirs[f"{model}-sin"] = 0
+        data_dirs[f"{model}-cos"] = 0
+        
+    # import pdb; pdb.set_trace()
     # step 3: create model RDMs
     # first, each model gets its own, separate estimation.
     model_RDM_dir = {}
@@ -311,9 +318,12 @@ for sub in subjects:
         model_data = mc.analyse.analyse_MRI_behav.prepare_model_data(data_dirs[model], no_RDM_conditions, RDM_version)
         if RDM_version in ['01', '01-1']:
             model_RDM_dir[model] = rsr.calc_rdm(model_data, method='correlation', descriptor='conds')
+        elif neuron_weighting == True and model in ['clocks_only-rew', 'clocks', 'clocks_no-rew']:
+            model_RDM_dir[f"{model}-sin"] = rsr.calc_rdm(model_data, method='weight_crosscorr', descriptor='conds', cv_descriptor='sessions', weighting = 'sin')
+            model_RDM_dir[f"{model}-cos"] = rsr.calc_rdm(model_data, method='weight_crosscorr', descriptor='conds', cv_descriptor='sessions', weighting = 'cos')
         else:
             model_RDM_dir[model] = rsr.calc_rdm(model_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
-        
+
         if RDM_version in ['03-5', '03-5-A', '04-5', '04-5-A']:
             state_mask = np.load(os.path.join(RDM_dir, f"RSM_state_masked_{sub}_fmri_both_halves.npy"))
             state_mask_flat = list(state_mask[np.triu_indices(len(state_mask), 1)])
@@ -435,7 +445,7 @@ for sub in subjects:
         model_name = 'combo-coscl-loc-st-ph'
         
         # already compute the cosine here bc only one will be taken after
-        for i, model in enumerate(multiple_regressors_first):
+        for i, model in enumerate(multiple_regressors_first_cos):
             mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model_cos, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
 
 
@@ -589,3 +599,19 @@ for sub in subjects:
     for i, model in enumerate(multiple_regressors):
         mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
     
+    # THIRD COMBO MODEL
+    if RDM_version in ['05'] and neuron_weighting == True:
+        multiple_regressors_first = ['clocks_no-rew-cos', 'clocks_only-rew-cos', 'clocks_no-rew-cos', 'clocks_only-rew-cos']
+        results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
+        model_name = 'combo_onlyrew-nowrew-cos-sin'
+    
+        for i, model in enumerate(multiple_regressors):
+            mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+        
+        multiple_regressors_first = ['location', 'state', 'clocks_only-rew-cos', 'clocks_only-rew-cos']
+        results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
+        model_name = 'combo_onlyrew-cos-sin-loc-st'
+    
+        for i, model in enumerate(multiple_regressors):
+            mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+        

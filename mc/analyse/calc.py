@@ -442,9 +442,9 @@ def calc_rdm_poisson_cv(dataset, descriptor=None, prior_lambda=1,
 def calc_rdm_crosscorr(dataset, descriptor=None, cv_descriptor=None):
     """
     calculates an RDM from an input dataset by creating a concatening the folds,
-    creating a correlation matrix, and then averaging the lower triangle and 
-    the top triangle of this nCond x nCond matrix by adding it to its transpose, 
-    dividing by 2, and taking only the lower or upper triangle of the result.    
+    creating a correlation matrix, and then averaging the lower left square
+    of this nCond x nCond matrix by adding it to its transpose, 
+    dividing by 2, and taking only the lower triangle of the result.      
     
     """
     datasetCopy = deepcopy(dataset)

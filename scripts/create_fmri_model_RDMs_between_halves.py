@@ -73,12 +73,12 @@ import sys
 # import pdb; pdb.set_trace()
 
 regression_version = '03-4' 
-RDM_version = '03-tasklag'
+RDM_version = '05'
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '09'
+    subj_no = '01'
 
 subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10

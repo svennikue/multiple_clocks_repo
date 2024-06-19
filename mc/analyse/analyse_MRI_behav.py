@@ -197,8 +197,6 @@ def models_I_want(RDM_version):
 
 
 
-
-
 def move_files_to_subfolder(folder_path):
     # import pdb; pdb.set_trace()
 
@@ -500,6 +498,21 @@ def evaluate_model(model, data):
     # import pdb; pdb.set_trace()
     return est.tvalues[1:], est.params[1:], est.pvalues[1:]
     
+
+def evaluate_surface_searchlights(model, data):
+    import pdb; pdb.set_trace()
+    
+    X = sm.add_constant(model.transpose());
+    Y = data.transpose();
+    
+    # to filter out potential nans in the model part
+    nan_filter = np.isnan(X).any(axis=1)
+    filtered_X = X[~nan_filter]
+    filtered_Y = Y[~nan_filter]
+    
+    est = sm.OLS(filtered_Y, filtered_X).fit()
+    # import pdb; pdb.set_trace()
+    return est.tvalues[1:], est.params[1:], est.pvalues[1:]
 
 
 def prepare_model_data(model_data, number_conditions, RDM_version):
