@@ -26,6 +26,140 @@ from datetime import datetime
 import rsatoolbox
 from joblib import Parallel, delayed
 from tqdm import tqdm
+import pickle
+
+
+def read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM_conditions, sort_as = 'dict-two-halves'):
+    # sort_as can be 'dict-two-halves' (for volumetric data) or 'concat_list' (for surface)
+    # load the file which defines the order of the model RDMs, and hence the data RDMs
+    
+    # load the file which defines the order of the model RDMs, and hence the data RDMs
+    with open(f"{RDM_dir}/sorted_keys-model_RDMs.pkl", 'rb') as file:
+        sorted_keys = pickle.load(file)
+    with open(f"{RDM_dir}/sorted_regs.pkl", 'rb') as file:
+        reg_keys = pickle.load(file)
+        
+    # also store 2 dictionaries of the EVs
+    if regression_version in ['03-3', '03-4']:
+        regression_version = '03'
+    if regression_version in ['04-4']:
+        regression_version = '04'
+    if regression_version in ['03-4-e']:
+        regression_version = '03-e'
+    if regression_version in ['03-4-l']:
+        regression_version = '03-l'
+    if regression_version in ['03-4-rep1']:
+        regression_version = '03-rep1'
+    if regression_version in ['03-4-rep2']:
+        regression_version = '03-rep2'
+    if regression_version in ['03-4-rep3']:
+        regression_version = '03-rep3'
+    if regression_version in ['03-4-rep4']:
+        regression_version = '03-rep4'
+    if regression_version in ['03-4-rep5']:
+        regression_version = '03-rep5'
+       
+        
+        
+    pe_path_01 = f"{data_dir}/func/glm_{regression_version}_pt01.feat/stats"
+    reading_in_EVs_dict_01 = {}   
+    with open(f"{data_dir}/func/EVs_{regression_version}_pt01/task-to-EV.txt", 'r') as file:
+        for line in file:
+            index, name_ev = line.strip().split(' ', 1)
+            name = name_ev.replace('ev_', '')
+            reading_in_EVs_dict_01[f"{name}_EV_{int(index)+1}"] = os.path.join(pe_path_01, f"pe{int(index)+1}.nii.gz")
+            
+    pe_path_02 = f"{data_dir}/func/glm_{regression_version}_pt02.feat/stats"     
+    reading_in_EVs_dict_02 = {}
+    with open(f"{data_dir}/func/EVs_{regression_version}_pt02/task-to-EV.txt", 'r') as file:
+        for line in file:
+            index, name_ev = line.strip().split(' ', 1)
+            name = name_ev.replace('ev_', '')
+            reading_in_EVs_dict_02[f"{name}_EV_{int(index)+1}"] = os.path.join(pe_path_02, f"pe{int(index)+1}.nii.gz")
+    
+            
+    if sort_as == 'dict-two-halves':
+        sorted_RDM_conds = {}
+        data_RDM_file = {}
+        data_RDM_file_1d = {}
+        reading_in_EVs_dict = {}
+        image_paths = {}
+
+        
+        # I need to do this slightly differently. I want to be super careful that I create 2 'identical' splits of data.
+        # thus, check which folder has the respective task.
+        for split in sorted_keys:
+            if RDM_version == '01':
+                # DOUBLE CHECK IF THIS IS EVEN STILL CORRECT!!!
+                # for condition 1, I am ignoring task halves. to make sure everything goes fine, use the .txt file
+                # and only load the conditions in after the task-half loop.
+                pe_path = f"{data_dir}/func/glm_{regression_version}_pt0{split}.feat/stats"
+                with open(f"{data_dir}/func/EVs_{RDM_version}_pt0{split}/task-to-EV.txt", 'r') as file:
+                    for line in file:
+                        index, name = line.strip().split(' ', 1)
+                        reading_in_EVs_dict[f"{name}_EV_{index}"] = os.path.join(pe_path, f"pe{int(index)+1}.nii.gz")
+            else:           
+                i = -1
+                image_paths[split] = [None] * no_RDM_conditions # Initialize a list for each half of the dictionary
+                data_RDM_file[split] = [None] * no_RDM_conditions  # Initialize a list for each half of the dictionary
+                for EV_no, task in enumerate(sorted_keys[split]):
+                    for regressor_sets in reg_keys:
+                        if regressor_sets[0].startswith(task):
+                            curr_reg_keys = regressor_sets
+                    for reg_key in curr_reg_keys:
+                        # print(f"now looking for {task}")
+                        for EV_01 in reading_in_EVs_dict_01:
+                            if EV_01.startswith(reg_key):
+                                i = i + 1
+                                # print(f"looking for {task} and found it in 01 {EV_01}, index {i}")
+                                image_paths[split][i] = reading_in_EVs_dict_01[EV_01]  # save path to check if everything went fine later
+                                data_RDM_file[split][i] = nib.load(reading_in_EVs_dict_01[EV_01]).get_fdata()
+                        for EV_02 in reading_in_EVs_dict_02:
+                            if EV_02.startswith(reg_key):
+                                i = i + 1
+                                # print(f"looking for {task} and found it in 01 {EV_02}, index {i}")
+                                image_paths[split][i] = reading_in_EVs_dict_02[EV_02]
+                                data_RDM_file[split][i] = nib.load(reading_in_EVs_dict_02[EV_02]).get_fdata() 
+                                # Convert the list to a NumPy array
+                
+                print(f"This is the order now: {image_paths[split]}")
+                data_RDM_file[split] = np.array(data_RDM_file[split])
+                # reshape data so we have n_observations x n_voxels
+                sorted_RDM_conds[split] = data_RDM_file[split].reshape([data_RDM_file[split].shape[0], -1])
+                sorted_RDM_conds[split] = np.nan_to_num(sorted_RDM_conds[split]) # now this is 80timepoints x 746.496 voxels
+                
+                if RDM_version == f"{RDM_version}_999": # scramble voxels randomly
+                    data_RDM_file_1d[split] = sorted_RDM_conds[split].flatten()
+                    np.random.shuffle(data_RDM_file_1d[split]) #shuffle all voxels randomly
+                    sorted_RDM_conds[split] = data_RDM_file_1d[split].reshape(sorted_RDM_conds[split].shape) # and reshape
+        
+        if RDM_version in ['01']:
+            data_RDM_file_2d = {}
+            data_RDM_file = {}
+            data_RDM_file[RDM_version] = [None] * no_RDM_conditions
+            # sort across task_halves
+            for i, task in enumerate(sorted(reading_in_EVs_dict.keys())):
+                if task not in ['ev_press_EV_EV_index']:
+                    image_paths[i] = reading_in_EVs_dict[task]
+                    data_RDM_file[RDM_version][i] = nib.load(image_paths[i]).get_fdata()
+            # Convert the list to a NumPy array
+            data_RDM_file_np = np.array(data_RDM_file[RDM_version])
+            # reshape data so we have n_observations x n_voxels
+            data_RDM_file_2d = data_RDM_file_np.reshape([data_RDM_file_np.shape[0], -1])
+            data_RDM_file_2d = np.nan_to_num(data_RDM_file_2d) # now this is 20timepoints x 746.496 voxels
+
+            print(f"This is the order now: {image_paths}")  
+
+    if sort_as == 'concat_list':
+        sorted_RDM_conds = []
+    
+    
+    return sorted_RDM_conds
+
+
+
+
+
 
 
 def subpath_files(configs, subpath_after_steps, rew_list, rew_index, steps_subpath_alltasks):
