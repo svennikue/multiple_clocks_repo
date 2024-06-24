@@ -29,8 +29,8 @@ from tqdm import tqdm
 import pickle
 
 
-def read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM_conditions, sort_as = 'dict-two-halves'):
-    # sort_as can be 'dict-two-halves' (for volumetric data) or 'concat_list' (for surface)
+def read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM_conditions, ref_img = None, sort_as = 'dict-two-halves'):
+    # sort_as can be 'dict-two-halves' (for volumetric data) or 'concat-surface' (for surface)
     # load the file which defines the order of the model RDMs, and hence the data RDMs
     
     # load the file which defines the order of the model RDMs, and hence the data RDMs
@@ -150,9 +150,64 @@ def read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM
 
             print(f"This is the order now: {image_paths}")  
 
-    if sort_as == 'concat_list':
-        sorted_RDM_conds = []
+
+
+    # CONTINUE HERE!!! HOW DO I LOAD THE EVs CORRECTLY?????
     
+    if sort_as == 'concat_list':
+        ref_img_data = ref_img.get_fdata()
+        fmri_img_list_first_half = np.empty((ref_img_data.shape[0], ref_img_data.shape[1], ref_img_data.shape[2], no_RDM_conditions*2))
+        fmri_img_list_sec_half = np.empty((ref_img_data.shape[0], ref_img_data.shape[1], ref_img_data.shape[2], no_RDM_conditions*2))
+        
+        sorted_RDM_conds = []
+        import pdb; pdb.set_trace()
+        for split in sorted_keys:          
+            i = -1
+            image_paths[split] = [None] * no_RDM_conditions # Initialize a list for each half of the dictionary
+            #data_RDM_file[split] = [None] * no_RDM_conditions  # Initialize a list for each half of the dictionary
+            for EV_no, task in enumerate(sorted_keys[split]):
+                for regressor_sets in reg_keys:
+                    if regressor_sets[0].startswith(task):
+                        curr_reg_keys = regressor_sets
+                for reg_key in curr_reg_keys:
+                    # print(f"now looking for {task}")
+                    for EV_01 in reading_in_EVs_dict_01:
+                        if EV_01.startswith(reg_key):
+                            i = i + 1
+                            # print(f"looking for {task} and found it in 01 {EV_01}, index {i}")
+                            image_paths[split][i] = reading_in_EVs_dict_01[EV_01]  # save path to check if everything went fine later
+                            fmri_img_list_first_half[:,:,:,i] = nib.load(reading_in_EVs_dict_01[EV_01]).get_fdata()
+                            # if i == 0:
+                            #     fmri_img = nib.load(reading_in_EVs_dict_01[EV_01])
+                            # else:
+                            #     next_EV = nib.load(reading_in_EVs_dict_01[EV_01])
+                            #     fmri_img = nl.image.concat_imgs([fmri_img, next_EV])
+                            #data_RDM_file[split][i] = nib.load(reading_in_EVs_dict_01[EV_01]).get_fdata()
+                            
+                    for EV_02 in reading_in_EVs_dict_02:
+                        if EV_02.startswith(reg_key):
+                            i = i + 1
+                            # print(f"looking for {task} and found it in 01 {EV_02}, index {i}")
+                            #data_RDM_file[split][i] = nib.load(reading_in_EVs_dict_02[EV_02]).get_fdata() 
+                            image_paths[split][i] = reading_in_EVs_dict_02[EV_02]
+                            fmri_img_list_sec_half[:,:,:,i] = nib.load(reading_in_EVs_dict_02[EV_02]).get_fdata()   
+
+                            # fmri_img is nifti1.Nifti1Image (40,64,64,216)
+                            # nifti1imiage object of nibabel.nifti1
+                            # if i == 0:
+                            #     fmri_img = nib.load(reading_in_EVs_dict_02[EV_02])
+                            # else:
+                            #     next_EV = nib.load(reading_in_EVs_dict_02[EV_02])
+                            #     fmri_img = nl.image.concat_imgs([fmri_img, next_EV])
+                            
+            
+            
+            
+        fmri_img_pt1 = nib.Nifti1Image(fmri_img_list_first_half, affine=ref_img.affine, header=ref_img.header)               
+        fmri_img_pt2 = nib.Nifti1Image(fmri_img_list_sec_half, affine=ref_img.affine, header=ref_img.header)               
+        
+        sorted_RDM_conds = np.stack((fmri_img_pt1,fmri_img_pt2),2)
+        # I need to stack X tasklahf 1 and 2 like this; new_X = np.stack((X,X),2)
     
     return sorted_RDM_conds
 

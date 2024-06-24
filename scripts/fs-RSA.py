@@ -78,91 +78,44 @@ for sub in subjects:
     results_dir = f"{fs_dir}/RSA_{RDM_version}_glmbase_{regression_version}/results"
     func_dir = f"{data_dir}/derivatives/{sub}/func"
     
-    # load the file which defines the order of the model RDMs, and hence the data RDMs
-    with open(f"{RDM_dir}/sorted_keys-model_RDMs.pkl", 'rb') as file:
-        sorted_keys = pickle.load(file)
-    with open(f"{RDM_dir}/sorted_regs.pkl", 'rb') as file:
-        reg_keys = pickle.load(file)
+    # # load the file which defines the order of the model RDMs, and hence the data RDMs
+    # with open(f"{RDM_dir}/sorted_keys-model_RDMs.pkl", 'rb') as file:
+    #     sorted_keys = pickle.load(file)
+    # with open(f"{RDM_dir}/sorted_regs.pkl", 'rb') as file:
+    #     reg_keys = pickle.load(file)
             
-    if regression_version in ['03-3', '03-4']:
-        regression_version = '03'   
+    # if regression_version in ['03-3', '03-4']:
+    #     regression_version = '03'   
      
-    pe_path_01 = f"{func_dir}/glm_{regression_version}_pt01.feat/stats"
-    reading_in_EVs_dict_01 = {}   
-    with open(f"{func_dir}/EVs_{regression_version}_pt01/task-to-EV.txt", 'r') as file:
-        for line in file:
-            index, name_ev = line.strip().split(' ', 1)
-            name = name_ev.replace('ev_', '')
-            reading_in_EVs_dict_01[f"{name}_EV_{int(index)+1}"] = os.path.join(pe_path_01, f"pe{int(index)+1}.nii.gz")
+    # pe_path_01 = f"{func_dir}/glm_{regression_version}_pt01.feat/stats"
+    # reading_in_EVs_dict_01 = {}   
+    # with open(f"{func_dir}/EVs_{regression_version}_pt01/task-to-EV.txt", 'r') as file:
+    #     for line in file:
+    #         index, name_ev = line.strip().split(' ', 1)
+    #         name = name_ev.replace('ev_', '')
+    #         reading_in_EVs_dict_01[f"{name}_EV_{int(index)+1}"] = os.path.join(pe_path_01, f"pe{int(index)+1}.nii.gz")
             
-    pe_path_02 = f"{func_dir}/glm_{regression_version}_pt02.feat/stats"     
-    reading_in_EVs_dict_02 = {}
-    with open(f"{func_dir}/EVs_{regression_version}_pt02/task-to-EV.txt", 'r') as file:
-        for line in file:
-            index, name_ev = line.strip().split(' ', 1)
-            name = name_ev.replace('ev_', '')
-            reading_in_EVs_dict_02[f"{name}_EV_{int(index)+1}"] = os.path.join(pe_path_02, f"pe{int(index)+1}.nii.gz")
+    # pe_path_02 = f"{func_dir}/glm_{regression_version}_pt02.feat/stats"     
+    # reading_in_EVs_dict_02 = {}
+    # with open(f"{func_dir}/EVs_{regression_version}_pt02/task-to-EV.txt", 'r') as file:
+    #     for line in file:
+    #         index, name_ev = line.strip().split(' ', 1)
+    #         name = name_ev.replace('ev_', '')
+    #         reading_in_EVs_dict_02[f"{name}_EV_{int(index)+1}"] = os.path.join(pe_path_02, f"pe{int(index)+1}.nii.gz")
     
     # I need to do this slightly differently. I want to be super careful that I create 2 'identical' splits of data.
     # thus, check which folder has the respective task.
     mask = nib.load(f"{data_dir}/derivatives/{sub}/anat/{sub}_T1w_noCSF_brain_mask_bin_func_01.nii.gz")
     ref_img = nib.load(f"{func_dir}/preproc_clean_01.feat/example_func.nii.gz")
     ref_img_data = ref_img.get_fdata()
-    fmri_img_list_first_half = np.empty((ref_img_data.shape[0], ref_img_data.shape[1], ref_img_data.shape[2], no_RDM_conditions*2))
-    fmri_img_list_sec_half = np.empty((ref_img_data.shape[0], ref_img_data.shape[1], ref_img_data.shape[2], no_RDM_conditions*2))
-    
-    #data_RDM_file = {}
-    reading_in_EVs_dict = {}
-    image_paths = {}
-    
-    for split in sorted_keys:          
-        i = -1
-        image_paths[split] = [None] * no_RDM_conditions # Initialize a list for each half of the dictionary
-        #data_RDM_file[split] = [None] * no_RDM_conditions  # Initialize a list for each half of the dictionary
-        for EV_no, task in enumerate(sorted_keys[split]):
-            for regressor_sets in reg_keys:
-                if regressor_sets[0].startswith(task):
-                    curr_reg_keys = regressor_sets
-            for reg_key in curr_reg_keys:
-                # print(f"now looking for {task}")
-                for EV_01 in reading_in_EVs_dict_01:
-                    if EV_01.startswith(reg_key):
-                        i = i + 1
-                        # print(f"looking for {task} and found it in 01 {EV_01}, index {i}")
-                        image_paths[split][i] = reading_in_EVs_dict_01[EV_01]  # save path to check if everything went fine later
-                        fmri_img_list_first_half[:,:,:,i] = nib.load(reading_in_EVs_dict_01[EV_01]).get_fdata()
-                        # if i == 0:
-                        #     fmri_img = nib.load(reading_in_EVs_dict_01[EV_01])
-                        # else:
-                        #     next_EV = nib.load(reading_in_EVs_dict_01[EV_01])
-                        #     fmri_img = nl.image.concat_imgs([fmri_img, next_EV])
-                        #data_RDM_file[split][i] = nib.load(reading_in_EVs_dict_01[EV_01]).get_fdata()
-                        
-                for EV_02 in reading_in_EVs_dict_02:
-                    if EV_02.startswith(reg_key):
-                        i = i + 1
-                        # print(f"looking for {task} and found it in 01 {EV_02}, index {i}")
-                        #data_RDM_file[split][i] = nib.load(reading_in_EVs_dict_02[EV_02]).get_fdata() 
-                        image_paths[split][i] = reading_in_EVs_dict_02[EV_02]
-                        fmri_img_list_sec_half[:,:,:,i] = nib.load(reading_in_EVs_dict_02[EV_02]).get_fdata()   
 
-                        # fmri_img is nifti1.Nifti1Image (40,64,64,216)
-                        # nifti1imiage object of nibabel.nifti1
-                        # if i == 0:
-                        #     fmri_img = nib.load(reading_in_EVs_dict_02[EV_02])
-                        # else:
-                        #     next_EV = nib.load(reading_in_EVs_dict_02[EV_02])
-                        #     fmri_img = nl.image.concat_imgs([fmri_img, next_EV])
-                        
-        
-        
-        
-        fmri_img_pt1 = nib.Nifti1Image(fmri_img_list_first_half, affine=ref_img.affine, header=ref_img.header)               
-        fmri_img_pt2 = nib.Nifti1Image(fmri_img_list_sec_half, affine=ref_img.affine, header=ref_img.header)               
-        
-        fmri_img_stacked = np.stack((fmri_img_pt1,fmri_img_pt2),2)
-        # I need to stack X tasklahf 1 and 2 like this; new_X = np.stack((X,X),2)
-        # and also provide the adjacency matrix. that should be it!
+    # #data_RDM_file = {}
+    # reading_in_EVs_dict = {}
+    # image_paths = {}
+    
+    
+    fmri_img_stacked = mc.analyse.analyse_MRI_behav.read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM_conditions, ref_img, sort_as = 'concat-surface')
+    # and also provide the adjacency matrix. that should be it!
         
 
 
@@ -183,7 +136,7 @@ for sub in subjects:
         # averages the value of voxels of the volumentric data in a radius around the vertices.
         # each row in X corresponds to a vertex, and each column is a condition for the data
         # use nearest neighbors to avois smoothing or interpolation between voxels!
-        X = surface.vol_to_surf(fmri_img_pt1, interpolation = 'nearest', surf_mesh=pial_mesh, inner_mesh=white_mesh, mask_img=mask).T
+        X = surface.vol_to_surf(fmri_img_stacked, interpolation = 'nearest', surf_mesh=pial_mesh, inner_mesh=white_mesh, mask_img=mask).T
         # however now the same voxel might occur several times since the surface mesh is much finer than the voxels
         # find out how to 'disallow' the same voxel twice
         
