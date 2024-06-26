@@ -29,6 +29,35 @@ from tqdm import tqdm
 import pickle
 
 
+
+def check_GLM_regressors(design_matrix_X):
+    import numpy as np
+    # to check if a GLM is ill-conditioned
+    # To check that you can check the “condition number” of the design matrix - 
+    # the ration between the maximum singular value (similar to eigenvalue) and the minimum singular value.. 
+    # If that ration is close to 1, you’re good. If it’s very large (e.g. >1000), it means the matrix is ill-conditioned - 
+    # one of your regressors is close to being a linear combination of the other two.
+    
+    # Assume X is your design matrix
+    # Compute the Singular Value Decomposition (SVD)
+    U, S, Vt = np.linalg.svd(design_matrix_X, full_matrices=False)
+    # Compute the condition number
+    condition_number = np.max(S) / np.min(S)
+    print(f"Condition number: {condition_number}")
+    # Interpret the condition number
+    if condition_number < 1000:
+        print("The design matrix is well-conditioned.")
+    else:
+        print("The design matrix is ill-conditioned.")
+
+
+
+
+
+
+
+
+
 def read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM_conditions, ref_img = None, sort_as = 'dict-two-halves'):
     # sort_as can be 'dict-two-halves' (for volumetric data) or 'concat-surface' (for surface)
     # load the file which defines the order of the model RDMs, and hence the data RDMs
@@ -608,6 +637,11 @@ def multiple_RDMs_RSA(list_of_regressor_RDMs, model_RDM_dictionary, data_RDM_fil
     arguments = [z_scored_model_RDM_dict[model] for model in list_of_regressor_RDMs]
     concatenated_RDMs = rsatoolbox.rdm.concat(*arguments)
     concatenated_RDMs_model = rsatoolbox.model.ModelWeighted('concatenated_RDMs', concatenated_RDMs)
+    
+    # # CHANGE THIS BACK LATER
+    # for d in data_RDM_file:
+    #     test = mc.analyse.analyse_MRI_behav.evaluate_model(concatenated_RDMs_model, d)
+    
     result_multiple_RDMs_RSA = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(concatenated_RDMs_model, d) for d in tqdm(data_RDM_file, desc='running GLM for all searchlights in combo model'))
     
     return(result_multiple_RDMs_RSA)
@@ -676,6 +710,15 @@ def evaluate_model(model, data):
     # import pdb; pdb.set_trace()
     
     X = sm.add_constant(model.rdm.transpose());
+    
+    # to check if a GLM is ill-conditioned
+    # To check that you can check the “condition number” of the design matrix - 
+    # the ration between the maximum singular value (similar to eigenvalue) and the minimum singular value.. 
+    # If that ration is close to 1, you’re good. If it’s very large (e.g. >1000), it means the matrix is ill-conditioned - 
+    # one of your regressors is close to being a linear combination of the other two.
+    # check_GLM_regressors(X)
+    # import pdb; pdb.set_trace()
+    
     Y = data.dissimilarities.transpose();
     
     # to filter out potential nans in the model part

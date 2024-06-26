@@ -64,7 +64,7 @@ import sys
 import random
 
 regression_version = '03-4' 
-RDM_version = '05'
+RDM_version = '03-5'
 
 neuron_weighting = True
 
@@ -232,151 +232,159 @@ for sub in subjects:
         # then compute the location model.
         
         # first, normalise the current model RDM.
+        
         z_scored_model_RDM = model_RDM_dir[model].copy()
-        z_scored_model_RDM.dissimilarities = (model_RDM_dir[model].dissimilarities - model_RDM_dir[model].dissimilarities.mean()) / model_RDM_dir[model].dissimilarities.std()
+        
+
+        if RDM_version not in ['03-5', '03-5-A', '04-5', '04-5-A']:
+            # can't handle nans in the state model...
+            z_scored_model_RDM.dissimilarities = (model_RDM_dir[model].dissimilarities - model_RDM_dir[model].dissimilarities.mean()) / model_RDM_dir[model].dissimilarities.std()
 
         model_model = rsatoolbox.model.ModelFixed(f"{model}_only", z_scored_model_RDM)
         
     
-    # UNCOMMMENT AGAIN LATER!!
-        # # ACTUAL RSA - single models
-        # # STEP 4: evaluate the model fit between model and data RDMs.
-        # RDM_my_model_dir[model] = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(model_model, d) for d in tqdm(data_RDM, desc=f"running GLM for all searchlights in {model}"))
-        # mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_model_dir[model], data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        # ACTUAL RSA - single models
+        # STEP 4: evaluate the model fit between model and data RDMs.
+        # for d in data_RDM:
+        #     RDM_my_model_dir[model] = mc.analyse.analyse_MRI_behav.evaluate_model(model_model, d)
+        RDM_my_model_dir[model] = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(model_model, d) for d in tqdm(data_RDM, desc=f"running GLM for all searchlights in {model}"))
+        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_model_dir[model], data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
     
         
 
    #  import pdb; pdb.set_trace() 
-   #  # SECOND RSA: combo models.
-   #  # I am interested in:
-   #      # combo clocks with midnight, phase, state and location included
-   #      # combo split clocks with now, one future, two future, [three future]
+  # SECOND RSA: combo models.
+  # I am interested in:
+      # combo clocks with midnight, phase, state and location included
+      # combo split clocks with now, one future, two future, [three future]
 
-   #  if RDM_version in ['01']:
-   #      multiple_regressors_first = ['direction_presentation', 'execution_similarity', 'presentation_similarity']
-   #      model_name = 'combo-instr'
-   #      results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
-        
-   #   # combo clocks and controls    
-   #  elif RDM_version == '02': # modelling all
-   #      # first: clocks with midnight, phase, state and location.
-   #      multiple_regressors_first = ['clocks', 'midnight', 'state', 'location', 'phase']
-   #      results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)       
-   #      model_name = 'combo-cl-mid-st-loc-ph'
-
-   #   # combo clocks and controls
-   #  elif RDM_version in ['02', '02-A'] and regression_version in ['03', '03-4', '04', '04-4']: # don't model location and midnight together if reduced to reward times as they are the same.
-   #      # # first: clocks with midnight, phase, state and location.
-
-   #      multiple_regressors_first = ['clocks', 'midnight', 'state', 'phase']
-   #      results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)    
-   #      model_name = 'combo-cl-mid-st-ph'
-
-
-   #  # combo clocks and controls
-   #  elif RDM_version == '03' and regression_version in ['02', '04']: # modeling only reward rings
-   #      # # first: clocks with midnight, phase, state and location.
-   #      multiple_regressors_first = ['clocks_only-rew', 'midnight_only-rew', 'state', 'location', 'phase']
-   #      results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)        
-   #      model_name = 'combo-cl-mid-st-loc-ph'
-
-
-   #   # combo clocks and controls
-   #  elif RDM_version == '03' and regression_version in ['03']: # don't model location and midnight together if reduced to reward times as they are the same.
-   #      # # first: clocks with midnight, phase, state and location.
-   #      multiple_regressors_first = ['clocks_only-rew', 'midnight_only-rew', 'state', 'phase']
-   #      results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)     
-   #      model_name = 'combo-cl-mid-st-ph'
-
-
-   #  elif RDM_version == '03-tasklag' and regression_version in ['03', '03-4']:
-   #      # 'location', 'phase', 'state', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew', 'curr_rings_split_clock_sin', 'one_fut_rings_split_clock_sin', 'two_fut_rings_split_clock_sin', 'three_fut_rings_split_clock_sin', 'clocks_only-rew_sin']
-
-   #      multiple_regressors_first_cos = ['clocks_only-rew', 'location', 'state', 'phase']
-   #      results_combo_model_cos = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first_cos, model_RDM_dir, data_RDM)     
-   #      model_name = 'combo-coscl-loc-st-ph'
-        
-   #      # already compute the cosine here bc only one will be taken after
-   #      for i, model in enumerate(multiple_regressors_first_cos):
-   #          mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model_cos, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
-
-
-   #      multiple_regressors_first = ['clocks_only-rew_sin', 'location', 'state', 'phase']
-   #      results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)     
-   #      model_name = 'combo-sincl-loc-st-ph'
-        
-
-        
-   #   # combo clocks and controls
-   #  elif RDM_version == '03-1' and regression_version in ['03', '03-4', '03-l', '03-e', '03-rep1', '03-rep2','03-rep3','03-rep4','03-rep5']:
-   #      multiple_regressors_first = ['curr-and-future-rew-locs', 'location', 'phase', 'state']
-   #      results_combo_model= mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
-   #      model_name = 'combo-clrw-loc-ph-st'
+    if RDM_version in ['01']:
+        multiple_regressors_first = ['direction_presentation', 'execution_similarity', 'presentation_similarity']
+        model_name = 'combo-instr'
+        results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
     
-   #  # combo clocks and controls
-   #  elif RDM_version == '04': #modelling only path rings
-   #      multiple_regressors_first = ['clocks_no-rew', 'midnight_no-rew', 'state', 'location', 'phase']
-   #      results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
-   #      model_name = 'combo-cl-mid-st-loc-ph'
-        
-   #  # combo comparing no-reward rings with reward rings.
-   #  elif RDM_version in ['05']:
-   #      multiple_regressors_first = ['clocks_no-rew', 'clocks_only-rew']
-   #      results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
-   #      model_name = 'combo_onlyrewnowrew-rings'
-         
-   # # then, compute the first combo model.
-   #  for i, model in enumerate(multiple_regressors_first):
-   #      mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+    # combo clocks and controls    
+    elif RDM_version == '02': # modelling all
+        # first: clocks with midnight, phase, state and location.
+        multiple_regressors_first = ['clocks', 'midnight', 'state', 'location', 'phase']
+        results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)       
+        model_name = 'combo-cl-mid-st-loc-ph'
 
-
-   #  # SECOND COMBO MODEL
+    # combo clocks and controls
+    elif RDM_version in ['02', '02-A'] and regression_version in ['03', '03-4', '04', '04-4']: # don't model location and midnight together if reduced to reward times as they are the same.
+        # # first: clocks with midnight, phase, state and location.
     
-   #  # combo split clocks
-   #  if RDM_version in ['02', '03', '04', '02-A']:
-   #      # second: split clock: now/ midnight; one future, two future, three future
-   #      multiple_regressors = ['curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock']
-   #      results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
-   #      model_name = 'combo_split_clock'
-
-   #  elif RDM_version == '03-tasklag' and regression_version in ['03', '03-4']:
-   #      # 'location', 'phase', 'state', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew', 'curr_rings_split_clock_sin', 'one_fut_rings_split_clock_sin', 'two_fut_rings_split_clock_sin', 'three_fut_rings_split_clock_sin', 'clocks_only-rew_sin']
-   #      # second: split clock: now/ midnight; one future, two future, three future
-   #      multiple_regressors = ['curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock']
-   #      results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
-   #      model_name = 'combo_split_clock_cos'
-   #      # do it once bc there need to be 2 combo models
-   #      for i, model in enumerate(multiple_regressors):
-   #          mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
-        
-   #      multiple_regressors = ['curr_rings_split_clock_sin', 'one_fut_rings_split_clock_sin', 'two_fut_rings_split_clock_sin', 'three_fut_rings_split_clock_sin',]
-   #      results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
-   #      model_name = 'combo_split_clock_sin'
+        multiple_regressors_first = ['clocks', 'midnight', 'state', 'phase']
+        results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)    
+        model_name = 'combo-cl-mid-st-ph'
 
 
-   #  # combo split clocks    
-   #  elif RDM_version in ['03-1'] and regression_version in ['03', '03-4','03-l', '03-e', '03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5']:
-   #      multiple_regressors = ['location', 'one_future_rew_loc', 'two_future_rew_loc', 'three_future_rew_loc']
-   #      results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
-   #      model_name = 'combo_split-clock'
+    # combo clocks and controls
+    elif RDM_version == '03' and regression_version in ['02', '04']: # modeling only reward rings
+        # # first: clocks with midnight, phase, state and location.
+        multiple_regressors_first = ['clocks_only-rew', 'midnight_only-rew', 'state', 'location', 'phase']
+        results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)        
+        model_name = 'combo-cl-mid-st-loc-ph'
 
-   #  # combo split clocks with state to control
-   #  elif RDM_version in ['03-1'] and regression_version in ['03', '03-4','03-l', '03-e', '03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5']:
-   #      multiple_regressors = ['location', 'one_future_rew_loc', 'two_future_rew_loc', 'three_future_rew_loc', 'state']
-   #      results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
-   #      model_name = 'combo_split-clock-state'
+
+    # combo clocks and controls
+    elif RDM_version == '03' and regression_version in ['03']: # don't model location and midnight together if reduced to reward times as they are the same.
+        # # first: clocks with midnight, phase, state and location.
+        multiple_regressors_first = ['clocks_only-rew', 'midnight_only-rew', 'state', 'phase']
+        results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)     
+        model_name = 'combo-cl-mid-st-ph'
+
+
+    elif RDM_version == '03-tasklag' and regression_version in ['03', '03-4']:
+        # 'location', 'phase', 'state', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew', 'curr_rings_split_clock_sin', 'one_fut_rings_split_clock_sin', 'two_fut_rings_split_clock_sin', 'three_fut_rings_split_clock_sin', 'clocks_only-rew_sin']
+    
+        multiple_regressors_first_cos = ['clocks_only-rew', 'location', 'state', 'phase']
+        results_combo_model_cos = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first_cos, model_RDM_dir, data_RDM)     
+        model_name = 'combo-coscl-loc-st-ph'
+    
+          # already compute the cosine here bc only one will be taken after
+        for i, model in enumerate(multiple_regressors_first_cos):
+            mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model_cos, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+    
+    
+        multiple_regressors_first = ['clocks_only-rew_sin', 'location', 'state', 'phase']
+        results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)     
+        model_name = 'combo-sincl-loc-st-ph'
+    
 
     
-   #  elif RDM_version in ['05']:
-   #      # compare 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', and 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock'
-   #      multiple_regressors = ['midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock']
-   #      results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
-   #      model_name = 'combo_onlyrewnowrew-split_clocks'
+    # combo clocks and controls
+    if RDM_version == '03-1' and regression_version in ['03', '03-4', '03-l', '03-e', '03-rep1', '03-rep2','03-rep3','03-rep4','03-rep5']:
+        multiple_regressors_first = ['curr-and-future-rew-locs', 'location', 'phase', 'state']
+        results_combo_model= mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
+        model_name = 'combo-clrw-loc-ph-st'
 
-   #  # then, finally, compute the results for the second combo model.   
-   #  for i, model in enumerate(multiple_regressors):
-   #      mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+    # combo clocks and controls
+    elif RDM_version == '04': #modelling only path rings
+        multiple_regressors_first = ['clocks_no-rew', 'midnight_no-rew', 'state', 'location', 'phase']
+        results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
+        model_name = 'combo-cl-mid-st-loc-ph'
     
+    # combo comparing no-reward rings with reward rings.
+    elif RDM_version in ['05']:
+          multiple_regressors_first = ['clocks_no-rew', 'clocks_only-rew']
+          results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
+          model_name = 'combo_onlyrewnowrew-rings'
+    
+    if RDM_version not in ['03-5', '03-5-A', '04-5', '04-5-A']:  # these are the state models and I am not defining more than 1 model for it.
+        # then, compute the first combo model.
+        for i, model in enumerate(multiple_regressors_first):
+              mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+
+
+  # SECOND COMBO MODEL
+
+    # combo split clocks
+    if RDM_version in ['02', '03', '04', '02-A']:
+          # second: split clock: now/ midnight; one future, two future, three future
+          multiple_regressors = ['curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock']
+          results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
+          model_name = 'combo_split_clock'
+
+    elif RDM_version == '03-tasklag' and regression_version in ['03', '03-4']:
+          # 'location', 'phase', 'state', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew', 'curr_rings_split_clock_sin', 'one_fut_rings_split_clock_sin', 'two_fut_rings_split_clock_sin', 'three_fut_rings_split_clock_sin', 'clocks_only-rew_sin']
+          # second: split clock: now/ midnight; one future, two future, three future
+          multiple_regressors = ['curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock']
+          results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
+          model_name = 'combo_split_clock_cos'
+          # do it once bc there need to be 2 combo models
+          for i, model in enumerate(multiple_regressors):
+              mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+        
+          multiple_regressors = ['curr_rings_split_clock_sin', 'one_fut_rings_split_clock_sin', 'two_fut_rings_split_clock_sin', 'three_fut_rings_split_clock_sin',]
+          results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
+          model_name = 'combo_split_clock_sin'
+
+
+    # combo split clocks    
+    elif RDM_version in ['03-1'] and regression_version in ['03', '03-4','03-l', '03-e', '03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5']:
+      multiple_regressors = ['location', 'one_future_rew_loc', 'two_future_rew_loc', 'three_future_rew_loc']
+      results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
+      model_name = 'combo_split-clock'
+
+    # combo split clocks with state to control
+    elif RDM_version in ['03-1'] and regression_version in ['03', '03-4','03-l', '03-e', '03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5']:
+      multiple_regressors = ['location', 'one_future_rew_loc', 'two_future_rew_loc', 'three_future_rew_loc', 'state']
+      results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
+      model_name = 'combo_split-clock-state'
+
+
+    elif RDM_version in ['05']:
+      # compare 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', and 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock'
+      multiple_regressors = ['midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock']
+      results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
+      model_name = 'combo_onlyrewnowrew-split_clocks'
+
+    if RDM_version not in ['03-5', '03-5-A', '04-5', '04-5-A']: # these are the state models and I am not defining more than 1 model for it
+        # then, finally, compute the results for the second combo model.   
+        for i, model in enumerate(multiple_regressors):
+          mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+
     # THIRD COMBO MODEL
     if RDM_version in ['05'] and neuron_weighting == True:
         #  UNCOMMENT AGAIN LATER!!
@@ -395,12 +403,12 @@ for sub in subjects:
         #     mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
         
         
-        multiple_regressors = ['clocks_only-rew', 'clocks_only-rew-sin']
-        results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
-        model_name = 'combo_onlyrew-clock-sin'
+        multiple_regressors_one = ['clocks_only-rew', 'clocks_only-rew-sin']
+        results_combo_model_one = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_one, model_RDM_dir, data_RDM)
+        model_name_one = 'combo_onlyrew-clock-sin'
     
-        for i, model in enumerate(multiple_regressors):
-            mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+        for i, model in enumerate(multiple_regressors_one):
+            mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model_one, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name_one}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
         
         multiple_regressors = ['clocks_only-rew', 'clocks_only-rew-cos']
         results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
@@ -410,12 +418,12 @@ for sub in subjects:
             mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
         
         
-        multiple_regressors = ['clocks_only-rew', 'clocks_only-rew-cos', 'clocks_only-rew-sin']
-        results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
-        model_name = 'combo_onlyrew-clock-cos-sin'
+        multiple_regressors_two = ['clocks_only-rew', 'clocks_only-rew-cos', 'clocks_only-rew-sin']
+        results_combo_model_two = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_two, model_RDM_dir, data_RDM)
+        model_name_two = 'combo_onlyrew-clock-cos-sin'
     
-        for i, model in enumerate(multiple_regressors):
-            mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+        for i, model in enumerate(multiple_regressors_two):
+            mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model_two, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name_two}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
         
         
         

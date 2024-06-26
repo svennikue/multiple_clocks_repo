@@ -94,7 +94,7 @@ analyse_behav = True
 
 for sub in subjects:
     if version in [f"01-TR{version_TR}"]:
-        for version_TR in range (0,11):
+        for version_TR in range (0,12):
             version = f"01-TR{version_TR}" 
             for task_half in task_halves:
                 data_dir_beh = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/pilot/{sub}/beh/"
