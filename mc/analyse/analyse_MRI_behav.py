@@ -668,7 +668,7 @@ def visualise_data_RDM(mni_x, mni_y, mni_z, data_RDM_file, mask):
     # well actually, an RDM should be no_conditions * no_conditions
     # why the hell is it 0,780??? this should be from 39x39 not 40x40???
     
-    
+    #centers_test[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0] for vox in 
     
 
 def save_RSA_result(result_file, data_RDM_file, file_path, file_name, mask, number_regr, ref_image_for_affine_path):

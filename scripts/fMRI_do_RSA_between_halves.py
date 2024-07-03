@@ -137,8 +137,8 @@ for sub in subjects:
     # mask will define the searchlight positions, in pt01 space because that is 
     # where the functional files have been registered to.
     # mask = load_img(f"{data_dir}/anat/grey_matter_mask_func_01.nii.gz")
-    mask = load_img(f"{data_dir}/anat/{sub}_T1w_noCSF_brain_mask_bin_func_01.nii.gz")
-    mask = mask.get_fdata()  
+    mask_file = load_img(f"{data_dir}/anat/{sub}_T1w_noCSF_brain_mask_bin_func_01.nii.gz")
+    mask = mask_file.get_fdata()  
     # save this file to save time
     if load_old:
         with open(f"{RDM_dir}/searchlight_centers.pkl", 'rb') as file:
@@ -220,10 +220,18 @@ for sub in subjects:
 
         if RDM_version in ['03-5', '03-5-A', '04-5', '04-5-A']:
             state_mask = np.load(os.path.join(RDM_dir, f"RSM_state_masked_{sub}_fmri_both_halves.npy"))
-            state_mask_flat = list(state_mask[np.triu_indices(len(state_mask), 1)])
+            #state_mask_flat = list(state_mask[np.tril_indices(len(state_mask), -1)])
+            
+            # potentially delete later
+            # np.triu_indices(self.n_cond, 1)
+            state_tril = state_mask.T[np.triu_indices(len(state_mask), 1)]
+            nan_mask = np.isnan(state_tril)
+            model_RDM_dir[model].dissimilarities[0][nan_mask] = 5
+            
+            
             # state_mask_flat = [int(x) for x in state_mask_flat]
-            boolean_mask = np.isnan(state_mask_flat)
-            model_RDM_dir[model].dissimilarities[0][boolean_mask] = np.nan
+            #boolean_mask = np.isnan(state_mask_flat)
+            #model_RDM_dir[model].dissimilarities[0][boolean_mask] = np.nan
             #model_RDM_dir[model].dissimilarities = np.where(state_mask_flat == 1, model_RDM_dir[model].dissimilarities, np.nan)
             #test = np.where(state_mask_flat == 1, model_RDM_dir[model].dissimilarities, np.nan)
 
@@ -235,11 +243,13 @@ for sub in subjects:
         
         z_scored_model_RDM = model_RDM_dir[model].copy()
         
-
-        if RDM_version not in ['03-5', '03-5-A', '04-5', '04-5-A']:
-            # can't handle nans in the state model...
-            z_scored_model_RDM.dissimilarities = (model_RDM_dir[model].dissimilarities - model_RDM_dir[model].dissimilarities.mean()) / model_RDM_dir[model].dissimilarities.std()
-
+        # import pdb; pdb.set_trace() 
+        z_scored_model_RDM.dissimilarities = (model_RDM_dir[model].dissimilarities - np.nanmean(model_RDM_dir[model].dissimilarities) / np.nanstd(model_RDM_dir[model].dissimilarities))
+        
+        # if RDM_version not in ['03-5', '03-5-A', '04-5', '04-5-A']:
+        #     # can't handle nans in the state model...
+        #     z_scored_model_RDM.dissimilarities = (model_RDM_dir[model].dissimilarities - model_RDM_dir[model].dissimilarities.mean()) / model_RDM_dir[model].dissimilarities.std()
+            
         model_model = rsatoolbox.model.ModelFixed(f"{model}_only", z_scored_model_RDM)
         
     
