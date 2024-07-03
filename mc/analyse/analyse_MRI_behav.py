@@ -669,8 +669,26 @@ def visualise_data_RDM(mni_x, mni_y, mni_z, data_RDM_file, mask):
     # why the hell is it 0,780??? this should be from 39x39 not 40x40???
     
     #centers_test[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0] for vox in 
-    
 
+def save_RSA_result_binary(result_file, data_RDM_file, file_path, file_name, mask, ref_image_for_affine_path):
+    x, y, z = mask.shape
+    ref_img = load_img(ref_image_for_affine_path)
+    affine_matrix = ref_img.affine
+    
+    if not os.path.exists(file_path):
+        os.makedirs(file_path)
+    
+    bin_diff_result_brain = np.zeros([x*y*z])
+    bin_diff_result_brain[list(data_RDM_file.rdm_descriptors['voxel_index'])] = [vox for vox in result_file]
+    bin_diff_result_brain = bin_diff_result_brain.reshape([x,y,z])
+    
+    bin_diff_result_brain_nifti = nib.Nifti1Image(bin_diff_result_brain, affine=affine_matrix)
+    bin_diff_result_brain_file = f"{file_path}/{file_name}_bin_diff.nii.gz"
+    nib.save(bin_diff_result_brain_nifti, bin_diff_result_brain_file)
+    
+    
+    
+    
 def save_RSA_result(result_file, data_RDM_file, file_path, file_name, mask, number_regr, ref_image_for_affine_path):
     x, y, z = mask.shape
     ref_img = load_img(ref_image_for_affine_path)
@@ -730,6 +748,19 @@ def evaluate_model(model, data):
     # import pdb; pdb.set_trace()
     return est.tvalues[1:], est.params[1:], est.pvalues[1:]
     
+
+def evaluate_binary_model(model, data, binary_val):
+    model_mask_one = model.rdm <= binary_val # similar conditions are around 0
+    model_mask_two = model.rdm >= binary_val # dissimilarity conditions are towards 2
+    cond_one = np.nanmean(data.dissimilarities[0][model_mask_one])
+    cond_two = np.nanmean(data.dissimilarities[0][model_mask_two])
+    #if cond_one < cond_two:
+    #    import pdb; pdb.set_trace()
+    
+    # where is white (dissimilar conds) bigger than black (similar conds)? 
+    return cond_two-cond_one
+    
+
 
 def evaluate_surface_searchlights(model, data):
     import pdb; pdb.set_trace()

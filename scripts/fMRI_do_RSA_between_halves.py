@@ -66,7 +66,9 @@ import random
 regression_version = '03-4' 
 RDM_version = '03-5'
 
-neuron_weighting = True
+binary = True
+
+neuron_weighting = False
 
 
 # import pdb; pdb.set_trace() 
@@ -76,7 +78,7 @@ else:
     subj_no = '01'
 
 subjects = [f"sub-{subj_no}"]
-#subjects = ['sub-01']
+#subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36) if i not in (21, 29)]
 
 load_old = False
 visualise_RDMs = False
@@ -220,36 +222,16 @@ for sub in subjects:
 
         if RDM_version in ['03-5', '03-5-A', '04-5', '04-5-A']:
             state_mask = np.load(os.path.join(RDM_dir, f"RSM_state_masked_{sub}_fmri_both_halves.npy"))
-            #state_mask_flat = list(state_mask[np.tril_indices(len(state_mask), -1)])
-            
-            # potentially delete later
-            # np.triu_indices(self.n_cond, 1)
             state_tril = state_mask.T[np.triu_indices(len(state_mask), 1)]
             nan_mask = np.isnan(state_tril)
-            model_RDM_dir[model].dissimilarities[0][nan_mask] = 5
+            model_RDM_dir[model].dissimilarities[0][nan_mask] = np.nan
             
-            
-            # state_mask_flat = [int(x) for x in state_mask_flat]
-            #boolean_mask = np.isnan(state_mask_flat)
-            #model_RDM_dir[model].dissimilarities[0][boolean_mask] = np.nan
-            #model_RDM_dir[model].dissimilarities = np.where(state_mask_flat == 1, model_RDM_dir[model].dissimilarities, np.nan)
-            #test = np.where(state_mask_flat == 1, model_RDM_dir[model].dissimilarities, np.nan)
-
         # import pdb; pdb.set_trace()
         fig, ax, ret_vla = rsatoolbox.vis.show_rdm(model_RDM_dir[model])
-        # then compute the location model.
         
         # first, normalise the current model RDM.
-        
         z_scored_model_RDM = model_RDM_dir[model].copy()
-        
-        # import pdb; pdb.set_trace() 
         z_scored_model_RDM.dissimilarities = (model_RDM_dir[model].dissimilarities - np.nanmean(model_RDM_dir[model].dissimilarities) / np.nanstd(model_RDM_dir[model].dissimilarities))
-        
-        # if RDM_version not in ['03-5', '03-5-A', '04-5', '04-5-A']:
-        #     # can't handle nans in the state model...
-        #     z_scored_model_RDM.dissimilarities = (model_RDM_dir[model].dissimilarities - model_RDM_dir[model].dissimilarities.mean()) / model_RDM_dir[model].dissimilarities.std()
-            
         model_model = rsatoolbox.model.ModelFixed(f"{model}_only", z_scored_model_RDM)
         
     
@@ -257,8 +239,19 @@ for sub in subjects:
         # STEP 4: evaluate the model fit between model and data RDMs.
         # for d in data_RDM:
         #     RDM_my_model_dir[model] = mc.analyse.analyse_MRI_behav.evaluate_model(model_model, d)
-        RDM_my_model_dir[model] = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(model_model, d) for d in tqdm(data_RDM, desc=f"running GLM for all searchlights in {model}"))
-        mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_model_dir[model], data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+        
+        if binary == True:           
+            model_model = rsatoolbox.model.ModelFixed(f"{model}_only", model_RDM_dir[model])
+            print("remember to set binary value depending on model RDM!!")
+            # for d in data_RDM:
+            #       RDM_my_model_dir[model] = mc.analyse.analyse_MRI_behav.evaluate_binary_model(model_model, d, binary_val=0.5)
+            results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results-bin"
+            RDM_my_model_dir[model] = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_binary_model)(model_model, d, binary_val=0.5) for d in tqdm(data_RDM, desc=f"running GLM for all searchlights in {model}"))
+            mc.analyse.analyse_MRI_behav.save_RSA_result_binary(result_file=RDM_my_model_dir[model], data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model}", mask=mask, ref_image_for_affine_path=ref_img)
+    
+        else:
+            RDM_my_model_dir[model] = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(model_model, d) for d in tqdm(data_RDM, desc=f"running GLM for all searchlights in {model}"))
+            mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_model_dir[model], data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
     
         
 
