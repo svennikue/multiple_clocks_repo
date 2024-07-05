@@ -213,6 +213,14 @@ for sub in subjects:
                         # then put both together:
                         result_model_dict = {**models_from_03_1, **model_from_04}
                     
+                    # WIP
+                    import pdb; pdb.set_trace()
+                    # add another model- the action model
+                    result_model_dict['action'] = mc.simulation.predictions.action_model(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
+                    
+                    
+                    # WIP
+                    
                     # import pdb; pdb.set_trace()
                     # now for all models that are creating or not creating the splits models with my default function, this checking should work.
                     if RDM_version not in ['03-1', '03-2', '03-3', '03-5', '03-5-A','04-5', '04-5-A', '05', '03-tasklag']:

@@ -25,6 +25,7 @@ RDM settings (creating the representations):
     04 -> modelling only paths
     04-5-A -> STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw. ; EXCLUDING reward A
     
+    05 -> modelling only baths and only rewards to compare them later!
     xx-999 ->  is debugging 2.0: using whatever, but the voxels are scrambled.
 
 
@@ -47,6 +48,10 @@ GLM ('regression') settings (creating the 'bins'):
 @author: Svenja Küchenhoff, 2024
 """
 
+# UNDER CONSTRUCTION
+# NOT WORKING CURRENTL!!
+# CONTINUE DEBUGGING FIRST!!!
+
 
 from tqdm import tqdm
 import numpy as np
@@ -64,10 +69,9 @@ import sys
 import random
 
 regression_version = '03-4' 
-RDM_version = '03-5'
+RDM_version = '05'
 
-binary = True
-
+binary = False
 neuron_weighting = False
 
 
@@ -126,7 +130,10 @@ for sub in subjects:
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
         os.makedirs(f"{results_dir}/results")
-    results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results"  
+    results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results" 
+    data_rdm_dir = f"{data_dir}/func/data_RDM_glmbase_{regression_version}"
+    if not os.path.exists(data_rdm_dir):
+        os.makedirs(data_rdm_dir)  
     # if os.path.exists(results_dir):
     #     # move pre-existing files into a different folder.
     #     mc.analyse.analyse_MRI_behav.move_files_to_subfolder(results_dir)
@@ -134,7 +141,8 @@ for sub in subjects:
     # example_func from half 1, as this is where the data is corrected to.
     ref_img = load_img(f"{data_dir}/func/preproc_clean_01.feat/example_func.nii.gz")
     
-
+    
+    
     # Step 1: creating the searchlights
     # mask will define the searchlight positions, in pt01 space because that is 
     # where the functional files have been registered to.
@@ -168,9 +176,8 @@ for sub in subjects:
         if visualise_RDMs == True:
             mc.analyse.analyse_MRI_behav.visualise_data_RDM(mni_x=53, mni_y = 30, mni_z= 2, data_RDM_file= data_RDM, mask=mask)
     else:
-        data_RDM_file_2d = mc.analyse.analyse_MRI_behav.read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM_conditions, sort_as = 'dict-two-halves')
-    
-        # define the conditions, combine both task halves
+        data_RDM_file_2d= mc.analyse.analyse_MRI_behav.read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM_conditions, sort_as = 'dict-two-halves')
+        condition_names = mc.analyse.analyse_MRI_behav.get_conditions_list(RDM_dir)
         data_conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(no_RDM_conditions)])), (1,2)).transpose(),2*no_RDM_conditions)  
         # now prepare the data RDM file. 
         # final data RDM file; 
@@ -181,11 +188,28 @@ for sub in subjects:
             # for all other cases, cross correlated between task-halves.
             # this is defining both task halves/ runs: 0 is first half, the second one is 1s
             sessions = np.concatenate((np.zeros(no_RDM_conditions), np.ones(no_RDM_conditions)))
-            data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='crosscorr', cv_descr=sessions)
-            # save  so that I don't need to recompute - or don't save bc it's massive
-            # with open(f"{results_dir}/data_RDM.pkl", 'wb') as file:
-                # pickle.dump(data_RDM, file)
-
+            if not os.path.exists(f"{data_rdm_dir}/data_RDM.pkl"):
+                data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='crosscorr', cv_descr=sessions)
+                # save  so that I don't need to recompute - or don't save bc it's massive
+                with open(f"{data_rdm_dir}/data_RDM.pkl", 'wb') as file:
+                    pickle.dump(data_RDM, file)
+                mc.analyse.analyse_MRI_behav.save_data_RDM_as_nifti(data_RDM, data_rdm_dir, f"data_RDM.nii.gz", ref_img)
+            else:
+                with open(f"{data_rdm_dir}/data_RDM.pkl", 'wb') as file:
+                    data_RDM = pickle.load(file)
+        
+    # # ACC [54, 63, 41]
+    # mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [54, 63, 41], ref_img, condition_names)
+    # mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [54, 63, 41], ref_img, condition_names)
+    
+    # # visual cortex [72, 17, 9]
+    # mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [72, 17, 9], ref_img, condition_names)
+    # mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [72, 17, 9], ref_img, condition_names)
+    
+    # # hippocampus [43, 50, 17]
+    # mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [43, 50, 17], ref_img, condition_names)
+    # mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [43, 50, 17], ref_img, condition_names)
+    
     
     # Step 3: load and compute the model RDMs.
     # 3-1 load the data files I created.
@@ -193,12 +217,16 @@ for sub in subjects:
     for model in models_I_want:
         if RDM_version in ['999', '9999']: # potentially delete?? this is now 03-99 nd 03-999
             RDM_dir = f"{data_dir}/beh/RDMs_09_glmbase_{regression_version}" # potentially delete??
+        if model in ['state_masked']:
+            data_dirs[model]= np.load(os.path.join(RDM_dir, f"datastate_{sub}_fmri_both_halves.npy")) 
+            
         data_dirs[model]= np.load(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves.npy")) 
     
         # add keys for the 2 weighted models
         if neuron_weighting == True and model in ['clocks_only-rew', 'clocks', 'clocks_no-rew']:
             data_dirs[f"{model}-sin"] = 0
             data_dirs[f"{model}-cos"] = 0
+            
         
     # import pdb; pdb.set_trace()
     # step 3-2: create model RDMs
@@ -219,20 +247,18 @@ for sub in subjects:
             model_RDM_dir[model] = rsr.calc_rdm(model_data, method='weight_crosscorr', descriptor='conds', cv_descriptor='sessions', weighting = 'cos')
         else:
             model_RDM_dir[model] = rsr.calc_rdm(model_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
-
-        if RDM_version in ['03-5', '03-5-A', '04-5', '04-5-A']:
+        
+        
+        if model in ['state_masked']:
             state_mask = np.load(os.path.join(RDM_dir, f"RSM_state_masked_{sub}_fmri_both_halves.npy"))
             state_tril = state_mask.T[np.triu_indices(len(state_mask), 1)]
             nan_mask = np.isnan(state_tril)
-            model_RDM_dir[model].dissimilarities[0][nan_mask] = np.nan
+            model_RDM_dir['state_masked'].dissimilarities[0][nan_mask] = np.nan
             
         # import pdb; pdb.set_trace()
         fig, ax, ret_vla = rsatoolbox.vis.show_rdm(model_RDM_dir[model])
-        
-        # first, normalise the current model RDM.
-        z_scored_model_RDM = model_RDM_dir[model].copy()
-        z_scored_model_RDM.dissimilarities = (model_RDM_dir[model].dissimilarities - np.nanmean(model_RDM_dir[model].dissimilarities) / np.nanstd(model_RDM_dir[model].dissimilarities))
-        model_model = rsatoolbox.model.ModelFixed(f"{model}_only", z_scored_model_RDM)
+        # set up the model object
+        model_model = rsatoolbox.model.ModelFixed(f"{model}_only", model_RDM_dir[model])
         
     
         # ACTUAL RSA - single models
@@ -240,13 +266,21 @@ for sub in subjects:
         # for d in data_RDM:
         #     RDM_my_model_dir[model] = mc.analyse.analyse_MRI_behav.evaluate_model(model_model, d)
         
+        for d in data_RDM:
+            RDM_my_model_dir[model] = mc.analyse.analyse_MRI_behav.evaluate_model(model_model, d)
+        
+        
+        
         if binary == True:           
-            model_model = rsatoolbox.model.ModelFixed(f"{model}_only", model_RDM_dir[model])
             print("remember to set binary value depending on model RDM!!")
             # for d in data_RDM:
             #       RDM_my_model_dir[model] = mc.analyse.analyse_MRI_behav.evaluate_binary_model(model_model, d, binary_val=0.5)
             results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results-bin"
             RDM_my_model_dir[model] = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_binary_model)(model_model, d, binary_val=0.5) for d in tqdm(data_RDM, desc=f"running GLM for all searchlights in {model}"))
+            
+            # DELETE LATER, THIS IS FOR DEBUGGING PURPOSES!
+            # mc.plotting.deep_data_plt.save_changed_voxel_val(20, RDM_my_model_dir[model], data_RDM, [34,37,34], results_dir, f"dummy_{model}", ref_img)
+        
             mc.analyse.analyse_MRI_behav.save_RSA_result_binary(result_file=RDM_my_model_dir[model], data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model}", mask=mask, ref_image_for_affine_path=ref_img)
     
         else:
@@ -428,6 +462,12 @@ for sub in subjects:
         for i, model in enumerate(multiple_regressors_two):
             mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model_two, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name_two}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
         
+    if RDM_version in ['05', '03-5', '03-5-A', '04-5', '04-5-A']:
+        multiple_regressors = ['state_masked', 'location']
+        results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
+        model_name = 'combo_state_loc'
+        for i, model in enumerate(multiple_regressors):
+            mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name_two}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
         
         
         

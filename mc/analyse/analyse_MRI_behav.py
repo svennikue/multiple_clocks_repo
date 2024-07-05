@@ -27,11 +27,11 @@ import rsatoolbox
 from joblib import Parallel, delayed
 from tqdm import tqdm
 import pickle
+import ast
 
 
 
 def check_GLM_regressors(design_matrix_X):
-    import numpy as np
     # to check if a GLM is ill-conditioned
     # To check that you can check the “condition number” of the design matrix - 
     # the ration between the maximum singular value (similar to eigenvalue) and the minimum singular value.. 
@@ -54,7 +54,25 @@ def check_GLM_regressors(design_matrix_X):
 
 
 
-
+def get_conditions_list(RDM_dir):
+    # import pdb; pdb.set_trace()
+    # load the file which defines the order of the model RDMs, and hence the data RDMs
+    with open(f"{RDM_dir}/sorted_keys-model_RDMs.pkl", 'rb') as file:
+        sorted_keys = pickle.load(file)
+    with open(f"{RDM_dir}/sorted_regs.pkl", 'rb') as file:
+        reg_keys = pickle.load(file)
+    list_of_conditions = {}
+    list_of_conditions_flat = {}
+    for split in sorted_keys:
+        list_of_conditions[split] = []
+        list_of_conditions_flat[split] = []
+        for EV_no, task in enumerate(sorted_keys[split]):
+            for regressor_sets in reg_keys:
+                if regressor_sets[0].startswith(task):
+                    list_of_conditions[split].append(regressor_sets)           
+        list_of_conditions_flat[split] = [item for sublist in list_of_conditions[split] for item in sublist]
+        
+    return list_of_conditions_flat
 
 
 
@@ -89,7 +107,8 @@ def read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM
         regression_version = '03-rep5'
        
         
-        
+    # import pdb; pdb.set_trace()   
+    
     pe_path_01 = f"{data_dir}/func/glm_{regression_version}_pt01.feat/stats"
     reading_in_EVs_dict_01 = {}   
     with open(f"{data_dir}/func/EVs_{regression_version}_pt01/task-to-EV.txt", 'r') as file:
@@ -180,9 +199,6 @@ def read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM
             print(f"This is the order now: {image_paths}")  
 
 
-
-    # CONTINUE HERE!!! HOW DO I LOAD THE EVs CORRECTLY?????
-    
     if sort_as == 'concat_list':
         ref_img_data = ref_img.get_fdata()
         fmri_img_list_first_half = np.empty((ref_img_data.shape[0], ref_img_data.shape[1], ref_img_data.shape[2], no_RDM_conditions*2))
@@ -288,6 +304,60 @@ def extract_behaviour(file):
     # so that I cann differenatiate task config and direction
     df['config_type'] = df['task_config'] + '_' + df['type']
     
+    # add a colum with nav_key presses that counted based on nav_key_task.rt and t_step_press_curr_run
+    # and one with the actual keys they pressed based on nav_key_task.keys and t_step_press_curr_run
+    # and one with erroneous keys.
+    
+    indices_with_TR_keys = df[df['TR_key.started'].notna()].index.to_list()
+
+    for task_no, row_index in enumerate(indices_with_TR_keys):
+        curr_list_of_keys = ast.literal_eval(df.at[row_index, 'nav_key_task.keys'])
+        curr_key_times = ast.literal_eval(df.at[row_index, 'nav_key_task.rt'])
+        count_error_keys = 0
+        if task_no == 0:
+            for i in range(0, indices_with_TR_keys[task_no]):
+                if round(df.at[i, 't_step_press_curr_run'],3) == round(curr_key_times[i],3):
+                    df.at[i, 'curr_key'] = curr_list_of_keys[i]
+                    df.at[i, 'curr_key_time'] = curr_key_times[i]
+                else:
+                    count_error_keys =+ 1
+                    df.at[i, 'wrong_key'] = curr_list_of_keys[i]
+                    df.at[i, 'wrong_key_time'] = curr_key_times[i]
+                    df.at[i, 'wrong_key_counter'] = count_error_keys
+        elif task_no > 0:
+            for i_list,i in enumerate(range(indices_with_TR_keys[task_no-1]+1, indices_with_TR_keys[task_no])): 
+                if round(df.at[i, 't_step_press_curr_run'],3) < 0:
+                    continue
+                if round(df.at[i, 't_step_press_curr_run'],3) == round(curr_key_times[i_list + count_error_keys],3):
+                    df.at[i, 'curr_key'] = curr_list_of_keys[i_list + count_error_keys]
+                    df.at[i, 'curr_key_time'] = curr_key_times[i_list + count_error_keys]
+                else:
+                    wrong_keys = [curr_list_of_keys[i_list + count_error_keys]]
+                    wrong_times = [round(curr_key_times[i_list + count_error_keys],4)]
+                    count_error_keys += 1
+                    # UUUUGH THERE IS A INDEXING ERROR HAPPENING HERE
+                    # CONTINUE HERE!!!
+                    # HERE
+                    # 
+                    #
+                    #
+                    
+                    while round(df.at[i, 't_step_press_curr_run'],3) != round(curr_key_times[i_list + count_error_keys],3) :
+                        # import pdb; pdb.set_trace()
+                        wrong_keys.append(curr_list_of_keys[i_list + count_error_keys])
+                        wrong_times.append(round(curr_key_times[i_list + count_error_keys], 4))
+                        count_error_keys += 1
+                    # once back to a correct key, fill in the one that you missed previously
+                    df.at[i, 'wrong_key'] = wrong_keys
+                    #df.at[i, 'wrong_key_time'] = wrong_times
+                    
+                    df.at[i, 'curr_key'] = curr_list_of_keys[i_list + count_error_keys]
+                    df.at[i, 'curr_key_time'] = curr_key_times[i_list + count_error_keys]
+                    df.at[i, 'wrong_key_counter'] = count_error_keys
+        
+        
+    
+    import pdb; pdb.set_trace()
     # add columns whith field numbers 
     for index, row in df.iterrows():
         # current locations
@@ -400,7 +470,7 @@ def models_I_want(RDM_version):
     elif RDM_version in ['03-1', '03-2']:  # modelling only rewards, splitting clocks later in a different way - after the regression.
         models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs']
     elif RDM_version in ['03-5', '03-5-A', '04-5', '04-5-A']:
-        models_I_want = ['state']
+        models_I_want = ['state', 'state_masked']
     elif RDM_version in ['03-3']:  # modelling only rewards, splitting clocks later in a different way - after the regression; ignoring reward A
         models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc']
     elif RDM_version in ['03-99']:  # using 03-1 - reward locations and future rew model; but EVs are scrambled.
@@ -410,7 +480,7 @@ def models_I_want(RDM_version):
     elif RDM_version in ['04', '04-A']: # only paths. to see if the human brain represents also only those rings anchored at no-reward locations
         models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_no-rew', 'clocks_no-rew']
     elif RDM_version in ['05']: # only paths AND only rewards to later compare both models: based on 3.1 and 4
-        models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'clocks_no-rew']
+        models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'clocks_no-rew', 'state_masked']
     return models_I_want
 
 
@@ -646,29 +716,8 @@ def multiple_RDMs_RSA(list_of_regressor_RDMs, model_RDM_dictionary, data_RDM_fil
     
     return(result_multiple_RDMs_RSA)
 
-# write a visualisation function for data RDMs.
-def visualise_data_RDM(mni_x, mni_y, mni_z, data_RDM_file, mask):
-    # import pdb; pdb.set_trace()
-    x, y, z = mask.shape
-    index_centre = np.ravel_multi_index((mni_x, mni_y, mni_z), (x,y,z))
-    index_RDM = np.where(data_RDM_file.rdm_descriptors['voxel_index']==index_centre)[0]
-    RDM_I_want= data_RDM_file[index_RDM].dissimilarities
-    
-    # matrix_40x40 = np.zeros((40, 40))
 
-    # # Function to fill in the lower triangular part of the matrix
-    # def fill_lower_triangular(matrix, data):
-    #     indices = np.tril_indices_from(matrix)
-    #     matrix[indices] = data
-    
-    # # Call the function to fill your matrix
-    # fill_lower_triangular(matrix_40x40, RDM_I_want)
 
-    # I believe that the RDMs are 80,93 - no actually its 40,93 for the half
-    # well actually, an RDM should be no_conditions * no_conditions
-    # why the hell is it 0,780??? this should be from 39x39 not 40x40???
-    
-    #centers_test[list(data_RDM.rdm_descriptors['voxel_index'])] = [vox[0] for vox in 
 
 def save_RSA_result_binary(result_file, data_RDM_file, file_path, file_name, mask, ref_image_for_affine_path):
     x, y, z = mask.shape
@@ -685,6 +734,27 @@ def save_RSA_result_binary(result_file, data_RDM_file, file_path, file_name, mas
     bin_diff_result_brain_nifti = nib.Nifti1Image(bin_diff_result_brain, affine=affine_matrix)
     bin_diff_result_brain_file = f"{file_path}/{file_name}_bin_diff.nii.gz"
     nib.save(bin_diff_result_brain_nifti, bin_diff_result_brain_file)
+
+  
+    
+def save_data_RDM_as_nifti(data_RDM_file, file_path, file_name, ref_image_for_affine_path):
+    ref_img = load_img(ref_image_for_affine_path)
+    x, y, z = ref_img.shape
+    affine_matrix = ref_img.affine
+    
+    if not os.path.exists(file_path):
+        os.makedirs(file_path)
+    
+    brain_4d = np.zeros([x,y,z,len(data_RDM_file[0].dissimilarities[0])])
+    # import pdb; pdb.set_trace() 
+    for i in range(0,len(data_RDM_file[0].dissimilarities[0])):
+        curr_slice = np.zeros([x*y*z])
+        curr_slice[list(data_RDM_file.rdm_descriptors['voxel_index'])] = [vox.dissimilarities[0][i] for vox in data_RDM_file]
+        brain_4d[:,:,:,i] = curr_slice.reshape([x,y,z])
+    
+    brain_4d_nifti = nib.Nifti1Image(brain_4d, affine=affine_matrix)
+    brain_4d_file = f"{file_path}/{file_name}"
+    nib.save(brain_4d_nifti, brain_4d_file)
     
     
     
@@ -726,8 +796,11 @@ def save_RSA_result(result_file, data_RDM_file, file_path, file_name, mask, numb
 
 def evaluate_model(model, data):
     # import pdb; pdb.set_trace()
-    
+
     X = sm.add_constant(model.rdm.transpose());
+    # first, normalize the regressors (but not the intercept, bc std = 0 -> division by 0!)
+    for i in range(1, X.shape[1]):
+        X[:,i] = (X[:,i] - np.nanmean(X[:,i]))/ np.nanstd(X[:,i])
     
     # to check if a GLM is ill-conditioned
     # To check that you can check the “condition number” of the design matrix - 

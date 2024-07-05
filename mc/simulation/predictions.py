@@ -2167,6 +2167,7 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     result_dict['state'] = stat_model
     result_dict['task_prog'] = task_prog_matrix
     
+
     if split_clock == True:
         result_dict.update(split_clock_model_dict)
         
