@@ -699,12 +699,7 @@ def make_loc_EV(dataframe, x_coord, y_coord):
 # set up RSA with multiple regressors.
 def multiple_RDMs_RSA(list_of_regressor_RDMs, model_RDM_dictionary, data_RDM_file):
     # import pdb; pdb.set_trace()
-    # first, normalise the current model RDM.
-    z_scored_model_RDM_dict = model_RDM_dictionary.copy()
-    for model in list_of_regressor_RDMs:
-        z_scored_model_RDM_dict[model].dissimilarities = (model_RDM_dictionary[model].dissimilarities - model_RDM_dictionary[model].dissimilarities.mean()) / model_RDM_dictionary[model].dissimilarities.std()
- 
-    arguments = [z_scored_model_RDM_dict[model] for model in list_of_regressor_RDMs]
+    arguments = [model_RDM_dictionary[model] for model in list_of_regressor_RDMs]
     concatenated_RDMs = rsatoolbox.rdm.concat(*arguments)
     concatenated_RDMs_model = rsatoolbox.model.ModelWeighted('concatenated_RDMs', concatenated_RDMs)
     

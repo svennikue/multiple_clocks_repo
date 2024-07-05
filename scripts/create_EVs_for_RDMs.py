@@ -34,6 +34,8 @@ GLM ('regression') settings (creating the 'bins'):
     03-9999 - 40 regressors; no button press; shift all regressors 6 seconds earlier
     04 - 40 regressors; for every task, only the paths are modelled
     05 - locations + button presses 
+    06 - collapsed tasks
+    06-rep1 - collapsed tasks, only first repeat.
     
     
 
@@ -56,10 +58,11 @@ import random
 #import pdb; pdb.set_trace()
 
 version_TR = 0 # can be between 0 and 11
-version = '03'
+version = '06'
 #version = f"01-TR{version_TR}" 
 if version == '01':
     version_TR = 0
+    
 
 # plotting = True
 # to debug task_halves = ['1']
@@ -69,7 +72,7 @@ task_halves = ['1', '2']
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '02'
+    subj_no = '03'
 
 # subjects = ['sub-07', 'sub-08', 'sub-09', 'sub-11', 'sub-12', 'sub-13', 'sub-14', 'sub-15', 'sub-16', 'sub-17', 'sub-18','sub-19', 'sub-20',  'sub-22', 'sub-23','sub-24']
 #subjects = ['sub-01']    
@@ -238,18 +241,21 @@ for sub in subjects:
  
         
  
-        if version in ['01', f"01-TR{version_TR}"]: # instruction
+        if version in ['01', f"01-TR{version_TR}", '06', '06-rep1']: # instruction
             # extract the timings of where a task has ended: t_reward_afterwait & repeat == '5' 
             # + 3.5 reward text + instruction period lasts 12 seconds; 
             # so t_reward_afterwait + 3.5 rew + 12 sec should be ca. start_ABCD screen
             # first, for the first task do:
+            if version in ['01', f"01-TR{version_TR}"]:
+                EVs_to_save_str = 'instruction'
+            if version in ['06', '06-rep1']:
+                EVs_to_save_str = 'execution_avg'
             df.loc[df.index[~df['start_ABCD_screen'].isna()][0], 'instruct_start'] = df.loc[df.index[~df['start_ABCD_screen'].isna()][0], 'start_ABCD_screen'] - 12
             # for the other tasks, loop through table:
             for index, row in df.iterrows():
                 if (row['rep_runs.thisN'] == 5) and (~pd.isna(row['t_reward_afterwait'])):
                    df.at[index+1, 'instruct_start'] = row['t_reward_afterwait'] + 3.5
                                                              
-
             # create a reward type to filter for same tasks
             # column which allows to differentiate all trials
             df['config_type'] = df['task_config'] + '_' + df['type']
@@ -258,35 +264,56 @@ for sub in subjects:
             
             # then make regressors based on that.
             # import pdb; pdb.set_trace()
-            instruc_EV_dic = {}
+            EV_dic = {}
             for i, task in enumerate(task_names):
-                EVname_instruction_onset = f"{task}_instruction_onset"
-                partial_df = df[((df['config_type'] == task) & (~df['instruct_start'].isna()))]
-                instruc_EV_dic[EVname_instruction_onset] = partial_df['instruct_start'].tolist()
+                EVname_instruction_onset = f"{task}_{EVs_to_save_str}_onset"
+                if version in ['01', f"01-TR{version_TR}"]:
+                    partial_df = df[((df['config_type'] == task) & (~df['instruct_start'].isna()))]
+                    EV_dic[f"{task}_{EVs_to_save_str}_onset"] = partial_df['instruct_start'].tolist()
+                
+                elif version in ['06', '06-rep1']:
+                    partial_df = df[((df['rep_runs.thisRepN'] == 0) & (~df['start_ABCD_screen'].isna()) & (df['config_type'] == task))]
+                    EV_dic[f"{task}_{EVs_to_save_str}_onset"] = partial_df['start_ABCD_screen'].tolist()
                 
                 if version in [f"01-TR{version_TR}"]:
-                    dur_instruct = np.ones(1)
-                    instruc_EV_dic[EVname_instruction_onset] = instruc_EV_dic[EVname_instruction_onset][0] + version_TR
-                    mag_instruct = np.ones(1)
-                else:
-                    dur_instruct = [12] # duration is 12 seconds if averaging the entire instruction period
-                    mag_instruct = np.ones(len(instruc_EV_dic[f"{task}_instruction_onset"]))
+                    dur_EV = np.ones(1)
+                    EV_dic[f"{task}_{EVs_to_save_str}_onset"] = EV_dic[f"{task}_{EVs_to_save_str}_onset"][0] + version_TR
+                    mag_EV = np.ones(1)
+                elif version in ['01']:
+                    dur_EV = [12] # duration is 12 seconds if averaging the entire instruction period
+                    mag_EV = np.ones(len(EV_dic[f"{task}_{EVs_to_save_str}n_onset"]))
+                elif version in ['06']:
+                    partial_df = df[((df['rep_runs.thisRepN'] == 5) & (df['config_type'] == task) & (~df['t_reward_afterwait'].isna()))]
+                    end_task = partial_df['t_reward_afterwait'].tolist()
+                    if end_task == []:
+                        partial_df = df[((df['rep_runs.thisRepN'].isna()) & (df['config_type'] == task) & (~df['t_reward_afterwait'].isna()))]
+                        end_task = partial_df['t_reward_afterwait'].tolist()
+                        if end_task == []:
+                            print(f"careful, task {task} wasn't completed! ")
+                            continue
+                    dur_EV = [end_task[0] - EV_dic[f"{task}_{EVs_to_save_str}_onset"][0]]
+                    mag_EV = np.ones(len(EV_dic[f"{task}_{EVs_to_save_str}_onset"]))
                 
-                instruction_EV = mc.analyse.analyse_MRI_behav.create_EV(instruc_EV_dic[f"{task}_instruction_onset"], dur_instruct , mag_instruct, f"{task}_instruction_onset", EV_folder, first_TR_at, version, version_TR)
-                deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(instruction_EV)
+                elif version in ['06-rep1']:
+                    partial_df = df[((df['rep_runs.thisRepN'] == 1) & (~df['task_length'].isna()) & (df['config_type'] == task))]
+                    dur_EV = partial_df['task_length'].tolist()
+                    mag_EV = np.ones(len(EV_dic[f"{task}_{EVs_to_save_str}n_onset"]))
+                    
+                
+                EV = mc.analyse.analyse_MRI_behav.create_EV(EV_dic[f"{task}_{EVs_to_save_str}_onset"], dur_EV , mag_EV, f"{task}_{EVs_to_save_str}_onset", EV_folder, first_TR_at, version, version_TR)
+                deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(EV)
                 # import pdb; pdb.set_trace()
                 
                 if deleted_x_rows > 0:
                     print(f"careful! I am saving a cutted EV {task} file. Happened for subject {sub} in task half {task_half}")
                     np.savetxt(str(EV_folder) + 'ev_' + f"{task}_instruction_onset" + '.txt', array, delimiter="    ", fmt='%f')
             # additionally check if I made a regressor for each task.
-            if len(instruc_EV_dic) < 10:
+            if len(EV_dic) < 10:
                 print(f"careful! Less instruction periods than tasks (10) have been saved. Happened for subject {sub} in task half {task_half}")
                 
                 
             
-        if version in ['02','02-e', '02-l', '03', '03-e', '03-l', '03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5', '03-2', '03-3', '03-4','03-99','03-999','03-9999', '04']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward
-            # 10 is only paths
+        if version in ['02','02-e', '02-l', '03', '03-e', '03-l', '03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5', '03-2', '03-3', '03-4','03-99','03-999','03-9999', '04']: 
             # identify where the next task begins by iterating through the DataFrame 
             # and collecting the indices where the column is not empty
             index_next_task = []
@@ -451,7 +478,7 @@ for sub in subjects:
                 pickle.dump(taskEV_dic, f)
      
         # then, lastly, adjust the .fsf file I will use for the regression.
-        if version in ['01', f"01-TR{version_TR}" , '02','02-e', '02-l', '03', '03-e', '03-l', '03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5', '03-2', '03-3', '03-4', '04', '05', '03-99', '03-999', '03-9999']: #06 is subpath and reward, 07 only reward, 08 is reward without A reward, 09 is instruction period
+        if version in ['01', f"01-TR{version_TR}" , '02','02-e', '02-l', '03', '03-e', '03-l', '03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5', '03-2', '03-3', '03-4', '04', '05', '03-99', '03-999', '03-9999', '06', '06-rep1']: 
             print('start loop 2')
             # collect all filepaths I just created.
             # this is a bit risky in case there have been other EVs in there that I didnt want...

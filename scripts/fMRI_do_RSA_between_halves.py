@@ -191,12 +191,13 @@ for sub in subjects:
             if not os.path.exists(f"{data_rdm_dir}/data_RDM.pkl"):
                 data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='crosscorr', cv_descr=sessions)
                 # save  so that I don't need to recompute - or don't save bc it's massive
-                with open(f"{data_rdm_dir}/data_RDM.pkl", 'wb') as file:
-                    pickle.dump(data_RDM, file)
-                mc.analyse.analyse_MRI_behav.save_data_RDM_as_nifti(data_RDM, data_rdm_dir, f"data_RDM.nii.gz", ref_img)
+                data_RDM.save(f"{data_rdm_dir}/data_RDM-pkl", 'pkl')
+                # potentially build in a progress function for this one! takes ages..
+                mc.analyse.analyse_MRI_behav.save_data_RDM_as_nifti(data_RDM, data_rdm_dir, "data_RDM.nii.gz", ref_img)
             else:
-                with open(f"{data_rdm_dir}/data_RDM.pkl", 'wb') as file:
-                    data_RDM = pickle.load(file)
+                with open(f"{data_rdm_dir}/data_RDM-pkl", 'rb') as file:
+                    data_RDM_dir = pickle.load(file)
+                    data_RDM = rsatoolbox.rdm.rdms.rdms_from_dict(data_RDM_dir)
         
     # # ACC [54, 63, 41]
     # mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [54, 63, 41], ref_img, condition_names)
@@ -219,8 +220,8 @@ for sub in subjects:
             RDM_dir = f"{data_dir}/beh/RDMs_09_glmbase_{regression_version}" # potentially delete??
         if model in ['state_masked']:
             data_dirs[model]= np.load(os.path.join(RDM_dir, f"datastate_{sub}_fmri_both_halves.npy")) 
-            
-        data_dirs[model]= np.load(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves.npy")) 
+        else:    
+            data_dirs[model]= np.load(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves.npy")) 
     
         # add keys for the 2 weighted models
         if neuron_weighting == True and model in ['clocks_only-rew', 'clocks', 'clocks_no-rew']:
@@ -250,12 +251,11 @@ for sub in subjects:
         
         
         if model in ['state_masked']:
-            state_mask = np.load(os.path.join(RDM_dir, f"RSM_state_masked_{sub}_fmri_both_halves.npy"))
+            state_mask = np.load(os.path.join(f"{data_dir}/beh/RDMs_03-5_glmbase_{regression_version}", f"RSM_state_masked_{sub}_fmri_both_halves.npy"))
             state_tril = state_mask.T[np.triu_indices(len(state_mask), 1)]
             nan_mask = np.isnan(state_tril)
             model_RDM_dir['state_masked'].dissimilarities[0][nan_mask] = np.nan
             
-        # import pdb; pdb.set_trace()
         fig, ax, ret_vla = rsatoolbox.vis.show_rdm(model_RDM_dir[model])
         # set up the model object
         model_model = rsatoolbox.model.ModelFixed(f"{model}_only", model_RDM_dir[model])
@@ -467,7 +467,7 @@ for sub in subjects:
         results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
         model_name = 'combo_state_loc'
         for i, model in enumerate(multiple_regressors):
-            mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name_two}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+            mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
         
         
         
