@@ -58,7 +58,7 @@ import random
 #import pdb; pdb.set_trace()
 
 version_TR = 0 # can be between 0 and 11
-version = '06'
+version = '06-rep1'
 #version = f"01-TR{version_TR}" 
 if version == '01':
     version_TR = 0
@@ -72,12 +72,11 @@ task_halves = ['1', '2']
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '03'
+    subj_no = '01'
 
-# subjects = ['sub-07', 'sub-08', 'sub-09', 'sub-11', 'sub-12', 'sub-13', 'sub-14', 'sub-15', 'sub-16', 'sub-17', 'sub-18','sub-19', 'sub-20',  'sub-22', 'sub-23','sub-24']
-#subjects = ['sub-01']    
-subjects = [f"sub-{subj_no}"]
-
+# subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36) if i not in (21, 29)]  
+# subjects = [f"sub-{subj_no}"]
+subjects = subs_list = [f'sub-{i:02}' for i in range(1, 11) if i not in (21, 29)]
     
 if version == '05':
     split_buttons = True
@@ -297,7 +296,7 @@ for sub in subjects:
                 elif version in ['06-rep1']:
                     partial_df = df[((df['rep_runs.thisRepN'] == 1) & (~df['task_length'].isna()) & (df['config_type'] == task))]
                     dur_EV = partial_df['task_length'].tolist()
-                    mag_EV = np.ones(len(EV_dic[f"{task}_{EVs_to_save_str}n_onset"]))
+                    mag_EV = np.ones(len(EV_dic[f"{task}_{EVs_to_save_str}_onset"]))
                     
                 
                 EV = mc.analyse.analyse_MRI_behav.create_EV(EV_dic[f"{task}_{EVs_to_save_str}_onset"], dur_EV , mag_EV, f"{task}_{EVs_to_save_str}_onset", EV_folder, first_TR_at, version, version_TR)

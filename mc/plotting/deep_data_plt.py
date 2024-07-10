@@ -102,6 +102,38 @@ def plot_dataRDM_by_voxel_coords(data_RDM_object, voxel_coord, ref_image, cond_n
 
 
 
+    
+def plot_group_avg_RDM_by_coord(subj_data_RDM_dir, voxel_coord, condition_names):
+    # import pdb; pdb.set_trace()
+    #std_image = standard_img.get_fdata()
+    # x,y,z = std_image.shape #can I get a standard from somewhere??
+    # Calculate the linear index in the flattened array
+    #linear_index = voxel_coord[0] * (y * z) + voxel_coord[1] * z + voxel_coord[2]
+    #RDM_index = np.where(data_RDM_object.rdm_descriptors['voxel_index']==linear_index)[0][0]
+    subj_data_RDMs = []
+    for sub in subj_data_RDM_dir:
+        subj_data_RDMs.append(subj_data_RDM_dir[sub][voxel_coord[0], voxel_coord[1], voxel_coord[2], :])
+    
+    avg_data_RDM = np.mean(subj_data_RDMs, axis = 0)
+    
+    dims = int(( 1 + math.sqrt(1 + 8* avg_data_RDM.shape[0])) /2)
+    RDM = np.zeros((dims, dims))
+    triu_indices = np.triu_indices(dims, 1)
+    RDM[triu_indices] = avg_data_RDM
+    mc.plotting.deep_data_plt.RDM_plotting(RDM, titelstring = "Group avg, 1 - Pearson's r", condition_name_string = condition_names['1'])
+    
+    
+    RMDs_per_subj = {}
+    for i, sub in enumerate(subj_data_RDMs):
+        dims = int(( 1 + math.sqrt(1 + 8* sub.shape[0])) /2)
+        RMDs_per_subj[i] = np.zeros((dims, dims))
+        triu_indices = np.triu_indices(dims, 1)
+        RMDs_per_subj[i][triu_indices] = sub
+    # import pdb; pdb.set_trace()
+    mc.plotting.deep_data_plt.RDM_plotting_each_subj(RMDs_per_subj, "per subj, 1 - Pearson's r", condition_names['1'])
+    # then, also for each subject
+
+
 # exchange a value of a certain voxel and save file
 def save_changed_voxel_val(voxel_val, brain_map_to_store, RDM_reference_obj, voxel_coord, file_path, file_name, ref_image_for_affine):
     # import pdb; pdb.set_trace()
@@ -142,5 +174,39 @@ def RDM_plotting(RDM, titelstring, condition_name_string):
     ax.grid(False)
     
     cbar = ax.figure.colorbar(im, ax=ax)
-    cbar.ax.set_ylabel(f"titelstring", rotation=-90, va="bottom")
+    cbar.ax.set_ylabel(f"{titelstring}", rotation=-90, va="bottom")
     plt.tight_layout()  
+    
+def RDM_plotting_each_subj(subject_RDMs, title_string, condition_name_string):
+    # import pdb; pdb.set_trace()
+    n_subjects = len(subject_RDMs)
+    n_cols = 6  # Adjust based on how many columns you want in the grid
+    n_rows = int(np.ceil(n_subjects / n_cols))
+    
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 20))  # Adjust figsize as needed
+    
+    for i, RDM in enumerate(subject_RDMs):
+        ax = axes[i // n_cols, i % n_cols]
+        cmap = plt.get_cmap('BlueYellowRed')
+        im = ax.imshow(subject_RDMs[RDM], cmap=cmap, interpolation='none', aspect='equal', vmin=0, vmax=2)
+        
+        for j in range(-1, len(subject_RDMs[RDM]), 4):
+            ax.axhline(j + 0.5, color='white', linewidth=1)
+            ax.axvline(j + 0.5, color='white', linewidth=1)
+        
+        ticks = np.arange(0.5, len(subject_RDMs[RDM]))
+        ax.set_xticks(ticks)
+        ax.set_yticks(ticks)
+        ax.set_xticklabels(condition_name_string, rotation=45, ha='right', fontsize=8)
+        ax.set_yticklabels(condition_name_string, fontsize=8)
+        
+        ax.grid(False)
+        
+        ax.set_title(f"{title_string} Subject {i+1}", fontsize=10)
+    
+    # Remove any empty subplots
+    for j in range(i+1, n_rows * n_cols):
+        fig.delaxes(axes.flatten()[j])
+    
+    fig.tight_layout()
+    plt.show()   

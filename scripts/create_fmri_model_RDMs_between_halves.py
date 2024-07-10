@@ -73,7 +73,7 @@ import sys
 # import pdb; pdb.set_trace()
 
 regression_version = '03-4' 
-RDM_version = '03-5'
+RDM_version = '05'
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -81,17 +81,20 @@ else:
     subj_no = '01'
 
 subjects = [f"sub-{subj_no}"]
+subjects = subs_list = [f'sub-{i:02}' for i in range(1, 35) if i not in (21, 29)]
+
 temporal_resolution = 10
 
 task_halves = ['1', '2']
-fmriplotting = True # incorrect for 01 false for 03-im!
+fmriplotting = False # incorrect for 01 false for 03-im!
 fmri_save = True
 
 add_run_counts_model = False # this doesn't work with the current analysis
 
   
 models_I_want = mc.analyse.analyse_MRI_behav.models_I_want(RDM_version)
-
+if 'state_masked' in models_I_want:
+    models_I_want.remove('state_masked')
 
 # import pdb; pdb.set_trace()
         
@@ -105,7 +108,7 @@ for sub in subjects:
         data_dir_beh = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/pilot/{sub}/beh/"
         RDM_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
         if os.path.isdir(data_dir_beh):
-            print("Running on laptop.")
+            print(f"Running on laptop, now subject {sub}")
         else:
             data_dir_beh = f"/home/fs0/xpsy1114/scratch/data/pilot/{sub}/beh/"
             RDM_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
@@ -114,7 +117,7 @@ for sub in subjects:
         file = data_dir_beh + f"{sub}_fmri_pt{task_half}.csv"
         
         # crucial step 1: get the behavioural data I need from the subject files.
-        configs, rew_list, rew_index, walked_path, steps_subpath_alltasks_empty, subpath_after_steps, timings, regressors = mc.analyse.analyse_MRI_behav.extract_behaviour(file)
+        configs, rew_list, rew_index, walked_path, steps_subpath_alltasks_empty, subpath_after_steps, timings, regressors, keys_executed, keys_not_executed, timings_keys_not_executed = mc.analyse.analyse_MRI_behav.extract_behaviour(file)
 
         # so now, account for the temporal resolution that you want:
         for reg in regressors:
@@ -214,11 +217,16 @@ for sub in subjects:
                         result_model_dict = {**models_from_03_1, **model_from_04}
                     
                     # WIP
-                    import pdb; pdb.set_trace()
+                    #
+                    #
+                    #
+                    #import pdb; pdb.set_trace()
                     # add another model- the action model
-                    result_model_dict['action'] = mc.simulation.predictions.action_model(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
-                    
-                    
+                    # result_model_dict['action'] = mc.simulation.predictions.action_model(curr_trajectory, curr_timings, curr_stepnumber,  keys_executed, keys_not_executed, timings_keys_not_executed, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
+                    #
+                    #
+                    #
+                    #
                     # WIP
                     
                     # import pdb; pdb.set_trace()
@@ -314,7 +322,7 @@ for sub in subjects:
                     if RDM_version == '01-1':
                         all_models_dict[model][config] = result_model_dict[model]
                     # run the regression on all simulated data, except for those as I have a different way of creating them:
-                    elif model not in ['one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs']:
+                    elif model not in ['one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs', 'state_masked']:
                         all_models_dict[model][config] = mc.simulation.predictions.transform_data_to_betas(repeats_model_dict[model], regressors_matrix)
     
     
@@ -405,6 +413,8 @@ for sub in subjects:
         corrected_model = RSM_dict_betw_TH[model][int(len(RSM_dict_betw_TH[model])/2):, 0:int(len(RSM_dict_betw_TH[model])/2):]
         corrected_model = (corrected_model + np.transpose(corrected_model))/2
         corrected_RSM_dict[model] = corrected_model
+
+    
     
     # just for me. what happens if I add the ['reward_location', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc']?
     # addition_model = corrected_RSM_dict['reward_location'] + corrected_RSM_dict['one_future_rew_loc'] + corrected_RSM_dict['two_future_rew_loc'] + corrected_RSM_dict['three_future_rew_loc'] 

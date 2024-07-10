@@ -51,7 +51,31 @@ def check_GLM_regressors(design_matrix_X):
         print("The design matrix is ill-conditioned.")
 
 
+def any_entry_in_row_notnan(entry):
+    if isinstance(pd.notna(entry), list):
+        x = True
+    elif isinstance(pd.notna(entry), (str, int)):
+        if pd.notna(entry):
+           x = True
+        else:
+            x = False
+    else:
+        x = False
 
+    # if np.isnan(entry):
+    #     x = True    
+    # elif isinstance(entry, list):
+    #     if pd.notna(entry).any:
+    #         x = True  
+    #     else:
+    #         x = False
+    # elif isinstance(entry, int):
+    #     if pd.notna(entry):
+    #         x = True
+    #     else:
+    #         x = False
+    return x
+        
 
 
 def get_conditions_list(RDM_dir):
@@ -306,58 +330,84 @@ def extract_behaviour(file):
     
     # add a colum with nav_key presses that counted based on nav_key_task.rt and t_step_press_curr_run
     # and one with the actual keys they pressed based on nav_key_task.keys and t_step_press_curr_run
-    # and one with erroneous keys.
+    # and one with keys presssed, but never executed.
     
-    indices_with_TR_keys = df[df['TR_key.started'].notna()].index.to_list()
-
-    for task_no, row_index in enumerate(indices_with_TR_keys):
+    indices_with_nav_keys = df[df['nav_key_task.started'].notna()].index.to_list()
+    
+    for task_no, row_index in enumerate(indices_with_nav_keys):
         curr_list_of_keys = ast.literal_eval(df.at[row_index, 'nav_key_task.keys'])
         curr_key_times = ast.literal_eval(df.at[row_index, 'nav_key_task.rt'])
         count_error_keys = 0
+        overall_error_counter = 0
+        
         if task_no == 0:
-            for i in range(0, indices_with_TR_keys[task_no]):
+            for i in range(0, indices_with_nav_keys[task_no]):
+                if round(df.at[i, 't_step_press_curr_run'],3) < 0:
+                    curr_key_times = np.insert(curr_key_times, 0, 0)
+                    curr_list_of_keys = np.insert(curr_list_of_keys, 0, 0)
+                    df.at[i, 't_step_press_curr_run'] = 0  
                 if round(df.at[i, 't_step_press_curr_run'],3) == round(curr_key_times[i],3):
+                    count_error_keys = 0
                     df.at[i, 'curr_key'] = curr_list_of_keys[i]
                     df.at[i, 'curr_key_time'] = curr_key_times[i]
                 else:
                     count_error_keys =+ 1
-                    df.at[i, 'wrong_key'] = curr_list_of_keys[i]
-                    df.at[i, 'wrong_key_time'] = curr_key_times[i]
-                    df.at[i, 'wrong_key_counter'] = count_error_keys
-        elif task_no > 0:
-            for i_list,i in enumerate(range(indices_with_TR_keys[task_no-1]+1, indices_with_TR_keys[task_no])): 
+                    overall_error_counter =+ 1
+                    df.at[i, 'non-exe_key'] = curr_list_of_keys[i]
+                    df.at[i, 'non-exe_key_time'] = curr_key_times[i]
+                    df.at[i, 'non-exe_key_counter'] = count_error_keys
+                    count_error_keys = 0
+
+        elif task_no > 0:  
+            #import pdb; pdb.set_trace()              
+            for i_list,i in enumerate(range(indices_with_nav_keys[task_no-1]+1, indices_with_nav_keys[task_no])): 
+                # for some sad reason, there are some (rare) glitches in the behavioural tables.
+                # one glitch is that the first time of t_step_press_curr_run is shorter than 0
+                if round(df.at[indices_with_nav_keys[task_no-1]+1, 't_step_press_curr_run'],3) <= 0:
+                    curr_key_times = np.insert(curr_key_times, 0, 0)
+                    curr_list_of_keys = np.insert(curr_list_of_keys, 0, 0)
+                    df.at[indices_with_nav_keys[task_no-1]+1, 't_step_press_curr_run'] = 0
+                # one glitch is that the first time of t_step_press_curr_run is even longer than the last recorded press of this task
+                if round(df.at[indices_with_nav_keys[task_no-1]+1, 't_step_press_curr_run'],3) > round(df.at[indices_with_nav_keys[task_no]-1, 't_step_press_curr_run'],3):
+                    df.at[indices_with_nav_keys[task_no-1]+1, 't_step_press_curr_run'] = curr_key_times[i_list]
+                # another glitch is that there is a negative number somewhere in the middle of the task
                 if round(df.at[i, 't_step_press_curr_run'],3) < 0:
-                    continue
-                if round(df.at[i, 't_step_press_curr_run'],3) == round(curr_key_times[i_list + count_error_keys],3):
-                    df.at[i, 'curr_key'] = curr_list_of_keys[i_list + count_error_keys]
-                    df.at[i, 'curr_key_time'] = curr_key_times[i_list + count_error_keys]
+                    df.at[i, 't_step_press_curr_run'] = curr_key_times[i_list]
+
+                # then, test for what I am actually interested in:
+                    # which of the key presses was the recorded one?
+                if round(df.at[i, 't_step_press_curr_run'],3) == round(curr_key_times[i_list + overall_error_counter],3):
+                    df.at[i, 'curr_key'] = curr_list_of_keys[i_list + overall_error_counter]
+                    df.at[i, 'curr_key_time'] = curr_key_times[i_list + overall_error_counter]
                 else:
-                    wrong_keys = [curr_list_of_keys[i_list + count_error_keys]]
-                    wrong_times = [round(curr_key_times[i_list + count_error_keys],4)]
+                    wrong_keys = [str(curr_list_of_keys[i_list + overall_error_counter])]
+                    wrong_times = [str(round(curr_key_times[i_list + overall_error_counter],4))]
                     count_error_keys += 1
-                    # UUUUGH THERE IS A INDEXING ERROR HAPPENING HERE
-                    # CONTINUE HERE!!!
-                    # HERE
-                    # 
-                    #
-                    #
+                    overall_error_counter += 1
                     
-                    while round(df.at[i, 't_step_press_curr_run'],3) != round(curr_key_times[i_list + count_error_keys],3) :
-                        # import pdb; pdb.set_trace()
-                        wrong_keys.append(curr_list_of_keys[i_list + count_error_keys])
-                        wrong_times.append(round(curr_key_times[i_list + count_error_keys], 4))
+                    while round(df.at[i, 't_step_press_curr_run'],3) != round(curr_key_times[i_list + overall_error_counter],3) :
+                        wrong_keys.append(str(curr_list_of_keys[i_list + overall_error_counter]))
+                        wrong_times.append(str(round(curr_key_times[i_list + overall_error_counter], 4)))
                         count_error_keys += 1
-                    # once back to a correct key, fill in the one that you missed previously
-                    df.at[i, 'wrong_key'] = wrong_keys
-                    #df.at[i, 'wrong_key_time'] = wrong_times
+                        overall_error_counter +=1
                     
-                    df.at[i, 'curr_key'] = curr_list_of_keys[i_list + count_error_keys]
-                    df.at[i, 'curr_key_time'] = curr_key_times[i_list + count_error_keys]
-                    df.at[i, 'wrong_key_counter'] = count_error_keys
+                    # if these columns don't exist yet, there will be an error if I try to fill with
+                    # several items. instead, first create with 0, then fill.
+                    df.at[i, 'non-exe_key_time'] = 0
+                    df.at[i, 'non-exe_key'] = 0
+                    
+                    # once back to a correct key, fill in the one that you missed previously
+                    df.at[i, 'non-exe_key'] = wrong_keys
+                    df.at[i, 'non-exe_key_time'] = wrong_times
+                    
+                    df.at[i, 'curr_key'] = curr_list_of_keys[i_list + overall_error_counter]
+                    df.at[i, 'curr_key_time'] = curr_key_times[i_list + overall_error_counter]
+                    df.at[i, 'non-exe_key_counter'] = count_error_keys
+                    count_error_keys = 0
         
         
     
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     # add columns whith field numbers 
     for index, row in df.iterrows():
         # current locations
@@ -390,14 +440,20 @@ def extract_behaviour(file):
     rew_index = {}
     subpath_after_steps = {}
     steps_subpath_alltasks = {}
+    keys_executed = {}
+    keys_not_exe = {}
+    timings_not_exe = {}
     for config in configs:
         walked_path[config] = []
+        keys_executed[config] = []
         timings[config] = []
         rew_list[config] = []
         rew_timing[config] = []
         rew_index[config] = []
         subpath_after_steps[config] = []
         steps_subpath_alltasks[config] = []
+        keys_not_exe[config] = []
+        timings_not_exe[config] = []
     
     
     for index, row in df.iterrows():
@@ -421,13 +477,24 @@ def extract_behaviour(file):
             else: # if it isnt, then take the reward start time from last rew D as start field.
                 timings[task_config].append(df.at[index -1, 't_step_press_global'])
             walked_path[task_config].append([row['curr_loc_x_coord'], row['curr_loc_y_coord']])
+            keys_executed[task_config].append([row['curr_key']])
+            if mc.analyse.analyse_MRI_behav.any_entry_in_row_notnan(row['non-exe_key']):
+            # if pd.notna(row['non-exe_key']):
+            # if not pd.isna(row['non-exe_key'])[0]:
+                keys_not_exe[task_config].append([row['non-exe_key']])
+                timings_not_exe[task_config].append([row['non-exe_key_time']])
         
         # if this is just a normal walking field
         elif not np.isnan(row['t_step_press_global']): # always except if this is reward D 
             # if its reward D, then it will be covered by the first if: if not np.isnan(row['next_task']): 
             timings[task_config].append(df.at[index - 1, 't_step_press_global'])  # Extract value from index-1
             walked_path[task_config].append([row['curr_loc_x_coord'], row['curr_loc_y_coord']])
+            keys_executed[task_config].append([row['curr_key']])
+            if mc.analyse.analyse_MRI_behav.any_entry_in_row_notnan(row['non-exe_key']):
+                keys_not_exe[task_config].append([row['non-exe_key']])
+                timings_not_exe[task_config].append([row['non-exe_key_time']])
        
+        
         # next check if its a reward field
         if not np.isnan(row['rew_loc_x']): # if this is a reward field.
             # check if this is either at reward D(thus complete) or ignore interrupted trials
@@ -443,19 +510,28 @@ def extract_behaviour(file):
                         # first check if there are more tasks coming after, otherwise error
                         if (row['config_type'] != df.at[index +1, 'config_type']):
                             walked_path[task_config].append([row['curr_loc_x_coord'], row['curr_loc_y_coord']])
+                            keys_executed[task_config].append([row['curr_key']])
                             timings[task_config].append(df.at[index -1, 't_reward_start'])
+                            if mc.analyse.analyse_MRI_behav.any_entry_in_row_notnan(row['non-exe_key']):
+                                keys_not_exe[task_config].append([row['non-exe_key']])
+                                timings_not_exe[task_config].append([row['non-exe_key_time']])
+                            
                     else:
                         # however also add these fields if this is the very last reward!
                         if row['repeat'] == 4:
                             walked_path[task_config].append([row['curr_loc_x_coord'], row['curr_loc_y_coord']])
+                            keys_executed[task_config].append([row['curr_key']])
                             timings[task_config].append(df.at[index -1, 't_step_press_global'])
+                            if mc.analyse.analyse_MRI_behav.any_entry_in_row_notnan(row['non-exe_key']):
+                                keys_not_exe[task_config].append([row['non-exe_key']])
+                                timings_not_exe[task_config].append([row['non-exe_key_time']])
                             
                 else:
                     rew_index[task_config].append(len(walked_path[task_config])-1) 
             else:
                 continue
 
-    return configs, rew_list, rew_index, walked_path, steps_subpath_alltasks, subpath_after_steps, timings, regressors
+    return configs, rew_list, rew_index, walked_path, steps_subpath_alltasks, subpath_after_steps, timings, regressors, keys_executed, keys_not_exe, timings_not_exe
 
 
 def models_I_want(RDM_version):

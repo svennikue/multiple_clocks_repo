@@ -69,7 +69,7 @@ import sys
 import random
 
 regression_version = '03-4' 
-RDM_version = '05'
+RDM_version = '03-1'
 
 binary = False
 neuron_weighting = False
@@ -79,7 +79,7 @@ neuron_weighting = False
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '01'
+    subj_no = '02'
 
 subjects = [f"sub-{subj_no}"]
 #subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36) if i not in (21, 29)]
@@ -199,18 +199,19 @@ for sub in subjects:
                     data_RDM_dir = pickle.load(file)
                     data_RDM = rsatoolbox.rdm.rdms.rdms_from_dict(data_RDM_dir)
         
-    # # ACC [54, 63, 41]
-    # mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [54, 63, 41], ref_img, condition_names)
-    # mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [54, 63, 41], ref_img, condition_names)
+    # ACC [54, 63, 41]
+    mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [54, 63, 41], ref_img, condition_names)
+    mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [54, 63, 41], ref_img, condition_names)
     
     # # visual cortex [72, 17, 9]
     # mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [72, 17, 9], ref_img, condition_names)
     # mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [72, 17, 9], ref_img, condition_names)
     
-    # # hippocampus [43, 50, 17]
-    # mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [43, 50, 17], ref_img, condition_names)
-    # mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [43, 50, 17], ref_img, condition_names)
+    # hippocampus [43, 50, 17]
+    mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [43, 50, 17], ref_img, condition_names)
+    mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [43, 50, 17], ref_img, condition_names)
     
+    import pdb; pdb.set_trace() 
     
     # Step 3: load and compute the model RDMs.
     # 3-1 load the data files I created.

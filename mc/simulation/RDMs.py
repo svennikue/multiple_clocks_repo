@@ -29,7 +29,7 @@ def plot_RDMs(RDM_dict, no_tasks, save_dir = None, string_for_ticks = None):
         # Set the upper triangle to be empty
         corr_mat = RDM_dict[RDM]
         
-        corr_mat[np.triu_indices(int(len(RDM_dict[RDM])), k=1)] = np.nan
+        corr_mat[np.tril_indices(int(len(RDM_dict[RDM])), k=-1)] = np.nan
         im = ax.imshow(corr_mat, cmap=cmap, interpolation = 'none', aspect = 'equal', vmin=-1, vmax=1); 
         for i in range(indexline_after-1,int(len(RDM_dict[RDM])),indexline_after):
             ax.axhline(i+0.5, color='white', linewidth=1)
@@ -80,10 +80,10 @@ def plot_RDMs(RDM_dict, no_tasks, save_dir = None, string_for_ticks = None):
 def within_task_RDM(activation_matrix, ax=None, plotting = False, titlestring = None, intervalline= None):
     # import pdb; pdb.set_trace()
     activation_matrix = np.nan_to_num(activation_matrix)
-    RSM = np.corrcoef(activation_matrix.T) # pairwise pearson corr of columns, excluding NA/nulls
+    RDM = 1 - np.corrcoef(activation_matrix.T) # pairwise pearson corr of columns, excluding NA/nulls
     # replace nans with 0s afterwards
     # there will be nans in the RSM if the variance in one row is the same > division by 0
-    RSM = np.nan_to_num(RSM)
+    RDM = np.nan_to_num(RDM)
     # from Nili et al., 2014: 
         # "Popular distance measures are the correlation distance (1 minus the Pearson correlation, 
         # "computed across voxels or sites of the two activity patterns), the Euclidean distance 
@@ -104,7 +104,7 @@ def within_task_RDM(activation_matrix, ax=None, plotting = False, titlestring = 
             for interval in range(0, len(activation_matrix[0]), intervalline):
                 plt.axvline(interval, color='white', ls='dashed')
         # sn.heatmap(corr_matrix, annot = False)
-    return RSM
+    return RDM
 
 
 
