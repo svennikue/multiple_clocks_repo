@@ -31,7 +31,7 @@ RDM settings (creating the representations):
     04-5 -> STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw.
     04-5-A -> STATE model. only include those tasks that are completely different from all others; i.e. no reversed, no backw. ; EXCLUDING state A
     
-    05 -> modelling only baths and only rewards to compare them later!
+    05 -> modelling only paths and only rewards to compare them later!
     
 
 GLM ('regression') settings (creating the 'bins'):
@@ -58,6 +58,8 @@ GLM ('regression') settings (creating the 'bins'):
     04 - 40 regressors; for every task, only the paths are modelled
     04-4 - 24 regressors; for the tasks where every reward is at a different location (A,C,E)
     05 - locations + button presses 
+    06 - averaging across the entire task
+    06-rep 1 - averaging across the entire task, but only the first repeat.
     
 
 @author: Svenja Küchenhoff, 2024
@@ -72,7 +74,7 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '03-4' 
+regression_version = '06-rep1' 
 RDM_version = '05'
 
 if len (sys.argv) > 1:
@@ -81,12 +83,12 @@ else:
     subj_no = '01'
 
 subjects = [f"sub-{subj_no}"]
-subjects = subs_list = [f'sub-{i:02}' for i in range(1, 35) if i not in (21, 29)]
+# subjects = subs_list = [f'sub-{i:02}' for i in range(1, 35) if i not in (21, 29)]
 
 temporal_resolution = 10
 
 task_halves = ['1', '2']
-fmriplotting = False # incorrect for 01 false for 03-im!
+fmriplotting = True # incorrect for 01 false for 03-im!
 fmri_save = True
 
 add_run_counts_model = False # this doesn't work with the current analysis
@@ -250,7 +252,7 @@ for sub in subjects:
                 # import pdb; pdb.set_trace()    
                 # NEXT STEP: prepare the regression- select the correct regressors, filter keys starting with 'A1_backw'
                 regressors_curr_task = {key: value for key, value in regressors.items() if key.startswith(config)}
-                
+
                 # identify at which index the next task starts.
                 index_next_repeat = []
                 subpath_to_find_indices = next(key for key in regressors_curr_task if key.startswith(f"{config}_A_path"))
@@ -272,7 +274,7 @@ for sub in subjects:
 
                 if regression_version in ['03-rep4', '03-4-rep4']:
                     regressors_curr_task = {regressor: regressors_curr_task[regressor][index_next_repeat[3]:index_next_repeat[4]] for regressor in regressors_curr_task}
-
+                
 
 
 
@@ -309,6 +311,16 @@ for sub in subjects:
                     else:
                         regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if key.endswith('path')}
      
+                if regression_version in ['06', '06-rep1']:
+                    regressors_curr_task ={}
+                    regressors_curr_task[config] = np.ones(len(repeats_model_dict[model][2]))
+                    if regression_version == '06-rep1':
+                        regressors_curr_task[config][:] = 0
+                        regressors_curr_task[config][0:index_next_repeat[1]] = 1
+                    
+                # import pdb; pdb.set_trace() 
+                    # regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if key.endswith('reward')}
+                    # x = {key: value for key, value in regressors_curr_task.items() if key.endswith('reward')}
                     
                 # sort alphabetically.
                 sorted_regnames_curr_task = sorted(regressors_curr_task.keys())

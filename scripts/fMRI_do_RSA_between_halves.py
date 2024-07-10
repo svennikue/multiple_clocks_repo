@@ -84,7 +84,7 @@ else:
 subjects = [f"sub-{subj_no}"]
 #subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36) if i not in (21, 29)]
 
-load_old = False
+load_old = True
 visualise_RDMs = False
 
 
@@ -170,34 +170,34 @@ for sub in subjects:
         #np.save(f"{RDM_dir}/searchlight_neighbors.npy", neighbors)
             
     # Step 2: loading and computing the data RDMs
-    if load_old:
-        with open(f"{results_dir}/data_RDM.pkl", 'rb') as file:
-            data_RDM = pickle.load(file)
-        if visualise_RDMs == True:
-            mc.analyse.analyse_MRI_behav.visualise_data_RDM(mni_x=53, mni_y = 30, mni_z= 2, data_RDM_file= data_RDM, mask=mask)
+    # if load_old:
+    #     with open(f"{results_dir}/data_RDM.pkl", 'rb') as file:
+    #         data_RDM = pickle.load(file)
+    #     if visualise_RDMs == True:
+    #         mc.analyse.analyse_MRI_behav.visualise_data_RDM(mni_x=53, mni_y = 30, mni_z= 2, data_RDM_file= data_RDM, mask=mask)
+    # else:
+    data_RDM_file_2d= mc.analyse.analyse_MRI_behav.read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM_conditions, sort_as = 'dict-two-halves')
+    condition_names = mc.analyse.analyse_MRI_behav.get_conditions_list(RDM_dir)
+    data_conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(no_RDM_conditions)])), (1,2)).transpose(),2*no_RDM_conditions)  
+    # now prepare the data RDM file. 
+    # final data RDM file; 
+    if RDM_version in ['01', '01-1']:
+        data_conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(no_RDM_conditions)])), (1)).transpose(),no_RDM_conditions)  
+        data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='correlation')
     else:
-        data_RDM_file_2d= mc.analyse.analyse_MRI_behav.read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM_conditions, sort_as = 'dict-two-halves')
-        condition_names = mc.analyse.analyse_MRI_behav.get_conditions_list(RDM_dir)
-        data_conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(no_RDM_conditions)])), (1,2)).transpose(),2*no_RDM_conditions)  
-        # now prepare the data RDM file. 
-        # final data RDM file; 
-        if RDM_version in ['01', '01-1']:
-            data_conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(no_RDM_conditions)])), (1)).transpose(),no_RDM_conditions)  
-            data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='correlation')
+        # for all other cases, cross correlated between task-halves.
+        # this is defining both task halves/ runs: 0 is first half, the second one is 1s
+        sessions = np.concatenate((np.zeros(no_RDM_conditions), np.ones(no_RDM_conditions)))
+        if not os.path.exists(f"{data_rdm_dir}/data_RDM-pkl"):
+            data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='crosscorr', cv_descr=sessions)
+            # save  so that I don't need to recompute - or don't save bc it's massive
+            data_RDM.save(f"{data_rdm_dir}/data_RDM-pkl", 'pkl')
+            # potentially build in a progress function for this one! takes ages..
+            mc.analyse.analyse_MRI_behav.save_data_RDM_as_nifti(data_RDM, data_rdm_dir, "data_RDM.nii.gz", ref_img)
         else:
-            # for all other cases, cross correlated between task-halves.
-            # this is defining both task halves/ runs: 0 is first half, the second one is 1s
-            sessions = np.concatenate((np.zeros(no_RDM_conditions), np.ones(no_RDM_conditions)))
-            if not os.path.exists(f"{data_rdm_dir}/data_RDM.pkl"):
-                data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='crosscorr', cv_descr=sessions)
-                # save  so that I don't need to recompute - or don't save bc it's massive
-                data_RDM.save(f"{data_rdm_dir}/data_RDM-pkl", 'pkl')
-                # potentially build in a progress function for this one! takes ages..
-                mc.analyse.analyse_MRI_behav.save_data_RDM_as_nifti(data_RDM, data_rdm_dir, "data_RDM.nii.gz", ref_img)
-            else:
-                with open(f"{data_rdm_dir}/data_RDM-pkl", 'rb') as file:
-                    data_RDM_dir = pickle.load(file)
-                    data_RDM = rsatoolbox.rdm.rdms.rdms_from_dict(data_RDM_dir)
+            with open(f"{data_rdm_dir}/data_RDM-pkl", 'rb') as file:
+                data_RDM_dir = pickle.load(file)
+                data_RDM = rsatoolbox.rdm.rdms.rdms_from_dict(data_RDM_dir)
         
     # ACC [54, 63, 41]
     mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [54, 63, 41], ref_img, condition_names)
