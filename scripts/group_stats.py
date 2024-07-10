@@ -20,8 +20,15 @@ RDM_version = '05'
 
 subjects = subs_list = [f'sub-{i:02}' for i in range(1, 11) if i not in (21, 29)]
 
-
-group_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/group"
+source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks"
+if os.path.isdir(source_dir):
+    print(f"Running on laptop")
+else:
+    source_dir = "/home/fs0/xpsy1114/scratch"
+    print(f"Running on Cluster, setting {source_dir} as data directory")
+    
+ 
+group_dir = f"{source_dir}/data/derivatives/group"
 if not os.path.isdir(group_dir):
     os.makedirs(group_dir)
     
@@ -29,13 +36,8 @@ subj_data_RDM_dir = {}
 
 if not os.path.isdir(f"{group_dir}/subj_data_RDM_dir.pkl"):
     for sub in subjects:
-        data_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}"
-        if os.path.isdir(data_dir):
-            print(f"Running on laptop, for {sub}")
-        else:
-            data_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}"
-            print(f"Running on Cluster, setting {data_dir} as data directory, for subject {sub}")
-        
+        print(f"now loading {sub}")
+        data_dir = f"{source_dir}/data/derivatives/{sub}"
         mean_data_RDM_dir = f"{data_dir}/func/data_RDM_glmbase_{regression_version}"
         data_RDM_subj = load_img(f"{mean_data_RDM_dir}/data_RDM_std.nii.gz")
         subj_data_RDM_dir[sub] = data_RDM_subj.get_fdata()  
@@ -61,13 +63,16 @@ condition_names = mc.analyse.analyse_MRI_behav.get_conditions_list(RDM_dir)
 # as well as each group avg data RDM!
 
 standard_image = load_img('/Users/xpsy1114/Documents/projects/multiple_clocks/data/masks/MNI152_T1_2mm_brain.nii.gz')
-MNI_coords = [48, 87, 46] #ACC [54, 63, 41]
+MNI_coords = [47, 87, 47] #ACC [47 87 47]
 mc.plotting.deep_data_plt.plot_group_avg_RDM_by_coord(subj_data_RDM_dir, MNI_coords, condition_names)
 
-MNI_coords = [59, 54, 26] #hippocampus
+MNI_coords = [32, 53, 29] #hippocampus
 mc.plotting.deep_data_plt.plot_group_avg_RDM_by_coord(subj_data_RDM_dir, MNI_coords, condition_names)
 
-MNI_coords = [53, 20, 47] #visual cortex
+MNI_coords = [43, 24, 39] #visual cortex
+mc.plotting.deep_data_plt.plot_group_avg_RDM_by_coord(subj_data_RDM_dir, MNI_coords, condition_names)
+
+MNI_coords = [60, 81, 31] #OFC 
 mc.plotting.deep_data_plt.plot_group_avg_RDM_by_coord(subj_data_RDM_dir, MNI_coords, condition_names)
 
 

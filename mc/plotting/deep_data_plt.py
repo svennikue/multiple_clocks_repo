@@ -122,7 +122,7 @@ def plot_group_avg_RDM_by_coord(subj_data_RDM_dir, voxel_coord, condition_names)
     tril_indices_nan = np.tril_indices(dims)
     RDM[tril_indices_nan] = np.nan
     RDM[triu_indices] = avg_data_RDM
-    mc.plotting.deep_data_plt.RDM_plotting(RDM, titelstring = "Group avg, 1 - Pearson's r", condition_name_string = condition_names['1'])
+    mc.plotting.deep_data_plt.RDM_plotting(RDM, titelstring = f"Group avg, 1 - Pearson's r at {voxel_coord}", condition_name_string = condition_names['1'])
     
     
     RMDs_per_subj = {}
@@ -134,7 +134,7 @@ def plot_group_avg_RDM_by_coord(subj_data_RDM_dir, voxel_coord, condition_names)
         RMDs_per_subj[i][tril_indices_nan] = np.nan
         RMDs_per_subj[i][triu_indices] = sub
     # import pdb; pdb.set_trace()
-    mc.plotting.deep_data_plt.RDM_plotting_each_subj(RMDs_per_subj, "per subj, 1 - Pearson's r", condition_names['1'])
+    mc.plotting.deep_data_plt.RDM_plotting_each_subj(RMDs_per_subj, f"per subj, 1 - Pearson's r at {voxel_coord}", condition_names['1'])
     # then, also for each subject
 
 
