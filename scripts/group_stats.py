@@ -92,6 +92,5 @@ for i, sub in enumerate(subjects):
 if plot_model_RDMs:
     if not os.path.exists(RDM_dir):
         os.makedirs(RDM_dir)
-        def plot_RDMs(RDM_dict, no_tasks, save_dir = None, string_for_ticks = None):
     mc.simulation.RDMs.plot_RDMs(avg_model_RDM, len(avg_model_RDM[model]), string_for_ticks = condition_names['1'])
 

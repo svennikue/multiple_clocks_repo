@@ -119,6 +119,8 @@ def plot_group_avg_RDM_by_coord(subj_data_RDM_dir, voxel_coord, condition_names)
     dims = int(( 1 + math.sqrt(1 + 8* avg_data_RDM.shape[0])) /2)
     RDM = np.zeros((dims, dims))
     triu_indices = np.triu_indices(dims, 1)
+    tril_indices_nan = np.tril_indices(dims)
+    RDM[tril_indices_nan] = np.nan
     RDM[triu_indices] = avg_data_RDM
     mc.plotting.deep_data_plt.RDM_plotting(RDM, titelstring = "Group avg, 1 - Pearson's r", condition_name_string = condition_names['1'])
     
@@ -128,6 +130,8 @@ def plot_group_avg_RDM_by_coord(subj_data_RDM_dir, voxel_coord, condition_names)
         dims = int(( 1 + math.sqrt(1 + 8* sub.shape[0])) /2)
         RMDs_per_subj[i] = np.zeros((dims, dims))
         triu_indices = np.triu_indices(dims, 1)
+        tril_indices_nan = np.tril_indices(dims)
+        RMDs_per_subj[i][tril_indices_nan] = np.nan
         RMDs_per_subj[i][triu_indices] = sub
     # import pdb; pdb.set_trace()
     mc.plotting.deep_data_plt.RDM_plotting_each_subj(RMDs_per_subj, "per subj, 1 - Pearson's r", condition_names['1'])
@@ -161,7 +165,9 @@ def RDM_plotting(RDM, titelstring, condition_name_string):
     cmaps.BlueYellowRed
     cmap = plt.get_cmap('BlueYellowRed')
     # import pdb; pdb.set_trace()
-    im = ax.imshow(RDM, cmap=cmap, interpolation = 'none', aspect = 'equal', vmin=0, vmax=2); 
+    min_scale = np.nanmin(RDM)
+    max_scale = np.nanmax(RDM)
+    im = ax.imshow(RDM, cmap=cmap, interpolation = 'none', aspect = 'equal', vmin =min_scale, vmax=max_scale); 
     for i in range(-1,len(RDM), 4):
         ax.axhline(i+0.5, color='white', linewidth=1)
         ax.axvline(i+0.5, color='white', linewidth=1)
@@ -184,11 +190,20 @@ def RDM_plotting_each_subj(subject_RDMs, title_string, condition_name_string):
     n_rows = int(np.ceil(n_subjects / n_cols))
     
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 20))  # Adjust figsize as needed
-    
+    # Calculate global min and max values for color scaling
+    min_list = []
+    max_list = []
+    for subj in subject_RDMs:
+        min_list.append(np.nanmin(subject_RDMs[subj]))
+        max_list.append(np.nanmax(subject_RDMs[subj]))
+        
+    global_min = np.min(min_list)
+    global_max = np.max(max_list)
+
     for i, RDM in enumerate(subject_RDMs):
         ax = axes[i // n_cols, i % n_cols]
         cmap = plt.get_cmap('BlueYellowRed')
-        im = ax.imshow(subject_RDMs[RDM], cmap=cmap, interpolation='none', aspect='equal', vmin=0, vmax=2)
+        im = ax.imshow(subject_RDMs[RDM], cmap=cmap, interpolation='none', aspect='equal', vmin=global_min, vmax=global_max)
         
         for j in range(-1, len(subject_RDMs[RDM]), 4):
             ax.axhline(j + 0.5, color='white', linewidth=1)
@@ -201,12 +216,13 @@ def RDM_plotting_each_subj(subject_RDMs, title_string, condition_name_string):
         ax.set_yticklabels(condition_name_string, fontsize=8)
         
         ax.grid(False)
-        
         ax.set_title(f"{title_string} Subject {i+1}", fontsize=10)
     
     # Remove any empty subplots
     for j in range(i+1, n_rows * n_cols):
         fig.delaxes(axes.flatten()[j])
-    
+
+    cbar = ax.figure.colorbar(im, ax=ax)
+    cbar.ax.set_ylabel(f"{title_string}", rotation=-90, va="bottom")
     fig.tight_layout()
     plt.show()   
