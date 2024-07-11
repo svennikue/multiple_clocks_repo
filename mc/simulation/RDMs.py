@@ -19,18 +19,26 @@ from scipy import stats
 import statsmodels.api as sm
 import colormaps as cmaps
 
-def plot_RDMs(RDM_dict, no_tasks, save_dir = None, string_for_ticks = None):
+def plot_RDMs(RDM_dict, no_tasks, save_dir = None, string_for_ticks = None, one_minus = True):
     for RDM in RDM_dict:
         # import pdb; pdb.set_trace()
         indexline_after = int(len(RDM_dict[RDM])/no_tasks)
         fig, ax = plt.subplots(figsize=(5,4))
+        if one_minus == True:
+            max_lim = 2
+            min_lim = 0
+            label = '1 - correlation'
+        else:
+            max_lim = 1
+            min_lim = -1
+            label = 'correlation'
         cmaps.BlueYellowRed
         cmap = plt.get_cmap('BlueYellowRed')
         # Set the upper triangle to be empty
         corr_mat = RDM_dict[RDM]
         
         corr_mat[np.tril_indices(int(len(RDM_dict[RDM])), k=-1)] = np.nan
-        im = ax.imshow(corr_mat, cmap=cmap, interpolation = 'none', aspect = 'equal', vmin=-1, vmax=1); 
+        im = ax.imshow(corr_mat, cmap=cmap, interpolation = 'none', aspect = 'equal', vmin=min_lim, vmax=max_lim); 
         for i in range(indexline_after-1,int(len(RDM_dict[RDM])),indexline_after):
             ax.axhline(i+0.5, color='white', linewidth=1)
             ax.axvline(i+0.5, color='white', linewidth=1)
@@ -63,7 +71,7 @@ def plot_RDMs(RDM_dict, no_tasks, save_dir = None, string_for_ticks = None):
         # Adjust the appearance of ticks and grid lines
         ax.grid(False)
         cbar = ax.figure.colorbar(im, ax=ax)
-        cbar.ax.set_ylabel("Pearson's r", rotation=-90, va="bottom")
+        cbar.ax.set_ylabel(label, rotation=-90, va="bottom")
         
         
         # Adjust the layout to prevent cutoff of labels and colorbar
@@ -97,7 +105,7 @@ def within_task_RDM(activation_matrix, ax=None, plotting = False, titlestring = 
         if ax is None:
             plt.figure()
             ax = plt.axes()   
-        plt.imshow(RSM, interpolation = 'none', cmap='ocean')
+        plt.imshow(RDM, interpolation = 'none', cmap='ocean')
         plt.title(f'{titlestring}')
         if intervalline:
             intervalline = int(intervalline)
@@ -257,12 +265,19 @@ def corr_matrices(matrix_one, matrix_two, exclude_diag = True):
     # import pdb; pdb.set_trace()
     dimension = len(matrix_one) 
     if exclude_diag == True:
-        diag_array_one = list(matrix_one[np.tril_indices(dimension, -1)])
-        diag_array_two = list(matrix_two[np.tril_indices(dimension, -1)])
+        diag_array_one = matrix_one[np.triu_indices(dimension, 1)]
+        diag_array_two = matrix_two[np.triu_indices(dimension, 1)]
     else: # this is diagonal plus upper triangle
         diag_array_one = list(matrix_one[np.triu_indices(dimension)])
         diag_array_two = list(matrix_two[np.triu_indices(dimension)])
-    coef = scipy.stats.kendalltau(diag_array_one, diag_array_two) # kandalls tau, because:
+    # exclude all nan
+    
+    nan_filter_one = np.isnan(diag_array_one)
+    filtered_one = diag_array_one[~nan_filter_one]
+    nan_filter_two = np.isnan(diag_array_two)
+    filtered_two = diag_array_two[~nan_filter_two]
+    
+    coef = scipy.stats.kendalltau(filtered_one, filtered_two) # kandalls tau, because:
     # from Nili et al., 2014:
         # "We do not in general want to assume a linear relationship between the dissimilarities.
         # "Unless we are confident that our model captures not only the neuronal representational 

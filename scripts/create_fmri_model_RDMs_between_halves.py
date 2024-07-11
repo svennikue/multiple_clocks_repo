@@ -74,13 +74,13 @@ import sys
 
 # import pdb; pdb.set_trace()
 
-regression_version = '06-rep1' 
+regression_version = '03-1' 
 RDM_version = '05'
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '01'
+    subj_no = '02'
 
 subjects = [f"sub-{subj_no}"]
 # subjects = subs_list = [f'sub-{i:02}' for i in range(1, 35) if i not in (21, 29)]
@@ -434,21 +434,22 @@ for sub in subjects:
     if fmriplotting:
         if not os.path.exists(RDM_dir):
             os.makedirs(RDM_dir)
-        mc.simulation.RDMs.plot_RDMs(corrected_RSM_dict, len(configs), RDM_dir, sorted_keys_dict['1'])
+        mc.simulation.RDMs.plot_RDMs(corrected_RSM_dict, len(configs), RDM_dir, sorted_keys_dict['1'],  one_minus = True)
     
         # make my own correlation matrix.
         # Schema - Partial Schema - Subgoal Progress - Location - State
         intercorr_RDM_dict = {}
         corr_RDMs = np.empty((len(corrected_RSM_dict),len(corrected_RSM_dict)))
+        
         for x, RDM_one in enumerate(corrected_RSM_dict):
             for y, RDM_two in enumerate(corrected_RSM_dict):
                 if y == 0:
                     tick_string = [RDM_two]
                 else:
                     tick_string.append(RDM_two)
-                corr_RDMs[x,y] = mc.simulation.RDMs.corr_matrices_pearson(corrected_RSM_dict[RDM_one], corrected_RSM_dict[RDM_two])[0][1]               
+                corr_RDMs[x,y] = mc.simulation.RDMs.corr_matrices(corrected_RSM_dict[RDM_one], corrected_RSM_dict[RDM_two])[0]              
         intercorr_RDM_dict['correlation_try_two'] = corr_RDMs
-        mc.simulation.RDMs.plot_RDMs(intercorr_RDM_dict, len(corr_RDMs), RDM_dir, string_for_ticks = tick_string)       
+        mc.simulation.RDMs.plot_RDMs(intercorr_RDM_dict, len(corr_RDMs), RDM_dir, string_for_ticks = tick_string, one_minus = False)       
 
     
     if fmri_save: 

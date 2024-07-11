@@ -163,7 +163,8 @@ def save_changed_voxel_val(voxel_val, brain_map_to_store, RDM_reference_obj, vox
 def RDM_plotting(RDM, titelstring, condition_name_string):
     fig, ax = plt.subplots(figsize=(5,4))
     cmaps.BlueYellowRed
-    cmap = plt.get_cmap('BlueYellowRed')
+    # cmap = plt.get_cmap('BlueYellowRed')
+    cmap = plt.get_cmap('viridis')
     # import pdb; pdb.set_trace()
     min_scale = np.nanmin(RDM)
     max_scale = np.nanmax(RDM)
@@ -202,7 +203,8 @@ def RDM_plotting_each_subj(subject_RDMs, title_string, condition_name_string):
 
     for i, RDM in enumerate(subject_RDMs):
         ax = axes[i // n_cols, i % n_cols]
-        cmap = plt.get_cmap('BlueYellowRed')
+        # cmap = plt.get_cmap('BlueYellowRed')
+        cmap = plt.get_cmap('viridis')
         im = ax.imshow(subject_RDMs[RDM], cmap=cmap, interpolation='none', aspect='equal', vmin=global_min, vmax=global_max)
         
         for j in range(-1, len(subject_RDMs[RDM]), 4):

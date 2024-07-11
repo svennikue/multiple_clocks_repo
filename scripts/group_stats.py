@@ -13,6 +13,7 @@ import os
 from nilearn.image import load_img
 import pickle
 import numpy as np
+import math
 
 plot_model_RDMs = True
 regression_version = '03-4' 
@@ -98,4 +99,18 @@ if plot_model_RDMs:
     if not os.path.exists(RDM_dir):
         os.makedirs(RDM_dir)
     mc.simulation.RDMs.plot_RDMs(avg_model_RDM, len(avg_model_RDM[model]), string_for_ticks = condition_names['1'])
+
+# test if the state effect is present in the average RDM.
+model = 'state'
+subj_data_RDMs = []
+for sub in subj_data_RDM_dir:
+    subj_data_RDMs.append(subj_data_RDM_dir[sub][MNI_coords[0], MNI_coords[1], MNI_coords[2], :])
+
+avg_data_RDM_state_peak = np.mean(subj_data_RDMs, axis = 0)
+triu_indices = np.triu_indices(len(avg_model_RDM['state']), 1)
+state_model_RDM = triu_indices[avg_model_RDM['state']]
+
+avg_state_high = np.mean(avg_data_RDM_state_peak[state_model_RDM>0])
+avg_state_low = np.mean(avg_data_RDM_state_peak[state_model_RDM<0])
+
 
