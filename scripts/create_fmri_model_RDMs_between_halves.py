@@ -84,10 +84,10 @@ RDM_version = '03-1-act'
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '02'
+    subj_no = '01'
 
 subjects = [f"sub-{subj_no}"]
-subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36) if i not in (21, 29)]
+# subjects = subs_list = [f'sub-{i:02}' for i in range(1, 35) if i not in (21, 29)]
 
 temporal_resolution = 10
 

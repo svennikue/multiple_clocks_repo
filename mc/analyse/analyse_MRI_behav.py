@@ -339,24 +339,43 @@ def extract_behaviour(file):
         curr_key_times = ast.literal_eval(df.at[row_index, 'nav_key_task.rt'])
         count_error_keys = 0
         overall_error_counter = 0
-        
+                    
         if task_no == 0:
+            # import pdb; pdb.set_trace()
             for i in range(0, indices_with_nav_keys[task_no]):
                 if round(df.at[i, 't_step_press_curr_run'],3) < 0:
                     curr_key_times = np.insert(curr_key_times, 0, 0)
                     curr_list_of_keys = np.insert(curr_list_of_keys, 0, 0)
                     df.at[i, 't_step_press_curr_run'] = 0  
-                if round(df.at[i, 't_step_press_curr_run'],3) == round(curr_key_times[i],3):
+                if round(df.at[i, 't_step_press_curr_run'],3) == round(curr_key_times[i + overall_error_counter],3):
                     count_error_keys = 0
                     df.at[i, 'curr_key'] = curr_list_of_keys[i]
                     df.at[i, 'curr_key_time'] = curr_key_times[i]
                 else:
-                    count_error_keys =+ 1
-                    overall_error_counter =+ 1
-                    df.at[i, 'non-exe_key'] = curr_list_of_keys[i]
-                    df.at[i, 'non-exe_key_time'] = curr_key_times[i]
+                    wrong_keys = [str(curr_list_of_keys[i + overall_error_counter])]
+                    wrong_times = [str(round(curr_key_times[i + overall_error_counter],4))]
+                    count_error_keys += 1
+                    overall_error_counter += 1
+                    
+                    while round(df.at[i, 't_step_press_curr_run'],3) != round(curr_key_times[i + overall_error_counter],3) :
+                        wrong_keys.append(str(curr_list_of_keys[i + overall_error_counter]))
+                        wrong_times.append(str(round(curr_key_times[i + overall_error_counter], 4)))
+                        count_error_keys += 1
+                        overall_error_counter +=1
+                    
+                    # if these columns don't exist yet, there will be an error if I try to fill with
+                    # several items. instead, first create with 0, then fill.
+                    df.at[i, 'non-exe_key_time'] = 0
+                    df.at[i, 'non-exe_key'] = 0
+                    
+                    # once back to a correct key, fill in the one that you missed previously
+                    df.at[i, 'non-exe_key'] = wrong_keys
+                    df.at[i, 'non-exe_key_time'] = wrong_times
+                    
+                    df.at[i, 'curr_key'] = curr_list_of_keys[i + overall_error_counter]
+                    df.at[i, 'curr_key_time'] = curr_key_times[i + overall_error_counter]
                     df.at[i, 'non-exe_key_counter'] = count_error_keys
-                    count_error_keys = 0
+                    count_error_keys = 0        
 
         elif task_no > 0:  
             #import pdb; pdb.set_trace()              
@@ -407,7 +426,7 @@ def extract_behaviour(file):
         
         
     
-    # import pdb; pdb.set_trace()
+    
     # add columns whith field numbers 
     for index, row in df.iterrows():
         # current locations

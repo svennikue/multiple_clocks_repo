@@ -68,8 +68,8 @@ import pickle
 import sys
 import random
 
-regression_version = '03-4' 
-RDM_version = '03-1'
+regression_version = '03' 
+RDM_version = '03-1-act'
 
 binary = False
 neuron_weighting = False
@@ -84,7 +84,7 @@ else:
 subjects = [f"sub-{subj_no}"]
 #subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36) if i not in (21, 29)]
 
-load_old = True
+load_old = False
 visualise_RDMs = False
 
 
@@ -93,7 +93,7 @@ task_halves = ['1', '2']
 print(f"Now running RSA for RDM version {RDM_version} based on subj GLM {regression_version} for subj {subj_no}")
 
 
-models_I_want = mc.analyse.analyse_MRI_behav.models_I_want(RDM_version)
+models_I_want = mc.analyse.analyse_MRI_behav.select_models_I_want(RDM_version)
 
 # import pdb; pdb.set_trace() 
 
@@ -352,10 +352,15 @@ for sub in subjects:
 
     
     # combo clocks and controls
-    if RDM_version == '03-1' and regression_version in ['03', '03-4', '03-l', '03-e', '03-rep1', '03-rep2','03-rep3','03-rep4','03-rep5']:
+    if RDM_version in ['03-1'] and regression_version in ['03', '03-4', '03-l', '03-e', '03-rep1', '03-rep2','03-rep3','03-rep4','03-rep5']:
         multiple_regressors_first = ['curr-and-future-rew-locs', 'location', 'phase', 'state']
         results_combo_model= mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
         model_name = 'combo-clrw-loc-ph-st'
+
+    if RDM_version in ['03-1-act']:
+        multiple_regressors_first = ['curr-and-future-rew-locs', 'location', 'phase', 'state', 'action-box_only-rew', 'buttons']
+        results_combo_model= mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
+        model_name = 'combo-clrw-loc-ph-st-act-but'
 
     # combo clocks and controls
     elif RDM_version == '04': #modelling only path rings
@@ -400,7 +405,7 @@ for sub in subjects:
 
 
     # combo split clocks    
-    elif RDM_version in ['03-1'] and regression_version in ['03', '03-4','03-l', '03-e', '03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5']:
+    elif RDM_version in ['03-1', '03-1-act'] and regression_version in ['03', '03-4','03-l', '03-e', '03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5']:
       multiple_regressors = ['location', 'one_future_rew_loc', 'two_future_rew_loc', 'three_future_rew_loc']
       results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
       model_name = 'combo_split-clock'
@@ -469,6 +474,20 @@ for sub in subjects:
         model_name = 'combo_state_loc'
         for i, model in enumerate(multiple_regressors):
             mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
-        
-        
+    
+    if RDM_version in ['03-1-act']:
+        multiple_regressors = ['action-box_only-rew', 'buttonsXphase_only-rew', 'buttons', 'location', 'phase', 'state']
+        results_combo_model= mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
+        model_name = 'combo-actrw-buph-bu-loc-ph-st'
+        for i, model in enumerate(multiple_regressors):
+            mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+    
+    if RDM_version in ['03-1-act']:
+        multiple_regressors = ['action-box_only-rew', 'clocks_only-rew', 'buttons', 'location']
+        results_combo_model= mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
+        model_name = 'combo-actrw-cl-bu-loc'
+        for i, model in enumerate(multiple_regressors):
+            mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+    
+    
         
