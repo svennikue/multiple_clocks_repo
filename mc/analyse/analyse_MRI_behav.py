@@ -432,7 +432,7 @@ def extract_behaviour(file):
 
     configs = df['config_type'].dropna().unique()
     
-    
+    # import pdb; pdb.set_trace()   
     walked_path = {}
     timings = {}
     rew_list = {}
@@ -534,7 +534,7 @@ def extract_behaviour(file):
     return configs, rew_list, rew_index, walked_path, steps_subpath_alltasks, subpath_after_steps, timings, regressors, keys_executed, keys_not_exe, timings_not_exe
 
 
-def models_I_want(RDM_version):
+def select_models_I_want(RDM_version):
     if RDM_version in ['01', '01-1']: # 01 doesnt work yet! 
         models_I_want = ['trial_type_similarity', 'execution_similarity', 'presentation_similarity']
     elif RDM_version in ['02', '02-A']: #modelling paths + rewards, creating all possible models 
@@ -545,6 +545,8 @@ def models_I_want(RDM_version):
         models_I_want = ['location', 'phase', 'state', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew', 'curr_rings_split_clock_sin', 'one_fut_rings_split_clock_sin', 'two_fut_rings_split_clock_sin', 'three_fut_rings_split_clock_sin', 'clocks_only-rew_sin']
     elif RDM_version in ['03-1', '03-2']:  # modelling only rewards, splitting clocks later in a different way - after the regression.
         models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs']
+    elif RDM_version in ['03-1-act']:
+        models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs','buttonsXphase_only-rew', 'action-box_only-rew', 'buttons']
     elif RDM_version in ['03-5', '03-5-A', '04-5', '04-5-A']:
         models_I_want = ['state', 'state_masked']
     elif RDM_version in ['03-3']:  # modelling only rewards, splitting clocks later in a different way - after the regression; ignoring reward A
@@ -557,7 +559,9 @@ def models_I_want(RDM_version):
         models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_no-rew', 'clocks_no-rew']
     elif RDM_version in ['05']: # only paths AND only rewards to later compare both models: based on 3.1 and 4
         models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'clocks_no-rew', 'state_masked']
-    return models_I_want
+    else:
+        models_I_want = []
+    return(models_I_want)
 
 
 

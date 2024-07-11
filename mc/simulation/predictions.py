@@ -1870,8 +1870,7 @@ def set_location_ephys(walked_path, reward_fields, grid_size = 3, plotting = Fal
 
 # to create the model RDMs.
 def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, temporal_resolution = 10, plot = False, only_rew = False, only_path = False, split_clock = False, imaginary = False, lag_weighting = False):
-    #import pdb; pdb.set_trace()
-    
+    # import pdb; pdb.set_trace()
     cumsumsteps = np.cumsum(step_number)
     
     # code up the 2d location neurons. this is e.g. a 3x3 grid tiled with multivatiate
@@ -2192,8 +2191,209 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     else:
         result_dict['midnight'] = midn_model
         result_dict['clocks'] = clo_model
-
+        
+        
     return result_dict
+
+
+def create_action_model_RDMs_fmri(keys_pressed, timings, no_key_executions, temporal_resolution, only_rew = True, only_path= False, no_phase_neurons=3):
+    # import pdb; pdb.set_trace()
+    
+    cumsumkeypresses = np.cumsum(no_key_executions)
+    
+    no_button_neurons = 4
+    # code up overlapping button neurons.
+    # they will be like states, but slightly more overlapping.
+    neuron_button_functions = []
+    means_at_button = np.linspace(0,(no_button_neurons-1), no_button_neurons)
+    for div in means_at_button:
+        neuron_button_functions.append(norm(loc = div, scale = 1/(no_button_neurons/2)))   
+    # x = np.linspace(0,3,1000)
+    # plt.figure();
+    # for neuron in range(0, len(neuron_button_functions)):
+    #     plt.plot(x, neuron_button_functions[neuron].pdf(x))
+         
+    # make the phase continuum
+    # set the phases such that the mean is between 0 and 1/no_phase_neurons; 1/no_phase_neurons and 2/no_phase_neurons,
+    # and 2/no_phase_neurons and 1.
+    neuron_phase_functions = []
+    means_at_phase = np.linspace(-np.pi, np.pi, (no_phase_neurons*2)+1)
+    means_at_phase = means_at_phase[1::2].copy() 
+    for div in means_at_phase:
+        neuron_phase_functions.append(scipy.stats.vonmises(1/(no_phase_neurons/10), loc=div))
+        
+        # careful! this has to be read differently due to vonmises
+        # to plot the functions.
+        # plt.figure(); 
+        # for f in neuron_task_progress_functions:
+        #     plt.plot(np.linspace(0,1,1000), f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)/np.max(f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)))                
+    
+    # make the state continuum, no smoothness in state.
+    neuron_state_functions = []
+    means_at_state = np.linspace(0,(len(no_key_executions)-1), (len(no_key_executions)))
+    for div in means_at_state:
+        neuron_state_functions.append(norm(loc = div, scale = 1/len(no_key_executions)))     
+    # x = np.linspace(0,3,1000)
+    # plt.figure();
+    # for neuron in range(0, len(neuron_state_functions)):
+    #     plt.plot(x, neuron_state_functions[neuron].pdf(x))
+    # now loop through all subpaths.
+    for count_paths, pathlength in enumerate(no_key_executions):
+        # first step: divide into subpaths
+        press_index = np.insert(cumsumkeypresses, 0, 0)
+        curr_path = keys_pressed[press_index[count_paths] : press_index[count_paths+1]]
+        buttons_over_time = np.repeat(curr_path, repeats = temporal_resolution)
+
+        # second step: buttons model.
+        # make the location matrix
+        # import pdb; pdb.set_trace()
+        button_matrix = np.empty([no_button_neurons,len(buttons_over_time)])
+        button_matrix[:] = np.nan
+        # and then simply fill the matrix with the respective functions
+        # read out the respective button coding 
+        for timepoint, curr_button in enumerate(buttons_over_time):
+            for button_neuron in range(0, len(neuron_button_functions)):
+                button_matrix[button_neuron, timepoint] = neuron_button_functions[button_neuron].pdf(curr_button-1)
+ 
+        # third: create the state matrix (only for the action-musicbox-model)
+        state_matrix = np.empty([len(neuron_state_functions), len(buttons_over_time)])
+        state_matrix[:] = np.nan
+        for row in range(0, len(neuron_state_functions)):
+            state_matrix[row] = neuron_state_functions[row].pdf(count_paths)
+        
+        # fourth: make phase neurons
+        # fit subpaths into 0:1 trajectory
+        samplepoints = np.linspace(-np.pi, np.pi, len(buttons_over_time))
+        
+        phase_matrix_subpath = np.empty([len(neuron_phase_functions), len(samplepoints)])
+        phase_matrix_subpath[:] = np.nan
+        # read out the respective phase coding 
+        for timepoint, read_out_point in enumerate(samplepoints):
+            for row in range(0, len(neuron_phase_functions)):
+                phase_matrix_subpath[row, timepoint] = neuron_phase_functions[row].pdf(read_out_point)
+        
+        # phase state neurons - these will be used to fill the musicbox with neurons that track progress.
+        phase_state_subpath = np.repeat(state_matrix, repeats = len(phase_matrix_subpath), axis = 0)
+        for phase in range(0, len(phase_state_subpath), len(phase_matrix_subpath)):
+            phase_state_subpath[phase: phase+len(phase_matrix_subpath)] = phase_matrix_subpath * phase_state_subpath[phase: phase+len(phase_matrix_subpath)]
+        
+        # The following is to test if there are PURELY rings of the musicbox model that are 
+        # activated at when going to a reward locations or only for buttons that lead to locations without reward
+        
+        # if this filter is on, there will only be 'bumps' for those rings that are at a reward
+        if only_rew == True:
+            # import pdb; pdb.set_trace()
+            # only rewarded steps
+            reward_mask = np.append(np.zeros(len(curr_path)-1),1)
+            reward_mask = np.repeat(reward_mask, repeats = temporal_resolution)
+            
+            button_rew_matrix = np.zeros([no_button_neurons,len(buttons_over_time)])
+            # and then simply fill the matrix with the respective functions
+            for timepoint, curr_button in enumerate(buttons_over_time):
+                if reward_mask[timepoint] > 0:
+                    for button_neuron in range(0, len(neuron_button_functions)):
+                        button_rew_matrix[button_neuron, timepoint] = neuron_button_functions[button_neuron].pdf(curr_button-1)
+            midnight_model_subpath = np.repeat(button_rew_matrix, repeats = no_phase_neurons, axis = 0)
+        
+        # if this filter is on, there will only be 'bumps' for those rings that are NOT rewarded (at the path)
+        elif only_path == True:
+            # 0 all non-path neurons!
+            path_mask = np.append(np.ones(len(curr_path)-1),0)
+            path_mask = np.repeat(path_mask, repeats = temporal_resolution)
+            
+            button_path_matrix = np.zeros([no_button_neurons,len(buttons_over_time)])
+            # and then simply fill the matrix with the respective functions
+            for timepoint, curr_button in enumerate(buttons_over_time):
+                if path_mask[timepoint] > 0:
+                    for button_neuron in range(0, len(neuron_button_functions)):
+                        button_path_matrix[button_neuron, timepoint] = neuron_button_functions[button_neuron].pdf(curr_button-1)
+            midnight_model_subpath = np.repeat(button_path_matrix, repeats = no_phase_neurons, axis = 0)
+        
+        else:
+            # fifth step: midnight. = make location neurons phase sensitive.
+            midnight_model_subpath = np.repeat(button_matrix, repeats = no_phase_neurons, axis = 0)
+       
+
+        # then multiply three rows of the location matrix (1 location) with the phase_matrix_subpath, respectively
+        for button in range(0, len(midnight_model_subpath), no_phase_neurons):
+            midnight_model_subpath[button:button+no_phase_neurons] = midnight_model_subpath[button:button+no_phase_neurons] * phase_matrix_subpath
+        
+        # last step: put subpaths together and concat into a bigger matrix.
+        if count_paths == 0:
+            midn_model = midnight_model_subpath.copy()
+            phas_model = phase_matrix_subpath.copy()
+            button_model = button_matrix.copy()
+            stat_model = state_matrix.copy()
+            phas_stat = phase_state_subpath.copy()
+        elif count_paths > 0:
+            midn_model = np.concatenate((midn_model,midnight_model_subpath), axis = 1)
+            phas_model = np.concatenate((phas_model, phase_matrix_subpath), axis = 1)
+            button_model = np.concatenate((button_model, button_matrix), axis = 1)
+            stat_model = np.concatenate((stat_model, state_matrix), axis = 1)
+            phas_stat = np.concatenate((phas_stat, phase_state_subpath), axis = 1)
+    
+    
+    # sixth. make the CLOCK MODEL by filling the midnight model with progress neurons.
+    # I am going to fuse the midnight and the phas_stat model. Thus they need to be equally 'strong' > normalise!
+    norm_midn = (midn_model.copy()-np.min(midn_model))/(np.max(midn_model)-np.min(midn_model))
+    norm_phas_stat = (phas_stat.copy()-np.min(phas_stat))/(np.max(phas_stat)-np.min(phas_stat))
+    
+    # stick the neuron-clock matrices in 
+    full_action_box_dummy = np.zeros([len(norm_midn)*len(norm_phas_stat),len(norm_midn[0])]) # fields times phases.
+    # for ever 12th row, stick a row of the midnight matrix in (corresponds to the respective first neuron of the clock)
+    for row in range(0, len(norm_midn)):
+        full_action_box_dummy[row*len(norm_phas_stat),:]= norm_midn[row,:].copy()
+    
+    # copy the neuron per clock firing pattern
+    # I will manipulate clocks_per_step, and use clocks_per_step.dummy as control to check for overwritten stuff.
+    action_box_model =  full_action_box_dummy.copy()
+ 
+    # now loop through the already filled columns (every 12th one) and fill the clocks if activated.
+    for row in range(0, len(norm_midn)):
+        local_maxima = argrelextrema(norm_midn[row,:], np.greater_equal, order = 5, mode = 'wrap')
+        # delete if the local maxima are neighbouring
+        local_maxima = local_maxima[0].copy()
+        for index, maxima in enumerate(local_maxima):
+            if maxima == local_maxima[index-1]+1:
+                # print(maxima, index)
+                local_maxima = np.delete(local_maxima, index)        
+        for activation_neuron in local_maxima:
+            horizontal_shift_by = np.argmax(norm_phas_stat[:,activation_neuron])
+            # shift the clock around so that the activation neuron comes first
+            shifted_clock = np.roll(norm_phas_stat, horizontal_shift_by*-1, axis = 0)
+            # adjust the firing strength according to the local maxima
+            firing_factor = norm_midn[row, activation_neuron].copy()
+            #if firing_factor > 0.5:
+            #    import pdb; pdb.set_trace()
+            shifted_adjusted_clock = shifted_clock.copy()*firing_factor
+            # then, for the full clock model, add the values to the existing clocks, but also replace the first row by 0!!
+            shifted_adjusted_clock[0] = np.zeros((len(shifted_adjusted_clock[0])))
+            action_box_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = action_box_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()
+    
+    # import pdb; pdb.set_trace()
+    # save results as dict
+    result_dict = {}
+    result_dict['buttons'] = button_model
+    result_dict['phase'] = phas_model
+    result_dict['phase_state'] = phas_stat
+    result_dict['state'] = stat_model
+    
+    if only_rew == True:
+        # name all affected models different so that one notices the different representation
+        result_dict['buttonsXphase_only-rew'] = midn_model
+        result_dict['action-box_only-rew'] = action_box_model
+    elif only_path == True:
+        # name all affected models different so that one notices the different representation
+        result_dict['buttonsXphase_no-rew'] = midn_model
+        result_dict['action-box_no-rew'] = action_box_model
+    else:
+        result_dict['buttonsXphase'] = midn_model
+        result_dict['action-box'] = action_box_model
+        
+    return result_dict
+
+    
+    
 
 
 def create_mask_same_tasks(curr_RDM, reward_per_task_per_taskhalf_dict, excluding):
