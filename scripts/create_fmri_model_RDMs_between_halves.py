@@ -92,7 +92,7 @@ subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10
 
 task_halves = ['1', '2']
-fmriplotting = False # incorrect for 01 false for 03-im!
+fmriplotting = True # incorrect for 01 false for 03-im!
 fmri_save = True
 
 add_run_counts_model = False # this doesn't work with the current analysis
@@ -223,31 +223,10 @@ for sub in subjects:
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = True, imaginary = True)    
                     elif RDM_version in ['03-tasklag']: # modelling the clocks with imaginary numbers
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = True, imaginary = False, lag_weighting = True)    
-                    
-                    
-                    #
-                    # WIP
                     elif RDM_version in ['03-1-act']:
                         models_from_03_1 = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
                         model_from_action = mc.simulation.predictions.create_action_model_RDMs_fmri(curr_keys, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, only_rew = True, only_path= False)    
                         result_model_dict = {**models_from_03_1, **model_from_action}
-                    
-                        # import pdb; pdb.set_trace()
-
-                    # WIP
-                    #
-                    #
-                    #
-                    #import pdb; pdb.set_trace()
-                    # add another model- the action model
-                    # result_model_dict['action'] = mc.simulation.predictions.action_model(curr_trajectory, curr_timings, curr_stepnumber,  keys_executed, keys_not_executed, timings_keys_not_executed, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
-                    #
-                    #
-                    #
-                    #
-                    # WIP
-
-
                     elif RDM_version in ['03-1', '03-2', '03-3']:# modelling only clocks + splitting clocks later in different way.
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
                     elif RDM_version in ['04', '04-5-A', '04-A']: # modelling only paths + splitting clocks [new]
@@ -363,7 +342,7 @@ for sub in subjects:
                     if RDM_version == '01-1':
                         all_models_dict[model][config] = result_model_dict[model]
                     # run the regression on all simulated data, except for those as I have a different way of creating them:
-                    elif model not in ['one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs', 'state_masked']:
+                    elif model not in ['one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs', 'state_masked', 'one_future_step2rew', 'two_future_step2rew', 'three_future_step2rew', 'curr-and-future-steps2rew']:
                         all_models_dict[model][config] = mc.simulation.predictions.transform_data_to_betas(repeats_model_dict[model], regressors_matrix)
     
     
@@ -377,9 +356,18 @@ for sub in subjects:
                     all_models_dict['two_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -2, axis = 1) 
                     if RDM_version in ['03-1', '03-1-act', '03-2', '05']:
                         all_models_dict['three_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -3, axis = 1) 
+                    # try if curr-and-future-rew-locs is the same as rew clocks
+                    all_models_dict['curr-and-future-rew-locs'][config] = np.concatenate((all_models_dict['location'][config], all_models_dict['one_future_rew_loc'][config], all_models_dict['two_future_rew_loc'][config], all_models_dict['three_future_rew_loc'][config]), 0)
                     
-                    # try something.
-                    all_models_dict['curr-and-future-rew-locs'][config] = np.concatenate((all_models_dict['one_future_rew_loc'][config], all_models_dict['two_future_rew_loc'][config], all_models_dict['three_future_rew_loc'][config]), 0)
+                    # do the same for the buttons!
+                    if RDM_version in ['03-1-act']:
+                        all_models_dict['one_future_step2rew'][config] = np.roll(all_models_dict['buttons'][config], -1, axis = 1) 
+                        all_models_dict['two_future_step2rew'][config] = np.roll(all_models_dict['buttons'][config], -2, axis = 1) 
+                        all_models_dict['three_future_step2rew'][config] = np.roll(all_models_dict['buttons'][config], -3, axis = 1) 
+                        # try if curr-and-future-steps-to-reward is the same as action box
+                        all_models_dict['curr-and-future-steps2rew'][config] = np.concatenate((all_models_dict['buttons'][config], all_models_dict['one_future_step2rew'][config], all_models_dict['two_future_step2rew'][config], all_models_dict['three_future_step2rew'][config]), 0)
+                        
+                    
                     
         # then, lastly, safe the all_models_dict in the respective task_half.
         models_between_task_halves[task_half] = all_models_dict
