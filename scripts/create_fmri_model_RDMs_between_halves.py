@@ -78,13 +78,13 @@ import pandas as pd
 
 # import pdb; pdb.set_trace()
 
-regression_version = '03' 
+regression_version = '03-4' 
 RDM_version = '03-1-act'
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '01'
+    subj_no = '02'
 
 subjects = [f"sub-{subj_no}"]
 # subjects = subs_list = [f'sub-{i:02}' for i in range(1, 35) if i not in (21, 29)]

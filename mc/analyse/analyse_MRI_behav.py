@@ -798,7 +798,7 @@ def make_loc_EV(dataframe, x_coord, y_coord):
 
 # set up RSA with multiple regressors.
 def multiple_RDMs_RSA(list_of_regressor_RDMs, model_RDM_dictionary, data_RDM_file):
-    # import pdb; pdb.set_trace()
+    
     arguments = [model_RDM_dictionary[model] for model in list_of_regressor_RDMs]
     concatenated_RDMs = rsatoolbox.rdm.concat(*arguments)
     concatenated_RDMs_model = rsatoolbox.model.ModelWeighted('concatenated_RDMs', concatenated_RDMs)
@@ -806,6 +806,7 @@ def multiple_RDMs_RSA(list_of_regressor_RDMs, model_RDM_dictionary, data_RDM_fil
     # # CHANGE THIS BACK LATER
     # for d in data_RDM_file:
     #     test = mc.analyse.analyse_MRI_behav.evaluate_model(concatenated_RDMs_model, d)
+    # import pdb; pdb.set_trace()
     
     result_multiple_RDMs_RSA = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(concatenated_RDMs_model, d) for d in tqdm(data_RDM_file, desc='running GLM for all searchlights in combo model'))
     

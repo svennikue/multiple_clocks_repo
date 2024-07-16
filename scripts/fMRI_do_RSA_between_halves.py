@@ -68,7 +68,7 @@ import pickle
 import sys
 import random
 
-regression_version = '03' 
+regression_version = '03-4' 
 RDM_version = '03-1-act'
 
 binary = False
@@ -79,7 +79,7 @@ neuron_weighting = False
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '02'
+    subj_no = '01'
 
 subjects = [f"sub-{subj_no}"]
 #subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36) if i not in (21, 29)]
@@ -199,19 +199,19 @@ for sub in subjects:
                 data_RDM_dir = pickle.load(file)
                 data_RDM = rsatoolbox.rdm.rdms.rdms_from_dict(data_RDM_dir)
         
-    # ACC [54, 63, 41]
-    mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [54, 63, 41], ref_img, condition_names)
-    mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [54, 63, 41], ref_img, condition_names)
+    # # ACC [54, 63, 41]
+    # mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [54, 63, 41], ref_img, condition_names)
+    # mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [54, 63, 41], ref_img, condition_names)
     
-    # # visual cortex [72, 17, 9]
-    # mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [72, 17, 9], ref_img, condition_names)
-    # mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [72, 17, 9], ref_img, condition_names)
+    # # # visual cortex [72, 17, 9]
+    # # mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [72, 17, 9], ref_img, condition_names)
+    # # mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [72, 17, 9], ref_img, condition_names)
     
-    # hippocampus [43, 50, 17]
-    mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [43, 50, 17], ref_img, condition_names)
-    mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [43, 50, 17], ref_img, condition_names)
+    # # hippocampus [43, 50, 17]
+    # mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [43, 50, 17], ref_img, condition_names)
+    # mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [43, 50, 17], ref_img, condition_names)
     
-    import pdb; pdb.set_trace() 
+    # import pdb; pdb.set_trace() 
     
     # Step 3: load and compute the model RDMs.
     # 3-1 load the data files I created.
@@ -261,11 +261,12 @@ for sub in subjects:
         # set up the model object
         model_model = rsatoolbox.model.ModelFixed(f"{model}_only", model_RDM_dir[model])
         
-    
+        
         # ACTUAL RSA - single models
         # STEP 4: evaluate the model fit between model and data RDMs.
         # for d in data_RDM:
         #     RDM_my_model_dir[model] = mc.analyse.analyse_MRI_behav.evaluate_model(model_model, d)
+        
         
         for d in data_RDM:
             RDM_my_model_dir[model] = mc.analyse.analyse_MRI_behav.evaluate_model(model_model, d)
@@ -288,9 +289,10 @@ for sub in subjects:
             RDM_my_model_dir[model] = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_model)(model_model, d) for d in tqdm(data_RDM, desc=f"running GLM for all searchlights in {model}"))
             mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=RDM_my_model_dir[model], data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
     
-        
+  
+       
 
-   #  import pdb; pdb.set_trace() 
+    # import pdb; pdb.set_trace() 
   # SECOND RSA: combo models.
   # I am interested in:
       # combo clocks with midnight, phase, state and location included
@@ -475,19 +477,25 @@ for sub in subjects:
         for i, model in enumerate(multiple_regressors):
             mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
     
+    
     if RDM_version in ['03-1-act']:
         multiple_regressors = ['action-box_only-rew', 'buttonsXphase_only-rew', 'buttons', 'location', 'phase', 'state']
-        results_combo_model= mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
+        results_combo_model= mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
         model_name = 'combo-actrw-buph-bu-loc-ph-st'
         for i, model in enumerate(multiple_regressors):
             mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
     
     if RDM_version in ['03-1-act']:
         multiple_regressors = ['action-box_only-rew', 'clocks_only-rew', 'buttons', 'location']
-        results_combo_model= mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
+        results_combo_model= mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
         model_name = 'combo-actrw-cl-bu-loc'
         for i, model in enumerate(multiple_regressors):
             mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
     
+        multiple_regressors = ['buttons', 'one_future_step2rew', 'two_future_step2rew', 'three_future_step2rew']
+        results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
+        model_name = 'combo_split-actionbox'
+        for i, model in enumerate(multiple_regressors):
+            mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
     
         
