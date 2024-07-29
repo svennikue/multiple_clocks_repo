@@ -8,6 +8,8 @@ Documents all modules within sub-package simulation
 import mc.analyse.analyse_ephys
 import mc.analyse.extract_and_clean
 import mc.analyse.analyse_MRI_behav
+import mc.analyse.handle_MRI_files
+
 
 #import mc.set_clocks
 #import mc.set_location_matrix
