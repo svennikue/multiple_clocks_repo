@@ -26,7 +26,8 @@ def plot_data_RDMconds_per_searchlight(data_RDM_2d, centers, neighbors, voxel_co
     # import pdb; pdb.set_trace()
     x, y, z = ref_image.shape
     # Calculate the linear index in the flattened array
-    linear_index = voxel_coord[0] * (y * z) + voxel_coord[1] * z + voxel_coord[2]
+    # linear_index = voxel_coord[0] * (y * z) + voxel_coord[1] * z + voxel_coord[2]
+    linear_index = np.ravel_multi_index(voxel_coord, ref_image.shape)
     neighbors_index = np.where(centers == linear_index)[0][0]
     
     
@@ -83,9 +84,13 @@ def plot_data_RDMconds_per_searchlight(data_RDM_2d, centers, neighbors, voxel_co
 # plot the data RDM of a certain voxel location
 def plot_dataRDM_by_voxel_coords(data_RDM_object, voxel_coord, ref_image, cond_names_dict):
     # import pdb; pdb.set_trace()
+    
+    # Calculate the linear index in the flattened array
+    
     x, y, z = ref_image.shape
     # Calculate the linear index in the flattened array
-    linear_index = voxel_coord[0] * (y * z) + voxel_coord[1] * z + voxel_coord[2]
+    linear_index = np.ravel_multi_index(voxel_coord, ref_image.shape)
+    #linear_index = voxel_coord[0] * (y * z) + voxel_coord[1] * z + voxel_coord[2]
     RDM_index = np.where(data_RDM_object.rdm_descriptors['voxel_index']==linear_index)[0][0]
     # Extract the data point from the 1-dimensional array using the calculated index
     fig, ax, ret_vla = rsatoolbox.vis.show_rdm(data_RDM_object[RDM_index])

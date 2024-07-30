@@ -25,7 +25,7 @@ else:
 # subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36) if i not in (21, 29)]
 subjects = subs_list = [f'sub-{i:02}' for i in range(2,4)]
 
-print(f"Now masking results of RDM version {RDM_version} based on subj GLM {regression_version} for subj {subj_no} such that all std images overlap")
+print(f"Now masking results of RDM version {RDM_version} based on subj GLM {regression_version} such that all std images overlap")
 data_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives"
 
 

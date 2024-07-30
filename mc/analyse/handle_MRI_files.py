@@ -9,7 +9,56 @@ any function that helps to deal with MRI files
 import nibabel as nib
 import numpy as np
 import os
+import rsatoolbox
+import nilearn
 
+
+def smooth_RDMs(data_RDM_file, ref_img, path_to_save, fwhm):
+    x, y, z = ref_img.shape
+    affine_matrix = ref_img.affine
+    header = ref_img.header
+    
+    # import pdb; pdb.set_trace() 
+    # THIS TAKES AGES!!
+    brain_4d = np.zeros([x,y,z,len(data_RDM_file[0].dissimilarities[0])])
+    for i in range(0,len(data_RDM_file[0].dissimilarities[0])):
+        curr_slice = np.zeros([x*y*z])
+        curr_slice[list(data_RDM_file.rdm_descriptors['voxel_index'])] = [vox.dissimilarities[0][i] for vox in data_RDM_file]
+        brain_4d[:,:,:,i] = curr_slice.reshape([x,y,z])
+    
+    
+    nifti_RDM = nib.Nifti1Image(brain_4d, affine_matrix, header)
+    # smooth the RDMs
+    smoothed_RDM = nilearn.image.smooth_img(nifti_RDM, fwhm=fwhm)
+    # save it now that you're here
+    nib.save(smoothed_RDM, path_to_save)
+    
+    # the perpare the RSA object again
+    smoothed_RDM_file = data_RDM_file.copy()
+    voxel_indices = list(data_RDM_file.rdm_descriptors['voxel_index'])
+    
+    smoothed_RDM_4d = smoothed_RDM.get_fdata() 
+    num_conditions = smoothed_RDM_4d.shape[-1]
+    num_voxels = len(voxel_indices)
+    
+    dissimilarities_array = np.zeros((num_voxels, num_conditions))
+    
+    # Iterate over each condition (the last dimension in the 4D array)
+    for i in range(num_conditions):
+        # Flatten the current 3D slice to a 1D array
+        curr_slice = smoothed_RDM_4d[:,:,:,i].flatten()
+        # Extract the dissimilarities corresponding to the voxel indices
+        dissimilarities = curr_slice[voxel_indices]
+        # Store the dissimilarities in the numpy array
+        dissimilarities_array[:, i] = dissimilarities
+    
+    smoothed_RDM_file.dissimilarities = dissimilarities_array
+
+    return smoothed_RDM_file
+
+    
+    
+    
 
 def apply_mask(niftis, mask):
     masked_niftis = {}

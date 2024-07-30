@@ -73,13 +73,14 @@ RDM_version = '03-1-act'
 
 binary = False
 neuron_weighting = False
-
+smoothing = True
+fwhm = 5
 
 # import pdb; pdb.set_trace() 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '01'
+    subj_no = '02'
 
 subjects = [f"sub-{subj_no}"]
 #subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36) if i not in (21, 29)]
@@ -126,11 +127,15 @@ for sub in subjects:
         RDM_dir = f"{data_dir}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
     if not os.path.exists(RDM_dir):
         os.makedirs(RDM_dir)  
-    results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}"   
+    results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}" 
+    if smoothing == True:
+        results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}_smooth{fwhm}" 
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
         os.makedirs(f"{results_dir}/results")
     results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results" 
+    if smoothing == True:
+        results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}_smooth{fwhm}/results" 
     data_rdm_dir = f"{data_dir}/func/data_RDM_glmbase_{regression_version}"
     if not os.path.exists(data_rdm_dir):
         os.makedirs(data_rdm_dir)  
@@ -198,20 +203,45 @@ for sub in subjects:
             with open(f"{data_rdm_dir}/data_RDM-pkl", 'rb') as file:
                 data_RDM_dir = pickle.load(file)
                 data_RDM = rsatoolbox.rdm.rdms.rdms_from_dict(data_RDM_dir)
-        
-    # # ACC [54, 63, 41]
-    # mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [54, 63, 41], ref_img, condition_names)
-    # mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [54, 63, 41], ref_img, condition_names)
     
-    # # # visual cortex [72, 17, 9]
-    # # mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [72, 17, 9], ref_img, condition_names)
-    # # mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [72, 17, 9], ref_img, condition_names)
+    # ACC [54, 63, 41]
+    #mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [54, 63, 41], ref_img, condition_names)
+    #mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [54, 63, 41], ref_img, condition_names)
     
-    # # hippocampus [43, 50, 17]
-    # mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [43, 50, 17], ref_img, condition_names)
-    # mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [43, 50, 17], ref_img, condition_names)
+    # visual cortex [72, 17, 9]
+    #mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [72, 17, 9], ref_img, condition_names)
+    #mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [72, 17, 9], ref_img, condition_names)
     
-    # import pdb; pdb.set_trace() 
+    # hippocampus [43, 50, 17]
+    #mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [43, 50, 17], ref_img, condition_names)
+    #mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [43, 50, 17], ref_img, condition_names)
+    
+    
+    if smoothing == True:
+        if not os.path.exists(f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}-pkl"):
+            path_to_save_smooth = f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}.nii.gz"
+            print(f"now smoothing the RDM and saving it here: {path_to_save_smooth}")
+            data_RDM = mc.analyse.handle_MRI_files.smooth_RDMs(data_RDM, ref_img, path_to_save_smooth, fwhm)
+            data_RDM.save(f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}-pkl", 'pkl')
+        else:
+            with open(f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}-pkl", 'rb') as file:
+                print("now opening the smoothed RDM")
+                data_RDM_dir = pickle.load(file)
+                data_RDM = rsatoolbox.rdm.rdms.rdms_from_dict(data_RDM_dir)
+                
+    # ACC [54, 63, 41]
+    #mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [54, 63, 41], ref_img, condition_names)
+    #mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [54, 63, 41], ref_img, condition_names)
+    
+    # visual cortex [72, 17, 9]
+    #mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [72, 17, 9], ref_img, condition_names)
+    #mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [72, 17, 9], ref_img, condition_names)
+    
+    # hippocampus [43, 50, 17]
+    #mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [43, 50, 17], ref_img, condition_names)
+    #mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [43, 50, 17], ref_img, condition_names)
+    
+    
     
     # Step 3: load and compute the model RDMs.
     # 3-1 load the data files I created.
@@ -278,6 +308,8 @@ for sub in subjects:
             # for d in data_RDM:
             #       RDM_my_model_dir[model] = mc.analyse.analyse_MRI_behav.evaluate_binary_model(model_model, d, binary_val=0.5)
             results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results-bin"
+            if smoothing == True:
+                results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}_smooth{fwhm}/results-bin"
             RDM_my_model_dir[model] = Parallel(n_jobs=3)(delayed(mc.analyse.analyse_MRI_behav.evaluate_binary_model)(model_model, d, binary_val=0.5) for d in tqdm(data_RDM, desc=f"running GLM for all searchlights in {model}"))
             
             # DELETE LATER, THIS IS FOR DEBUGGING PURPOSES!
