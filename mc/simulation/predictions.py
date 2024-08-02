@@ -1869,7 +1869,7 @@ def set_location_ephys(walked_path, reward_fields, grid_size = 3, plotting = Fal
 
 
 # to create the model RDMs.
-def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, temporal_resolution = 10, plot = False, only_rew = False, only_path = False, split_clock = False, imaginary = False, lag_weighting = False):
+def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size = 3, no_phase_neurons=1, fire_radius = 0.25, wrap_around = 1, temporal_resolution = 10, plot = False, only_rew = False, only_path = False, split_clock = False, imaginary = False, lag_weighting = False):
     # import pdb; pdb.set_trace()
     cumsumsteps = np.cumsum(step_number)
     
@@ -2126,10 +2126,10 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
             # if firing_factor > 0.7:
             #     import pdb; pdb.set_trace()
             if split_clock == True:
-                split_clock_model_dict['curr_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[0:no_phase_neurons] + split_clock_model_dict['curr_rings_split_clock'][row*3:row*3+3, :]
-                split_clock_model_dict['one_fut_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[no_phase_neurons:no_phase_neurons*2] + split_clock_model_dict['one_fut_rings_split_clock'][row*3:row*3+3, :]
-                split_clock_model_dict['two_fut_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[no_phase_neurons*2:no_phase_neurons*3] + split_clock_model_dict['two_fut_rings_split_clock'][row*3:row*3+3, :]
-                split_clock_model_dict['three_fut_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[no_phase_neurons*3:] + split_clock_model_dict['three_fut_rings_split_clock'][row*3:row*3+3, :]
+                split_clock_model_dict['curr_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[0:no_phase_neurons] + split_clock_model_dict['curr_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
+                split_clock_model_dict['one_fut_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[no_phase_neurons:no_phase_neurons*2] + split_clock_model_dict['one_fut_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
+                split_clock_model_dict['two_fut_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[no_phase_neurons*2:no_phase_neurons*3] + split_clock_model_dict['two_fut_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
+                split_clock_model_dict['three_fut_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[no_phase_neurons*3:] + split_clock_model_dict['three_fut_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
                 if lag_weighting == True:
                     split_clock_model_dict['curr_rings_split_clock_sin'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock_sin[0:no_phase_neurons] + split_clock_model_dict['curr_rings_split_clock_sin'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
                     split_clock_model_dict['one_fut_rings_split_clock_sin'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock_sin[no_phase_neurons:no_phase_neurons*2] + split_clock_model_dict['one_fut_rings_split_clock_sin'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
@@ -2196,7 +2196,7 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     return result_dict
 
 
-def create_action_model_RDMs_fmri(keys_pressed, timings, no_key_executions, temporal_resolution, only_rew = True, only_path= False, split_future_actions = False, no_phase_neurons=3):
+def create_action_model_RDMs_fmri(keys_pressed, timings, no_key_executions, temporal_resolution, only_rew = True, only_path= False, split_future_actions = False, no_phase_neurons=1):
     # import pdb; pdb.set_trace()
     
     cumsumkeypresses = np.cumsum(no_key_executions)

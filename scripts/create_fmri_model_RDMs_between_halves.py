@@ -15,7 +15,7 @@ RDM settings (creating the representations):
     02 -> modelling paths + rewards, creating all possible models
     02-A -> modelling everything but excluding state A
     02-act -> modelling paths + rewards, also creating the action model.
-    
+    02-act-1phas -> only one phase per subpath! modelling paths + rewards, also creating the action model.
     03 -> modelling only reward anchors/rings + splitting clocks model in the same py function.
     03-im -> imaginary number model of the clock to check for differences in task-lag, otherwise like 03
     03-tasklag -> weight the musicbox by tasklags: sine and cosine of task-lag angle.
@@ -80,7 +80,12 @@ import pandas as pd
 # import pdb; pdb.set_trace()
 
 regression_version = '03-4' 
-RDM_version = '02-act'
+RDM_version = '02-act-1phas'
+
+if RDM_version in ['02-act-1phas']:
+    no_phase_neurons = 1
+else:
+    no_phase_neurons = 3
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -93,7 +98,7 @@ subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10
 
 task_halves = ['1', '2']
-fmriplotting = True # incorrect for 01 false for 03-im!
+fmriplotting = False # incorrect for 01 false for 03-im!
 fmri_save = True
 
 add_run_counts_model = False # this doesn't work with the current analysis
@@ -201,9 +206,9 @@ for sub in subjects:
                         result_model_dict = mc.simulation.predictions.create_instruction_model(rew_list[config], trial_type=config)
                     elif RDM_version in ['02', '02-A']: # default, modelling all and splitting clocks.
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path= False, split_clock = True)
-                    elif RDM_version in ['02-act']:
-                        models_from_02 = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path= False, split_clock = True)
-                        model_from_action = mc.simulation.predictions.create_action_model_RDMs_fmri(curr_keys, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, only_rew = False, only_path= False, split_future_actions = True)    
+                    elif RDM_version in ['02-act', '02-act-1phas']:
+                        models_from_02 = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path= False, split_clock = True, no_phase_neurons=no_phase_neurons)
+                        model_from_action = mc.simulation.predictions.create_action_model_RDMs_fmri(curr_keys, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, only_rew = False, only_path= False, split_future_actions = True, no_phase_neurons=no_phase_neurons)    
                         result_model_dict = {**models_from_02, **model_from_action}
                         
                     elif RDM_version in ['03', '03-5', '03-5-A', '03-A']: # modelling only rewards + splitting clocks [new]
