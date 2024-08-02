@@ -2092,9 +2092,9 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
         for model in split_clock_strings:
             # length of the future clock model will be 3x midnight: predicting the subpaths, not only the reward.
             if imaginary == True:
-                split_clock_model_dict[model] = np.zeros([len(norm_midn)*3,len(norm_midn[0])], dtype=np.complex128) 
+                split_clock_model_dict[model] = np.zeros([len(norm_midn)*no_phase_neurons,len(norm_midn[0])], dtype=np.complex128) 
             else:
-               split_clock_model_dict[model] = np.zeros([len(norm_midn)*3,len(norm_midn[0])]) 
+               split_clock_model_dict[model] = np.zeros([len(norm_midn)*no_phase_neurons,len(norm_midn[0])]) 
 
     # now loop through the already filled columns (every 12th one) and fill the clocks if activated.
     for row in range(0, len(norm_midn)):
@@ -2126,15 +2126,15 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
             # if firing_factor > 0.7:
             #     import pdb; pdb.set_trace()
             if split_clock == True:
-                split_clock_model_dict['curr_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[0:3] + split_clock_model_dict['curr_rings_split_clock'][row*3:row*3+3, :]
-                split_clock_model_dict['one_fut_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[3:6] + split_clock_model_dict['one_fut_rings_split_clock'][row*3:row*3+3, :]
-                split_clock_model_dict['two_fut_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[6:9] + split_clock_model_dict['two_fut_rings_split_clock'][row*3:row*3+3, :]
-                split_clock_model_dict['three_fut_rings_split_clock'][row*3:row*3+3, :] = shifted_adjusted_clock[9:] + split_clock_model_dict['three_fut_rings_split_clock'][row*3:row*3+3, :]
+                split_clock_model_dict['curr_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[0:no_phase_neurons] + split_clock_model_dict['curr_rings_split_clock'][row*3:row*3+3, :]
+                split_clock_model_dict['one_fut_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[no_phase_neurons:no_phase_neurons*2] + split_clock_model_dict['one_fut_rings_split_clock'][row*3:row*3+3, :]
+                split_clock_model_dict['two_fut_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[no_phase_neurons*2:no_phase_neurons*3] + split_clock_model_dict['two_fut_rings_split_clock'][row*3:row*3+3, :]
+                split_clock_model_dict['three_fut_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[no_phase_neurons*3:] + split_clock_model_dict['three_fut_rings_split_clock'][row*3:row*3+3, :]
                 if lag_weighting == True:
-                    split_clock_model_dict['curr_rings_split_clock_sin'][row*3:row*3+3, :] = shifted_adjusted_clock_sin[0:3] + split_clock_model_dict['curr_rings_split_clock_sin'][row*3:row*3+3, :]
-                    split_clock_model_dict['one_fut_rings_split_clock_sin'][row*3:row*3+3, :] = shifted_adjusted_clock_sin[3:6] + split_clock_model_dict['one_fut_rings_split_clock_sin'][row*3:row*3+3, :]
-                    split_clock_model_dict['two_fut_rings_split_clock_sin'][row*3:row*3+3, :] = shifted_adjusted_clock_sin[6:9] + split_clock_model_dict['two_fut_rings_split_clock_sin'][row*3:row*3+3, :]
-                    split_clock_model_dict['three_fut_rings_split_clock_sin'][row*3:row*3+3, :] = shifted_adjusted_clock_sin[9:] + split_clock_model_dict['three_fut_rings_split_clock_sin'][row*3:row*3+3, :]
+                    split_clock_model_dict['curr_rings_split_clock_sin'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock_sin[0:no_phase_neurons] + split_clock_model_dict['curr_rings_split_clock_sin'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
+                    split_clock_model_dict['one_fut_rings_split_clock_sin'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock_sin[no_phase_neurons:no_phase_neurons*2] + split_clock_model_dict['one_fut_rings_split_clock_sin'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
+                    split_clock_model_dict['two_fut_rings_split_clock_sin'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock_sin[no_phase_neurons*2:no_phase_neurons*3] + split_clock_model_dict['two_fut_rings_split_clock_sin'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
+                    split_clock_model_dict['three_fut_rings_split_clock_sin'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock_sin[no_phase_neurons*3:] + split_clock_model_dict['three_fut_rings_split_clock_sin'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
 
                     
             # then, for the full clock model, add the values to the existing clocks, but also replace the first row by 0!!
@@ -2196,7 +2196,7 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     return result_dict
 
 
-def create_action_model_RDMs_fmri(keys_pressed, timings, no_key_executions, temporal_resolution, only_rew = True, only_path= False, no_phase_neurons=3):
+def create_action_model_RDMs_fmri(keys_pressed, timings, no_key_executions, temporal_resolution, only_rew = True, only_path= False, split_future_actions = False, no_phase_neurons=3):
     # import pdb; pdb.set_trace()
     
     cumsumkeypresses = np.cumsum(no_key_executions)
@@ -2348,6 +2348,16 @@ def create_action_model_RDMs_fmri(keys_pressed, timings, no_key_executions, temp
     # I will manipulate clocks_per_step, and use clocks_per_step.dummy as control to check for overwritten stuff.
     action_box_model =  full_action_box_dummy.copy()
  
+    if split_future_actions == True:
+        split_actions_strings = ['curr_subpath_buttons', 'one_future_subp_buttons', 'two_future_subp_buttons', 'three_future_subp_buttons']
+        split_future_actions_model_dict = {}
+        # for each anchor (e.g. buttons, 4) there can be (3) = no_phase_neurons phases within a subpath to start, 
+        # and also (3)=no_phase_neurons neurons per subpath 
+        # so basically, every 3rd (nth) neuron tells me which anchor will be active in which phase current,
+        # next subpath, 2 future or 3 future.
+        for model in split_actions_strings:
+            split_future_actions_model_dict[model] = np.zeros([len(norm_midn)*no_phase_neurons,len(norm_midn[0])]) 
+            
     # now loop through the already filled columns (every 12th one) and fill the clocks if activated.
     for row in range(0, len(norm_midn)):
         local_maxima = argrelextrema(norm_midn[row,:], np.greater_equal, order = 5, mode = 'wrap')
@@ -2364,8 +2374,19 @@ def create_action_model_RDMs_fmri(keys_pressed, timings, no_key_executions, temp
             # adjust the firing strength according to the local maxima
             firing_factor = norm_midn[row, activation_neuron].copy()
             #if firing_factor > 0.5:
-            #    import pdb; pdb.set_trace()
+                #import pdb; pdb.set_trace()
             shifted_adjusted_clock = shifted_clock.copy()*firing_factor
+            
+            if split_future_actions == True:
+                # for each anchor (e.g. buttons, 4) there can be (3) = no_phase_neurons phases within a subpath to start, 
+                # and also (3)=no_phase_neurons neurons per subpath 
+                # so basically, every 3rd (nth) neuron tells me which anchor will be active in which phase current,
+                # next subpath, 2 future or 3 future.
+                split_future_actions_model_dict['curr_subpath_buttons'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[0:no_phase_neurons] + split_future_actions_model_dict['curr_subpath_buttons'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
+                split_future_actions_model_dict['one_future_subp_buttons'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[no_phase_neurons:no_phase_neurons*2] + split_future_actions_model_dict['one_future_subp_buttons'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
+                split_future_actions_model_dict['two_future_subp_buttons'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[no_phase_neurons*2:no_phase_neurons*3] + split_future_actions_model_dict['two_future_subp_buttons'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
+                split_future_actions_model_dict['three_future_subp_buttons'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[no_phase_neurons*3:] + split_future_actions_model_dict['three_future_subp_buttons'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
+                
             # then, for the full clock model, add the values to the existing clocks, but also replace the first row by 0!!
             shifted_adjusted_clock[0] = np.zeros((len(shifted_adjusted_clock[0])))
             action_box_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = action_box_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()
@@ -2377,7 +2398,7 @@ def create_action_model_RDMs_fmri(keys_pressed, timings, no_key_executions, temp
     result_dict['phase'] = phas_model
     result_dict['phase_state'] = phas_stat
     result_dict['state'] = stat_model
-    
+        
     if only_rew == True:
         # name all affected models different so that one notices the different representation
         result_dict['buttonsXphase_only-rew'] = midn_model
@@ -2389,6 +2410,9 @@ def create_action_model_RDMs_fmri(keys_pressed, timings, no_key_executions, temp
     else:
         result_dict['buttonsXphase'] = midn_model
         result_dict['action-box'] = action_box_model
+        
+    if split_future_actions == True:
+        result_dict.update(split_future_actions_model_dict)
         
     return result_dict
 

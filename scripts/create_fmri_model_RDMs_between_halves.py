@@ -14,6 +14,7 @@ RDM settings (creating the representations):
     01-1 -> instruction periods, location similarity
     02 -> modelling paths + rewards, creating all possible models
     02-A -> modelling everything but excluding state A
+    02-act -> modelling paths + rewards, also creating the action model.
     
     03 -> modelling only reward anchors/rings + splitting clocks model in the same py function.
     03-im -> imaginary number model of the clock to check for differences in task-lag, otherwise like 03
@@ -78,8 +79,8 @@ import pandas as pd
 
 # import pdb; pdb.set_trace()
 
-regression_version = '06' 
-RDM_version = '05'
+regression_version = '03-4' 
+RDM_version = '02-act'
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -162,26 +163,10 @@ for sub in subjects:
   
                 # select file that shows step no per subpath
                 step_number = [[int(value) for value in sub_list] for sub_list in steps_subpath_alltasks[config]]
-                index_run_no = np.array(range(len(step_number)))
+                
                 # but only consider some of the repeats for the only later or only early trials!
-                if regression_version in ['03-e', '03-4-e']:
-                    # step_number = step_number[0:2].copy()
-                    index_run_no = index_run_no[0:2].copy()
-                elif regression_version in ['03-l', '03-4-l']:
-                    # step_number = step_number[2:].copy()
-                    index_run_no = index_run_no[2:].copy()
-                elif regression_version in ['03-rep1', '03-4-rep1']:
-                    index_run_no = [index_run_no[0]]
-                elif regression_version in ['03-rep2', '03-4-rep2']:
-                    index_run_no = [index_run_no[1]]
-                elif regression_version in ['03-rep3', '03-4-rep3']:
-                    index_run_no = [index_run_no[2]]
-                elif regression_version in ['03-rep4', '03-4-rep4']:
-                    index_run_no = [index_run_no[3]]
-                elif regression_version in ['03-rep5', '03-4-rep5']:
-                    index_run_no = [index_run_no[4]]
-                    
-                   
+                index_run_no = mc.analyse.analyse_MRI_behav.determine_index_by_reg_version(regression_version, step_number)
+                
                 # make file that shows cumulative steps per subpath
                 cumsteps_task = np.cumsum([np.cumsum(task)[-1] for task in step_number])
         
@@ -216,6 +201,11 @@ for sub in subjects:
                         result_model_dict = mc.simulation.predictions.create_instruction_model(rew_list[config], trial_type=config)
                     elif RDM_version in ['02', '02-A']: # default, modelling all and splitting clocks.
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path= False, split_clock = True)
+                    elif RDM_version in ['02-act']:
+                        models_from_02 = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path= False, split_clock = True)
+                        model_from_action = mc.simulation.predictions.create_action_model_RDMs_fmri(curr_keys, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, only_rew = False, only_path= False, split_future_actions = True)    
+                        result_model_dict = {**models_from_02, **model_from_action}
+                        
                     elif RDM_version in ['03', '03-5', '03-5-A', '03-A']: # modelling only rewards + splitting clocks [new]
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path = False, split_clock=True)
                     
@@ -225,7 +215,7 @@ for sub in subjects:
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = True, imaginary = False, lag_weighting = True)    
                     elif RDM_version in ['03-1-act']:
                         models_from_03_1 = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
-                        model_from_action = mc.simulation.predictions.create_action_model_RDMs_fmri(curr_keys, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, only_rew = True, only_path= False)    
+                        model_from_action = mc.simulation.predictions.create_action_model_RDMs_fmri(curr_keys, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, only_rew = True, only_path= False, split_future_actions = False)    
                         result_model_dict = {**models_from_03_1, **model_from_action}
                     elif RDM_version in ['03-1', '03-2', '03-3']:# modelling only clocks + splitting clocks later in different way.
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
@@ -257,7 +247,7 @@ for sub in subjects:
                         for model in result_model_dict:
                             repeats_model_dict[model] = np.concatenate((repeats_model_dict[model], result_model_dict[model]), 1)
                 
-                # import pdb; pdb.set_trace()    
+                   
                 # NEXT STEP: prepare the regression- select the correct regressors, filter keys starting with 'A1_backw'
                 regressors_curr_task = {key: value for key, value in regressors.items() if key.startswith(config)}
 
@@ -345,7 +335,7 @@ for sub in subjects:
                     elif model not in ['one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs', 'state_masked', 'one_future_step2rew', 'two_future_step2rew', 'three_future_step2rew', 'curr-and-future-steps2rew']:
                         all_models_dict[model][config] = mc.simulation.predictions.transform_data_to_betas(repeats_model_dict[model], regressors_matrix)
     
-    
+                # import pdb; pdb.set_trace()
                 # once the regression took place, the location model is the same as the midnight model.
                 # thus, it will also be the same as predicting future rewards, if we rotate it accordingly!
                 # temporally not do this
@@ -366,7 +356,8 @@ for sub in subjects:
                         all_models_dict['three_future_step2rew'][config] = np.roll(all_models_dict['buttons'][config], -3, axis = 1) 
                         # try if curr-and-future-steps-to-reward is the same as action box
                         all_models_dict['curr-and-future-steps2rew'][config] = np.concatenate((all_models_dict['buttons'][config], all_models_dict['one_future_step2rew'][config], all_models_dict['two_future_step2rew'][config], all_models_dict['three_future_step2rew'][config]), 0)
-                        
+                  
+                # import pdb; pdb.set_trace()
                     
                     
         # then, lastly, safe the all_models_dict in the respective task_half.

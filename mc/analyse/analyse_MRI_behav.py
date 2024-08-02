@@ -75,7 +75,29 @@ def any_entry_in_row_notnan(entry):
     #     else:
     #         x = False
     return x
+
         
+def determine_index_by_reg_version(reg_v, step_no):
+    indx_no = np.array(range(len(step_no)))
+    # but only consider some of the repeats for the only later or only early trials!
+    if reg_v in ['03-e', '03-4-e']:
+        # step_number = step_number[0:2].copy()
+        indx_no = indx_no[0:2].copy()
+    elif reg_v in ['03-l', '03-4-l']:
+        # step_number = step_number[2:].copy()
+        indx_no = indx_no[2:].copy()
+    elif reg_v in ['03-rep1', '03-4-rep1']:
+        indx_no = [indx_no[0]]
+    elif reg_v in ['03-rep2', '03-4-rep2']:
+        indx_no = [indx_no[1]]
+    elif reg_v in ['03-rep3', '03-4-rep3']:
+        indx_no = [indx_no[2]]
+    elif reg_v in ['03-rep4', '03-4-rep4']:
+        indx_no = [indx_no[3]]
+    elif reg_v in ['03-rep5', '03-4-rep5']:
+        indx_no = [indx_no[4]]
+    return indx_no
+    
 
 
 def get_conditions_list(RDM_dir):
@@ -476,6 +498,7 @@ def extract_behaviour(file):
     
     
     for index, row in df.iterrows():
+        # import pdb; pdb.set_trace()   
         task_config = row['config_type']
         time_bin_type = row['time_bin_type']
         
@@ -558,6 +581,8 @@ def select_models_I_want(RDM_version):
         models_I_want = ['trial_type_similarity', 'execution_similarity', 'presentation_similarity']
     elif RDM_version in ['02', '02-A']: #modelling paths + rewards, creating all possible models 
         models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight', 'clocks']
+    elif RDM_version in ['02-act']:
+        models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight', 'clocks', 'buttons', 'buttonsXphase', 'action-box', 'curr_subpath_buttons', 'one_future_subp_buttons', 'two_future_subp_buttons', 'three_future_subp_buttons']
     elif RDM_version in ['03', '03-im', '03-A', '03-l', '03-e']: # modelling only rewards, splitting clocks within the same function
         models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew']
     elif RDM_version in ['03-tasklag']:

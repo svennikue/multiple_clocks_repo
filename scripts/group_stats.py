@@ -17,9 +17,9 @@ import math
 
 plot_model_RDMs = True
 regression_version = '03-4' 
-RDM_version = '05'
+RDM_version = '03-1-act'
 
-subjects = subs_list = [f'sub-{i:02}' for i in range(1, 11) if i not in (21, 29)]
+subjects = subs_list = [f'sub-{i:02}' for i in range(1, 35) if i not in (21, 29)]
 
 source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks"
 if os.path.isdir(source_dir):
@@ -63,27 +63,27 @@ condition_names = mc.analyse.analyse_MRI_behav.get_conditions_list(RDM_dir)
 # might also be useful to in the end actually plot the figures of each model RDM
 # as well as each group avg data RDM!
 
-standard_image = load_img('/Users/xpsy1114/Documents/projects/multiple_clocks/data/masks/MNI152_T1_2mm_brain.nii.gz')
-MNI_coords = [47, 87, 47] #ACC [47 87 47]
+standard_image = load_img(f"{source_dir}/data/masks/MNI152_T1_2mm_brain.nii.gz")
+#MNI_coords = [47, 87, 47] #ACC [47 87 47]
+#mc.plotting.deep_data_plt.plot_group_avg_RDM_by_coord(subj_data_RDM_dir, MNI_coords, condition_names)
+
+#MNI_coords = [32, 53, 29] #hippocampus
+#mc.plotting.deep_data_plt.plot_group_avg_RDM_by_coord(subj_data_RDM_dir, MNI_coords, condition_names)
+
+MNI_coords = [42, 28, 39] #visual cortex
 mc.plotting.deep_data_plt.plot_group_avg_RDM_by_coord(subj_data_RDM_dir, MNI_coords, condition_names)
 
-MNI_coords = [32, 53, 29] #hippocampus
-mc.plotting.deep_data_plt.plot_group_avg_RDM_by_coord(subj_data_RDM_dir, MNI_coords, condition_names)
-
-MNI_coords = [43, 24, 39] #visual cortex
-mc.plotting.deep_data_plt.plot_group_avg_RDM_by_coord(subj_data_RDM_dir, MNI_coords, condition_names)
-
-MNI_coords = [60, 81, 31] #OFC 
+MNI_coords = [64, 81, 27] #OFC 
 mc.plotting.deep_data_plt.plot_group_avg_RDM_by_coord(subj_data_RDM_dir, MNI_coords, condition_names)
 
 
 
 avg_model_RDM = {}
 for i, sub in enumerate(subjects):
-    data_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}"
+    data_dir = f"{source_dir}/data/derivatives/{sub}"
     RDM_dir = f"{data_dir}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
-    models_I_want = mc.analyse.analyse_MRI_behav.models_I_want(RDM_version)
-    models_I_want = mc.analyse.analyse_MRI_behav.models_I_want(RDM_version)
+    models_I_want = mc.analyse.analyse_MRI_behav.select_models_I_want(RDM_version)
+    models_I_want = mc.analyse.analyse_MRI_behav.select_models_I_want(RDM_version)
     if 'state_masked' in models_I_want:
         models_I_want.remove('state_masked')
     RSM_dict_betw_TH = {}

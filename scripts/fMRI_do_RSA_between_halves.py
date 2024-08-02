@@ -68,7 +68,7 @@ import pickle
 import sys
 import random
 
-regression_version = '03-4' 
+regression_version = '03' 
 RDM_version = '03-1-act'
 
 binary = False
@@ -205,7 +205,7 @@ for sub in subjects:
                 data_RDM = rsatoolbox.rdm.rdms.rdms_from_dict(data_RDM_dir)
     
     # ACC [54, 63, 41]
-    #mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [54, 63, 41], ref_img, condition_names)
+    mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [54, 63, 41], ref_img, condition_names)
     #mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [54, 63, 41], ref_img, condition_names)
     
     # visual cortex [72, 17, 9]
@@ -216,7 +216,7 @@ for sub in subjects:
     #mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [43, 50, 17], ref_img, condition_names)
     #mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDM, [43, 50, 17], ref_img, condition_names)
     
-    
+    import pdb; pdb.set_trace()
     if smoothing == True:
         if not os.path.exists(f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}-pkl"):
             path_to_save_smooth = f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}.nii.gz"

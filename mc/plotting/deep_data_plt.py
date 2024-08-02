@@ -75,6 +75,12 @@ def plot_data_RDMconds_per_searchlight(data_RDM_2d, centers, neighbors, voxel_co
     # also plot the averaged one, the one I am actually considering.
     RDM_avg = RDM[int(len(RDM)/2):,0:int(len(RDM)/2)]
     RDM_avg = (RDM_avg + np.transpose(RDM_avg))/2
+    
+    
+    # import pdb; pdb.set_trace()
+    #        rdm = (rdm_cv + np.transpose(rdm_cv))/2
+    #    rdm = rdm[0:int(len(rdm)/2), int(len(rdm)/2):]
+    
     mc.plotting.deep_data_plt.RDM_plotting(RDM_avg, titelstring = "lower square, avg, of 1- pearson's r", condition_name_string = cond_names_dict['1'])
 
     
@@ -180,8 +186,8 @@ def RDM_plotting(RDM, titelstring, condition_name_string):
     ticks = np.arange(0.5, len(RDM))    
     ax.set_xticks(ticks)
     ax.set_yticks(ticks)
-    ax.set_xticklabels(condition_name_string, rotation=45, ha = 'right', fontsize=16)
-    ax.set_yticklabels(condition_name_string, fontsize=16)
+    ax.set_xticklabels(condition_name_string, rotation=45, ha = 'right', fontsize=8)
+    ax.set_yticklabels(condition_name_string, fontsize=8)
     # Adjust the appearance of ticks and grid lines
     ax.grid(False)
     
