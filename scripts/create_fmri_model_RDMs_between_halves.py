@@ -41,6 +41,7 @@ RDM settings (creating the representations):
 GLM ('regression') settings (creating the 'bins'):
     01 - instruction EVs
     02 - 80 regressors; every task is divided into 4 rewards + 4 paths
+    02-4 - 48 regressors; every task is divided into 4 rewards + 4 paths; but only for the tasks where every reward is at a different location (A,C,E)
     03 - 40 regressors; for every tasks, only the rewards are modelled [using a stick function]
     03-e 40 regressors; for evert task, only take the first 2 repeats.
     03-l 40 regressors; for every task, only take the last 3 repeats.
@@ -79,8 +80,8 @@ import pandas as pd
 
 # import pdb; pdb.set_trace()
 
-regression_version = '03-4' 
-RDM_version = '02-act-1phas'
+regression_version = '02-4' 
+RDM_version = '02-act'
 
 if RDM_version in ['02-act-1phas']:
     no_phase_neurons = 1
@@ -138,7 +139,7 @@ for sub in subjects:
         # overview of the reward fields per task.
         steps_subpath_alltasks = mc.analyse.analyse_MRI_behav.subpath_files(configs, subpath_after_steps, rew_list, rew_index, steps_subpath_alltasks_empty)
 
-        if regression_version in ['03-4', '03-4-e', '03-4-l','04-4', '03-4-rep1', '03-4-rep2', '03-4-rep3', '03-4-rep4', '03-4-rep5']:
+        if regression_version in ['02-4', '03-4', '03-4-e', '03-4-l','04-4', '03-4-rep1', '03-4-rep2', '03-4-rep3', '03-4-rep4', '03-4-rep5']:
             for config in configs:
                 if config.startswith('B') or config.startswith('D'):
                     del rew_list[config]
@@ -296,7 +297,7 @@ for sub in subjects:
                     raise ValueError("All lists must have the same length.")
                 
                 # if not all regressors shall be included, filter them according to the regression setting
-                if regression_version in ['02']:
+                if regression_version in ['02', '02-4']:
                     if RDM_version == '02-A':
                         regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key}
                     else:

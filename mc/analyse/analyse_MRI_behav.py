@@ -171,7 +171,7 @@ def read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM
             name = name_ev.replace('ev_', '')
             reading_in_EVs_dict_02[f"{name}_EV_{int(index)+1}"] = os.path.join(pe_path_02, f"pe{int(index)+1}.nii.gz")
     
-            
+    sorted_RDM_conds = []        
     if sort_as == 'dict-two-halves':
         sorted_RDM_conds = {}
         data_RDM_file = {}
@@ -244,7 +244,7 @@ def read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM
 
             print(f"This is the order now: {image_paths}")  
 
-
+    print(sort_as)
     if sort_as == 'concat_list':
         ref_img_data = ref_img.get_fdata()
         fmri_img_list_first_half = np.empty((ref_img_data.shape[0], ref_img_data.shape[1], ref_img_data.shape[2], no_RDM_conditions*2))

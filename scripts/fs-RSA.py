@@ -46,7 +46,7 @@ task_halves = ['1', '2']
 print(f"Now running RSA for RDM version {RDM_version} based on subj GLM {regression_version} for subj {subj_no}")
 
 
-models_I_want = mc.analyse.analyse_MRI_behav.models_I_want(RDM_version)
+models_I_want = mc.analyse.analyse_MRI_behav.select_models_I_want(RDM_version)
 
 
 if regression_version in ['03', '04','03-99', '03-999', '03-9999', '03-l', '03-e']:
@@ -57,26 +57,26 @@ elif regression_version in ['03-4', '04-4', '03-4-e', '03-4-l', '03-4-rep1', '03
 for sub in subjects:
     # load all EV files and then concatenate them such that it is a 4 dimensional fmri file.
     # call it fmri_img in the end.
-    data_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data"
+    data_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}"
     if os.path.isdir(data_dir):
         print("Running on laptop.")
     else:
         data_dir = f"/home/fs0/xpsy1114/scratch/data"
         print(f"Running on Cluster, setting {data_dir} as data directory")
     if RDM_version in ['03-999']:
-        RDM_dir = f"{data_dir}/derivatives/{sub}/beh/RDMs_03_glmbase_{regression_version}"
+        RDM_dir = f"{data_dir}/beh/RDMs_03_glmbase_{regression_version}"
     else:
-        RDM_dir = f"{data_dir}/derivatives/{sub}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
+        RDM_dir = f"{data_dir}/beh/RDMs_{RDM_version}_glmbase_{regression_version}"
     if not os.path.exists(RDM_dir):
         os.makedirs(RDM_dir)  
-    results_dir = f"{data_dir}/derivatives/{sub}/func/RSA_{RDM_version}_glmbase_{regression_version}"   
+    results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}"   
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
         os.makedirs(f"{results_dir}/results")
     # results_dir = f"{data_dir}/derivatives/{sub}/func/RSA_{RDM_version}_glmbase_{regression_version}/results"  
-    fs_dir = f"{data_dir}/freesurfer/{sub}"
+    fs_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/freesurfer/{sub}"
     results_dir = f"{fs_dir}/RSA_{RDM_version}_glmbase_{regression_version}/results"
-    func_dir = f"{data_dir}/derivatives/{sub}/func"
+    func_dir = f"{data_dir}/func"
     
     # # load the file which defines the order of the model RDMs, and hence the data RDMs
     # with open(f"{RDM_dir}/sorted_keys-model_RDMs.pkl", 'rb') as file:
@@ -105,16 +105,17 @@ for sub in subjects:
     
     # I need to do this slightly differently. I want to be super careful that I create 2 'identical' splits of data.
     # thus, check which folder has the respective task.
-    mask = nib.load(f"{data_dir}/derivatives/{sub}/anat/{sub}_T1w_noCSF_brain_mask_bin_func_01.nii.gz")
+    mask = nib.load(f"{data_dir}/anat/{sub}_T1w_noCSF_brain_mask_bin_func_01.nii.gz")
     ref_img = nib.load(f"{func_dir}/preproc_clean_01.feat/example_func.nii.gz")
     ref_img_data = ref_img.get_fdata()
 
     # #data_RDM_file = {}
     # reading_in_EVs_dict = {}
+    
     # image_paths = {}
     
     
-    fmri_img_stacked = mc.analyse.analyse_MRI_behav.read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM_conditions, ref_img, sort_as = 'concat-surface')
+    fmri_img_stacked = mc.analyse.analyse_MRI_behav.read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM_conditions, ref_img, sort_as = 'concat_list')
     # and also provide the adjacency matrix. that should be it!
         
 
@@ -135,7 +136,7 @@ for sub in subjects:
         
         # averages the value of voxels of the volumentric data in a radius around the vertices.
         # each row in X corresponds to a vertex, and each column is a condition for the data
-        # use nearest neighbors to avois smoothing or interpolation between voxels!
+        # use nearest neighbors to avoid smoothing or interpolation between voxels!
         X = surface.vol_to_surf(fmri_img_stacked, interpolation = 'nearest', surf_mesh=pial_mesh, inner_mesh=white_mesh, mask_img=mask).T
         # however now the same voxel might occur several times since the surface mesh is much finer than the voxels
         # find out how to 'disallow' the same voxel twice
