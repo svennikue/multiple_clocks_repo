@@ -12,6 +12,8 @@ RDM settings (creating the representations):
     01-1 -> instruction periods, location similarity
     
     02 -> modelling paths + rewards, creating all possible models
+    02-act -> modelling paths + rewards, also creating the action model.
+    02-act-1phas -> only one phase per subpath! modelling paths + rewards, also creating the action model.
     
     03 -> modelling only reward anchors/rings + splitting clocks model in the same py function.
     03-1 -> modelling only reward rings + split ‘clocks model’ = just rotating the reward location around. 
@@ -68,8 +70,8 @@ import pickle
 import sys
 import random
 
-regression_version = '03' 
-RDM_version = '03-1-act'
+regression_version = '03-4' 
+RDM_version = '02-act'
 
 binary = False
 neuron_weighting = False
@@ -82,8 +84,8 @@ if len (sys.argv) > 1:
 else:
     subj_no = '02'
 
-subjects = [f"sub-{subj_no}"]
-#subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36) if i not in (21, 29)]
+# subjects = [f"sub-{subj_no}"]
+subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36) if i not in (21, 29)]
 
 load_old = False
 visualise_RDMs = False
@@ -336,7 +338,7 @@ for sub in subjects:
         results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)
     
     # combo clocks and controls    
-    elif RDM_version == '02': # modelling all
+    elif RDM_version in ['02', '02-act', '02-act-1phas']: # modelling all
         # first: clocks with midnight, phase, state and location.
         multiple_regressors_first = ['clocks', 'midnight', 'state', 'location', 'phase']
         results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors_first, model_RDM_dir, data_RDM)       
@@ -417,7 +419,7 @@ for sub in subjects:
   # SECOND COMBO MODEL
 
     # combo split clocks
-    if RDM_version in ['02', '03', '04', '02-A']:
+    if RDM_version in ['02', '03', '04', '02-A', '02-act', '02-act-1phas']:
           # second: split clock: now/ midnight; one future, two future, three future
           multiple_regressors = ['curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock']
           results_combo_model = mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
@@ -530,4 +532,22 @@ for sub in subjects:
         for i, model in enumerate(multiple_regressors):
             mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
     
-        
+    if RDM_version in ['02-act', '02-act-1phas']:
+        multiple_regressors = ['curr_subpath_buttons', 'one_future_subp_buttons', 'two_future_subp_buttons', 'three_future_subp_buttons']
+        results_combo_model= mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
+        model_name = 'combo_split-actionbox'
+        for i, model in enumerate(multiple_regressors):
+            mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+    
+        multiple_regressors = ['action-box','clocks', 'buttons', 'location']
+        results_combo_model= mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
+        model_name = 'combo-act-cl-bu-loc'
+        for i, model in enumerate(multiple_regressors):
+            mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+    
+        multiple_regressors = ['action-box','buttonsXphase', 'buttons', 'location', 'phase', 'state']
+        results_combo_model= mc.analyse.analyse_MRI_behav.multiple_RDMs_RSA(multiple_regressors, model_RDM_dir, data_RDM)
+        model_name = 'combo-act-buph-bu-loc-ph-st'
+        for i, model in enumerate(multiple_regressors):
+            mc.analyse.analyse_MRI_behav.save_RSA_result(result_file=results_combo_model, data_RDM_file=data_RDM, file_path = results_dir, file_name= f"{model.upper()}-{model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+    
