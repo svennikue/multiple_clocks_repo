@@ -15,9 +15,12 @@ import mc
 import matplotlib.pyplot as plt
 import numpy as np
 import textwrap
+import os
 
 date = np.datetime64('today')
 out_path = f"/Users/xpsy1114/Documents/projects/multiple_clocks/output/{date}/"
+if not os.path.isdir(out_path):
+    os.makedirs(out_path)
 
 
 reward_coords = [[2, 0], [0, 2], [0, 0], [1, 1]]
@@ -31,7 +34,7 @@ model_dict['Goal Progress'] = phasem
 model_dict['State'] = statem
 model_dict['Partial Schema'] = midnightm
 model_dict['Schema'] = clockm
-model_dict['1 Schema Module'] = clockm[0:12, :]
+model_dict['1 Schema Module'] = clockm[120:132, :]
 
 
 

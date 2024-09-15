@@ -81,7 +81,7 @@ import pandas as pd
 # import pdb; pdb.set_trace()
 
 regression_version = '02-4' 
-RDM_version = '02-act'
+RDM_version = '02'
 
 if RDM_version in ['02-act-1phas']:
     no_phase_neurons = 1
