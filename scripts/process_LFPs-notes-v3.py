@@ -23,7 +23,7 @@ save = False
 
 name_short = 'EMU-117_subj-YEU_task-ABCD_run-01_blk-01_NSP-1'
 LFP_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
-
+result_dir = f"{LFP_dir}/results"
 # ok re-write this
 # include all channels
 # include a flexible bit where I can shorten according to a certain time
@@ -46,7 +46,7 @@ for k, v in reader.header.items():
     print(k, v)
 print(reader)
 
-sampling_freq = reader.sig_sampling_rates[3]
+sampling_freq = int(reader.sig_sampling_rates[3])
 
 channel_names = reader.header['signal_channels']
 channel_names = [str(elem) for elem in channel_names[:]]
@@ -71,9 +71,9 @@ raw_np_epo = raw_np.T.reshape(1,raw_np.shape[1], raw_np.shape[0])
 # # OK THIS IS STILL CRASHING
 # # maybe also because of the empty channels?
 # # or because of this weird parallel jobs -1 thingy? why -1? look up!
-raw_np_epo = raw_np_epo[:,0:70,:].copy()
-channel_list_non_empty = channel_list[0:70].copy()
-channels_non_empty_idx = channels_non_empty_idx[0:70].copy()
+raw_np_epo = raw_np_epo[:,101:,:].copy()
+channel_list_non_empty = channel_list[101:].copy()
+channels_non_empty_idx = channels_non_empty_idx[101:].copy()
 
 
 
@@ -99,7 +99,8 @@ raw_np_epo_cropped = raw_np_epo[:,:, time_l:time_u] #2835*2000 - 3.280 secs*2000
 
 
 # this bit comes from Mathias
-freq_bands = {'theta': (3, 8), 'middle': (10,80), 'vhgamma': (105, 130)}
+freq_bands_keys = ['theta', 'middle', 'vhgamma']
+freq_bands = {freq_bands_keys[0]: (3, 8), freq_bands_keys[1]: (10,80), freq_bands_keys[2]: (105, 130)}
 # delta 0-4 Hz
 # theta 4 - 10 Hz
 # alpha 8 - 12 Hz
@@ -109,6 +110,7 @@ freq_bands = {'theta': (3, 8), 'middle': (10,80), 'vhgamma': (105, 130)}
         
 # Filter the data in the frequency bands
 power = {}
+power_all = {}
 for band, (l_freq, h_freq) in freq_bands.items():
     step = np.max([1, (h_freq - l_freq) / 20])
     freq_list = np.arange(l_freq, h_freq, step)
@@ -117,6 +119,7 @@ for band, (l_freq, h_freq) in freq_bands.items():
         for ich in range(len(channels_non_empty_idx)):
             l_power[ich,idx_freq,:] = scipy.stats.zscore(l_power[ich,idx_freq,:], axis=None)
     power[band] = np.mean(l_power, axis=1)
+    power_all[band] = l_power
 
 # Collect all possible ripples
 threshold = 5
@@ -172,7 +175,7 @@ if save == True:
 
 
 
-import pdb; pdb.set_trace()
+# import pdb; pdb.set_trace()
 
 
 # write a plotting function for which you can plot 
@@ -186,27 +189,54 @@ import pdb; pdb.set_trace()
 
 # Apply band-pass filter between 105 Hz and 130 Hz
 filtered_raw_vhgamma = raw_cropped.filter(l_freq=105, h_freq=130, picks='all', fir_design='firwin')
+filtered_raw_vhgamma_np = filtered_raw_vhgamma.get_data()
 
 for ie, event in enumerate(events):
-    # first subplot is the raw signal:
-    raw_cropped.crop(onsets[ie]-2000, onsets[ie]+2000).load_data().plot(duration=2, n_channels=ie, scalings='auto')
+    # event[0] = onset
+    # event[1] = duration
+    # event[-1] = channel index
+    fig, axs = plt.subplots(5)
+    fig.suptitle(f"Ripple candidate - channel {channel_list_non_empty[event[-1]]}")
+
+    x = np.linspace(0, int(sampling_freq)*2-1, int(sampling_freq)*2)
     
+    # first subplot is the raw signal:
+    axs[0].plot(x, raw_np_cropped[event[0]-sampling_freq:event[0]+sampling_freq, event[-1]])
+    axs[0].set_title('raw LFP')
+
     # the second subplot will be filtered for high gamma:
-    filtered_raw_vhgamma.crop(onsets[ie]-2000, onsets[ie]+2000).load_data().plot(duration=2, n_channels=ie, scalings='auto')
+    axs[1].plot(x, filtered_raw_vhgamma_np[event[-1], event[0]-sampling_freq:event[0]+sampling_freq])    
+    axs[1].set_title('vhgamma filtered signal')    
     
     # the third subplot will be the power of this frequency: 
-    sample = onsets[ie]*sampling_freq
-    curr_y = power['vhgamma'][ie][sample-2000 : sample+2000]
-    x = np.linspace(0, len(curr_y), len(curr_y))
-        
-    plt.figure(); plt.plot(x,curr_y)
-    plt.ylabel('Power vhgamma')
-    plt.xlabel('1 sec - ripple + 1 sec')
-    
-    # the fourth subplot is supposed to be the power spectrum
-    power_to_plot = l_power[0, 'channel_index'] # Select first epoch and the specified channel
+    axs[2].plot(x,power['vhgamma'][event[-1], event[0]-sampling_freq:event[0]+sampling_freq])
+    axs[2].set_title('Power vhgamma')
 
+    # the fourth subplot is the vhgamma power spectrum
+    power_to_plot_low = l_power[event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq] # Select first epoch and the specified channel
+    axs[3].imshow(power_to_plot_low, aspect='auto', origin='lower')
     
+    # the fifth subplot is the overall power spectrum
+    # power_to_plot_all = np.stack(power_all[freq_bands_keys[0]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq], power_all[freq_bands_keys[1]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq], power_all[freq_bands_keys[2]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq])
+    power_to_plot_all = np.vstack((power_all[freq_bands_keys[0]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq], power_all[freq_bands_keys[1]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq]))
+    power_to_plot_all = np.vstack((power_to_plot_all, power_all[freq_bands_keys[2]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq]))
+    axs[4].imshow(power_to_plot_all, aspect='auto', origin='lower')
+    
+
+# save the numpy events file!
+if save == True:
+    # first put the channel names next to the channel IDs
+    events = np.c_[events, np.nan(events.shape[0])] 
+    
+    channel_list = []
+    for i, ripple in enumerate(events):
+        channel_list.append(channel_list_non_empty[int(events[i,2])])
+        #events[i,-1] = channel_list_non_empty[int(events[i,2])]
+    channels_to_save = np.array(channel_list)   
+    channels_to_save = channels_to_save.reshape(channels_to_save.shape[0], 1)
+    events = np.hstack((events, channels_to_save))
+        
+    np.save(f"{result_dir}/{sub}_{name_short}_50to100", events)
     # n_cycles = freqs / 2
     # power_morlet = mne.time_frequency.tfr_array_morlet(HC_L_raw_epo_cut, sfreq=sampling_freq, freqs=freqs, n_cycles=n_cycles, output='power')
 
@@ -224,8 +254,13 @@ for ie, event in enumerate(events):
     # # plt.yscale('log')  # Log scale for frequency axis if needed
     # plt.show()
         
-        
 
+    # raw_cropped.crop((event[0]-sampling_freq)/sampling_freq, (event[0]+sampling_freq)/sampling_freq).load_data().plot(n_channels=event[-1], scalings='auto')
+    
+    # raw_cropped_to_plot = raw_cropped.crop((event[0]-sampling_freq)/sampling_freq, (event[0]+sampling_freq)/sampling_freq).plot(n_channels=event[-1], scalings='auto')
+           
+    # axs[1].filtered_raw_vhgamma.crop(onsets[ie]-2000, onsets[ie]+2000).load_data().plot(duration=2, n_channels=event[-1], scalings='auto')
+    
 # careful! if this is less than 60*30*30.000 datapoints, it's likely the reference file
 # raw_chunk = reader.get_analogsignal_chunk(block_index=0, seg_index=1)
 # float_chunk = reader.rescale_signal_raw_to_float(raw_chunk, stream_index=0)

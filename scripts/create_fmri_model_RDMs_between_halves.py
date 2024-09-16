@@ -63,9 +63,10 @@ GLM ('regression') settings (creating the 'bins'):
     04 - 40 regressors; for every task, only the paths are modelled
     04-4 - 24 regressors; for the tasks where every reward is at a different location (A,C,E)
     05 - locations + button presses 
-    06 - averaging across the entire task
+    06 - averaging across the entire task [for introduction analysis]
     06-rep 1 - averaging across the entire task, but only the first repeat.
-    
+    07 - entire path and reward period, collapsed (= 03 + 04)
+    07-4 - entire path and reward period, collapsed (= 03 + 04); only for the tasks where every reward is at a different location (A,C,E)
 
 @author: Svenja Küchenhoff, 2024
 """
@@ -80,7 +81,7 @@ import pandas as pd
 
 # import pdb; pdb.set_trace()
 
-regression_version = '02-4' 
+regression_version = '07-4' 
 RDM_version = '02'
 
 if RDM_version in ['02-act-1phas']:
@@ -132,6 +133,23 @@ for sub in subjects:
         # crucial step 1: get the behavioural data I need from the subject files.
         configs, rew_list, rew_index, walked_path, steps_subpath_alltasks_empty, subpath_after_steps, timings, regressors, keys_executed, keys_not_executed, timings_keys_not_executed = mc.analyse.analyse_MRI_behav.extract_behaviour(file)
 
+        # recombine the regressors for GLM 07
+        if regression_version in ['07', '07-4']:
+            # Iterate over the keys of the dictionary
+            for key in regressors.keys():
+                if '_path' in key:
+                    # Extract the common prefix
+                    prefix = key.replace('_path', '')
+                    # Check if the corresponding 'reward' key exists
+                    reward_key = prefix + '_reward'
+                    if reward_key in regressors:
+                        # Sum the arrays and save them in the new dictionary
+                        for i, elem in enumerate(regressors[key]):
+                            regressors[key][i] = elem + regressors[reward_key][i]
+                            
+        # lastly, remove all '_reward' regressors as they are integrated in the first bit.
+        regressors = {key: value for key, value in regressors.items() if not key.endswith('_reward')}
+
         # so now, account for the temporal resolution that you want:
         for reg in regressors:
             regressors[reg] = np.repeat(regressors[reg], repeats = temporal_resolution)
@@ -139,7 +157,7 @@ for sub in subjects:
         # overview of the reward fields per task.
         steps_subpath_alltasks = mc.analyse.analyse_MRI_behav.subpath_files(configs, subpath_after_steps, rew_list, rew_index, steps_subpath_alltasks_empty)
 
-        if regression_version in ['02-4', '03-4', '03-4-e', '03-4-l','04-4', '03-4-rep1', '03-4-rep2', '03-4-rep3', '03-4-rep4', '03-4-rep5']:
+        if regression_version in ['02-4', '03-4', '03-4-e', '03-4-l','04-4', '03-4-rep1', '03-4-rep2', '03-4-rep3', '03-4-rep4', '03-4-rep5', '07-4']:
             for config in configs:
                 if config.startswith('B') or config.startswith('D'):
                     del rew_list[config]
@@ -245,7 +263,7 @@ for sub in subjects:
                             print(f"These are the models you wanted: {models_I_want}. And these are the ones you got: {model_list}")
                             import pdb; pdb.set_trace()
                     
-                    # models  need to be concatenated for each run and task
+                    # models need to be concatenated for each run and task
                     if no_run == 0 or (regression_version in ['03-l', '03-4-l'] and no_run == 2) or (regression_version in ['03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5', '03-4-rep1', '03-4-rep2', '03-4-rep3', '03-4-rep4', '03-4-rep5']):
                         for model in result_model_dict:
                             repeats_model_dict[model] = result_model_dict[model].copy()
@@ -321,6 +339,12 @@ for sub in subjects:
                     if regression_version == '06-rep1':
                         regressors_curr_task[config][:] = 0
                         regressors_curr_task[config][0:index_next_repeat[1]] = 1
+                 
+                # import pdb; pdb.set_trace() 
+                if regression_version in ['07','07-4']:
+                    regressors_curr_task = {key: value for key, value in regressors_curr_task.items()}
+                    
+                    
                     
                 # import pdb; pdb.set_trace() 
                     # regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if key.endswith('reward')}

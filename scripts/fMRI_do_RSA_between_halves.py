@@ -46,6 +46,9 @@ GLM ('regression') settings (creating the 'bins'):
     04 - 40 regressors; for every task, only the paths are modelled
     04-4 - 24 regressors; for the tasks where every reward is at a different location (A,C,E)
     05 - locations + button presses 
+    06 - averaging across the entire task [for introduction analysis]
+    06-rep 1 - averaging across the entire task, but only the first repeat.
+    07 - entire path and reward period, collapsed (= 03 + 04)
     
 @author: Svenja Küchenhoff, 2024
 """
