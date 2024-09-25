@@ -12,7 +12,6 @@ Trying to plot filtered out events.
 
 import mne
 import neo
-# import neo.rawio
 import os
 import numpy as np
 import scipy
@@ -20,89 +19,37 @@ import matplotlib.pyplot as plt
 import scipy.ndimage as ndimage
 import mmap
 
-# # check this to save RAM!
-
-# import pdb; pdb.set_trace() 
-
-# # write a simple example file
-# with open("hello.txt", "wb") as f:
-#     f.write(b"Hello Python!\n")
-
-# with open("hello.txt", "r+b") as f:
-#     # memory-map the file, size 0 means whole file
-#     mm = mmap.mmap(f.fileno(), 0)
-#     # read content via standard file methods
-#     print(mm.readline())  # prints b"Hello Python!\n"
-#     # read content via slice notation
-#     print(mm[:5])  # prints b"Hello"
-#     # update content using slice notation;
-#     # note that new content must have same size
-#     mm[6:] = b" world!\n"
-#     # ... and read again using standard file methods
-#     mm.seek(0)
-#     print(mm.readline())  # prints b"Hello  world!\n"
-#     # close the map
-#     mm.close()
-
 save = False
-
-names_blks_short = ['EMU-117_subj-YEU_task-ABCD_run-01_blk-01_NSP-1','EMU-118_subj-YEU_task-ABCD_run-01_blk-02_NSP-1']
-LFP_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
-result_dir = f"{LFP_dir}/results"
-# ok re-write this
-# include all channels
-# include a flexible bit where I can shorten according to a certain time
-# include a figure in which I plot the signal/filtered plus power at the 
-# suspected ripple events.
-
-# subjects = ['s13', 's12', 's25']
-sub = 's25'
-# ns3: contains analog data; sampled at 2000 Hz (+ digital filters)
-
-    # delta 0-4 Hz
-    # theta 4 - 10 Hz
-    # alpha 8 - 12 Hz
-    # beta 15 - 30 Hz
-    # low gamma 30 - 90 Hz
-    # high gamma 90 - 150 Hz
-    # (3, 8), freq_bands_keys[1]: (10,80), freq_bands_keys[2]: (105, 130)}
-# define your frequencies
 theta = [3,8]
 middle = [10, 80]
+gamma = [80, 200]
 
 # SPW-R frequency band criterion for rodents (100 to 250 Hz) is generally higher 
 # than for monkeys (95 to 250 Hz) or humans (70–250 Hz, most use 80–150 Hz bandpass filters
-gamma = [80, 200]
 
-# theta = 4-8 HZ
-# high gamma = 70 - 150 Hz
-# Nyquist = half sampling rate -> 1000 Hz for ns3
+# delta 0-4 Hz
+# theta 4 - 10 Hz
+# alpha 8 - 12 Hz
+# beta 15 - 30 Hz
+# low gamma 30 - 90 Hz
+# high gamma 90 - 150 Hz
+# (3, 8), freq_bands_keys[1]: (10,80), freq_bands_keys[2]: (105, 130)}
+# define your frequencies
 
+# import pdb; pdb.set_trace() 
+names_blks_short = ['EMU-117_subj-YEU_task-ABCD_run-01_blk-01_NSP-1','EMU-118_subj-YEU_task-ABCD_run-01_blk-02_NSP-1']
+LFP_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
+result_dir = f"{LFP_dir}/results"
 
-# also read the times files
-# 0-3 are times of state change
-# 4 is correct repeats of current context
-# 5 is number of repeats independent of making mistakes
-# 6-9 is current configuration of grid
+# subjects = ['s13', 's12', 's25']
+sub = 's25'
+
+# load behaviour that defines my snippets.
 behaviour = np.genfromtxt(f"{LFP_dir}/{sub}/exploration_trials_times_and_ncorrect.csv", delimiter=',')
-
-# Initialize empty lists for t_lower and t_upper
 seconds_lower, seconds_upper, task_config  = [], [], []
 if behaviour[0, 4] == 0:
     seconds_lower.append(behaviour[0, 0])
-
-
-# Loop through the array to identify where subjects first got the task right.
-# for i in range(1, len(behaviour)):       
-#     # If we have a transition from 1 to 0, i.e. a new task is starting, the last repeat of the task ends at i-1
-#     if behaviour[i-1, 4] == 1 and behaviour[i, 4] == 0:
-#         t_upper.append(behaviour[i-1, 3])  # Append the value from the 4th column
-        
-#     # If we have a transition from 0 to 1, i.e. a task has been solved correctly for the first time, the first incorrect (0) of the task is at i
-#     if behaviour[i, 4] == 0 and behaviour[i-1, 4] == 1:
-#         t_lower.append(behaviour[i, 0])  # Append the value from the 1st column
-
-# maybe the better way is to use the end of the first repeat as the lower end, and keep the upper end defined as doing it correctly for the firs time
+# end of the first repeat as the lower end, and keep the upper end defined as doing it correctly for the firs time
 for i in range(1, len(behaviour)):
     if behaviour[i, 5] == 1:
         # start looking for ripples once they found goal D for the first time.
@@ -113,59 +60,67 @@ for i in range(1, len(behaviour)):
     if behaviour[i-1, 4] == 1 and behaviour[i, 4] == 0:
         # end looking for ripples once they completed the task correctly at least once.
         seconds_upper.append(behaviour[i-1, 3])  
-
 seconds_upper.append(behaviour[-1, 3])
-# import pdb; pdb.set_trace()
 
-if os.path.exists(f"{LFP_dir}/{sub}/{sub}_raw_ns3_blck1-blck2.npy"):
-    raw_np_mmap = np.load(f"{LFP_dir}/{sub}/{sub}_raw_ns3_blck1-blck2.npy", mmap_mode='r')
-    channel_list = np.load(f"{LFP_dir}/{sub}/{sub}_channel_list_ns3_blck1-blck2.npy")
-    HC_indices = np.load(f"{LFP_dir}/{sub}/{sub}_HC_indices_ns3_blck1-blck2.npy")
-    sampling_freq = int(np.load(f"{LFP_dir}/{sub}/{sub}_frequency_ns3_blck1-blck2.npy"))
-else:
-    print(f"Files don't exist- run preprocess_human_LFP.py first!")
+# instead of fully loading the files, I am only loading the reader and then 
+# looking at them in lazy-mode, only calling the shorter segments.
+reader, block_size, channel_list, sampling_freq, raw_file_lazy = [], [], [], [], []
+for file_half in [0,1]:
+    reader.append(neo.io.BlackrockIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3))
+    block_size.append(reader[file_half].get_signal_size(seg_index=1, block_index=0))
+    sampling_freq.append(int(reader[file_half].sig_sampling_rates[3]))
     
+    # all of these will only be based on the second file. Should be equivalent!
+    channel_names = reader[file_half].header['signal_channels']
+    channel_names = [str(elem) for elem in channel_names[:]]
+    channel_list = [name.split(",")[0].strip("('") for name in channel_names]
+    HC_indices = []
+    mPFC_indices = []
+    for i, channel in enumerate(channel_list):
+        if 'Ha' in channel or 'Hb' in channel:
+            HC_indices.append(i)
+        if 'CA' in channel:
+            mPFC_indices.append(i)    
+    HC_channels = [channel_list[i] for i in HC_indices]
+    mPFC_channels = [channel_list[i] for i in mPFC_indices]
+    raw_file_lazy.append(reader[file_half].read_segment(seg_index=1, lazy=True))
+    
+if sampling_freq[0] != sampling_freq[1]:
+    print('Careful! the files dont have the same sampling frequency! Probably wrong filename.')
+    import pdb; pdb.set_trace()
+        
+    
+# import pdb; pdb.set_trace()
+# for each snippet of the dataset, now look for ripples.
 
- 
-raw_np_mmap_epo = raw_np_mmap.T.reshape(1,raw_np_mmap.shape[1], raw_np_mmap.shape[0])
-ch_types = ["ecog"] * len(HC_indices)
-HC_channels = [channel_list[i] for i in HC_indices]
+freq_bands_keys = ['theta', 'middle', 'vhgamma']
+freq_bands = {freq_bands_keys[0]: (theta[0], theta[1]), freq_bands_keys[1]: (middle[0],middle[1]), freq_bands_keys[2]: (gamma[0], gamma[1])}
 
-info = mne.create_info(ch_names=HC_channels, ch_types=ch_types, sfreq=sampling_freq)
-raw_complete = mne.io.RawArray(raw_np_mmap.T, info) # maybe without transpose?? try!
-
-# import pdb; pdb.set_trace()   
-
+    
 events_dict = {}
 power_dict = {}
-for task, sec_lower in enumerate(seconds_lower):
-    print(f" analysing task {task}")
-    sample_u = int(seconds_upper[task]*sampling_freq)
-    sample_l = int(sec_lower*sampling_freq)
-    
-    print(f"Now analysing task between {sec_lower} and {seconds_upper[task]} secs")
-    
-    raw_np_epo_cropped = raw_np_mmap_epo[:,:, sample_l:sample_u] #2835*2000 - 3.280 secs*2000
 
-    # this bit comes from Mathias
-    freq_bands_keys = ['theta', 'middle', 'vhgamma']
-    # try 80 and 250 instead
-    freq_bands = {freq_bands_keys[0]: (theta[0], theta[1]), freq_bands_keys[1]: (middle[0],middle[1]), freq_bands_keys[2]: (gamma[0], gamma[1])}
-    # freq_bands = {freq_bands_keys[0]: (3, 8), freq_bands_keys[1]: (10,80), freq_bands_keys[2]: (105, 130)}
-    # delta 0-4 Hz
-    # theta 4 - 10 Hz
-    # alpha 8 - 12 Hz
-    # beta 15 - 30 Hz
-    # low gamma 30 - 90 Hz
-    # high gamma 90 - 150 Hz
-            
-    # Filter the data in the frequency bands
+for task in range(0, len(seconds_lower)):
+    sec_lower = seconds_lower[task]
+    sec_upper = seconds_upper[task]
+    print(f"Now analysing task between {sec_lower} and {sec_upper} secs")
+    
+    if sec_upper < block_size[0]/sampling_freq[0]:
+        block = 0
+    else:
+        block = 1
+        sec_lower = sec_lower-block_size[0]/sampling_freq[0]
+        sec_upper = sec_upper-block_size[0]/sampling_freq[0]
+
+    raw_np_cropped = raw_file_lazy[block].analogsignals[0].load(time_slice = (sec_lower, sec_upper), channel_indexes = HC_indices)
+    raw_np_epo_cropped = raw_np_cropped.T.reshape(1,raw_np_cropped.shape[1], raw_np_cropped.shape[0])
+
     power_mean = {}
     power_stepwise = {}
     for band, (l_freq, h_freq) in freq_bands.items():
         step = np.max([1, (h_freq - l_freq) / 20])
         freq_list = np.arange(l_freq, h_freq, step)
-        l_power = mne.time_frequency.tfr_array_morlet(raw_np_epo_cropped, sampling_freq, freqs=freq_list, output="power", n_jobs=-1).squeeze()
+        l_power = mne.time_frequency.tfr_array_morlet(raw_np_epo_cropped, sampling_freq[block], freqs=freq_list, output="power", n_jobs=-1).squeeze()
         for idx_freq in range(len(freq_list)):
             for channel_idx in range(len(HC_indices)):
                 l_power[channel_idx,idx_freq,:] = scipy.stats.zscore(l_power[channel_idx,idx_freq,:], axis=None)
@@ -175,7 +130,7 @@ for task, sec_lower in enumerate(seconds_lower):
     power_dict[f"{task}_mean"] = power_mean
     power_dict[f"{task}_stepwise"] = power_stepwise
     
-    # Collect all possible ripples
+    # Collect all possible ripples for the current task
     threshold_hl = 5
     event_id = {}
     all_clusters = np.zeros((len(HC_indices), raw_np_epo_cropped.shape[-1]))
@@ -209,9 +164,7 @@ for task, sec_lower in enumerate(seconds_lower):
         clusters, n_clusters = ndimage.label((cluster_one_zero[0,:] + cluster_one_zero[2,:] ) == 2)
         
         # clusters, n_clusters = ndimage.label((cluster_one_zero[0,:] + cluster_one_zero[2,:] + (1 - cluster_one_zero[1,:])) == 3)
-        
-        
-        
+
         # now again, I save the amount of clusters; this time only if it fulfills both criteria: threshold + no middle.
         print(f"I found {n_clusters} between {sec_lower} and {seconds_upper[task]} secs in channel {channel_list[initial_channel_idx]}")
         # save all clusters uniquely per channel.
@@ -226,75 +179,35 @@ for task, sec_lower in enumerate(seconds_lower):
             if f"channel_idx_{initial_channel_idx}" not in event_id:
                 event_id[f"channel_idx_{initial_channel_idx}"] = new_channel_idx
     
+
+    # I NEED A neo.io file for these raw_cropped
+    ch_types = ["ecog"] * len(HC_indices)
+    info = mne.create_info(ch_names=HC_channels, ch_types=ch_types, sfreq=sampling_freq[0])
+    raw_cropped = mne.io.RawArray(raw_np_cropped.T, info) # maybe without transpose?? try!
+
     
     # import pdb; pdb.set_trace()
     # create a mne.io object
     ch_types = ["ecog"] * len(HC_indices)
-    info = mne.create_info(ch_names=HC_channels, ch_types=ch_types, sfreq=sampling_freq)
-    raw_np_cropped = raw_np_epo_cropped.reshape(raw_np_epo_cropped.shape[2], raw_np_epo_cropped.shape[1])
-    # add info
-    raw_cropped = mne.io.RawArray(raw_np_cropped.T, info) # maybe without transpose?? try!
-    # can also easily be cropped and downsampled like this:
-    # raw_np.crop(2835, 3280).load_data().resample(1000)   
-    # add annotation
-    #annot = mne.Annotations(onset=[x/sampling_freq for x in onsets], duration=[x/sampling_freq for x in durations], description=descriptions, task_config = task_config_ripple)
-    
-    # MAKE SURE THE TIMINGS ARE NOT MIXED UP!!!
-    annot = mne.Annotations(onset=[x/sampling_freq for x in onsets], duration=[x/sampling_freq for x in durations], description=descriptions)
-    
+    annot = mne.Annotations(onset=[x/sampling_freq[0] for x in onsets], duration=[x/sampling_freq[0] for x in durations], description=descriptions)
     raw_cropped.set_annotations(annot)
     # add events
     events, event_id = mne.events_from_annotations(raw_cropped, event_id=event_id)
     # events are times at which something happens, e.g. a ripple occurs
     events_dict[task] = events
-    #
-    # in theory, if I would use epochs.compute_tfr, I could just do power.plot.
-    # from the raw_cropped object I just created, is it possible to do this power.plot?
-    # try and find out!!
-    #
-    
-    
+
     if save == True:
-        raw_cropped.save(f"{LFP_dir}/{sub}/{names_blks_short[0]}-{sample_l}-{sample_u}-raw.fif", overwrite=True)
+        raw_cropped.save(f"{LFP_dir}/{sub}/{names_blks_short[0]}-{sec_lower}-{sec_upper}-raw.fif", overwrite=True)
     
+    # NEXT STEP: PLOTTING.
     
-    
-    # import pdb; pdb.set_trace()
-    
-    
-# write a plotting function for which you can plot 
-# - the raw signal
-# - the power for the high gamma for the events per channel
-# - the frequency filtered event per channel
-# - the time-frequency transform as power spectrum
+    # CONTINUE HERE!!!
+    # THE FLITEREING DOESTN WORK
+    filtered_cropped_vhgamma = raw_cropped.filter(l_freq=gamma[0], h_freq=gamma[1], picks='all', fir_design='firwin')
+    filtered_cropped_vhgamma_np = filtered_cropped_vhgamma.get_data()
 
-# plt.figure()
-# plt.subplot with length of events
 
-# Apply band-pass filter between 105 Hz and 130 Hz
-# filtered_raw_vhgamma = raw_cropped.filter(l_freq=gamma[0], h_freq=gamma[1], picks='all', fir_design='firwin')
-# filtered_raw_vhgamma_np = filtered_raw_vhgamma.get_data()
-filtered_raw_vhgamma = raw_complete.filter(l_freq=gamma[0], h_freq=gamma[1], picks='all', fir_design='firwin')
-filtered_vhgamma_np = filtered_raw_vhgamma.get_data()
-
-# I SUSPECT ALL OF THE INDEXING MIGHT BE FUCKED NOW
-# chekc how i get events!!
-# and how i can actually use the task config
-# if events.shape[0] > 0:
-#     import pdb; pdb.set_trace()
-for taski, task in enumerate(events_dict):   
-    sample_u = int(seconds_upper[taski]*sampling_freq)
-    sample_l = int(seconds_lower[taski]*sampling_freq)
-    
-    print(f"Now analysing task between {seconds_lower[taski]} and {seconds_upper[taski]} secs")
-    
-    raw_np_epo_cropped = raw_np_epo[:,:, sample_l:sample_u] #2835*2000 - 3.280 secs*2000
-    raw_np_cropped = raw_np_epo_cropped.reshape(raw_np_epo_cropped.shape[2], raw_np_epo_cropped.shape[1])
-
-    filtered_cropped_vhgamma_np = filtered_vhgamma_np[:, sample_l:sample_u]
-    
     for ie, event in enumerate(events_dict[task]):
-        
 
         # event[0] = onset
         # event[1] = duration
