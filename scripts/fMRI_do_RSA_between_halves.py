@@ -49,6 +49,8 @@ GLM ('regression') settings (creating the 'bins'):
     06 - averaging across the entire task [for introduction analysis]
     06-rep 1 - averaging across the entire task, but only the first repeat.
     07 - entire path and reward period, collapsed (= 03 + 04)
+    07-4 - entire path and reward period, collapsed (= 03 + 04); only for the tasks where every reward is at a different location (A,C,E)
+
     
 @author: Svenja Küchenhoff, 2024
 """
@@ -56,6 +58,12 @@ GLM ('regression') settings (creating the 'bins'):
 # UNDER CONSTRUCTION
 # NOT WORKING CURRENTL!!
 # CONTINUE DEBUGGING FIRST!!!
+
+
+# I need to write:
+    # regression version 07 and 07-4
+    # check if 02-act and 02-act-1phas works!
+    
 
 
 from tqdm import tqdm
@@ -72,6 +80,7 @@ import mc
 import pickle
 import sys
 import random
+import scipy
 
 regression_version = '03-4' 
 RDM_version = '02-act'
@@ -87,8 +96,8 @@ if len (sys.argv) > 1:
 else:
     subj_no = '02'
 
-# subjects = [f"sub-{subj_no}"]
-subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36) if i not in (21, 29)]
+subjects = [f"sub-{subj_no}"]
+# subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36) if i not in (21, 29)]
 
 load_old = False
 visualise_RDMs = False
@@ -188,18 +197,54 @@ for sub in subjects:
     # else:
     data_RDM_file_2d= mc.analyse.analyse_MRI_behav.read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM_conditions, sort_as = 'dict-two-halves')
     condition_names = mc.analyse.analyse_MRI_behav.get_conditions_list(RDM_dir)
-    data_conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(no_RDM_conditions)])), (1,2)).transpose(),2*no_RDM_conditions)  
+    #
+    #
+    #
+    # 16.09.24 - if I don't want to delete half of the matrix in the end, I need to make the conditions unique.
+    # data_conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(no_RDM_conditions)])), (1,2)).transpose(),2*no_RDM_conditions)  
+    # ALSO BE CAREFUL THAT THESE WILL BE THE SAME FOR MODELS!!
+    # rsa toolbox sorts these conditions
+    data_conds_one = (np.array(['cond_%02d_TH_one' % x for x in np.arange(no_RDM_conditions)]))
+    data_conds_two = (np.array(['cond_%02d_TH_two' % x for x in np.arange(no_RDM_conditions)]))
+    data_conds = np.concatenate((data_conds_one, data_conds_two))
+
     # now prepare the data RDM file. 
     # final data RDM file; 
     if RDM_version in ['01', '01-1']:
         data_conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(no_RDM_conditions)])), (1)).transpose(),no_RDM_conditions)  
         data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='correlation')
     else:
-        # for all other cases, cross correlated between task-halves.
-        # this is defining both task halves/ runs: 0 is first half, the second one is 1s
-        sessions = np.concatenate((np.zeros(no_RDM_conditions), np.ones(no_RDM_conditions)))
         if not os.path.exists(f"{data_rdm_dir}/data_RDM-pkl"):
-            data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='crosscorr', cv_descr=sessions)
+            # for all other cases, cross correlated between task-halves.
+            
+            #import pdb; pdb.set_trace() 
+            # OK
+            # CONTINUE HERE
+            # I guess what I really need to do is change this to correlation
+            # careful! I included looooads of breakpoints everywhere now.
+            # and also careful about the condition order...
+            # this might make the squareform thingy difficult
+            # try with a dummy matrix where I know the order and how the pattern looks like to make sure this works!!
+            # and then just reverse with scipy.spatial.distance.squareform and select the part that you want!
+            # x = model_RDM_dir[model].dissimilarities[0]
+            # xsquare = scipy.spatial.distance.squareform(x)
+            
+            
+            # this is defining both task halves/ runs: 0 is first half, the second one is 1s
+            # 17th of sept 2024
+            # however, I am doing this differently now. I am still using the native correlation function from rsa toolbox.
+            # BUT I am concatenating both task halves, and in the end cut out the bit that I want.
+            # this is bc RSA toolbox discards the diagonal that I want.
+            # CHECK IF data_RDM_file_2d is in the correct format and can be processed like this!
+            # (probably not)
+            data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='correlation')
+            
+            
+            # sessions = np.concatenate((np.zeros(no_RDM_conditions), np.ones(no_RDM_conditions)))
+            # sessions = np.ones(2*no_RDM_conditions)
+            # data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='crosscorr', cv_descr=sessions)
+            
+            
             # save  so that I don't need to recompute - or don't save bc it's massive
             data_RDM.save(f"{data_rdm_dir}/data_RDM-pkl", 'pkl')
             # potentially build in a progress function for this one! takes ages..
@@ -284,7 +329,9 @@ for sub in subjects:
             model_RDM_dir[model] = rsr.calc_rdm(model_data, method='weight_crosscorr', descriptor='conds', cv_descriptor='sessions', weighting = 'cos')
         else:
             model_RDM_dir[model] = rsr.calc_rdm(model_data, method='crosscorr', descriptor='conds', cv_descriptor='sessions')
-        
+            import pdb; pdb.set_trace()
+            # I changed it now such that instead of only a quarter of the matrix, the entire thing is saved.
+            # now in this step I need to cut it correctly! BUT i do want to include the diagonal.
         
         if model in ['state_masked']:
             state_mask = np.load(os.path.join(f"{data_dir}/beh/RDMs_03-5_glmbase_{regression_version}", f"RSM_state_masked_{sub}_fmri_both_halves.npy"))

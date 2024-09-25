@@ -81,8 +81,8 @@ import pandas as pd
 
 # import pdb; pdb.set_trace()
 
-regression_version = '07-4' 
-RDM_version = '02'
+regression_version = '03-4' 
+RDM_version = '02-act'
 
 if RDM_version in ['02-act-1phas']:
     no_phase_neurons = 1
@@ -100,7 +100,7 @@ subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10
 
 task_halves = ['1', '2']
-fmriplotting = False # incorrect for 01 false for 03-im!
+fmriplotting = True # incorrect for 01 false for 03-im!
 fmri_save = True
 
 add_run_counts_model = False # this doesn't work with the current analysis
