@@ -12,17 +12,18 @@ Trying to plot filtered out events.
 
 import mne
 import neo
-import os
 import numpy as np
 import scipy
 import matplotlib.pyplot as plt
 import scipy.ndimage as ndimage
-import mmap
+import pickle
 
-save = False
+save = True
+plotting = False
+ROI = 'mPFC'
 theta = [3,8]
 middle = [10, 80]
-gamma = [80, 200]
+gamma = [80, 180]
 
 # SPW-R frequency band criterion for rodents (100 to 250 Hz) is generally higher 
 # than for monkeys (95 to 250 Hz) or humans (70–250 Hz, most use 80–150 Hz bandpass filters
@@ -79,7 +80,7 @@ for file_half in [0,1]:
     for i, channel in enumerate(channel_list):
         if 'Ha' in channel or 'Hb' in channel:
             HC_indices.append(i)
-        if 'CA' in channel:
+        if 'Ca' in channel:
             mPFC_indices.append(i)    
     HC_channels = [channel_list[i] for i in HC_indices]
     mPFC_channels = [channel_list[i] for i in mPFC_indices]
@@ -89,10 +90,33 @@ if sampling_freq[0] != sampling_freq[1]:
     print('Careful! the files dont have the same sampling frequency! Probably wrong filename.')
     import pdb; pdb.set_trace()
         
-    
-# import pdb; pdb.set_trace()
-# for each snippet of the dataset, now look for ripples.
+if ROI == 'mPFC':
+    channels_to_use = mPFC_channels
+    channel_indices_to_use = mPFC_indices
+elif ROI == 'HPC':
+    channels_to_use = HC_channels
+    channel_indices_to_use = HC_indices
 
+# big_analog_chunk = raw_file_lazy[0].analogsignals[0].load(time_slice = (0.01, seconds_upper[3]), channel_indexes = HC_indices)
+# ch_types = ["ecog"] * len(HC_indices)
+# info = mne.create_info(ch_names=HC_channels, ch_types=ch_types, sfreq=sampling_freq[0])
+# big_chunk_np = big_analog_chunk.as_array()
+# big_chunk_mne = mne.io.RawArray(big_chunk_np.T, info)
+# spectrum = big_chunk_mne.compute_psd()
+# spectrum.plot()
+
+# # clear them after 
+# big_chunk_mne = []
+# big_analog_chunk = []
+
+
+# import pdb; pdb.set_trace()
+
+# first look at the dataset in general.
+
+
+
+# for each snippet of the dataset, now look for ripples.
 freq_bands_keys = ['theta', 'middle', 'vhgamma']
 freq_bands = {freq_bands_keys[0]: (theta[0], theta[1]), freq_bands_keys[1]: (middle[0],middle[1]), freq_bands_keys[2]: (gamma[0], gamma[1])}
 
@@ -100,7 +124,10 @@ freq_bands = {freq_bands_keys[0]: (theta[0], theta[1]), freq_bands_keys[1]: (mid
 events_dict = {}
 power_dict = {}
 
-for task in range(0, len(seconds_lower)):
+
+# for task in range(0, len(seconds_lower[0:4])):
+for task in range(0, len(seconds_lower[0:9])):
+    #for task in range(7, 10):
     sec_lower = seconds_lower[task]
     sec_upper = seconds_upper[task]
     print(f"Now analysing task between {sec_lower} and {sec_upper} secs")
@@ -112,17 +139,20 @@ for task in range(0, len(seconds_lower)):
         sec_lower = sec_lower-block_size[0]/sampling_freq[0]
         sec_upper = sec_upper-block_size[0]/sampling_freq[0]
 
-    raw_np_cropped = raw_file_lazy[block].analogsignals[0].load(time_slice = (sec_lower, sec_upper), channel_indexes = HC_indices)
-    raw_np_epo_cropped = raw_np_cropped.T.reshape(1,raw_np_cropped.shape[1], raw_np_cropped.shape[0])
-
+    raw_analog_cropped = raw_file_lazy[block].analogsignals[0].load(time_slice = (sec_lower, sec_upper), channel_indexes = channel_indices_to_use)
+    raw_analog_epo_cropped = raw_analog_cropped.T.reshape(1,raw_analog_cropped.shape[1], raw_analog_cropped.shape[0])
+    
+    # import pdb; pdb.set_trace() 
+    
     power_mean = {}
     power_stepwise = {}
     for band, (l_freq, h_freq) in freq_bands.items():
         step = np.max([1, (h_freq - l_freq) / 20])
         freq_list = np.arange(l_freq, h_freq, step)
-        l_power = mne.time_frequency.tfr_array_morlet(raw_np_epo_cropped, sampling_freq[block], freqs=freq_list, output="power", n_jobs=-1).squeeze()
+        # l_power = mne.time_frequency.tfr_array_morlet(raw_analog_epo_cropped, sampling_freq[block], freqs=freq_list, output="power", n_jobs=-1).squeeze()
+        l_power = mne.time_frequency.tfr_array_morlet(raw_analog_epo_cropped, sampling_freq[block], freqs=freq_list, output="power", n_jobs = -5).squeeze()
         for idx_freq in range(len(freq_list)):
-            for channel_idx in range(len(HC_indices)):
+            for channel_idx in range(len(channel_indices_to_use)):
                 l_power[channel_idx,idx_freq,:] = scipy.stats.zscore(l_power[channel_idx,idx_freq,:], axis=None)
         power_mean[band] = np.mean(l_power, axis=1)
         power_stepwise[band] = l_power
@@ -133,11 +163,11 @@ for task in range(0, len(seconds_lower)):
     # Collect all possible ripples for the current task
     threshold_hl = 5
     event_id = {}
-    all_clusters = np.zeros((len(HC_indices), raw_np_epo_cropped.shape[-1]))
+    all_clusters = np.zeros((len(channel_indices_to_use), raw_analog_epo_cropped.shape[-1]))
     onsets, durations, descriptions, task_config_ripple = [], [], [], []
     
-    for new_channel_idx, initial_channel_idx in enumerate(HC_indices):
-        cluster_one_zero = np.zeros((len(power_mean.keys()), raw_np_epo_cropped.shape[-1]))
+    for new_channel_idx, initial_channel_idx in enumerate(channel_indices_to_use):
+        cluster_one_zero = np.zeros((len(power_mean.keys()), raw_analog_epo_cropped.shape[-1]))
         print(f"now looking at channel {channel_list[initial_channel_idx]}")
         for iband, band in enumerate(power_mean.keys()):
             # I think this is redundant. compare against threshold if not middle, but middle also against threshold??? doesnt make much sense.
@@ -152,7 +182,7 @@ for task in range(0, len(seconds_lower)):
                 cl = np.where(clusters == cli)[0]
                 # length of cl is also the length of the cluster (in samples 1/freq * len = secs)
                 # according to paper, clusters need to be 15 ms or more -> 30
-                if len(cl) > 15:  #This means over 7.5ms (previous criterium was 25ms)
+                if len(cl) > 30:
                     cluster_one_zero[iband, cl] = 1
         
         # Keep events with power in both low theta and vhgamm, but NOT in the middle to avoid broadband
@@ -161,9 +191,12 @@ for task in range(0, len(seconds_lower)):
         # and n_clusters as How many objects were found.
         
         # what if I ignore the middle band?
-        clusters, n_clusters = ndimage.label((cluster_one_zero[0,:] + cluster_one_zero[2,:] ) == 2)
+        # clusters, n_clusters = ndimage.label((cluster_one_zero[0,:] + cluster_one_zero[2,:] ) == 2)
         
         # clusters, n_clusters = ndimage.label((cluster_one_zero[0,:] + cluster_one_zero[2,:] + (1 - cluster_one_zero[1,:])) == 3)
+
+        # ignore gamma
+        clusters, n_clusters = ndimage.label((cluster_one_zero[2,:] + (1 - cluster_one_zero[1,:])) == 2)
 
         # now again, I save the amount of clusters; this time only if it fulfills both criteria: threshold + no middle.
         print(f"I found {n_clusters} between {sec_lower} and {seconds_upper[task]} secs in channel {channel_list[initial_channel_idx]}")
@@ -181,14 +214,15 @@ for task in range(0, len(seconds_lower)):
     
 
     # I NEED A neo.io file for these raw_cropped
-    ch_types = ["ecog"] * len(HC_indices)
-    info = mne.create_info(ch_names=HC_channels, ch_types=ch_types, sfreq=sampling_freq[0])
+    ch_types = ["ecog"] * len(channel_indices_to_use)
+    info = mne.create_info(ch_names=channels_to_use, ch_types=ch_types, sfreq=sampling_freq[0])
+    raw_np_cropped = raw_analog_cropped.as_array()
     raw_cropped = mne.io.RawArray(raw_np_cropped.T, info) # maybe without transpose?? try!
 
     
     # import pdb; pdb.set_trace()
     # create a mne.io object
-    ch_types = ["ecog"] * len(HC_indices)
+    ch_types = ["sEEG"] * len(channel_indices_to_use)
     annot = mne.Annotations(onset=[x/sampling_freq[0] for x in onsets], duration=[x/sampling_freq[0] for x in durations], description=descriptions)
     raw_cropped.set_annotations(annot)
     # add events
@@ -200,61 +234,70 @@ for task in range(0, len(seconds_lower)):
         raw_cropped.save(f"{LFP_dir}/{sub}/{names_blks_short[0]}-{sec_lower}-{sec_upper}-raw.fif", overwrite=True)
     
     # NEXT STEP: PLOTTING.
+    if plotting == True:
+        # import pdb; pdb.set_trace()
+        # CONTINUE HERE!!!
+        # THE FLITEREING DOESTN WORK
+        filtered_cropped_vhgamma = raw_cropped.filter(l_freq=gamma[0], h_freq=gamma[1], picks='all', fir_design='firwin')
+        filtered_cropped_vhgamma_np = filtered_cropped_vhgamma.get_data()
     
-    # CONTINUE HERE!!!
-    # THE FLITEREING DOESTN WORK
-    filtered_cropped_vhgamma = raw_cropped.filter(l_freq=gamma[0], h_freq=gamma[1], picks='all', fir_design='firwin')
-    filtered_cropped_vhgamma_np = filtered_cropped_vhgamma.get_data()
-
-
-    for ie, event in enumerate(events_dict[task]):
-
-        # event[0] = onset
-        # event[1] = duration
-        # event[-1] = channel index
-        fig, axs = plt.subplots(5)
-        fig.suptitle(f"Ripple candidate - channel {HC_channels[event[-2]]} - onset {event[0]/2000} sec; [2000 samples = 1 sec]")
     
-        # Create x-values from 5500 to 9500
-        x = np.linspace(event[0]-sampling_freq, event[0]+sampling_freq-1, sampling_freq*2)
-        
-        # first subplot is the raw signal:
-        axs[0].plot(x, raw_np_cropped[event[0]-sampling_freq:event[0]+sampling_freq, event[-1]])
-        axs[0].set_title('raw LFP')
-    
-        # the second subplot will be filtered for high gamma:
-        axs[1].plot(x, filtered_cropped_vhgamma_np[event[-1], event[0]-sampling_freq:event[0]+sampling_freq])    
-        axs[1].set_title('vhgamma filtered signal')    
-        
-        # the third subplot will be the mean power of this frequency: 
-        axs[2].plot(x,power_dict[f"{task}_mean"]['vhgamma'][event[-1], event[0]-sampling_freq:event[0]+sampling_freq])
-        axs[2].set_title('Mean power vhgamma')
-    
-        # the fourth subplot is the vhgamma power spectrum
-        power_to_plot_low = power_dict[f"{task}_stepwise"][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq] # Select first epoch and the specified channel
-        axs[3].imshow(power_to_plot_low, aspect='auto', origin='lower')
-        
-        # the fifth subplot is the overall power spectrum
-        # power_to_plot_all = np.stack(power_all[freq_bands_keys[0]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq], power_all[freq_bands_keys[1]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq], power_all[freq_bands_keys[2]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq])
-        power_to_plot_all = np.vstack((power_dict[f"{task}_stepwise"][freq_bands_keys[0]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq], power_dict[f"{task}_stepwise"][freq_bands_keys[1]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq]))
-        power_to_plot_all = np.vstack((power_to_plot_all, power_dict[f"{task}_stepwise"][freq_bands_keys[2]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq]))
-        axs[4].imshow(power_to_plot_all, aspect='auto', origin='lower')
-        
-    
-    # save the numpy events file!
-    if save == True:
-        # first put the channel names next to the channel IDs
-        events = np.c_[events, np.nan(events.shape[0])] 
-        
-        channel_list = []
-        for i, ripple in enumerate(events):
-            channel_list.append(HC_channels[int(events[i,2])])
-            #events[i,-1] = channel_list_non_empty[int(events[i,2])]
-        channels_to_save = np.array(channel_list)   
-        channels_to_save = channels_to_save.reshape(channels_to_save.shape[0], 1)
-        events = np.hstack((events, channels_to_save))
+        for ie, event in enumerate(events_dict[task]):
+            freq_to_plot = int(sampling_freq[0]/2)
             
-        np.save(f"{result_dir}/{sub}_{names_blks_short[0]}_50to100", events)
+            if event[0] > freq_to_plot and ie < 100:
+                print(f"now starting to plot overall {len(events_dict[task])} events")
+        
+                # event[0] = onset
+                # event[1] = duration
+                # event[-1] = channel index
+                fig, axs = plt.subplots(5)
+                fig.suptitle(f"Ripple candidate - channel {channels_to_use[event[-2]]} - onset {event[0]/2000} sec; [2000 samples = 1 sec]")
+            
+                # Create x-values from 5500 to 9500
+                x = np.linspace(event[0]-freq_to_plot, event[0]+freq_to_plot-1, freq_to_plot*2)
+                
+                # first subplot is the raw signal:
+                axs[0].plot(x, raw_np_cropped[event[0]-freq_to_plot:event[0]+freq_to_plot, event[-1]], linewidth = 0.2)
+                axs[0].set_title('raw LFP')
+            
+                # the second subplot will be filtered for high gamma:
+                axs[1].plot(x, filtered_cropped_vhgamma_np[event[-1], event[0]-freq_to_plot:event[0]+freq_to_plot], linewidth = 0.2)    
+                axs[1].set_title('vhgamma filtered signal')    
+                
+                # the third subplot will be the mean power of this frequency: 
+                axs[2].plot(x,power_dict[f"{task}_mean"]['vhgamma'][event[-1], event[0]-freq_to_plot:event[0]+freq_to_plot])
+                axs[2].set_title('Mean power vhgamma')
+            
+                # the fourth subplot is the vhgamma power spectrum
+                power_to_plot_low = power_dict[f"{task}_stepwise"]['vhgamma'][event[-1], :, event[0]-freq_to_plot:event[0]+freq_to_plot] # Select first epoch and the specified channel
+                axs[3].imshow(power_to_plot_low, aspect='auto', origin='lower')
+                
+                # the fifth subplot is the overall power spectrum
+                # power_to_plot_all = np.stack(power_all[freq_bands_keys[0]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq], power_all[freq_bands_keys[1]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq], power_all[freq_bands_keys[2]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq])
+                power_to_plot_all = np.vstack((power_dict[f"{task}_stepwise"][freq_bands_keys[0]][event[-1], :, event[0]-freq_to_plot:event[0]+freq_to_plot], power_dict[f"{task}_stepwise"][freq_bands_keys[1]][event[-1], :, event[0]-freq_to_plot:event[0]+freq_to_plot]))
+                power_to_plot_all = np.vstack((power_to_plot_all, power_dict[f"{task}_stepwise"][freq_bands_keys[2]][event[-1], :, event[0]-freq_to_plot:event[0]+freq_to_plot]))
+                axs[4].imshow(power_to_plot_all, aspect='auto', origin='lower')
+                
+    
+# save the numpy events file!
+if save == True:
+    # # first put the channel names next to the channel IDs
+    # events = np.c_[events, np.nan(events.shape[0])] 
+    
+    # channel_list = []
+    # for i, ripple in enumerate(events):
+    #     channel_list.append(HC_channels[int(events[i,2])])
+    #     #events[i,-1] = channel_list_non_empty[int(events[i,2])]
+    # channels_to_save = np.array(channel_list)   
+    # channels_to_save = channels_to_save.reshape(channels_to_save.shape[0], 1)
+    # events = np.hstack((events, channels_to_save))
+
+    with open(f"{result_dir}/{sub}_{ROI}_ripple_events_dir.pkl", 'wb') as file:
+        pickle.dump(events_dict, file)
+        
+
+        # np.save(f"{result_dir}/{sub}_{names_blks_short[0]}_50to100", events)
         # n_cycles = freqs / 2
         # power_morlet = mne.time_frequency.tfr_array_morlet(HC_L_raw_epo_cut, sfreq=sampling_freq, freqs=freqs, n_cycles=n_cycles, output='power')
     
