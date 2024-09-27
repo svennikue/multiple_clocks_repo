@@ -17,10 +17,24 @@ import scipy
 import matplotlib.pyplot as plt
 import scipy.ndimage as ndimage
 import pickle
-
+import seaborn as sns
+            
+            
+            
 save = True
-plotting = False
-ROI = 'mPFC'
+plotting = True
+
+# if you want to show that there are more ripples in HPC than in mPFC
+ROI = 'HPC' # HPC mPFC
+
+# if you want to collect all ripples within a single grid
+analysis_type = 'grid_wise' # grid_wise, exploration_trials 
+
+task_to_check = 2
+
+index_lower = 0
+index_upper = 9
+
 theta = [3,8]
 middle = [10, 80]
 gamma = [80, 180]
@@ -47,21 +61,56 @@ sub = 's25'
 
 # load behaviour that defines my snippets.
 behaviour = np.genfromtxt(f"{LFP_dir}/{sub}/exploration_trials_times_and_ncorrect.csv", delimiter=',')
-seconds_lower, seconds_upper, task_config  = [], [], []
-if behaviour[0, 4] == 0:
-    seconds_lower.append(behaviour[0, 0])
-# end of the first repeat as the lower end, and keep the upper end defined as doing it correctly for the firs time
-for i in range(1, len(behaviour)):
-    if behaviour[i, 5] == 1:
-        # start looking for ripples once they found goal D for the first time.
-        seconds_lower.append(behaviour[i, 3])
-        # also store the configuration of that task.
-        task_config.append([behaviour[i, -4], behaviour[i, -3],behaviour[i, -2],behaviour[i, -1]])
-    # transition from correct (1, last) to incorrect (0, now) means i-1 was last correct one.
-    if behaviour[i-1, 4] == 1 and behaviour[i, 4] == 0:
-        # end looking for ripples once they completed the task correctly at least once.
-        seconds_upper.append(behaviour[i-1, 3])  
-seconds_upper.append(behaviour[-1, 3])
+behaviour_all = np.genfromtxt(f"{LFP_dir}/{sub}/all_trials_times.csv", delimiter=',')
+
+
+if analysis_type == 'exploration_trials':
+    seconds_lower, seconds_upper, task_config  = [], [], []
+    if behaviour[0, 4] == 0:
+        seconds_lower.append(behaviour[0, 0])
+    # end of the first repeat as the lower end, and keep the upper end defined as doing it correctly for the firs time
+    for i in range(1, len(behaviour)):
+        if behaviour[i, 5] == 1:
+            # start looking for ripples once they found goal D for the first time.
+            seconds_lower.append(behaviour[i, 3])
+            # also store the configuration of that task.
+            task_config.append([behaviour[i, -4], behaviour[i, -3],behaviour[i, -2],behaviour[i, -1]])
+        # transition from correct (1, last) to incorrect (0, now) means i-1 was last correct one.
+        if behaviour[i-1, 4] == 1 and behaviour[i, 4] == 0:
+            # end looking for ripples once they completed the task correctly at least once.
+            seconds_upper.append(behaviour[i-1, 3])  
+    seconds_upper.append(behaviour[-1, 3])
+
+elif analysis_type == 'grid_wise':
+    index_lower = []
+    index_upper = []
+    # define seconds_lower[task] as a new repeat of a grid.
+    # also collect grid_index (task_config) to keep track if you're still in the same grid.
+    seconds_lower, seconds_upper, task_config, task_index  = [], [], [], []
+    for i in range(1, len(behaviour_all)):
+        if i == 1: 
+            seconds_lower.append(behaviour_all[i-1, 1])
+            task_config.append([behaviour_all[i, 5], behaviour_all[i, 6],behaviour_all[i, 7],behaviour_all[i, 8]])
+            task_index.append(behaviour_all[i,-1])
+        curr_repeat = behaviour_all[i, 0]
+        last_repeat = behaviour_all[i-1, 0]
+        if curr_repeat > last_repeat:
+            seconds_lower.append(behaviour_all[i, 1])
+            seconds_upper.append(behaviour_all[i-1, 4])
+            task_config.append([behaviour_all[i, 5], behaviour_all[i, 6],behaviour_all[i, 7],behaviour_all[i, 8]])
+            task_index.append(behaviour_all[i,-1])
+        if curr_repeat < last_repeat:
+            seconds_lower.append(behaviour_all[i, 1])
+            seconds_upper.append(behaviour_all[i-1, 4])
+            
+    seconds_upper.append(behaviour_all[i, 4])
+
+    for i, task in enumerate(task_index):
+        if task == task_to_check and index_lower == []:
+            index_lower = i
+        if task_index[i-1] == task_to_check and task_index[i] > task_to_check:
+            index_upper = i
+            
 
 # instead of fully loading the files, I am only loading the reader and then 
 # looking at them in lazy-mode, only calling the shorter segments.
@@ -123,10 +172,11 @@ freq_bands = {freq_bands_keys[0]: (theta[0], theta[1]), freq_bands_keys[1]: (mid
     
 events_dict = {}
 power_dict = {}
-
+channel_ripple_dict = {}
+onset_secs = []
 
 # for task in range(0, len(seconds_lower[0:4])):
-for task in range(0, len(seconds_lower[0:9])):
+for task in range(index_lower, index_upper):
     #for task in range(7, 10):
     sec_lower = seconds_lower[task]
     sec_upper = seconds_upper[task]
@@ -205,13 +255,15 @@ for task in range(0, len(seconds_lower[0:9])):
         for cli in range(1, n_clusters+1):
             # again check how long each cluster is. Cli is equal to the number of how the current cluster is marked
             cl = np.where(clusters == cli)[0]
-            onsets.append(cl[0]) #onset is in samples, not seconds.
+            # onsets.append(cl[0]) #onset is in samples, not seconds.
+            onsets.append(cl[0] + sec_lower*sampling_freq[0]) #onset is in samples, not seconds.
             durations.append(len(cl)) #duration is also samples, not seconds.
             descriptions.append(f"channel_idx_{initial_channel_idx}")
             task_config_ripple.append(task_config[task])
             if f"channel_idx_{initial_channel_idx}" not in event_id:
                 event_id[f"channel_idx_{initial_channel_idx}"] = new_channel_idx
-    
+            onset_secs.append(cl[0]/sampling_freq[block] + sec_lower)
+        # channel_ripple_dict[channel_list[initial_channel_idx]] = onset_secs
 
     # I NEED A neo.io file for these raw_cropped
     ch_types = ["ecog"] * len(channel_indices_to_use)
@@ -229,12 +281,43 @@ for task in range(0, len(seconds_lower[0:9])):
     events, event_id = mne.events_from_annotations(raw_cropped, event_id=event_id)
     # events are times at which something happens, e.g. a ripple occurs
     events_dict[task] = events
-
+    import pdb; pdb.set_trace() 
+    
+    # I HAVE NO IDEA WHAT IS GOUGB WRONG BUT FOR SME REASON IT DOESNT SAFE THE EVENTS ANYMORE...
+    # WHY???
+    
+    
+    # continue here!!!
+    #
+    #
+    
     if save == True:
-        raw_cropped.save(f"{LFP_dir}/{sub}/{names_blks_short[0]}-{sec_lower}-{sec_upper}-raw.fif", overwrite=True)
+        raw_cropped.save(f"{LFP_dir}/{sub}/{names_blks_short[0]}-{analysis_type}_{sec_lower}-{sec_upper}-raw.fif", overwrite=True)
     
     # NEXT STEP: PLOTTING.
     if plotting == True:
+        # if analysis_type == 'grid_wise':
+            
+        #     # Create a KDE plot for the data
+        #     sns.kdeplot(onset_secs, fill=True, color='skyblue', label='Data Distribution')
+            
+        #     # Add a vertical line for the baseline reference
+        #     plt.axvline(x=(seconds_lower[index_lower]), color='red', linestyle='--', label='Start new Grid')
+        #     plt.axvline(x=(seconds_upper[index_lower]), color='red', linestyle='--', label='First Correct')
+            
+        #     # Add titles and labels
+        #     plt.title('Ripple frequency when solving a single grid [10 correct repeats]')
+        #     plt.xlabel('Seconds in Task')
+        #     plt.ylabel('Ripple Frequency')
+            
+        #     # Add a legend
+        #     plt.legend()
+            
+        #     # Show the plot
+        #     plt.show()
+
+        
+        
         # import pdb; pdb.set_trace()
         # CONTINUE HERE!!!
         # THE FLITEREING DOESTN WORK
@@ -245,7 +328,7 @@ for task in range(0, len(seconds_lower[0:9])):
         for ie, event in enumerate(events_dict[task]):
             freq_to_plot = int(sampling_freq[0]/2)
             
-            if event[0] > freq_to_plot and ie < 100:
+            if event[0] > freq_to_plot and ie < 20:
                 print(f"now starting to plot overall {len(events_dict[task])} events")
         
                 # event[0] = onset
@@ -293,7 +376,7 @@ if save == True:
     # channels_to_save = channels_to_save.reshape(channels_to_save.shape[0], 1)
     # events = np.hstack((events, channels_to_save))
 
-    with open(f"{result_dir}/{sub}_{ROI}_ripple_events_dir.pkl", 'wb') as file:
+    with open(f"{result_dir}/{sub}_{ROI}_{analysis_type}_ripple_events_dir.pkl", 'wb') as file:
         pickle.dump(events_dict, file)
         
 
