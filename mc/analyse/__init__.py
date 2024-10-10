@@ -9,6 +9,7 @@ import mc.analyse.analyse_ephys
 import mc.analyse.extract_and_clean
 import mc.analyse.analyse_MRI_behav
 import mc.analyse.handle_MRI_files
+import mc.analyse.ripple_helpers
 
 
 #import mc.set_clocks

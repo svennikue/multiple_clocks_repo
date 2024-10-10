@@ -25,13 +25,15 @@ import bisect
 import gc
 import tracemalloc
 import math
+import mc
 
 # tracemalloc.start()
 gc.collect()
           
-save = False
-plotting_distr = False
-plotting_ripples = True
+save = True
+plotting_distr = True
+plotting_ripples = False
+referenced_data = True
 
 # if you want to show that there are more ripples in HPC than in mPFC
 ROI = 'HPC' # HPC mPFC
@@ -59,8 +61,8 @@ gamma = [80, 180]
 # define your frequencies
 
 # import pdb; pdb.set_trace() 
-subjects = ['s12']
-# subjects = ['s12', 's25']
+# subjects = ['s12']
+subjects = ['s7', 's10', 's12', 's25']
 #subjects = ['s13', 's12', 's25']
 LFP_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
 result_dir = f"{LFP_dir}/results"
@@ -164,10 +166,10 @@ for sub in subjects :
         import pdb; pdb.set_trace()
             
     if ROI == 'mPFC':
-        channels_to_use = mPFC_channels
+        channels_to_use_in_task = mPFC_channels
         channel_indices_to_use = mPFC_indices
     elif ROI == 'HPC':
-        channels_to_use = HC_channels
+        channels_to_use_in_task = HC_channels
         channel_indices_to_use = HC_indices
     
     gap_at = block_size[0]/orig_sampling_freq[0]
@@ -180,8 +182,8 @@ for sub in subjects :
     freq_bands_keys = ['theta', 'middle', 'vhgamma']
     freq_bands = {freq_bands_keys[0]: (theta[0], theta[1]), freq_bands_keys[1]: (middle[0],middle[1]), freq_bands_keys[2]: (gamma[0], gamma[1])}
     
-    for task_to_check in range(1, 3):  
-    #for task_to_check in range(1, int(behaviour_all[-1,-1]+1)):  
+    # for task_to_check in range(1, 3):  
+    for task_to_check in range(1, int(behaviour_all[-1,-1]+1)):  
         # first define where in behavioural table the task starts and ends
         index_lower = np.where(np.array(task_index)== task_to_check)[0][0]
         index_upper = np.where(np.array(task_index)== task_to_check)[0][-1]
@@ -253,19 +255,34 @@ for sub in subjects :
             # redefine the lazy loader with every loop and see if that decreases memory load!!
             raw_analog_cropped = raw_file_lazy[block].analogsignals[0].load(time_slice = (sec_lower_neuro, sec_upper_neuro), channel_indexes = channel_indices_to_use)
             
-            
             # Target downsampled frequency
             downsampled_sampling_rate = 2.5 * gamma[1]
             # Calculate the number of samples in the downsampled data
             num_samples = int(raw_analog_cropped.shape[0] * (downsampled_sampling_rate / orig_sampling_freq[0]))
             # Downsample the data and delete the big one
             downsampled_data = resample(raw_analog_cropped.magnitude, num_samples, axis=0)
+            if len(downsampled_data) < 1700:
+                print(f"Skipping task {task_to_check} repeat {repeat}. too short. only {len(downsampled_data)} samples.")
+                continue
+            
             del raw_analog_cropped
+            
+            if referenced_data == True:
+                #referenced_data, new_channels = mc.analyse.ripple_helpers.reference_electrodes(downsampled_data, channels_to_use)
+                downsampled_data, channels_to_use = mc.analyse.ripple_helpers.reference_electrodes(downsampled_data, channels_to_use_in_task, repeat)
+            else:
+                channels_to_use = channels_to_use_in_task
+            
+            # import pdb; pdb.set_trace()
+            
+            
+            
             # Update the metadata if necessary, including the new sampling rate
             # import pdb; pdb.set_trace() 
             
             # IF I LEAVE THIS CHANGE THE NAMING!!!
             # GO THROUGH CODE AND CHANGE THE SAMPLING FREQUCNY EVERYWHERE!!
+ 
             #raw_analog_epo_cropped = raw_analog_cropped.T.reshape(1,raw_analog_cropped.shape[1], raw_analog_cropped.shape[0])
             downsampled_analog_epo_cropped = downsampled_data.T.reshape(1,downsampled_data.shape[1], downsampled_data.shape[0])
             
@@ -279,7 +296,7 @@ for sub in subjects :
                 # l_power = mne.time_frequency.tfr_array_morlet(raw_analog_epo_cropped, sampling_freq[block], freqs=freq_list, output="power", n_jobs=-1).squeeze()
                 l_power = mne.time_frequency.tfr_array_morlet(downsampled_analog_epo_cropped, downsampled_sampling_rate, freqs=freq_list, output="power", n_jobs = 1).squeeze()
                 for idx_freq in range(len(freq_list)):
-                    for channel_idx in range(len(channel_indices_to_use)):
+                    for channel_idx in range(len(channels_to_use)):
                         l_power[channel_idx,idx_freq,:] = scipy.stats.zscore(l_power[channel_idx,idx_freq,:], axis=None)
                 power_mean[band] = np.mean(l_power, axis=1)
                 power_stepwise[band] = l_power
@@ -292,10 +309,10 @@ for sub in subjects :
             length_ripple_in_secs = 0.015
             min_length_ripple = math.ceil(length_ripple_in_secs*downsampled_sampling_rate)
             event_id = {}
-            all_clusters = np.zeros((len(channel_indices_to_use), downsampled_analog_epo_cropped.shape[-1]))
+            all_clusters = np.zeros((len(channels_to_use), downsampled_analog_epo_cropped.shape[-1]))
             # all_clusters = np.zeros((len(channel_indices_to_use), raw_analog_epo_cropped.shape[-1]))
             onsets, durations, descriptions, task_config_ripple = [], [], [], []
-            for new_channel_idx, initial_channel_idx in enumerate(channel_indices_to_use):
+            for new_channel_idx, channel_name in enumerate(channels_to_use):
                 cluster_one_zero = np.zeros((len(power_mean.keys()), downsampled_analog_epo_cropped.shape[-1]))
                 #cluster_one_zero = np.zeros((len(power_mean.keys()), raw_analog_epo_cropped.shape[-1]))
                 # print(f"now looking at channel {channel_list[initial_channel_idx]}")
@@ -354,21 +371,21 @@ for sub in subjects :
                     onsets.append(cl[0]) #onset is in samples, not seconds.
                     # onsets.append(cl[0] + sec_lower*sampling_freq[0]) #onset is in samples, not seconds.
                     durations.append(len(cl)) #duration is also samples, not seconds.
-                    descriptions.append(f"channel_idx_{initial_channel_idx}")
+                    descriptions.append(f"channel_{channel_name}")
                     task_config_ripple.append(task_config[trial_index])
-                    if f"channel_idx_{initial_channel_idx}" not in event_id:
-                        event_id[f"channel_idx_{initial_channel_idx}"] = new_channel_idx
+                    if f"channel_{channel_name}" not in event_id:
+                        event_id[f"channel_{channel_name}"] = new_channel_idx
                     # onset_secs.append(cl[0]/sampling_freq[block] + sec_lower)
                     onset_secs.append(cl[0]/downsampled_sampling_rate + sec_lower)
-                    if channel_list[initial_channel_idx] not in onset_secs_per_channel:
-                        onset_secs_per_channel[channel_list[initial_channel_idx]] = []
+                    if channel_name not in onset_secs_per_channel:
+                        onset_secs_per_channel[channel_name] = []
                     # onset_secs_per_channel[channel_list[initial_channel_idx]].append(cl[0]/sampling_freq[block] + sec_lower)
-                    onset_secs_per_channel[channel_list[initial_channel_idx]].append(cl[0]/downsampled_sampling_rate + sec_lower)
+                    onset_secs_per_channel[channel_name].append(cl[0]/downsampled_sampling_rate + sec_lower)
 
                 # channel_ripple_dict[channel_list[initial_channel_idx]] = onset_secs
         
             # I NEED A neo.io file for these raw_cropped
-            ch_types = ["ecog"] * len(channel_indices_to_use)
+            ch_types = ["ecog"] * len(channels_to_use)
             info = mne.create_info(ch_names=channels_to_use, ch_types=ch_types, sfreq=downsampled_sampling_rate)
             # info = mne.create_info(ch_names=channels_to_use, ch_types=ch_types, sfreq=sampling_freq[0])
             # raw_np_cropped = raw_analog_cropped.as_array()
@@ -379,7 +396,7 @@ for sub in subjects :
             
             # import pdb; pdb.set_trace()
             # create a mne.io object
-            ch_types = ["sEEG"] * len(channel_indices_to_use)
+            ch_types = ["sEEG"] * len(channels_to_use)
             annot = mne.Annotations(onset=[x/downsampled_sampling_rate for x in onsets], duration=[x/downsampled_sampling_rate for x in durations], description=descriptions)
             # annot = mne.Annotations(onset=[x/sampling_freq[0] for x in onsets], duration=[x/sampling_freq[0] for x in durations], description=descriptions)
             
@@ -444,6 +461,7 @@ for sub in subjects :
         # NEXT STEP: PLOTTING.
         if plotting_distr == True:
             if analysis_type == 'grid_wise':
+
                 # y_jitter = np.random.uniform(0, 0.01, size=len(onset_secs))
                 y_jitter = {key: np.random.uniform(0, 0.01, len(values)) for key, values in onset_in_secs_dict[task_to_check].items()}
                 colors = plt.cm.get_cmap('tab10', len(onset_in_secs_dict[task_to_check]))
@@ -495,7 +513,8 @@ for sub in subjects :
         # for stat in top_stats[:10]:
         #     print(stat)
 
-                        
+    mc.analyse.ripple_helpers.plot_ripples_per_channel(onset_in_secs_dict, channels_to_use)
+                       
     # save the numpy events file!
     if save == True:
         # # first put the channel names next to the channel IDs

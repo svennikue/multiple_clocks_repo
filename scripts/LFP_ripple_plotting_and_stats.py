@@ -25,7 +25,7 @@ analysis_type = 'grid_wise' # grid_wise, exploration_trials
 
 
 
-subjects = ['s12', 's25']
+subjects = ['s7', 's10', 's12', 's25']
 #subjects = ['s13', 's12', 's25']
 LFP_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
 result_dir = f"{LFP_dir}/results"
@@ -58,11 +58,12 @@ for sub in subjects :
         # d: divide into 3 bits: pre finding D, pre doing one correct, post doing first correct. Plot 3 bars.
         # e: Sort ripples into: locked to neg feedback (feedback + 1000 samples); locked to pos feedb; not locked to feedb
         
-        
-        
+    
+      
     # a. timebin in bins defined as subpaths of correct solves. Plot ripple amount per bin.
     # there will be 4*10 bins.
     ripples_by_state_per_repeat = {}
+    ripple_rate_by_state_per_repeat = {}
     for repeat in range(len(behaviour_all)):
         curr_task = behaviour_all[repeat, -1]
         if curr_task not in ripples:
@@ -84,7 +85,10 @@ for sub in subjects :
                             ripples_by_state_per_repeat[bin_to_fill] = 1
                         else:
                             ripples_by_state_per_repeat[bin_to_fill] = ripples_by_state_per_repeat[bin_to_fill] + 1
-    
+            duration_bin = upper-lower
+            ripple_rate_by_state_per_repeat[bin_to_fill] = ripples_by_state_per_repeat[bin_to_fill]/duration_bin
+                
+
     # Initialize the heights list for 40 bars
     heights = []
     
@@ -110,7 +114,34 @@ for sub in subjects :
     # Show the plot
     plt.show()
     
-                        
+    
+    # Loop from 1 to 40 and get the corresponding value from the dictionary
+    for i in range(1, 41):
+        if i in ripple_rate_by_state_per_repeat:
+            heights.append(ripple_rate_by_state_per_repeat[i])  # Use the value from the dictionary
+        else:
+            heights.append(0)  # If no key exists for this index, append 0
+    
+    # Generate labels for the x-axis (numbers 1 to 40)
+    labels = [str(i) for i in range(1, 41)]
+    
+    plt.figure();
+    # Create the bar plot
+    plt.bar(labels, heights)
+    
+    # Add title and labels
+    plt.title(f"Ripple Rate per state and repeat for subj {sub}")
+    plt.xlabel('State A-D correct solve 0 to 10')
+    plt.ylabel('[Sum of ripples/ duration] across tasks, per state and correct solve')
+    
+    # Show the plot
+    plt.show()
+    
+    
+              
+    import pdb; pdb.set_trace() 
+    # first, compute the ripple frequency: ripples per second, and plot that per task.
+                      
     
     
     # b per state, collapsed across repeats.
