@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import pickle
 import glob
 import os     
+import mc
 
 
 # import pdb; pdb.set_trace() 
@@ -25,7 +26,7 @@ analysis_type = 'grid_wise' # grid_wise, exploration_trials
 
 
 
-subjects = ['s7', 's10', 's12', 's25']
+subjects = ['s5', 's7', 's8', 's9', 's10', 's12', 's14', 's25']
 #subjects = ['s13', 's12', 's25']
 LFP_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
 result_dir = f"{LFP_dir}/results"
@@ -37,6 +38,9 @@ for sub in subjects :
     # load behaviour that defines my snippets.
     behaviour = np.genfromtxt(f"{LFP_dir}/{sub}/exploration_trials_times_and_ncorrect.csv", delimiter=',')
     behaviour_all = np.genfromtxt(f"{LFP_dir}/{sub}/all_trials_times.csv", delimiter=',')
+    # load behavioural stuff you need for plotting all sorts of stuff
+    seconds_lower, seconds_upper, task_config, task_index, task_onset, new_grid_onset, found_first_D = mc.analysis.ripple_helpers.prep_behaviour(behaviour_all)
+
     feedback = np.genfromtxt(f"{LFP_dir}/{sub}/feedback.csv", delimiter=',')
     
     
@@ -46,10 +50,27 @@ for sub in subjects :
     with open(f"{result_dir}/{sub}_{ROI}_{analysis_type}_ripple_by_seconds.pkl", 'rb') as file:
         ripples = pickle.load(file)
     
-    
+    with open(f"{result_dir}/{sub}_{ROI}_{analysis_type}_feedback.pkl", 'rb') as file:
+        feedback_dict = pickle.load(file)
+        
+
     # maybe first normalise the amount of ripples by the ripple count of this task??
     # otherwise some tasks are completely over represented...
     
+    
+    # plot ripple distribution
+    for repeat in range(len(behaviour_all)):
+        task_to_check = behaviour_all[repeat, -1]
+        feedback_correct_curr_task = feedback_dict[f"{task_to_check}_correct"]
+        feedback_error_curr_task = feedback_dict[f"{task_to_check}_error"]
+        index_lower = np.where(np.array(task_index)== task_to_check)[0][0]
+        index_upper = np.where(np.array(task_index)== task_to_check)[0][-1]
+        onset_secs = ripples[task_to_check][channel_name]
+        mc.analyse.ripple_helpers.plot_ripple_distribution(ripples, task_to_check, feedback_error_curr_task, feedback_correct_curr_task, onset_secs, found_first_D, seconds_upper, index_upper, index_lower, seconds_lower, sub)
+
+    
+
+
     
     # Plot the following across tasks:
         # a: timebin in bins defined as subpaths. Plot ripple amount per bin.
@@ -86,7 +107,8 @@ for sub in subjects :
                         else:
                             ripples_by_state_per_repeat[bin_to_fill] = ripples_by_state_per_repeat[bin_to_fill] + 1
             duration_bin = upper-lower
-            ripple_rate_by_state_per_repeat[bin_to_fill] = ripples_by_state_per_repeat[bin_to_fill]/duration_bin
+            if bin_to_fill in ripples_by_state_per_repeat:
+                ripple_rate_by_state_per_repeat[bin_to_fill] = ripples_by_state_per_repeat[bin_to_fill]/duration_bin
                 
 
     # Initialize the heights list for 40 bars
@@ -116,6 +138,7 @@ for sub in subjects :
     
     
     # Loop from 1 to 40 and get the corresponding value from the dictionary
+    heights = []
     for i in range(1, 41):
         if i in ripple_rate_by_state_per_repeat:
             heights.append(ripple_rate_by_state_per_repeat[i])  # Use the value from the dictionary
@@ -137,11 +160,7 @@ for sub in subjects :
     # Show the plot
     plt.show()
     
-    
-              
-    import pdb; pdb.set_trace() 
-    # first, compute the ripple frequency: ripples per second, and plot that per task.
-                      
+         
     
     
     # b per state, collapsed across repeats.

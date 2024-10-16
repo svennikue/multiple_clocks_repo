@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import scipy.ndimage as ndimage
 from scipy.signal import resample
 import pickle
-import seaborn as sns
+
 import glob
 import os
 import bisect
@@ -30,10 +30,12 @@ import mc
 # tracemalloc.start()
 gc.collect()
           
-save = True
+save = False
 plotting_distr = True
-plotting_ripples = False
+plotting_ripples = True
 referenced_data = True
+wire_of_interest = 'LT1Ha' #None
+
 
 # if you want to show that there are more ripples in HPC than in mPFC
 ROI = 'HPC' # HPC mPFC
@@ -47,6 +49,17 @@ index_upper = 9
 theta = [3,8]
 middle = [10, 80]
 gamma = [80, 180]
+ultra_high_gamma = [180, 250]
+# 2.5 * gamma[1] -> downsampled to 450. Yunzeh downsamples to 1000.
+# -> check if this still gives you the same ripples!
+
+# Yunzeh
+# next: 'notch-filtering' for 50Hz power line interference (double check, but I don't think I have that )
+# plus for its harmonics (100 Hz, 150 Hz etc) using a 3-Hz wide filter 
+# Electrode contacts positioned within 3 mm of the hippocampus were selected, and a nearby white-matter contact's reference signal was subtracted to reduce common noise. 
+# bandpass filtered between 70-180Hz 
+
+
 
 # SPW-R frequency band criterion for rodents (100 to 250 Hz) is generally higher 
 # than for monkeys (95 to 250 Hz) or humans (70–250 Hz, most use 80–150 Hz bandpass filters
@@ -61,8 +74,14 @@ gamma = [80, 180]
 # define your frequencies
 
 # import pdb; pdb.set_trace() 
-# subjects = ['s12']
-subjects = ['s7', 's10', 's12', 's25']
+subjects = ['s5']
+# subjects = ['s5', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 's25']
+
+# subjects = ['s11', 's12', 's13', 's14', 's25']
+
+# check what is wrong with s11 and also fix that s5 works- only a single run.
+# subjects = ['s5']
+
 #subjects = ['s13', 's12', 's25']
 LFP_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
 result_dir = f"{LFP_dir}/results"
@@ -89,7 +108,7 @@ for sub in subjects :
     behaviour = np.genfromtxt(f"{LFP_dir}/{sub}/exploration_trials_times_and_ncorrect.csv", delimiter=',')
     behaviour_all = np.genfromtxt(f"{LFP_dir}/{sub}/all_trials_times.csv", delimiter=',')
     feedback = np.genfromtxt(f"{LFP_dir}/{sub}/feedback.csv", delimiter=',')
-
+    
     # preparing behaviour for exploration trials
     if analysis_type == 'exploration_trials':
         seconds_lower, seconds_upper, task_config  = [], [], []
@@ -114,56 +133,11 @@ for sub in subjects :
         index_upper = []
         # define seconds_lower[task] as a new repeat of a grid.
         # also collect grid_index (task_config) to keep track if you're still in the same grid.
-        seconds_lower, seconds_upper, task_config, task_index, task_onset, new_grid_onset, found_first_D  = [], [], [], [], [], [], []
-        for i in range(1, len(behaviour_all)):
-            if i == 1: 
-                new_grid_onset.append(behaviour_all[i-1, 10])
-                seconds_lower.append(behaviour_all[i-1, 10])
-                task_config.append([behaviour_all[i-1, 5], behaviour_all[i-1, 6],behaviour_all[i-1, 7],behaviour_all[i-1, 8]])
-                task_index.append(int(behaviour_all[i-1,-1]))
-                task_onset.append(behaviour_all[i-1, 10])
-                found_first_D.append(behaviour_all[i-1, 4])
-            curr_repeat = behaviour_all[i, 0]
-            last_repeat = behaviour_all[i-1, 0]
-            if curr_repeat != last_repeat:
-                seconds_lower.append(behaviour_all[i, 10])
-                seconds_upper.append(behaviour_all[i-1, 4])
-                task_config.append([behaviour_all[i, 5], behaviour_all[i, 6],behaviour_all[i, 7],behaviour_all[i, 8]])
-                task_index.append(int(behaviour_all[i,-1]))
-                task_onset.append(behaviour_all[i, 10])
-            if behaviour_all[i, 9] < behaviour_all[i-1, 9]: # 9 is repeats in current grid
-                # i.e. if in a new grid
-                new_grid_onset.append(behaviour_all[i, 10])
-                found_first_D.append(behaviour_all[i, 4])
-        seconds_upper.append(behaviour_all[i, 4])       
+        seconds_lower, seconds_upper, task_config, task_index, task_onset, new_grid_onset, found_first_D = mc.analyse.ripple_helpers.prep_behaviour(behaviour_all)
+
     
     # preparing the file
-    # instead of fully loading the files, I am only loading the reader and then 
-    # looking at them in lazy-mode, only calling the shorter segments.
-    reader, block_size, channel_list, orig_sampling_freq, raw_file_lazy = [], [], [], [], []
-    for file_half in [0,1]:
-        # does neo.io have an 'unload' function?
-        reader.append(neo.io.BlackrockIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3))
-        block_size.append(reader[file_half].get_signal_size(seg_index=1, block_index=0))
-        orig_sampling_freq.append(int(reader[file_half].sig_sampling_rates[3]))        
-        # all of these will only be based on the second file. Should be equivalent!
-        channel_names = reader[file_half].header['signal_channels']
-        channel_names = [str(elem) for elem in channel_names[:]]
-        channel_list = [name.split(",")[0].strip("('") for name in channel_names]
-        HC_indices = []
-        mPFC_indices = []
-        for i, channel in enumerate(channel_list):
-            if 'Ha' in channel or 'Hb' in channel:
-                HC_indices.append(i)
-            if 'Ca' in channel:
-                mPFC_indices.append(i)    
-        HC_channels = [channel_list[i] for i in HC_indices]
-        mPFC_channels = [channel_list[i] for i in mPFC_indices]
-        raw_file_lazy.append(reader[file_half].read_segment(seg_index=1, lazy=True))
-    
-    if orig_sampling_freq[0] != orig_sampling_freq[1]:
-        print('Careful! the files dont have the same sampling frequency! Probably wrong filename.')
-        import pdb; pdb.set_trace()
+    raw_file_lazy, HC_channels, HC_indices, mPFC_channels, mPFC_indices, orig_sampling_freq, block_size = mc.analyse.ripple_helpers.load_LFPs(LFP_dir, sub, names_blks_short)
             
     if ROI == 'mPFC':
         channels_to_use_in_task = mPFC_channels
@@ -178,27 +152,25 @@ for sub in subjects :
     # then going into the loop and collecting the actual ripple data per task.
     onset_in_secs_dict = {}
     events_dict_per_channel = {}
+    feedback_dict = {}
     
-    freq_bands_keys = ['theta', 'middle', 'vhgamma']
-    freq_bands = {freq_bands_keys[0]: (theta[0], theta[1]), freq_bands_keys[1]: (middle[0],middle[1]), freq_bands_keys[2]: (gamma[0], gamma[1])}
+    freq_bands_keys = ['theta', 'middle', 'hgamma', 'ultra_high_gamma']
+    freq_bands = {freq_bands_keys[0]: (theta[0], theta[1]), freq_bands_keys[1]: (middle[0],middle[1]), freq_bands_keys[2]: (gamma[0], gamma[1]), freq_bands_keys[3]: (ultra_high_gamma[0], ultra_high_gamma[1])}
     
     # for task_to_check in range(1, 3):  
     for task_to_check in range(1, int(behaviour_all[-1,-1]+1)):  
         # first define where in behavioural table the task starts and ends
         index_lower = np.where(np.array(task_index)== task_to_check)[0][0]
         index_upper = np.where(np.array(task_index)== task_to_check)[0][-1]
-    # # for task_to_check in range(1,2):
-    #     for i, task in enumerate(task_index):
-    #         if task == task_to_check and index_lower == []:
-    #             index_lower = i
-    #         if task_index[i-1] == task_to_check and task_index[i] > task_to_check and index_upper == []:
-    #             index_upper = i
-    #         if i == len(task_index)-1:
-    #             index_upper = i
-        
-        if task_to_check in [task_index[skip_task_index]]: 
-            continue
+
+        if sub not in 's5':
+            if task_to_check in [task_index[skip_task_index]]: 
+                continue
         if task_to_check in [10] and sub == 's25':
+            continue
+        if task_to_check in [24] and sub in ['s8', 's11']:
+            continue
+        if task_to_check in [14] and sub in ['s11']:
             continue
         # big_analog_chunk = raw_file_lazy[0].analogsignals[0].load(time_slice = (0.01, seconds_upper[3]), channel_indexes = HC_indices)
         # ch_types = ["ecog"] * len(HC_indices)
@@ -213,14 +185,16 @@ for sub in subjects :
         # big_analog_chunk = []
         # import pdb; pdb.set_trace()
         
-        feedback_correct_curr_task, feedback_error_curr_task = [], []
+        feedback_dict[f"{task_to_check}_correct"], feedback_dict[f"{task_to_check}_error"] = [], []
         for i in range(len(feedback)):
             if feedback[i,0] == task_to_check:
                 if feedback[i,1] > 0:
-                    feedback_correct_curr_task.append(feedback[i,1])
+                    feedback_dict[f"{task_to_check}_correct"].append(feedback[i,1])
                 if feedback[i,2] > 0:
-                    feedback_error_curr_task.append(feedback[i,2])
-            
+                    feedback_dict[f"{task_to_check}_error"].append(feedback[i,2])
+                    
+        
+        
         events_dict = {}
         power_dict = {}
         channel_ripple_dict = {}
@@ -232,6 +206,8 @@ for sub in subjects :
         for repeat, trial_index in enumerate(range(index_lower, index_upper)):
             #for task in range(7, 10):
             sec_lower = seconds_lower[trial_index]
+            if sec_lower < 0:
+                sec_lower = 0.1
             sec_upper = seconds_upper[trial_index]
             print(f"Now analysing {task_to_check}, repeat {repeat} between {sec_lower} and {sec_upper} secs")
             
@@ -247,16 +223,25 @@ for sub in subjects :
         
             
             reader, raw_file_lazy = [], []
-            for file_half in [0,1]:
-                # does neo.io have an 'unload' function?
-                reader.append(neo.io.BlackrockIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3))
-                raw_file_lazy.append(reader[file_half].read_segment(seg_index=1, lazy=True))
-            
+            if sub not in ['s5']:
+                for file_half in [0,1]:
+                    # does neo.io have an 'unload' function?
+                    reader.append(neo.io.BlackrockIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3))
+                    # if sub in ['s11']:
+                    #     raw_file_lazy.append(reader[file_half].read_segment(seg_index=0, lazy=True))
+                    # else:
+                    raw_file_lazy.append(reader[file_half].read_segment(seg_index=1, lazy=True))
+            else:
+                for file_half in [0]:
+                    # does neo.io have an 'unload' function?
+                    reader.append(neo.io.BlackrockIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3))
+                    raw_file_lazy.append(reader[file_half].read_segment(seg_index=1, lazy=True))
+
             # redefine the lazy loader with every loop and see if that decreases memory load!!
             raw_analog_cropped = raw_file_lazy[block].analogsignals[0].load(time_slice = (sec_lower_neuro, sec_upper_neuro), channel_indexes = channel_indices_to_use)
             
             # Target downsampled frequency
-            downsampled_sampling_rate = 2.5 * gamma[1]
+            downsampled_sampling_rate = 2 * ultra_high_gamma[1]
             # Calculate the number of samples in the downsampled data
             num_samples = int(raw_analog_cropped.shape[0] * (downsampled_sampling_rate / orig_sampling_freq[0]))
             # Downsample the data and delete the big one
@@ -305,8 +290,8 @@ for sub in subjects :
             power_dict[f"{repeat}_stepwise"] = power_stepwise
             
             # Collect all possible ripples for the current task
-            threshold_hl = 5
-            length_ripple_in_secs = 0.015
+            # import pdb; pdb.set_trace() 
+            length_ripple_in_secs = 0.02
             min_length_ripple = math.ceil(length_ripple_in_secs*downsampled_sampling_rate)
             event_id = {}
             all_clusters = np.zeros((len(channels_to_use), downsampled_analog_epo_cropped.shape[-1]))
@@ -317,6 +302,8 @@ for sub in subjects :
                 #cluster_one_zero = np.zeros((len(power_mean.keys()), raw_analog_epo_cropped.shape[-1]))
                 # print(f"now looking at channel {channel_list[initial_channel_idx]}")
                 for iband, band in enumerate(power_mean.keys()):
+                    # set this to exceeding 4x standard deviation from power in this band 
+                    threshold_hl = np.mean(power_mean[band][new_channel_idx,:]) + 4*np.std(power_mean[band][new_channel_idx,:])
                     # I think this is redundant. compare against threshold if not middle, but middle also against threshold??? doesnt make much sense.
                     #cond = power_mean[band][new_channel_idx,:] > (threshold if band != "middle" else threshold)
                     cond = power_mean[band][new_channel_idx,:] > threshold_hl
@@ -331,6 +318,7 @@ for sub in subjects :
                         cl = np.where(clusters == cli)[0]
                         # length of cl is also the length of the cluster (in samples 1/freq * len = secs)
                         # according to paper, clusters need to be 15 ms or more -> 30
+                        # Yunzeh: 20 ms to 200 ms, with a 30 ms interval between events
                         if len(cl) >= min_length_ripple:
                             # include the 15ms gap!!
                             #  check for gap before cluster
@@ -405,102 +393,43 @@ for sub in subjects :
             events, event_id = mne.events_from_annotations(raw_cropped, event_id=event_id)
             # events are times at which something happens, e.g. a ripple occurs
             events_dict[repeat] = events
-            # import pdb; pdb.set_trace() 
+
+
             if plotting_ripples == True:
                 # import pdb; pdb.set_trace()
-                # CONTINUE HERE!!!
-                # THE FLITEREING DOESTN WORK
+                if wire_of_interest:
+                    indices_of_interest = []
+                    for i, channel in enumerate(channels_to_use):
+                        if wire_of_interest in channel :
+                            indices_of_interest.append(i)
+
+                y_label_power = [f"{theta[1]} Hz", f"{middle[1]} Hz", f"{gamma[1]} Hz", f"{ultra_high_gamma[1]} Hz"]  # Custom labels
                 filtered_cropped_vhgamma = raw_cropped.filter(l_freq=gamma[0], h_freq=gamma[1], picks='all', fir_design='firwin')
                 filtered_cropped_vhgamma_np = filtered_cropped_vhgamma.get_data()
                 for ie, event in enumerate(events_dict[repeat]):
                     freq_to_plot = int(downsampled_sampling_rate/2)
                     # freq_to_plot = int(sampling_freq[0]/2)
+                    # don't plot more than 5 ripples
+                    if wire_of_interest:
+                        if event[0] > freq_to_plot and len(downsampled_data)-event[0]>freq_to_plot and event[-1] in indices_of_interest and ie < 5:
+                            title = f"1 sec window around ripple in subj {sub}, {channels_to_use[event[-1]]} - onset {event[0]/downsampled_sampling_rate} sec; [{downsampled_sampling_rate} samples = 1 sec]"
+                            mc.analyse.ripple_helpers.plot_ripple(freq_to_plot, title, downsampled_data, event, min_length_ripple, filtered_cropped_vhgamma_np, power_dict, repeat, freq_bands_keys, y_label_power)
+                    else:
+                        if event[0] > freq_to_plot and len(downsampled_data)-event[0]>freq_to_plot and ie < 5:
+                            title = f"1 sec window around ripple in subj {sub}, {channels_to_use[event[-1]]} - onset {event[0]/downsampled_sampling_rate} sec; [{downsampled_sampling_rate} samples = 1 sec]"
+                            mc.analyse.ripple_helpers.plot_ripple(freq_to_plot, title, downsampled_data, event, min_length_ripple, filtered_cropped_vhgamma_np, power_dict, repeat, freq_bands_keys, y_label_power)
                     
-                    if event[0] > freq_to_plot and len(downsampled_data)-event[0]>freq_to_plot and  ie < 20:
-                        print(f"now starting to plot overall {len(events_dict[repeat])} events")
-                
-                        # event[0] = onset
-                        # event[1] = duration
-                        # event[-1] = channel index
-                        fig, axs = plt.subplots(5)
-                        fig.suptitle(f"Ripples in subj {sub} - channel {channels_to_use[event[-2]]} - onset {event[0]/downsampled_sampling_rate} sec; [{downsampled_sampling_rate} samples = 1 sec]")
-                    
-                        # Create x-values from 5500 to 9500
-                        x = np.linspace(event[0]-freq_to_plot, event[0]+freq_to_plot-1, freq_to_plot*2)
-                        
-                        # first subplot is the raw signal:
-                        # axs[0].plot(x, raw_np_cropped[event[0]-freq_to_plot:event[0]+freq_to_plot, event[-1]], linewidth = 0.2)
-                        axs[0].plot(x, downsampled_data[event[0]-freq_to_plot:event[0]+freq_to_plot, event[-1]], linewidth = 0.2)
-                        axs[0].set_title('downsampled raw LFP')
-                    
-                        # the second subplot will be filtered for high gamma:
-                        axs[1].plot(x, filtered_cropped_vhgamma_np[event[-1], event[0]-freq_to_plot:event[0]+freq_to_plot], linewidth = 0.2)    
-                        axs[1].set_title('vhgamma filtered signal')    
-                        
-                        # the third subplot will be the mean power of this frequency: 
-                        axs[2].plot(x,power_dict[f"{repeat}_mean"]['vhgamma'][event[-1], event[0]-freq_to_plot:event[0]+freq_to_plot])
-                        axs[2].set_title('Mean power vhgamma')
-                    
-                        # the fourth subplot is the vhgamma power spectrum
-                        power_to_plot_low = power_dict[f"{repeat}_stepwise"]['vhgamma'][event[-1], :, event[0]-freq_to_plot:event[0]+freq_to_plot] # Select first epoch and the specified channel
-                        axs[3].imshow(power_to_plot_low, aspect='auto', origin='lower')
-                        
-                        # the fifth subplot is the overall power spectrum
-                        # power_to_plot_all = np.stack(power_all[freq_bands_keys[0]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq], power_all[freq_bands_keys[1]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq], power_all[freq_bands_keys[2]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq])
-                        power_to_plot_all = np.vstack((power_dict[f"{repeat}_stepwise"][freq_bands_keys[0]][event[-1], :, event[0]-freq_to_plot:event[0]+freq_to_plot], power_dict[f"{repeat}_stepwise"][freq_bands_keys[1]][event[-1], :, event[0]-freq_to_plot:event[0]+freq_to_plot]))
-                        power_to_plot_all = np.vstack((power_to_plot_all, power_dict[f"{repeat}_stepwise"][freq_bands_keys[2]][event[-1], :, event[0]-freq_to_plot:event[0]+freq_to_plot]))
-                        axs[4].imshow(power_to_plot_all, aspect='auto', origin='lower')
                             
         events_dict_per_channel[task_to_check] = events_dict
         onset_in_secs_dict[task_to_check] = onset_secs_per_channel
         
         if save == True:
             raw_cropped.save(f"{LFP_dir}/{sub}/{names_blks_short[0]}-{analysis_type}_{sec_lower}-{sec_upper}-raw.fif", overwrite=True)
-        
-
-        # NEXT STEP: PLOTTING.
-        if plotting_distr == True:
-            if analysis_type == 'grid_wise':
-
-                # y_jitter = np.random.uniform(0, 0.01, size=len(onset_secs))
-                y_jitter = {key: np.random.uniform(0, 0.01, len(values)) for key, values in onset_in_secs_dict[task_to_check].items()}
-                colors = plt.cm.get_cmap('tab10', len(onset_in_secs_dict[task_to_check]))
-                
-                # Create a KDE plot for the data
-                plt.figure();
-                for idx, (condition, values) in enumerate(onset_in_secs_dict[task_to_check].items()):
-                    plt.scatter(values, y_jitter[condition], color=colors(idx), label=condition, zorder = 1)
+        if plotting_distr:
+            mc.analyse.ripple_helpers.plot_ripple_distribution(onset_in_secs_dict, task_to_check, feedback_dict[f"{task_to_check}_error"], feedback_dict[f"{task_to_check}_correct"], onset_secs, found_first_D, seconds_upper, index_upper, index_lower, seconds_lower, sub)
 
 
-                # plt.scatter(onset_secs, y_jitter, color='black', label='Ripple Candidates', zorder=1)
-                sns.kdeplot(onset_secs, fill=True, color='skyblue', label='Ripple Distribution')
-                
-                # Add a vertical line for the baseline reference
-                plt.axvline(x=(found_first_D[task_to_check-1]), color='black', linestyle='--', label='Found all 4 rewards')
-                plt.axvline(x=(seconds_upper[index_lower]), color='black', linestyle='--', label='First Correct')
-                
-                
-                # Add red rods for feedback: incorrect
-                sns.rugplot(feedback_error_curr_task, height=0.1, color='red', lw=2)  # Each data point as a 'rug'
 
-                # Add green rods for feedback: correct
-                sns.rugplot(feedback_correct_curr_task, height=0.1, color='green', lw=2)  # Each data point as a 'rug'
-
-                
-                # Add titles and labels
-                plt.title(f"Ripple frequency when solving grid {task_to_check} for subj {sub} [10 correct repeats]")
-                plt.xlabel('Seconds in Task')
-                plt.ylabel('Ripple Frequency')
-                
-                plt.xlim(seconds_lower[index_lower], seconds_upper[index_upper])
-                
-                # Add a legend
-                plt.legend()
-                
-                # Show the plot
-                plt.show()
-    
-       
         # memory management
         del raw_cropped
         # del raw_cropped, raw_np_cropped
@@ -513,26 +442,17 @@ for sub in subjects :
         # for stat in top_stats[:10]:
         #     print(stat)
 
-    mc.analyse.ripple_helpers.plot_ripples_per_channel(onset_in_secs_dict, channels_to_use)
+    # channels_to_use = ['RT2bHaEa01-027','RT2bHaEa02-028', 'RT2bHaEa03-029', 'RT2bHaEa04-030', 'RT2bHaEa05-031','RT2bHaEa06-032', 'RT2bHaEa07-129', 'RT2bHaEa08-130','RT2bHaEa09-131']
+    mc.analyse.ripple_helpers.plot_ripples_per_channel(onset_in_secs_dict, channels_to_use, sub)
                        
-    # save the numpy events file!
-    if save == True:
-        # # first put the channel names next to the channel IDs
-        # events = np.c_[events, np.nan(events.shape[0])] 
-        
-        # channel_list = []
-        # for i, ripple in enumerate(events):
-        #     channel_list.append(HC_channels[int(events[i,2])])
-        #     #events[i,-1] = channel_list_non_empty[int(events[i,2])]
-        # channels_to_save = np.array(channel_list)   
-        # channels_to_save = channels_to_save.reshape(channels_to_save.shape[0], 1)
-        # events = np.hstack((events, channels_to_save))
-    
-        with open(f"{result_dir}/{sub}_{ROI}_{analysis_type}_ripple_events_dir.pkl", 'wb') as file:
-            pickle.dump(events_dict, file)
-        with open(f"{result_dir}/{sub}_{ROI}_{analysis_type}_ripple_by_seconds.pkl", 'wb') as file:
-            pickle.dump(onset_in_secs_dict, file)
 
-        np.save(f"{result_dir}/{sub}_beh_feedback", feedback)
+    with open(f"{result_dir}/{sub}_{ROI}_{analysis_type}_ripple_events_dir.pkl", 'wb') as file:
+        pickle.dump(events_dict, file)
+    with open(f"{result_dir}/{sub}_{ROI}_{analysis_type}_ripple_by_seconds.pkl", 'wb') as file:
+        pickle.dump(onset_in_secs_dict, file)
+    with open(f"{result_dir}/{sub}_{ROI}_{analysis_type}_feedback.pkl", 'wb') as file:
+        pickle.dump(feedback_dict, file)
+
+    np.save(f"{result_dir}/{sub}_beh_feedback", feedback)
 
         
