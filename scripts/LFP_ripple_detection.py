@@ -31,10 +31,14 @@ import mc
 gc.collect()
           
 save = False
-plotting_distr = True
-plotting_ripples = True
-referenced_data = True
-wire_of_interest = 'LT1Ha' #None
+plotting_distr = False
+plotting_ripples = False
+referenced_data = False
+if referenced_data == True:
+    preproc_type = 'referenced'
+else:
+   preproc_type = 'channel_wise' 
+wire_of_interest = None # 'LT1Ha' #None
 
 
 # if you want to show that there are more ripples in HPC than in mPFC
@@ -74,9 +78,9 @@ ultra_high_gamma = [180, 250]
 # define your frequencies
 
 # import pdb; pdb.set_trace() 
-subjects = ['s5']
+# subjects = ['s5']
 # subjects = ['s5', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 's25']
-
+subjects = ['s11', 's12', 's13', 's14', 's25']
 # subjects = ['s11', 's12', 's13', 's14', 's25']
 
 # check what is wrong with s11 and also fix that s5 works- only a single run.
@@ -209,7 +213,7 @@ for sub in subjects :
             if sec_lower < 0:
                 sec_lower = 0.1
             sec_upper = seconds_upper[trial_index]
-            print(f"Now analysing {task_to_check}, repeat {repeat} between {sec_lower} and {sec_upper} secs")
+            print(f"Now analysing sub {sub}, task {task_to_check}, repeat {repeat} between {sec_lower} and {sec_upper} secs")
             
             
             if sec_upper < block_size[0]/orig_sampling_freq[0]:
@@ -218,8 +222,8 @@ for sub in subjects :
                 sec_upper_neuro = sec_upper
             else:
                 block = 1
-                sec_lower_neuro = sec_lower-block_size[0]/orig_sampling_freq[0]
-                sec_upper_neuro = sec_upper-block_size[0]/orig_sampling_freq[0]
+                sec_lower_neuro = sec_lower-(block_size[0]/orig_sampling_freq[0])
+                sec_upper_neuro = sec_upper-(block_size[0]/orig_sampling_freq[0])
         
             
             reader, raw_file_lazy = [], []
@@ -227,10 +231,10 @@ for sub in subjects :
                 for file_half in [0,1]:
                     # does neo.io have an 'unload' function?
                     reader.append(neo.io.BlackrockIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3))
-                    # if sub in ['s11']:
-                    #     raw_file_lazy.append(reader[file_half].read_segment(seg_index=0, lazy=True))
-                    # else:
-                    raw_file_lazy.append(reader[file_half].read_segment(seg_index=1, lazy=True))
+                    if sub in ['s11'] and file_half == 0:
+                        raw_file_lazy.append(reader[file_half].read_segment(seg_index=0, lazy=True))
+                    else:
+                        raw_file_lazy.append(reader[file_half].read_segment(seg_index=1, lazy=True))
             else:
                 for file_half in [0]:
                     # does neo.io have an 'unload' function?
@@ -246,7 +250,7 @@ for sub in subjects :
             num_samples = int(raw_analog_cropped.shape[0] * (downsampled_sampling_rate / orig_sampling_freq[0]))
             # Downsample the data and delete the big one
             downsampled_data = resample(raw_analog_cropped.magnitude, num_samples, axis=0)
-            if len(downsampled_data) < 1700:
+            if len(downsampled_data) < 8*ultra_high_gamma[1]:
                 print(f"Skipping task {task_to_check} repeat {repeat}. too short. only {len(downsampled_data)} samples.")
                 continue
             
@@ -446,9 +450,9 @@ for sub in subjects :
     mc.analyse.ripple_helpers.plot_ripples_per_channel(onset_in_secs_dict, channels_to_use, sub)
                        
 
-    with open(f"{result_dir}/{sub}_{ROI}_{analysis_type}_ripple_events_dir.pkl", 'wb') as file:
+    with open(f"{result_dir}/{sub}_{ROI}_{analysis_type}_{preproc_type}_ripple_events_dir.pkl", 'wb') as file:
         pickle.dump(events_dict, file)
-    with open(f"{result_dir}/{sub}_{ROI}_{analysis_type}_ripple_by_seconds.pkl", 'wb') as file:
+    with open(f"{result_dir}/{sub}_{ROI}_{analysis_type}_{preproc_type}_ripple_by_seconds.pkl", 'wb') as file:
         pickle.dump(onset_in_secs_dict, file)
     with open(f"{result_dir}/{sub}_{ROI}_{analysis_type}_feedback.pkl", 'wb') as file:
         pickle.dump(feedback_dict, file)
