@@ -33,7 +33,7 @@ gc.collect()
 save = False
 plotting_distr = False
 plotting_ripples = False
-referenced_data = False
+referenced_data = True
 if referenced_data == True:
     preproc_type = 'referenced'
 else:
@@ -80,7 +80,7 @@ ultra_high_gamma = [180, 250]
 # import pdb; pdb.set_trace() 
 # subjects = ['s5']
 # subjects = ['s5', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 's25']
-subjects = ['s11', 's12', 's13', 's14', 's25']
+subjects = ['s10']
 # subjects = ['s11', 's12', 's13', 's14', 's25']
 
 # check what is wrong with s11 and also fix that s5 works- only a single run.
@@ -207,7 +207,9 @@ for sub in subjects :
         
         # for each snippet of the dataset, now look for ripples.
         # for task in range(0, len(seconds_lower[0:4])):
-        for repeat, trial_index in enumerate(range(index_lower, index_upper)):
+        for repeat, trial_index in enumerate(range(index_lower, index_upper+1)):
+            if sub in ['s10'] and repeat == 9:
+                continue
             #for task in range(7, 10):
             sec_lower = seconds_lower[trial_index]
             if sec_lower < 0:
@@ -447,7 +449,7 @@ for sub in subjects :
         #     print(stat)
 
     # channels_to_use = ['RT2bHaEa01-027','RT2bHaEa02-028', 'RT2bHaEa03-029', 'RT2bHaEa04-030', 'RT2bHaEa05-031','RT2bHaEa06-032', 'RT2bHaEa07-129', 'RT2bHaEa08-130','RT2bHaEa09-131']
-    mc.analyse.ripple_helpers.plot_ripples_per_channel(onset_in_secs_dict, channels_to_use, sub)
+    # mc.analyse.plotting_ripples.plot_ripples_per_channel(onset_in_secs_dict, channels_to_use, sub)
                        
 
     with open(f"{result_dir}/{sub}_{ROI}_{analysis_type}_{preproc_type}_ripple_events_dir.pkl", 'wb') as file:

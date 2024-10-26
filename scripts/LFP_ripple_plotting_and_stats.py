@@ -24,7 +24,7 @@ result_dir = f"{LFP_dir}/results"
 ROI = 'HPC' # HPC mPFC
 analysis_type = 'grid_wise' # grid_wise, exploration_trials 
 
-preproc_type = 'referenced' # channel_wise
+preproc_type = 'referenced' # channel_wise 'referenced'
 
 distribution = False
 
@@ -50,9 +50,9 @@ session_per_subj = {
     'sub-5': ['s25']
     }
 
-# sessions = ['s7', 's8', 's9']
+# sessions = ['s12', 's13', 's14']
 # session_per_subj = {
-#     'sub-2': ['s7', 's8', 's9'],
+#    'sub-4': ['s12', 's13', 's14']
 #     }
 
 
@@ -77,20 +77,49 @@ session_per_subj = {
 #subjects = ['s13', 's12', 's25']
 LFP_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
 result_dir = f"{LFP_dir}/results"
+
+
+
+ripples_all_repeats_all_subs, ripple_rate_across_subs, durations_all_reps_correct_across_subs = {}, {}, {}
+
+no_instant_correct_across_subs, no_incorrect_solve_across_subs, no_later_correct_solve_across_subs = {}, {}, {}
+rate_instant_correct_across_subs, rate_incorrect_solve_across_subs, rate_later_correct_solve_across_subs= {}, {}, {}
+   
+ripple_count_correct_solve_cross_subs = {}
+ripple_count_instant_correct_solve_cross_subs = {}
+
+# maybe also put it here?
+# ripples_per_task_all_subs = {}
+
 for sub in session_per_subj:
-    ripples_all_repeats_all_sessions = {}                
-    ripple_rate_across_session = {}
+    ripples_all_repeats_all_sessions, ripple_rate_across_session, durations_all_reps_correct_across_session = {}, {}, {}
+    
+    no_instant_correct_across_sessions, no_incorrect_solve_across_sessions, no_later_correct_solve_across_sessions = {}, {}, {}
+    rate_instant_correct_across_sessions, rate_incorrect_solve_across_sessions, rate_later_correct_solve_across_sessions= {}, {}, {}
+       
     ripple_count_correct_solve_cross_sessions = {}
-          
+    ripple_count_instant_correct_solve_cross_sessions = {}
+    
+    ripple_overview_per_task = {}
+    
+    # maybe put it in the outer most one... not sure.
+    ripples_per_task_all_subs = {}
+    feedback_across_sessions = {}
+    
     for sesh in session_per_subj[sub]:
         # at some point do all data computations in here, and then collect them all for all sessions one subject had.
         
         # load behaviour that defines my snippets.
         behaviour_all = np.genfromtxt(f"{LFP_dir}/{sesh}/all_trials_times.csv", delimiter=',')
+        button_presses = np.genfromtxt(f"{LFP_dir}/{sesh}/button_presses.csv", delimiter = ',')
         # load behavioural stuff you need for plotting all sorts of stuff
         seconds_lower, seconds_upper, task_config, task_index, task_onset, new_grid_onset, found_first_D = mc.analyse.ripple_helpers.prep_behaviour(behaviour_all)
 
-        with open(f"{result_dir}/{sub}_{ROI}_{analysis_type}_{preproc_type}_ripple_by_seconds.pkl", 'rb') as file:
+        # compute velocity
+        #velocity = mc.analyse.ripple_helpers.compute_velocity(button_presses, behaviour_all)
+        #import pdb; pdb.set_trace()
+        
+        with open(f"{result_dir}/{sesh}_{ROI}_{analysis_type}_{preproc_type}_ripple_by_seconds.pkl", 'rb') as file:
             ripples = pickle.load(file)
         
         with open(f"{result_dir}/{sesh}_{ROI}_{analysis_type}_feedback.pkl", 'rb') as file:
@@ -127,7 +156,8 @@ for sub in session_per_subj:
                 if any(coi in channel for coi in channels_of_interest):
                     ripples_per_task[channel] = ripples[task_to_check][channel]
             ripple_hpc[task_to_check] = ripples_per_task
-            
+        
+        
         for task_to_check in ripple_hpc:
             feedback_correct_curr_task = feedback_dict[f"{int(task_to_check)}_correct"]
             feedback_error_curr_task = feedback_dict[f"{int(task_to_check)}_error"]
@@ -136,9 +166,23 @@ for sub in session_per_subj:
             ripples_across_hpc_channels = []
             for channel in ripple_hpc[task_to_check]:
                 ripples_across_hpc_channels.extend(ripple_hpc[task_to_check][channel])
+            
+            # import pdb; pdb.set_trace() 
+            
+            ripple_overview_per_task[f"{task_to_check}_ripples_across_choi"] = ripples_across_hpc_channels.copy()
+            
+            if task_to_check == 1:
+                print(f"start_task is {seconds_lower[index_lower]} in session {sesh}")
+                print(f" first ripple is at {ripples_across_hpc_channels[0]} in session {sesh}")
+            
+            ripple_overview_per_task[f"{task_to_check}_start_task"] = seconds_lower[index_lower].copy()
+            ripple_overview_per_task[f"{task_to_check}_end_task"] = seconds_upper[index_upper].copy()
+            ripple_overview_per_task[f"{task_to_check}_found_all_locs"] = found_first_D[task_to_check-1].copy()
+            ripple_overview_per_task[f"{task_to_check}_first_corr_solve"] = seconds_upper[index_lower].copy()
+            
             if distribution == True:
                 mc.analyse.plotting_ripples.plot_ripple_distribution(ripple_hpc, task_to_check, feedback_error_curr_task, feedback_correct_curr_task, ripples_across_hpc_channels, found_first_D, seconds_upper, index_upper, index_lower, seconds_lower, sub)
-    
+            
     
  
         # a. timebin in bins defined as subpaths of correct solves. Plot ripple amount per bin.
@@ -174,16 +218,16 @@ for sub in session_per_subj:
         
         # before plotting, first add all ripples across sessions that one subject completed!!
         
-        title = f"Ripples per state and repeat for {sub}"
-        x_title = 'State A-D correct solve 0 to 10'
-        y_title = 'Sum of ripples across tasks, per state and correct solve'
-        bars = 40
-        mc.analyse.plotting_ripples.ripple_count_barchart(ripple_rate_by_state_per_repeat, bars, title, x_title, y_title)
+        # title = f"Ripples per state and repeat for {sub}"
+        # x_title = 'State A-D correct solve 0 to 10'
+        # y_title = 'Sum of ripples across tasks, per state and correct solve'
+        # bars = 40
+        # mc.analyse.plotting_ripples.ripple_count_barchart(ripple_rate_by_state_per_repeat, bars, title, x_title, y_title)
         
-        title = f"Ripple Rate per state and repeat for {sub}"
-        x_title = 'State A-D correct solve 0 to 10'
-        y_title = '[Sum of ripples/ duration] across tasks, per state and correct solve'
-        mc.analyse.plotting_ripples.ripple_count_barchart(ripple_rate_by_state_per_repeat, bars, title, x_title, y_title)
+        # title = f"Ripple Rate per state and repeat for {sub}"
+        # x_title = 'State A-D correct solve 0 to 10'
+        # y_title = '[Sum of ripples/ duration] across tasks, per state and correct solve'
+        # mc.analyse.plotting_ripples.ripple_count_barchart(ripple_rate_by_state_per_repeat, bars, title, x_title, y_title)
 
 
 
@@ -241,6 +285,7 @@ for sub in session_per_subj:
             # 
             ripples_all_repeat_dict[task] = ripples_for_grid
         ripples_all_repeats_all_sessions[sesh] = ripples_all_repeat_dict
+        ripples_all_repeats_all_subs[sesh] = ripples_all_repeat_dict
         
         
         # first loop: go through tasks.
@@ -253,11 +298,13 @@ for sub in session_per_subj:
         behaviour_df = pd.DataFrame(behaviour_all)
         
         # only for 'correct' solves. -> sum up incorrect repeats!
-        rate_result_dict = {}
-        amount_result_dict = {}
+        # also collect if it's an instant correct solve
+        # and split by 'incorrect' solve and finally, correct solve but repeated.
+        rate_result_dict, amount_result_dict, no_instant_correct_dict, rate_instant_correct_dict, no_incorrect_solve_dict, rate_incorrect_solve_dict, no_later_correct_solve_dict, rate_later_correct_solve_dict = {}, {}, {}, {}, {}, {}, {}, {}
+        durations_all_reps_correct_dict = {}
         for task in ripple_hpc:
-            ripples_for_grid = {}
-            ripple_rate_per_grid = {}
+            ripples_for_grid, ripple_rate_per_grid, no_instant_correct, rate_instant_correct, no_incorrect_solve, rate_incorrect_solve, rate_later_correct_solve, no_later_correct_solve = {}, {}, {}, {}, {}, {}, {}, {}
+            durations = {}
             beh_subset_task = behaviour_df[behaviour_df[12] == task]
             for correct_solve in range(0, 10):
                 beh_subset_repeats = beh_subset_task[beh_subset_task[0] == correct_solve]
@@ -288,16 +335,68 @@ for sub in session_per_subj:
                             #print(f"Found {ripples_for_grid[bin_to_fill]} ripples for state {state} and in repeat {correct_solve} of task {task}, duration overall {cum_duration[state-1]}")
                             #print(f"in bin {bin_to_fill} the rate will be {ripples_for_grid[bin_to_fill]/cum_duration[state-1]}")
                             ripple_rate_per_grid[bin_to_fill] = ripples_for_grid[bin_to_fill]/cum_duration[state-1]
+                            durations[bin_to_fill] = cum_duration[state-1]
                             
                         if repeat == (len(beh_subset_repeats)-1) and bin_to_fill not in ripples_for_grid:
                             ripples_for_grid[bin_to_fill] = np.nan
                             ripple_rate_per_grid[bin_to_fill] = np.nan
+                                                
+                        # if it's the first solve (len(beh_subset_repeats) == 1)
+                        if len(beh_subset_repeats) == 1:
+                            no_instant_correct[bin_to_fill] = ripples_for_grid[bin_to_fill] 
+                            rate_instant_correct[bin_to_fill] = ripple_rate_per_grid[bin_to_fill]
+                        
+                        # if it's still an incorrect solve (len(beh_subset_repeats) > 1, but accumulate all incorrects
+                        if (len(beh_subset_repeats) > 1) and (repeat == (len(beh_subset_repeats)-2)):
+                            if bin_to_fill not in ripples_for_grid:
+                                no_incorrect_solve[bin_to_fill] = np.nan
+                                rate_incorrect_solve[bin_to_fill] = np.nan
+                            else:
+                                no_incorrect_solve[bin_to_fill] = ripples_for_grid[bin_to_fill] 
+                                rate_incorrect_solve[bin_to_fill] = ripples_for_grid[bin_to_fill]/cum_duration[state-1]
                             
-                amount_result_dict[task] = ripples_for_grid
-                rate_result_dict[task] = ripple_rate_per_grid
+                        # if it's the final, correct solve after errors (len(beh_subset_repeats) > 1, and repeat == len(beh_subset_repeats)-1)
+                        if (len(beh_subset_repeats) > 1) and (repeat == (len(beh_subset_repeats)-1)):
+                            # to only consider the last, take the difference between incorrect previous ones and all.
+                            no_later_correct_solve[bin_to_fill] = ripples_for_grid[bin_to_fill] - no_incorrect_solve[bin_to_fill]
+                            rate_later_correct_solve[bin_to_fill] = no_later_correct_solve[bin_to_fill]/cum_duration[state-1]
+                            
+                amount_result_dict[task] = ripples_for_grid.copy()
+                rate_result_dict[task] = ripple_rate_per_grid.copy()
+                durations_all_reps_correct_dict[task]= durations.copy()
                 
-        ripple_rate_across_session[sesh] = rate_result_dict
-        ripple_count_correct_solve_cross_sessions[sesh] = amount_result_dict
+                no_instant_correct_dict[task] = no_instant_correct.copy()
+                no_incorrect_solve_dict[task] = no_incorrect_solve.copy()
+                no_later_correct_solve_dict[task] = no_later_correct_solve.copy()
+                
+                rate_instant_correct_dict[task] = rate_instant_correct.copy()
+                rate_incorrect_solve_dict[task] = rate_incorrect_solve.copy()
+                rate_later_correct_solve_dict[task] = rate_later_correct_solve.copy()
+                
+        ripple_rate_across_session[sesh] = rate_result_dict.copy()
+        ripple_count_correct_solve_cross_sessions[sesh] = amount_result_dict.copy()
+        ripple_count_correct_solve_cross_subs[sesh] = amount_result_dict.copy()
+        durations_all_reps_correct_across_session[sesh] = durations_all_reps_correct_dict.copy()
+        durations_all_reps_correct_across_subs[sesh] = durations_all_reps_correct_dict.copy()
+        
+        no_instant_correct_across_sessions[sesh] = no_instant_correct_dict.copy()
+        no_incorrect_solve_across_sessions[sesh] = no_incorrect_solve_dict.copy()
+        no_later_correct_solve_across_sessions[sesh] = no_later_correct_solve_dict.copy()
+        rate_instant_correct_across_sessions[sesh] = rate_instant_correct_dict.copy()
+        rate_incorrect_solve_across_sessions[sesh] = rate_incorrect_solve_dict.copy()
+        rate_later_correct_solve_across_sessions[sesh] = rate_later_correct_solve_dict.copy()
+        
+        
+        no_instant_correct_across_subs[sesh] = no_instant_correct_dict.copy()
+        no_incorrect_solve_across_subs[sesh] = no_incorrect_solve_dict.copy()
+        no_later_correct_solve_across_subs[sesh] = no_later_correct_solve_dict.copy()
+        rate_instant_correct_across_subs[sesh] = rate_instant_correct_dict.copy()
+        rate_incorrect_solve_across_subs[sesh] = rate_incorrect_solve_dict.copy()
+        rate_later_correct_solve_across_subs[sesh] = rate_later_correct_solve_dict.copy()
+        ripples_per_task_all_subs[sesh] = ripple_overview_per_task.copy()
+        feedback_across_sessions[sesh] = feedback_dict.copy()
+        
+        
         
         
         # # Loop from 1 to 40 and get the corresponding value from the dictionary
@@ -442,53 +541,120 @@ for sub in session_per_subj:
     
         
     
-    # per subject, but across sessions.
-    plotting_dict = {}
-    for session in ripples_all_repeats_all_sessions.keys():
-        for task in ripples_all_repeats_all_sessions[session].keys():
-            for boxplot_idx in ripples_all_repeats_all_sessions[session][task].keys():
-                if boxplot_idx not in plotting_dict:
-                    plotting_dict[boxplot_idx] = []
-                plotting_dict[boxplot_idx].append(ripples_all_repeats_all_sessions[session][task][boxplot_idx])
-            # Collect data for this boxplot (task and boxplot_idx specific)
 
-    # first collect all sessions a subject completed!!!
-    title = f"Ripplerate per repeat across grids for subject {sub}"
-    x_title = 'A-D = one repeat. Repeats depend on errors made.'
-    y_title = 'Ripple Rate'
-    mc.analyse.plotting_ripples.ripple_amount_violin_scatter(plotting_dict, title, x_title, y_title)
+        
+        
     
-    # plot rate 
-    plotting_dict = {}
-    for session in ripple_rate_across_session.keys():
-        for task in ripple_rate_across_session[session].keys():
-            for boxplot_idx in ripple_rate_across_session[session][task].keys():
-                if boxplot_idx not in plotting_dict:
-                    plotting_dict[boxplot_idx] = []
-                plotting_dict[boxplot_idx].append(ripple_rate_across_session[session][task][boxplot_idx])
-                # Collect data for this boxplot (task and boxplot_idx specific)
-
-    title = f"Ripplerate per correct solve across grids for {sub}"
+    # # per subject, but across sessions.
+    
+    # # plot rate for each repeat that has been made (not ideal as it doesn't actually match repeats across tasks- some have 16 runs, some only 10)
+    # unnested_ripples_per_repeat = mc.analyse.ripple_helpers.dict_unnesting_three_levels(ripples_all_repeats_all_sessions)
+    # title = f"Ripplerate per repeat across grids for subject {sub}, across {len(session_per_subj[sub])} sessions"
+    # x_title = 'A-D = one repeat. Repeats depend on errors made.'
+    # y_title = 'Ripple Rate'
+    # mc.analyse.plotting_ripples.ripple_amount_violin_scatter(unnested_ripples_per_repeat, title, x_title, y_title)
+    
+    # # plot rate all repeats within a correct solve
+    # unnested_ripple_rate_dict = mc.analyse.ripple_helpers.dict_unnesting_three_levels(ripple_rate_across_session)
+    # title = f"Ripplerate per correct solve across grids for {sub}, across {len(session_per_subj[sub])} sessions"
+    # x_title = 'A-D = one correct solve. Repeats depend on errors made.'
+    # y_title = 'Ripple Rate'
+    # mc.analyse.plotting_ripples.ripple_amount_violin_scatter(unnested_ripple_rate_dict, title, x_title, y_title)
+    
+    # # plot amount all repeats within a correct solve
+    # unnested_ripple_count = mc.analyse.ripple_helpers.dict_unnesting_three_levels(ripple_count_correct_solve_cross_sessions)
+    # title = f"Ripple Count per correct solve across grids for {sub}, across {len(session_per_subj[sub])} sessions"
+    # x_title = 'A-D = one correct solve. Repeats depend on errors made.'
+    # y_title = 'Ripple Count'
+    # mc.analyse.plotting_ripples.ripple_amount_violin_scatter(unnested_ripple_count, title, x_title, y_title)
+    
+    # plot duration
+    unnested_duration = mc.analyse.ripple_helpers.dict_unnesting_three_levels(durations_all_reps_correct_across_session)
+    title = f"Duration per solve across grids for {sub}, across {len(session_per_subj[sub])} sessions"
     x_title = 'A-D = one correct solve. Repeats depend on errors made.'
-    y_title = 'Ripple Rate'
-    mc.analyse.plotting_ripples.ripple_amount_violin_scatter(plotting_dict, title, x_title, y_title)
+    y_title = 'Accumulated duration in secs'
+    mc.analyse.plotting_ripples.ripple_amount_violin_scatter(unnested_duration, title, x_title, y_title)
     
-    # plot amount 
-    plotting_dict = {}
-    for session in ripple_count_correct_solve_cross_sessions.keys():
-        for task in ripple_count_correct_solve_cross_sessions[session].keys():
-            for boxplot_idx in ripple_count_correct_solve_cross_sessions[session][task].keys():
-                if boxplot_idx not in plotting_dict:
-                    plotting_dict[boxplot_idx] = []
-                plotting_dict[boxplot_idx].append(ripple_count_correct_solve_cross_sessions[session][task][boxplot_idx])
-            # Collect data for this boxplot (task and boxplot_idx specific)
-
-    title = f"Ripple Count per correct solve across grids for {sub}"
-    x_title = 'A-D = one correct solve. Repeats depend on errors made.'
-    y_title = 'Ripple Count'
-    mc.analyse.plotting_ripples.ripple_amount_violin_scatter(plotting_dict, title, x_title, y_title)
     
+    
+    
+    # # counts
+    # # plot count all immediate correct solves
+    # unnested_instant_correct = mc.analyse.ripple_helpers.dict_unnesting_three_levels(no_instant_correct_across_sessions)
+    # title = f"Ripple Count for grids with instant correct solve for {sub}, across {len(session_per_subj[sub])} sessions"
+    # x_title = 'A-D = one correct solve'
+    # y_title = 'Ripple Count'
+    # mc.analyse.plotting_ripples.ripple_amount_violin_scatter(unnested_instant_correct, title, x_title, y_title)
+    
+    # #plot count all incorrect solves (accumulated)
+    # unnested_incorrect = mc.analyse.ripple_helpers.dict_unnesting_three_levels(no_incorrect_solve_across_sessions)
+    # title = f"Ripple Count for incorrect solves across grids for {sub}, across {len(session_per_subj[sub])} sessions"
+    # x_title = 'A-D = accumulated incorrect solves'
+    # y_title = 'Ripple Count'
+    # mc.analyse.plotting_ripples.ripple_amount_violin_scatter(unnested_incorrect, title, x_title, y_title)
+    
+    # # plot count correct solves after incorrect 
+    # unnested_later_correct = mc.analyse.ripple_helpers.dict_unnesting_three_levels(no_later_correct_solve_across_sessions)
+    # title = f"Ripple Count for correct solve after errors across grids for {sub}, across {len(session_per_subj[sub])} sessions"
+    # x_title = 'A-D = one correct solve'
+    # y_title = 'Ripple Count'
+    # mc.analyse.plotting_ripples.ripple_amount_violin_scatter(unnested_later_correct, title, x_title, y_title)
+    
+    # # # rates
+    # # # plot rate all immediate correct solves
+    # # unnested_instant_correct_rate = mc.analyse.ripple_helpers.dict_unnesting_three_levels(rate_instant_correct_across_sessions)
+    # # title = f"Ripple Rate for grids with instant correct solve for {sub}, across {len(session_per_subj[sub])} sessions"
+    # # x_title = 'A-D = one correct solve'
+    # # y_title = 'Ripple Rate'
+    # # mc.analyse.plotting_ripples.ripple_amount_violin_scatter(unnested_instant_correct_rate, title, x_title, y_title)
+    
+    # # plot count all incorrect solves (accumulated)
+    # unnested_incorrect_rate = mc.analyse.ripple_helpers.dict_unnesting_three_levels(rate_incorrect_solve_across_sessions)
+    # title = f"Ripple Rate for incorrect solves across grids for {sub}, across {len(session_per_subj[sub])} sessions"
+    # x_title = 'A-D = accumulated incorrect solves'
+    # y_title = 'Ripple Rate'
+    # mc.analyse.plotting_ripples.ripple_amount_violin_scatter(unnested_incorrect_rate, title, x_title, y_title)
+    
+    # # plot count correct solves after incorrect 
+    # unnested_later_correct_rate = mc.analyse.ripple_helpers.dict_unnesting_three_levels(rate_later_correct_solve_across_sessions)
+    # title = f"Ripple Rate for correct solve after errors across grids for {sub}, across {len(session_per_subj[sub])} sessions"
+    # x_title = 'A-D = one correct solve'
+    # y_title = 'Ripple Rate'
+    # mc.analyse.plotting_ripples.ripple_amount_violin_scatter(unnested_later_correct_rate, title, x_title, y_title)
 
+    # group_labels = ['First correct Repeat', 'All other repeats']
+    # n_sec_grp = len(unnested_incorrect)-4
+    # first_incorr_rep_vs_other_reps_incorrect_count =  mc.analyse.ripple_helpers.collapse_first_four_vs_rest(unnested_incorrect, group_labels, 4, n_sec_grp)
+    # title_string= 'Ripple Count for first repeat vs all other repeats {sub}, only incorrect attempts'
+    # y_label_string = 'Ripple Count'
+    # mc.analyse.plotting_ripples.ripples_compare_two_bars(first_incorr_rep_vs_other_reps_incorrect_count, title_string, y_label_string)
+ 
+    # create the ripple plot mathias suggested.
+    # import pdb; pdb.set_trace() 
+    mc.analyse.plotting_ripples.plot_ripple_distribution_normalised_across_tasks_and_sessions(ripples_per_task_all_subs, sub)
+    mc.analyse.plotting_ripples.plot_ripple_count_three_bars(ripples_per_task_all_subs, sub)
+    
+    mc.analyse.plotting_ripples.plot_ripples_by_feedback(ripples_per_task_all_subs, feedback_across_sessions, sub)
+    
+    
+    
+    
+# # do stats on first vs. all others collapsed across subjects.
+# # ripplerate all attempts for 1 correct solve
+
+# labels of the dictionary will be labels of the bar plots 
+unnested_no_incorrect_solve_across_subs = mc.analyse.ripple_helpers.dict_unnesting_three_levels(no_incorrect_solve_across_subs)
+
+group_labels = ['First correct Repeat', 'All other repeats']
+n_sec_grp = len(unnested_no_incorrect_solve_across_subs)-4
+
+first_rep_vs_other_reps_incorrect_count, n_groups_group_one, n_groups_group_two =  mc.analyse.ripple_helpers.collapse_first_four_vs_rest(unnested_no_incorrect_solve_across_subs, group_labels, 4, n_sec_grp)
+
+title_string= 'All subjects: First repeat vs all other repeats, only incorrect attempts'
+y_label_string = 'Ripple Count'
+mc.analyse.plotting_ripples.ripples_compare_two_bars(first_rep_vs_other_reps_incorrect_count, title_string, y_label_string)
+  
+    
     
     
     

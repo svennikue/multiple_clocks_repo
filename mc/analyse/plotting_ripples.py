@@ -17,6 +17,9 @@ from matplotlib import pyplot as plt
 import neo
 import seaborn as sns
 from scipy.stats import gaussian_kde
+from scipy import stats
+import math
+import mc 
 
 
 # import pdb; pdb.set_trace() 
@@ -61,9 +64,376 @@ def plot_ripples_per_channel(data_dict, channel_list, subject):
     plt.tight_layout()
     plt.show()
     
+
+def plot_ripple_count_three_bars(ripple_info_dict_across_sesh_tasks, sub):
+    # first step: go through dicitonary and sort ripples by section:
+    # finding all 4 rewards, solving it correctyl once, all other solves
+    # then divide by average duration per grid.
+    # then plot across grids.
+    ripples_per_section = {}
+    durations = {}
+    for session in sorted(ripple_info_dict_across_sesh_tasks.keys()):
+        session_sub_dict = ripple_info_dict_across_sesh_tasks[session]
+        # then count how many tasks: split the string after first element and take max
+        # Extract the number before the underscore and convert to integers
+        task_numbers = sorted([int(key.split('_')[0]) for key in ripple_info_dict_across_sesh_tasks[session].keys()])
+        task_numbers = np.unique(task_numbers)
+        ripples_per_section_task = {}
+        durations_per_section_task = {}
+        for task_i in task_numbers:
+            ripples_per_section_task[task_i], durations_per_section_task[task_i] = mc.analyse.ripple_helpers.sort_in_three_sections(session_sub_dict, task_i)
+        
+        ripples_per_section[session] = ripples_per_section_task.copy()
+        durations[session] = durations_per_section_task.copy()
+    
+    
+    find_ABCD, first_correct, all_reps = [],[],[]
+    find_ABCD_rate, first_correct_rate, all_reps_rate = [],[],[]
+    for session in sorted(ripples_per_section.keys()):
+        for task in sorted(ripples_per_section[session].keys()):
+            find_ABCD_rate.append(len(ripples_per_section[session][task]['find_ABCD'])/durations[session][task][0])
+            find_ABCD.append(len(ripples_per_section[session][task]['find_ABCD']))
+            first_correct_rate.append(len(ripples_per_section[session][task]['first_solve_correctly'])/durations[session][task][1])
+            first_correct.append(len(ripples_per_section[session][task]['first_solve_correctly']))
+            all_reps_rate.append(len(ripples_per_section[session][task]['all_repeats'])/durations[session][task][2])
+            all_reps.append(len(ripples_per_section[session][task]['all_repeats']))
+            
+    colors = ['lightblue','goldenrod', 'salmon']
+
+    # Calculate mean and standard error for bars
+    means = [np.nanmean(find_ABCD_rate), np.nanmean(first_correct_rate), np.nanmean(all_reps_rate)]
+    errors = [[0,0,0],[np.nanstd(find_ABCD_rate), np.nanstd(first_correct_rate), np.nanmean(all_reps_rate)]]
+    labels = ['find_ABCD_locs', 'until first correct solve', 'later repeats']
+    
+    # import pdb; pdb.set_trace() 
+    # Create figure and axis
+    plt.figure(figsize=(5, 6))
+    # Plot the bars
+    bars = plt.bar(labels, means, yerr=errors, capsize=5, color=colors, alpha=0.5)
+    
+    # Plot scatter points for individual data points
+    #for i in range(len(group_one)):
+    plt.scatter(np.zeros(len(find_ABCD_rate)), find_ABCD_rate, color=colors[0], alpha=0.6, zorder=3)
+    plt.scatter(np.ones(len(first_correct_rate)), first_correct_rate, color=colors[1], alpha=0.6, zorder=3) 
+    plt.scatter(np.ones(len(all_reps_rate))*2, all_reps_rate, color=colors[2], alpha=0.6, zorder=3) 
+    
+    for i, task in enumerate(first_correct_rate):
+        plt.plot([0, 1], [find_ABCD_rate[i], first_correct_rate[i]], color='gray', alpha=0.5, zorder=2)  # Connecting lines
+        plt.plot([1,2], [first_correct_rate[i], all_reps_rate[i]], color='gray', alpha=0.5, zorder=2)  # Connecting lines
+        
+    # Adding the significance indicator (***)
+    # Perform a t-test between the two lists
+    # import pdb; pdb.set_trace() 
+    t_stat_one, p_value_one = stats.ttest_ind(find_ABCD_rate, first_correct_rate, nan_policy='omit')
+    t_stat_two, p_value_two = stats.ttest_ind(first_correct_rate, all_reps_rate, nan_policy='omit')
+    t_stat_three, p_value_three = stats.ttest_ind(find_ABCD_rate, all_reps_rate, nan_policy='omit')
+    
+    stars_one = mc.analyse.plotting_ripples.significance_stars(p_value_one)
+    stars_two = mc.analyse.plotting_ripples.significance_stars(p_value_two)
+    stars_three = mc.analyse.plotting_ripples.significance_stars(p_value_three)
+    
+    positions = [0, 1, 2]  # x-positions for bars
+    
+    # Draw lines and stars for significance between pairs of bars
+    y_max = max(find_ABCD_rate) + 0.05  # Set a base height for the lines
+    if max(first_correct_rate) > y_max:
+        y_max = max(first_correct_rate)
+    if max(all_reps_rate) > y_max:
+        y_max = max(all_reps_rate)
+    
+    # Draw line and star between find_ABCD_rate and first_correct_rate
+    plt.plot([0, 1], [y_max, y_max], color='black')
+    plt.text(0.5, y_max + 0.02, stars_one, ha='center', fontsize=14)
+    
+    # Draw line and star between first_correct_rate and all_reps_rate
+    plt.plot([1, 2], [y_max + 0.1, y_max + 0.1], color='black')
+    plt.text(1.5, y_max + 0.12, stars_two, ha='center', fontsize=14)
+    
+    # Draw line and star between find_ABCD_rate and all_reps_rate
+    plt.plot([0, 2], [y_max + 0.2, y_max + 0.2], color='black')
+    plt.text(1, y_max + 0.22, stars_three, ha='center', fontsize=14)
+    
+    # Adjust y-limits to accommodate lines and stars
+    plt.ylim(0, y_max + 0.3)
+
+
+    # Adding labels
+    plt.ylabel('ripple_rate per section')
+    plt.xticks(ticks=[0, 1, 2], labels=labels)
+    plt.title(f"Ripple count/duration per grid for {sub}", fontsize=14)
+    
+    # Remove top and right spines
+    # sns.despine()
+    
+    # Show the plot
+    plt.tight_layout()
+    plt.show()
+    
+    # no_session = len(normalised_ripples)
+        
+        
+        
+    
+# Determine number of stars based on p-value
+def significance_stars(p_value):
+    if p_value > 0.05:
+        stars = 'n.s.'  # No significance
+    elif p_value > 0.01:
+        stars = '*'
+    elif p_value > 0.005:
+        stars = '**'
+    else:
+        stars = '***'
+    return stars
+
+
+
+def plot_ripples_by_feedback(ripple_info_dict_across_sesh_tasks, feedback_across_sessions_tasks, sub):
+    # first, define in which section ripples and feedback is.
+    ripples_by_feedback_section = {}
+    for session in sorted(ripple_info_dict_across_sesh_tasks.keys()):
+        session_sub_dict = ripple_info_dict_across_sesh_tasks[session]
+        feedback_session_sub_dict = feedback_across_sessions_tasks[session]
+        # then count how many tasks: split the string after first element and take max
+        # Extract the number before the underscore and convert to integers
+        task_numbers = sorted([int(key.split('_')[0]) for key in ripple_info_dict_across_sesh_tasks[session].keys()])
+        task_numbers = np.unique(task_numbers)
+        ripples_per_section_task = {}
+        feedback_per_section_task = {}
+        for task_i in task_numbers:
+            ripples_per_section_task[task_i], durations = mc.analyse.ripple_helpers.sort_in_three_sections(session_sub_dict, task_i)
+            feedback_per_section_task[task_i] = mc.analyse.ripple_helpers.sort_feedback_in_three_sections(session_sub_dict, feedback_session_sub_dict, task_i)
+        ripples_by_feedback_section[session] = mc.analyse.ripple_helpers.sort_ripples_by_feedback(feedback_per_section_task, ripples_per_section_task)
+    
+    # import pdb; pdb.set_trace()
+    # then, check how many ripples per grid are within 1.5 after positiv/negative feedback.
+    # plot as 6 bars: by pos/neg and 3 sections.
+    
+    colors = ['darkgreen', 'darkgreen','darkgreen','maroon','maroon','maroon']
+
+    # Calculate mean and standard error for bars
+    pos_find_ABCD, pos_first_correct, pos_all_reps = [],[],[]
+    neg_find_ABCD, neg_first_correct, neg_all_reps = [],[],[]
+    for session in sorted(ripples_by_feedback_section.keys()):
+        for task in sorted(ripples_by_feedback_section[session].keys()):
+            if 'pos_find_ABCD' in ripples_by_feedback_section[session][task]:
+                pos_find_ABCD.append(len(ripples_by_feedback_section[session][task]['pos_find_ABCD']))
+            if 'pos_first_solve_correctly' in ripples_by_feedback_section[session][task]:
+                pos_first_correct.append(len(ripples_by_feedback_section[session][task]['pos_first_solve_correctly']))
+            if 'pos_all_repeats' in ripples_by_feedback_section[session][task]:
+                pos_all_reps.append(len(ripples_by_feedback_section[session][task]['pos_all_repeats']))
+            if 'neg_find_ABCD' in ripples_by_feedback_section[session][task]:
+                neg_find_ABCD.append(len(ripples_by_feedback_section[session][task]['neg_find_ABCD']))
+            if 'neg_first_solve_correctly' in ripples_by_feedback_section[session][task]:
+                neg_first_correct.append(len(ripples_by_feedback_section[session][task]['neg_first_solve_correctly']))
+            if 'neg_all_repeats' in ripples_by_feedback_section[session][task]:
+                neg_all_reps.append(len(ripples_by_feedback_section[session][task]['neg_all_repeats']))
+    
+    means = [np.nanmean(pos_find_ABCD), np.nanmean(pos_first_correct), np.nanmean(pos_all_reps), np.nanmean(neg_find_ABCD), np.nanmean(neg_first_correct), np.nanmean(neg_all_reps)]
+    std = [[0,0,0,0,0,0,], [np.nanstd(pos_find_ABCD), np.nanstd(pos_first_correct), np.nanstd(pos_all_reps), np.nanstd(neg_find_ABCD), np.nanstd(neg_first_correct), np.nanstd(neg_all_reps)]]
+    labels = ['positive while finding ABCD locs', 'positive until first correct solve', 'positive in later repeats', 'negative while finding ABCD locs', 'negative until first correct solve', 'negative in later repeats']
+    
+    # import pdb; pdb.set_trace() 
+    # Create figure and axis
+    plt.figure(figsize=(5, 6))
+    # Plot the bars
+    bars = plt.bar(labels, means, yerr=std, capsize=5, color=colors, alpha=0.5)
+    plt.xticks(rotation=45)
+    
+    # # Plot scatter points for individual data points
+    # #for i in range(len(group_one)):
+    # plt.scatter(np.zeros(len(find_ABCD_rate)), find_ABCD_rate, color=colors[0], alpha=0.6, zorder=3)
+    # plt.scatter(np.ones(len(first_correct_rate)), first_correct_rate, color=colors[1], alpha=0.6, zorder=3) 
+    # plt.scatter(np.ones(len(all_reps_rate))*2, all_reps_rate, color=colors[2], alpha=0.6, zorder=3) 
+    
+    # for i, task in enumerate(first_correct_rate):
+    #     plt.plot([0, 1], [find_ABCD_rate[i], first_correct_rate[i]], color='gray', alpha=0.5, zorder=2)  # Connecting lines
+    #     plt.plot([1,2], [first_correct_rate[i], all_reps_rate[i]], color='gray', alpha=0.5, zorder=2)  # Connecting lines
+        
+    # # Adding the significance indicator (***)
+    # # Perform a t-test between the two lists
+    # # import pdb; pdb.set_trace() 
+    # t_stat_one, p_value_one = stats.ttest_ind(find_ABCD_rate, first_correct_rate, nan_policy='omit')
+    # t_stat_two, p_value_two = stats.ttest_ind(first_correct_rate, all_reps_rate, nan_policy='omit')
+    # t_stat_three, p_value_three = stats.ttest_ind(find_ABCD_rate, all_reps_rate, nan_policy='omit')
+    
+    # stars_one = mc.analyse.plotting_ripples.significance_stars(p_value_one)
+    # stars_two = mc.analyse.plotting_ripples.significance_stars(p_value_two)
+    # stars_three = mc.analyse.plotting_ripples.significance_stars(p_value_three)
+    
+    # positions = [0, 1, 2]  # x-positions for bars
+    
+    # # Draw lines and stars for significance between pairs of bars
+    # y_max = max(find_ABCD_rate) + 0.05  # Set a base height for the lines
+    # if max(first_correct_rate) > y_max:
+    #     y_max = max(first_correct_rate)
+    # if max(all_reps_rate) > y_max:
+    #     y_max = max(all_reps_rate)
+    
+    # # Draw line and star between find_ABCD_rate and first_correct_rate
+    # plt.plot([0, 1], [y_max, y_max], color='black')
+    # plt.text(0.5, y_max + 0.02, stars_one, ha='center', fontsize=14)
+    
+    # # Draw line and star between first_correct_rate and all_reps_rate
+    # plt.plot([1, 2], [y_max + 0.1, y_max + 0.1], color='black')
+    # plt.text(1.5, y_max + 0.12, stars_two, ha='center', fontsize=14)
+    
+    # # Draw line and star between find_ABCD_rate and all_reps_rate
+    # plt.plot([0, 2], [y_max + 0.2, y_max + 0.2], color='black')
+    # plt.text(1, y_max + 0.22, stars_three, ha='center', fontsize=14)
+    
+    # # Adjust y-limits to accommodate lines and stars
+    # plt.ylim(0, y_max + 0.3)
+
+
+    # # Adding labels
+    # plt.ylabel('ripple_rate per section')
+    # plt.xticks(ticks=[0, 1, 2], labels=labels)
+    # plt.title(f"Ripple count/duration per grid for {sub}", fontsize=14)
+    
+    # # Remove top and right spines
+    # # sns.despine()
+    
+    # Show the plot
+    plt.tight_layout()
+    plt.show()
+    
+    
+    
+    
+    
+ 
+
+def plot_ripple_distribution_normalised_across_tasks_and_sessions(ripple_info_dict_across_sesh_tasks, sub):
+    # first step: loop through the dictionary and normalise the times.
+    # one third will be start_task - found_all_locs, 
+    # second third will be found_all_locs - first_corr_solve
+    # third third will be first_corr_solve - end_task
+    # import pdb; pdb.set_trace()
+    normalised_ripples = {}
+    durations = {}
+    for session in sorted(ripple_info_dict_across_sesh_tasks.keys()):
+        session_sub_dict = ripple_info_dict_across_sesh_tasks[session]
+        # then count how many tasks: split the string after first element and take max
+        # Extract the number before the underscore and convert to integers
+        task_numbers = sorted([int(key.split('_')[0]) for key in ripple_info_dict_across_sesh_tasks[session].keys()])
+        task_numbers = np.unique(task_numbers)
+        normalised_ripples_task = {}
+        durations_per_section_task = {}
+        for task_i in task_numbers:
+            normalised_ripples_task[task_i], durations_per_section_task[task_i] = mc.analyse.ripple_helpers.normalise_task(session_sub_dict, task_i)
+        
+        print(f"mean ripples in task {task_numbers[0]} in {session} is {np.mean(normalised_ripples_task[task_numbers[0]])}")
+        
+        normalised_ripples[session] = normalised_ripples_task.copy()
+        durations[session] = durations_per_section_task.copy()
+        
+    
+    # import pdb; pdb.set_trace()
+    # Define normalized section ranges (e.g., each section is a third of the normalized scale)
+    # colors = ['purple', 'lightblue', 'teal']
+    # colors_kde = ['lavender','lightblue', 'teal']
+    colors = ['maroon','teal', 'darkgreen']
+    colors_kde = ['maroon','teal', 'darkgreen']
+    plt.figure()
+    
+    no_session = len(normalised_ripples)
+    
+    for sesh_i, session in enumerate(sorted(normalised_ripples.keys())):
+        all_ripples_across_tasks = []
+        for task in normalised_ripples[session]:
+            y_jitter = np.random.uniform(0,1, size=len(normalised_ripples[session][task]))
+            plt.scatter(normalised_ripples[session][task], y_jitter, color=colors[sesh_i], marker='o', zorder=1, alpha = 0.5)
+            all_ripples_across_tasks.extend(normalised_ripples[session][task])
+        
+        print(f"mean of ripples is {np.mean(all_ripples_across_tasks)} in session {session}")
+        kde = gaussian_kde(all_ripples_across_tasks)
+        x_values = np.linspace(min(all_ripples_across_tasks), max(all_ripples_across_tasks), 1000)
+    
+        # Evaluate the KDE on these x-values
+        y_values = kde(x_values)
+        
+        # Normalize the y-values so that the maximum y-value is 1
+        y_values_normalized = y_values / max(y_values)
+        
+        # Plot the normalized KDE
+        plt.plot(x_values, y_values_normalized, color=colors_kde[sesh_i], label='Ripple Distribution')
+        
+        # Fill under the curve if you want to mimic the 'fill=True' from sns.kdeplot
+        plt.fill_between(x_values, y_values_normalized, color=colors_kde[sesh_i], alpha=0.3)
+        
+    
+    normalized_sections = [(0, 0.33), (0.33, 0.67), (0.67, 1.0)]
+
+    # Add a vertical line for the baseline reference
+    plt.axvline(x=normalized_sections[0][1], color='black', linestyle='--', label='Found all 4 rewards')
+    plt.axvline(x=normalized_sections[1][1], color='black', linestyle='--', label='First Correct')
+
+    
+    # Add titles and labels
+    plt.title(f"Ripples across tasks and sessions for subject {sub}")
+    
+    
+    # compute the mean of each section duration.
+    average_duration_per_session = {}
+    for sessions in durations:
+        first_bit = []
+        second_bit = []
+        third_bit = []
+        for task in durations[sessions]:
+            first_bit.append(durations[sessions][task][0])
+            second_bit.append(durations[sessions][task][1])
+            third_bit.append(durations[sessions][task][2])
+        average_duration_per_session[f"{sessions}_first"] = first_bit
+        average_duration_per_session[f"{sessions}_scnd"] = second_bit
+        average_duration_per_session[f"{sessions}_third"] = third_bit
+        
+    
+    
+    
+    mean_one = round(np.mean(average_duration_per_session[f"{list(durations.keys())[0]}_first"]), 2)
+    mean_two = round(np.mean(average_duration_per_session[f"{list(durations.keys())[0]}_scnd"]),2)
+    mean_three = round(np.mean(average_duration_per_session[f"{list(durations.keys())[0]}_third"]),2)
+    plt.suptitle(f"Mean duration until found all rewards = {mean_one}, until first correct = {mean_two}, all other reps = {mean_three}")
+    
+    if sesh_i == 0:
+        plt.xlabel(f"Normalised into 3 sections")
+    elif sesh_i == 1:
+        plt.xlabel(f"Normalised into 3 sections, {colors[0]} = session 1, {colors[1]} = session 2")
+    elif sesh_i == 2:
+        plt.xlabel(f"Normalised into 3 sections, {colors[0]} = session 1, {colors[1]} = session 2, {colors[2]} = session 3")
+    plt.xticks(ticks=[0.15, 0.48, 0.79], labels=['finding ABCD for the first time', 'first correct solve', 'all other solves'])
+    plt.ylabel('Ripple KDE')
+    
+    plt.xlim(0,1)
+    plt.ylim(0, 1.2)
+    
+    # Add a legend
+    # Get current handles and labels from the plot
+    handles, labels = plt.gca().get_legend_handles_labels()
+    
+    # Limit the legend to show only the first 6 items
+    # plt.legend(handles[:8], labels[:8], loc='upper left', bbox_to_anchor=(1.05, 1), borderaxespad=0.)
+    plt.tight_layout()
+    # import pdb; pdb.set_trace()
+    
+    # Show the plot
+    plt.show()
+    
+
+    
+    
+    
+    
+    
+
+
+
     
     
 def plot_ripple_distribution(onset_in_secs_dict, task_to_check, feedback_error_curr_task, feedback_correct_curr_task, ripples_across_channels, found_first_D, seconds_upper, index_upper, index_lower, seconds_lower, sub):
+    # if task_to_check == 24:
+    #     import pdb; pdb.set_trace()
     
     # y_jitter = {key: np.random.uniform(0, 0.01, len(values)) for key, values in onset_in_secs_dict[task_to_check].items()}
     # colors = plt.cm.get_cmap('tab10', len(onset_in_secs_dict[task_to_check]))
@@ -90,7 +460,7 @@ def plot_ripple_distribution(onset_in_secs_dict, task_to_check, feedback_error_c
         'HaEa09': 'maroon',  # Set the desired color for Ha09
         'Hb08': 'teal',    # Set the desired color for Hb08
         'HbE08': 'teal',    # Set the desired color for Hb08
-        'Hb09': 'ligthblue',  # Set the desired color for Hb09
+        'Hb09': 'lightblue',  # Set the desired color for Hb09
         'HbE09': 'lightblue'  # Set the desired color for Hb09
     }
     default_color = 'grey'
@@ -116,23 +486,26 @@ def plot_ripple_distribution(onset_in_secs_dict, task_to_check, feedback_error_c
     for condition, values in onset_in_secs_dict[task_to_check].items():
         color = get_color(condition)
         marker = get_marker(condition)
+        # import pdb; pdb.set_trace() 
         plt.scatter(values, y_jitter[condition], color=color, marker=marker, label=condition, zorder=1, alpha = 0.5)
     
     # Calculate KDE using scipy's gaussian_kde
-    kde = gaussian_kde(ripples_across_channels)
-    x_values = np.linspace(min(ripples_across_channels), max(ripples_across_channels), 1000)
+    if len(ripples_across_channels) > 2:
+        
+        kde = gaussian_kde(ripples_across_channels)
+        x_values = np.linspace(min(ripples_across_channels), max(ripples_across_channels), 1000)
     
-    # Evaluate the KDE on these x-values
-    y_values = kde(x_values)
-    
-    # Normalize the y-values so that the maximum y-value is 1
-    y_values_normalized = y_values / max(y_values)
-    
-    # Plot the normalized KDE
-    plt.plot(x_values, y_values_normalized, color='lavender', label='Ripple Distribution')
-    
-    # Fill under the curve if you want to mimic the 'fill=True' from sns.kdeplot
-    plt.fill_between(x_values, y_values_normalized, color='lavender', alpha=0.4)
+        # Evaluate the KDE on these x-values
+        y_values = kde(x_values)
+        
+        # Normalize the y-values so that the maximum y-value is 1
+        y_values_normalized = y_values / max(y_values)
+        
+        # Plot the normalized KDE
+        plt.plot(x_values, y_values_normalized, color='lavender', label='Ripple Distribution')
+        
+        # Fill under the curve if you want to mimic the 'fill=True' from sns.kdeplot
+        plt.fill_between(x_values, y_values_normalized, color='lavender', alpha=0.4)
 
     # sns.kdeplot(ripples_across_channels, fill=True, color='skyblue', label='Ripple Distribution')
     
@@ -253,20 +626,28 @@ def ripple_count_barchart(ripples_by_state_per_repeat, n_bars, titlestring, xstr
     
     
 def ripple_amount_violin_scatter(plotting_dict, titlestring, xstring, ystring):
+    
     plt.figure(figsize=(8, 6))
     
-    # Extract the data for boxplots
-    data_for_boxplots = [plotting_dict[key] for key in plotting_dict.keys()]
+    # Extract the data for boxplots into a list of lists.
+    #data_for_boxplots = [plotting_dict[key] for key in sorted(plotting_dict.keys(), key=lambda x: int(x))]
+    data_for_boxplots = [plotting_dict[key] for key in sorted(plotting_dict.keys())]
+    nan_filtered_data = []
+    for i, sublist in enumerate(data_for_boxplots):
+        nan_filtered_data.append([x for x in data_for_boxplots[i] if not math.isnan(x)])
+        if nan_filtered_data[i] == []:
+            nan_filtered_data[i] = 0
+
     nan_filtered_data = [list(filter(lambda x: not np.isnan(x), sublist)) for sublist in data_for_boxplots]
     for i, sublist in enumerate(nan_filtered_data):
         if sublist == []:
             nan_filtered_data[i] = 0
     # Plot boxplots
     #plt.boxplot(data_for_boxplots, widths=0.6, patch_artist=True)
-    plt.violinplot(nan_filtered_data, showmeans=True)
+    plt.violinplot(nan_filtered_data, showmeans=True, widths=1)
     
     # Add scatter points for each boxplot
-    for idx, (key, data_points) in enumerate(plotting_dict.items()):
+    for idx, (key, data_points) in enumerate(sorted(plotting_dict.items())):
         # Add some jitter to avoid overlap of scatter points
         jitter = np.random.uniform(-0.2, 0.2, size=len(data_points))  # Add small random jitter
         # Plot scatter points with jitter
@@ -274,6 +655,9 @@ def ripple_amount_violin_scatter(plotting_dict, titlestring, xstring, ystring):
     
     max_repeats = int(len(plotting_dict)/4)
     x_tick_labels = max_repeats*['A', 'B', 'C', 'D']
+    
+    for i in range(0, max_repeats):
+        plt.hlines(-0.1, i*4+1, i*4+4, colors='grey', linestyles='solid')
     # Set x-ticks to dictionary keys (boxplot labels)
     plt.xticks(np.arange(1, len(plotting_dict) + 1), x_tick_labels)
     
@@ -285,10 +669,67 @@ def ripple_amount_violin_scatter(plotting_dict, titlestring, xstring, ystring):
     plt.show()        
           
         
+
+   
     
     
     
+def ripples_compare_two_bars(data_dict, title_string, y_label_string, ):
+
+    # Convert dictionary to two lists for plotting
+    labels = list(data_dict.keys())  # ['overall', 'rest']
+
+    if len(labels) == 2:
+        group_one = np.array(data_dict[labels[0]])
+        group_two = np.array(data_dict[labels[1]])
+    else:
+        print('careful! this is written for 2 bars. adjust dictionary!')
+        return
+
+    # Calculate mean and standard error for bars
+    means = [np.nanmean(group_one), np.nanmean(group_two)]
+    errors = [[0,0],[np.nanstd(group_one), np.nanstd(group_two)]]
     
+    # import pdb; pdb.set_trace() 
+    # Create figure and axis
+    plt.figure(figsize=(5, 6))
     
+    # Plot the bars
+    bars = plt.bar(labels, means, yerr=errors, capsize=5, color=['grey', 'lightblue'], alpha=0.7)
     
+    # Plot scatter points for individual data points
+    #for i in range(len(group_one)):
+    plt.scatter(np.zeros(len(group_one)), group_one, color='gray', alpha=0.6, zorder=3)
+    plt.scatter(np.ones(len(group_two)), group_two, color='lightblue', alpha=0.6, zorder=3)   
+    #plt.plot([0, 1], [group_one[i], group_two[i]], color='gray', alpha=0.5, zorder=2)  # Connecting lines
+    
+    # Adding the significance indicator (***)
+    # Perform a t-test between the two lists
+    # import pdb; pdb.set_trace() 
+    t_stat, p_value = stats.ttest_ind(group_one, group_two, nan_policy='omit')
+    
+    # Determine number of stars based on p-value
+    if p_value > 0.05:
+        stars = 'n.s.'  # No significance
+    elif p_value > 0.01:
+        stars = '*'
+    elif p_value > 0.005:
+        stars = '**'
+    else:
+        stars = '***'
+
+    plt.text(0.5, 0.55, stars, ha='center', va='bottom', fontsize=20)
+    
+    # Adding labels
+    plt.ylabel(y_label_string)
+    plt.xticks(ticks=[0, 1], labels=labels)
+    plt.title(f"{title_string}, t = {round(t_stat,4)}, p = {round(p_value, 4)}", fontsize=14)
+    
+    # Remove top and right spines
+    # sns.despine()
+    
+    # Show the plot
+    plt.tight_layout()
+    plt.show()
+
     

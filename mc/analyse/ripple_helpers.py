@@ -10,13 +10,12 @@ Human LFPs.
 @author: xpsy1114
 """
 
-import pdb
 import numpy as np
 from collections import defaultdict
-from matplotlib import pyplot as plt
 import neo
-import seaborn as sns
-from scipy.stats import gaussian_kde
+import pandas as pd
+
+
 
 def reference_electrodes(LFP_data, channels, rep):
     wires = defaultdict(list)
@@ -134,5 +133,223 @@ def load_LFPs(LFP_dir, sub, names_blks_short):
     
 
 
+def dict_unnesting_three_levels(three_level_dict):
+    plotting_dict = {}
+    for session in sorted(three_level_dict.keys()):
+        # import pdb; pdb.set_trace() 
+        for task in sorted(three_level_dict[session].keys()):
+            if task == 1:
+                max_idx = len(three_level_dict[session][task])
+            for boxplot_idx in sorted(three_level_dict[session][task].keys()):
+                if boxplot_idx > max_idx:
+                    max_idx = boxplot_idx
+                if boxplot_idx not in plotting_dict:
+                    plotting_dict[boxplot_idx] = []
+                plotting_dict[boxplot_idx].append(three_level_dict[session][task][boxplot_idx])
+    
+    these_bins_exist = np.arange(1, max_idx+1, 1)
+    for bin_idx in these_bins_exist:
+        if bin_idx not in plotting_dict:
+            plotting_dict[bin_idx] = [np.nan]
+    # import pdb; pdb.set_trace() 
+    return plotting_dict
 
 
+def collapse_first_four_vs_rest(dict_per_state_repeat, group_labels, n_first_group, n_second_group):
+    dict_two_conds = {}
+    # import pdb; pdb.set_trace()
+    no_groups_group_one = 0
+    no_groups_group_two = 0
+    for key in sorted(dict_per_state_repeat.keys()):
+        if int(key) < n_first_group+1:
+            if group_labels[0] not in dict_two_conds:
+                dict_two_conds[group_labels[0]] = []
+            dict_two_conds[group_labels[0]].append(dict_per_state_repeat[key])
+            no_groups_group_one = no_groups_group_one + 1
+        elif int(key) > n_first_group:
+            if group_labels[1] not in dict_two_conds:
+                dict_two_conds[group_labels[1]] = dict_per_state_repeat[key]
+            else:
+                dict_two_conds[group_labels[1]].append(dict_per_state_repeat[key]) 
+            no_groups_group_two = no_groups_group_two + 1
+            
+    # import pdb; pdb.set_trace()
+    
+    for group in dict_two_conds:
+        flattened_data = []
+        for item in dict_two_conds[group]:
+            if isinstance(item, list):
+                flattened_data.extend(item)
+            else:
+                flattened_data.append(item)
+        dict_two_conds[group] = flattened_data
+    
+    return dict_two_conds, no_groups_group_one, no_groups_group_two
+
+
+
+def compute_velocity(button_info, behaviour_info):
+    button_df = pd.DataFrame(button_info)
+    behaviour_df = pd.DataFrame(behaviour_info)
+    velocities_df = pd.DataFrame()
+    no_grids = int(np.max(button_info[:,2]))
+    for grid in range(1,no_grids+1):
+        behaviour_curr_task = behaviour_df[behaviour_df[12]==grid]
+        buttons_curr_task = button_df[(button_df[2]==grid) & (button_df[0] != 99)] 
+        for repeat in range(1, len(behaviour_curr_task)+1):
+            for state in range(0,4):
+                #compute velocity per state transition.
+                # velocity = duration/ amount of button presses
+                if state == 1:
+                    lower = behaviour_curr_task.iloc[repeat][10]
+                else:
+                    lower = behaviour_curr_task.iloc[repeat][state-1]
+                upper = behaviour_curr_task.iloc[repeat][state]
+                duration = upper-lower 
+                # how many buttons between upper and lower?
+                subset_presses = buttons_curr_task[(buttons_curr_task[1]>lower) & (buttons_curr_task[1]<upper)]
+                
+                # FIGURE OUT THE INDEXING HERE!!! IT HAS TO BE THE SAME AS THE BEHAVIOUR TABLE
+                if state == 1 :
+                    velocities_df['speed_to_A'][1] = duration/len(subset_presses)
+                    velocities_df['duration_to_A'][1] = duration
+                    velocities_df['count_movebuttons_A'] = len(subset_presses)
+                elif state == 2:
+                    velocities_df['speed_to_B'][1] = duration/len(subset_presses)
+                    velocities_df['duration_to_B'][1] = duration
+                    velocities_df['count_movebuttons_B'] = len(subset_presses)
+                elif state == 3:
+                    velocities_df['speed_to_C'][1] = duration/len(subset_presses)
+                    velocities_df['duration_to_C'][1] = duration
+                    velocities_df['count_movebuttons_C'] = len(subset_presses)
+                elif state == 4:
+                    velocities_df['speed_to_D'][1] = duration/len(subset_presses)
+                    velocities_df['duration_to_D'][1] = duration
+                    velocities_df['count_movebuttons_D'] = len(subset_presses)
+                velocities_df['grid_no'][1] = grid
+                velocities_df['repeat'][1] = repeat
+
+        import pdb; pdb.set_trace()
+    # CONTINUE HERE!!!
+    
+    # 
+    #
+    #
+    
+    return velocities_df
+
+
+
+
+def normalise_task(ripple_info_dict, task_index):
+    # import pdb; pdb.set_trace()
+
+    normalised_ripples = []
+    
+    sections = [((ripple_info_dict[f"{task_index}_start_task"]), (ripple_info_dict[f"{task_index}_found_all_locs"])),
+                ((ripple_info_dict[f"{task_index}_found_all_locs"]), (ripple_info_dict[f"{task_index}_first_corr_solve"])),
+                ((ripple_info_dict[f"{task_index}_first_corr_solve"]), (ripple_info_dict[f"{task_index}_end_task"]))]
+
+    all_events_task = ripple_info_dict[f"{task_index}_ripples_across_choi"]
+    
+    # Define normalized section ranges (e.g., each section is a third of the normalized scale)
+    normalized_sections = [(0, 0.33), (0.33, 0.67), (0.67, 1.0)]
+
+    
+    for section_idx, (original_start, original_end) in enumerate(sections):
+        normalized_start, normalized_end = normalized_sections[section_idx]
+        
+        # Find events in the current section
+        section_events = [event for event in all_events_task if original_start <= event < original_end]
+        
+        # Normalize each event in this section
+        for event in section_events:
+            # Normalize to [0, 1] scale within the section
+            normalized_event = ((event - original_start) / (original_end - original_start)) * (normalized_end - normalized_start) + normalized_start
+            normalised_ripples.append(normalized_event)
+    
+    durations_per_section = [sections[0][1]-sections[0][0], sections[1][1]-sections[1][0], sections[2][1]-sections[2][0]]
+    
+    return normalised_ripples, durations_per_section
+
+
+def sort_in_three_sections(ripple_info_dict, task_index):
+    # import pdb; pdb.set_trace()
+    sections = [((ripple_info_dict[f"{task_index}_start_task"]), (ripple_info_dict[f"{task_index}_found_all_locs"])),
+                ((ripple_info_dict[f"{task_index}_found_all_locs"]), (ripple_info_dict[f"{task_index}_first_corr_solve"])),
+                ((ripple_info_dict[f"{task_index}_first_corr_solve"]), (ripple_info_dict[f"{task_index}_end_task"]))]
+
+    section_labels = ['find_ABCD', 'first_solve_correctly', 'all_repeats']
+    all_events_task = ripple_info_dict[f"{task_index}_ripples_across_choi"]
+    
+    # # Define normalized section ranges (e.g., each section is a third of the normalized scale)
+    # normalized_sections = [(0, 0.33), (0.33, 0.67), (0.67, 1.0)]
+    ripples_in_sections = {}
+    for section_idx, (original_start, original_end) in enumerate(sections):
+        # Find events in the current section
+        ripples_in_sections[section_labels[section_idx]] = [event for event in all_events_task if original_start <= event < original_end]
+    durations_per_section = [sections[0][1]-sections[0][0], sections[1][1]-sections[1][0], sections[2][1]-sections[2][0]]
+
+    return ripples_in_sections, durations_per_section
+
+    
+    
+def sort_feedback_in_three_sections(ripple_info_dict, feedback_session_sub_dict, task_index):
+    # import pdb; pdb.set_trace()
+    sections = [((ripple_info_dict[f"{task_index}_start_task"]), (ripple_info_dict[f"{task_index}_found_all_locs"])),
+                ((ripple_info_dict[f"{task_index}_found_all_locs"]), (ripple_info_dict[f"{task_index}_first_corr_solve"])),
+                ((ripple_info_dict[f"{task_index}_first_corr_solve"]), (ripple_info_dict[f"{task_index}_end_task"]))]
+
+    section_labels = ['find_ABCD', 'first_solve_correctly', 'all_repeats']
+    all_pos_task = feedback_session_sub_dict[f"{task_index}_correct"]
+    all_neg_task = feedback_session_sub_dict[f"{task_index}_error"]
+    
+    # # Define normalized section ranges (e.g., each section is a third of the normalized scale)
+    # normalized_sections = [(0, 0.33), (0.33, 0.67), (0.67, 1.0)]
+    feedback_in_sections = {}
+    for section_idx, (original_start, original_end) in enumerate(sections):
+        # Find events in the current section
+        feedback_in_sections[f"pos_{section_labels[section_idx]}"] = [event for event in all_pos_task if original_start <= event < original_end]
+        feedback_in_sections[f"neg_{section_labels[section_idx]}"] = [event for event in all_neg_task if original_start <= event < original_end]
+    
+    return feedback_in_sections
+    
+
+def sort_ripples_by_feedback(feedback_per_section_task, ripples_per_section_task):
+    # import pdb; pdb.set_trace()
+    ripples_sorted_by_feedback_and_section_all_tasks = {}
+    for task in sorted(feedback_per_section_task.keys()):
+        ripples_sorted_by_feedback_and_section = {}
+        for section_feedback_type in sorted(feedback_per_section_task[task].keys()):
+            for feedback_time in feedback_per_section_task[task][section_feedback_type]:
+                if section_feedback_type.endswith('find_ABCD'):
+                    if section_feedback_type not in ripples_sorted_by_feedback_and_section:
+                        ripples_sorted_by_feedback_and_section[section_feedback_type] = []
+                    ripples_sorted_by_feedback_and_section[section_feedback_type].append([event for event in ripples_per_section_task[task]['find_ABCD'] if feedback_time <= event < feedback_time+1])
+                if section_feedback_type.endswith('first_solve_correctly'):
+                    if section_feedback_type not in ripples_sorted_by_feedback_and_section:
+                        ripples_sorted_by_feedback_and_section[section_feedback_type] = []
+                    ripples_sorted_by_feedback_and_section[section_feedback_type].append([event for event in ripples_per_section_task[task]['first_solve_correctly'] if feedback_time <= event < feedback_time+1])
+                if section_feedback_type.endswith('all_repeats'):
+                    if section_feedback_type not in ripples_sorted_by_feedback_and_section:
+                        ripples_sorted_by_feedback_and_section[section_feedback_type] = []
+                    ripples_sorted_by_feedback_and_section[section_feedback_type].append([event for event in ripples_per_section_task[task]['all_repeats'] if feedback_time <= event < feedback_time+1])
+            if section_feedback_type in ripples_sorted_by_feedback_and_section and len(ripples_sorted_by_feedback_and_section[section_feedback_type]) > 1:
+                ripples_sorted_by_feedback_and_section[section_feedback_type] = [item for sublist in ripples_sorted_by_feedback_and_section[section_feedback_type] for item in sublist]
+        
+        ripples_sorted_by_feedback_and_section_all_tasks[task] = ripples_sorted_by_feedback_and_section.copy()
+    # by task,by section, categorise as ripple pos if within 1.5 secs after pos feedback,
+    # and as ripple neg if within 1.5 secs after neg feedback.
+    
+    return ripples_sorted_by_feedback_and_section_all_tasks
+    
+    
+
+
+
+
+
+
+
+    
+    
