@@ -14,7 +14,8 @@ import numpy as np
 from collections import defaultdict
 import neo
 import pandas as pd
-
+from scipy.stats import norm
+import mc
 
 
 def reference_electrodes(LFP_data, channels, rep):
@@ -128,7 +129,7 @@ def load_LFPs(LFP_dir, sub, names_blks_short):
                     raw_file_lazy.append(reader[file_half].read_segment(seg_index=0, lazy=True))
                 else:
                     raw_file_lazy.append(reader[file_half].read_segment(seg_index=1, lazy=True))
-                    
+        # import pdb; pdb.set_trace()            
         return raw_file_lazy, HC_channels, HC_indices, mPFC_channels, mPFC_indices, orig_sampling_freq, block_size
     
 
@@ -301,21 +302,48 @@ def sort_feedback_in_three_sections(ripple_info_dict, feedback_session_sub_dict,
                 ((ripple_info_dict[f"{task_index}_first_corr_solve"]), (ripple_info_dict[f"{task_index}_end_task"]))]
 
     section_labels = ['find_ABCD', 'first_solve_correctly', 'all_repeats']
-    all_pos_task = feedback_session_sub_dict[f"{task_index}_correct"]
-    all_neg_task = feedback_session_sub_dict[f"{task_index}_error"]
+    if f"{task_index}_correct" in feedback_session_sub_dict:
+        all_pos_task = feedback_session_sub_dict[f"{task_index}_correct"]
+    if f"{task_index}_error" in feedback_session_sub_dict:
+        all_neg_task = feedback_session_sub_dict[f"{task_index}_error"]
     
     # # Define normalized section ranges (e.g., each section is a third of the normalized scale)
     # normalized_sections = [(0, 0.33), (0.33, 0.67), (0.67, 1.0)]
     feedback_in_sections = {}
     for section_idx, (original_start, original_end) in enumerate(sections):
         # Find events in the current section
-        feedback_in_sections[f"pos_{section_labels[section_idx]}"] = [event for event in all_pos_task if original_start <= event < original_end]
-        feedback_in_sections[f"neg_{section_labels[section_idx]}"] = [event for event in all_neg_task if original_start <= event < original_end]
-    
+        if f"{task_index}_correct" in feedback_session_sub_dict:
+            feedback_in_sections[f"pos_{section_labels[section_idx]}"] = [event for event in all_pos_task if original_start < event <= original_end]
+        if f"{task_index}_error" in feedback_session_sub_dict:
+            feedback_in_sections[f"neg_{section_labels[section_idx]}"] = [event for event in all_neg_task if original_start < event <= original_end]
+    # import pdb; pdb.set_trace()
     return feedback_in_sections
     
 
-def sort_ripples_by_feedback(feedback_per_section_task, ripples_per_section_task):
+def extract_section_durations(ripple_info_dict, feedback_count, task_index, feedback_time):
+    durations = {'find_ABCD': ripple_info_dict[f"{task_index}_found_all_locs"] - ripple_info_dict[f"{task_index}_start_task"],
+                 'first_solve_correctly': ripple_info_dict[f"{task_index}_first_corr_solve"] - ripple_info_dict[f"{task_index}_found_all_locs"],
+                 'all_repeats': ripple_info_dict[f"{task_index}_end_task"] - ripple_info_dict[f"{task_index}_first_corr_solve"]
+                 }
+    # then, define how much time is spent in each section for each feedback:
+    time_per_feedback = {}
+    for fb_sec in feedback_count:
+        time_per_feedback[fb_sec] = len(feedback_count[fb_sec]) * feedback_time
+    
+    for section in durations:
+        time_per_feedback[f"not_linked_to_fb_{section}"] = durations[section] - (time_per_feedback[f"pos_{section}"]+time_per_feedback[f"neg_{section}"])
+        
+    
+        # sum(feedback_count*feedback_time)
+        # duration - pos and neg feedback
+    # import pdb; pdb.set_trace()
+    
+    return time_per_feedback
+
+    
+
+
+def sort_ripples_by_feedback(feedback_per_section_task, ripples_per_section_task, second_offset):
     # import pdb; pdb.set_trace()
     ripples_sorted_by_feedback_and_section_all_tasks = {}
     for task in sorted(feedback_per_section_task.keys()):
@@ -325,15 +353,15 @@ def sort_ripples_by_feedback(feedback_per_section_task, ripples_per_section_task
                 if section_feedback_type.endswith('find_ABCD'):
                     if section_feedback_type not in ripples_sorted_by_feedback_and_section:
                         ripples_sorted_by_feedback_and_section[section_feedback_type] = []
-                    ripples_sorted_by_feedback_and_section[section_feedback_type].append([event for event in ripples_per_section_task[task]['find_ABCD'] if feedback_time <= event < feedback_time+1])
+                    ripples_sorted_by_feedback_and_section[section_feedback_type].append([event for event in ripples_per_section_task[task]['find_ABCD'] if feedback_time <= event < feedback_time+second_offset])
                 if section_feedback_type.endswith('first_solve_correctly'):
                     if section_feedback_type not in ripples_sorted_by_feedback_and_section:
                         ripples_sorted_by_feedback_and_section[section_feedback_type] = []
-                    ripples_sorted_by_feedback_and_section[section_feedback_type].append([event for event in ripples_per_section_task[task]['first_solve_correctly'] if feedback_time <= event < feedback_time+1])
+                    ripples_sorted_by_feedback_and_section[section_feedback_type].append([event for event in ripples_per_section_task[task]['first_solve_correctly'] if feedback_time <= event < feedback_time+second_offset])
                 if section_feedback_type.endswith('all_repeats'):
                     if section_feedback_type not in ripples_sorted_by_feedback_and_section:
                         ripples_sorted_by_feedback_and_section[section_feedback_type] = []
-                    ripples_sorted_by_feedback_and_section[section_feedback_type].append([event for event in ripples_per_section_task[task]['all_repeats'] if feedback_time <= event < feedback_time+1])
+                    ripples_sorted_by_feedback_and_section[section_feedback_type].append([event for event in ripples_per_section_task[task]['all_repeats'] if feedback_time <= event < feedback_time+second_offset])
             if section_feedback_type in ripples_sorted_by_feedback_and_section and len(ripples_sorted_by_feedback_and_section[section_feedback_type]) > 1:
                 ripples_sorted_by_feedback_and_section[section_feedback_type] = [item for sublist in ripples_sorted_by_feedback_and_section[section_feedback_type] for item in sublist]
         
@@ -343,12 +371,78 @@ def sort_ripples_by_feedback(feedback_per_section_task, ripples_per_section_task
     
     return ripples_sorted_by_feedback_and_section_all_tasks
     
+
+def count_event_values(ripple_dict, feedback_time, second_offset, sigma): 
+    ripple_values = []
+    for ripple in ripple_dict:
+        if feedback_time <= ripple < feedback_time + second_offset:
+            # Compute the time offset
+            time_offset = ripple - feedback_time
+            # Evaluate the Gaussian at this offset
+            gaussian_value = norm.pdf(time_offset, loc=0, scale=sigma)
+            ripple_values.append(gaussian_value)  
+    return ripple_values
+
+
+
+# NOT DONE!!
+def count_gaussian_events_around_ripples(feedback_per_section_task, ripples_per_section_task):
+    import pdb; pdb.set_trace()
+    second_offset = 1.5 # define this as not anymore within the ripple vicinity.
+    # define the standard deviation for y=1 at x=0
+    sigma = 1 / np.sqrt(2 * np.pi) 
+    # if a value is that far away, then the value would be 0.000851... etc anyways.
     
+    # ok do this differently. 
+    # I want to give each event that occurs just before a ripple a value.
+    
+    ripples_sorted_by_feedback_and_section_all_tasks = {}
+    for task in sorted(ripples_per_section_task.keys()):
+        for section in sorted(ripples_per_section_task[task].keys()):
+            for ripple in ripples_per_section_task[task][section]:
+                # for this ripple, count at which distance an event occurred.
+                # this will be 
+                for section_type in sorted(feedback_per_section_task[task].keys()):
+                    for event in feedback_per_section_task[task][section_type]:
+                        # if the event happened within 1.5secs before ripple
+                        if ripple - second_offset <= event < ripple:
+                            event_offset = event - ripple
+                            gaussian_value = norm.pdf(event_offset, loc=0, scale=sigma)
+                            
+                        
+                        
+    
+    for task in sorted(feedback_per_section_task.keys()):
+        ripples_sorted_by_feedback_and_section = {}
+        for section_feedback_type in sorted(feedback_per_section_task[task].keys()):
+            for feedback_time in feedback_per_section_task[task][section_feedback_type]:
+                if section_feedback_type.endswith('find_ABCD'):
+                    if section_feedback_type not in ripples_sorted_by_feedback_and_section:
+                        ripples_sorted_by_feedback_and_section[section_feedback_type] = []
+    
+                    event_values = mc.analyse.ripple_helpers.count_event_values(ripples_per_section_task[task]['find_ABCD'], feedback_time, second_offset, sigma)
+                    ripples_sorted_by_feedback_and_section[section_feedback_type].append(event_values)
+                
+                if section_feedback_type.endswith('first_solve_correctly'):
+                    if section_feedback_type not in ripples_sorted_by_feedback_and_section:
+                        ripples_sorted_by_feedback_and_section[section_feedback_type] = []
+                    event_values = mc.analyse.ripple_helpers.count_event_values(ripples_per_section_task[task]['first_solve_correctly'], feedback_time, second_offset, sigma)
+                    ripples_sorted_by_feedback_and_section[section_feedback_type].append(event_values)
 
-
-
-
-
+                if section_feedback_type.endswith('all_repeats'):
+                    if section_feedback_type not in ripples_sorted_by_feedback_and_section:
+                        ripples_sorted_by_feedback_and_section[section_feedback_type] = []
+                    event_values = mc.analyse.ripple_helpers.count_event_values(ripples_per_section_task[task]['all_repeats'], feedback_time, second_offset, sigma)
+                    ripples_sorted_by_feedback_and_section[section_feedback_type].append(event_values)
+    
+            # Flatten lists if needed (keeping only one list per feedback type)
+            if section_feedback_type in ripples_sorted_by_feedback_and_section and len(ripples_sorted_by_feedback_and_section[section_feedback_type]) > 1:
+                ripples_sorted_by_feedback_and_section[section_feedback_type] = [
+                    item for sublist in ripples_sorted_by_feedback_and_section[section_feedback_type] for item in sublist
+                ]
+        ripples_sorted_by_feedback_and_section_all_tasks[task] = ripples_sorted_by_feedback_and_section.copy()
+        
+    return ripples_sorted_by_feedback_and_section_all_tasks
 
 
     

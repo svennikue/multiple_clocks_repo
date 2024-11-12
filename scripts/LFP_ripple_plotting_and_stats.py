@@ -41,13 +41,16 @@ distribution = False
 # ok right. So I'm not really seeing more ripples/time (ripplerate) for 
                     
             
-sessions = ['s5', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 's25']
+sessions = ['s5', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 
+            's15', 's16', 's18', 's25']
 session_per_subj = {
     'sub-1': ['s5'],
     'sub-2': ['s7', 's8', 's9'],
     'sub-3': ['s10', 's11'],
     'sub-4': ['s12', 's13', 's14'],
-    'sub-5': ['s25']
+    'sub-5': ['s15'], #something weird in 16
+    'sub-6': ['s18'],
+    'sub-7': ['s25']
     }
 
 # sessions = ['s12', 's13', 's14']
@@ -634,9 +637,9 @@ for sub in session_per_subj:
     mc.analyse.plotting_ripples.plot_ripple_distribution_normalised_across_tasks_and_sessions(ripples_per_task_all_subs, sub)
     mc.analyse.plotting_ripples.plot_ripple_count_three_bars(ripples_per_task_all_subs, sub)
     
-    mc.analyse.plotting_ripples.plot_ripples_by_feedback(ripples_per_task_all_subs, feedback_across_sessions, sub)
+    mc.analyse.plotting_ripples.plot_ripples_by_feedback(ripples_per_task_all_subs, feedback_across_sessions, sub, time_after_feedback=0.5)
     
-    
+    mc.analyse.plotting_ripples.events_by_ripples(ripples_per_task_all_subs, feedback_across_sessions, sub)
     
     
 # # do stats on first vs. all others collapsed across subjects.

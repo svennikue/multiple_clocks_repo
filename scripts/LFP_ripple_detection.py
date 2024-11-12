@@ -79,8 +79,14 @@ ultra_high_gamma = [180, 250]
 
 # import pdb; pdb.set_trace() 
 # subjects = ['s5']
-# subjects = ['s5', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 's25']
-subjects = ['s10']
+
+# subjects = ['s5', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 
+#             's15', 's18', 's25'] #something weird in 16
+
+
+subjects = ['s18'] 
+
+# subjects = ['s10']
 # subjects = ['s11', 's12', 's13', 's14', 's25']
 
 # check what is wrong with s11 and also fix that s5 works- only a single run.
@@ -168,11 +174,11 @@ for sub in subjects :
         index_upper = np.where(np.array(task_index)== task_to_check)[0][-1]
 
         if sub not in 's5':
-            if task_to_check in [task_index[skip_task_index]]: 
+            if skip_task_index != len(task_index) and task_to_check in [task_index[skip_task_index]]: 
                 continue
         if task_to_check in [10] and sub == 's25':
             continue
-        if task_to_check in [24] and sub in ['s8', 's11']:
+        if task_to_check in [24] and sub in ['s8', 's11', 's15']:
             continue
         if task_to_check in [14] and sub in ['s11']:
             continue
