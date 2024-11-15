@@ -82,10 +82,16 @@ def load_LFPs(LFP_dir, sub, names_blks_short):
         if sub not in ['s5']: # doesn't have half 2 
             for file_half in [0,1]:
                 reader.append(neo.io.BlackrockIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3))
-                if sub in ['s11']:
+                if (sub in ['s11'] and file_half == 0) or (sub in ['s18'] and file_half == 1):
                     block_size.append(reader[file_half].get_signal_size(seg_index=0, block_index=0))
                 else:
                     block_size.append(reader[file_half].get_signal_size(seg_index=1, block_index=0))
+                    
+                    
+                # reader_test = neo.rawio.BlackrockRawIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3)
+                # reader_test.parse_header()
+                # delete this again
+                    
                 orig_sampling_freq.append(int(reader[file_half].sig_sampling_rates[3]))        
                 # all of these will only be based on the second file. Should be equivalent!
                 channel_names = reader[file_half].header['signal_channels']
@@ -100,17 +106,14 @@ def load_LFPs(LFP_dir, sub, names_blks_short):
                         mPFC_indices.append(i)    
                 HC_channels = [channel_list[i] for i in HC_indices]
                 mPFC_channels = [channel_list[i] for i in mPFC_indices]
-                if sub in ['s11']:
+                if sub in ['s11', 's18']:
                     raw_file_lazy.append(reader[file_half].read_segment(seg_index=0, lazy=True))
                 else:
                     raw_file_lazy.append(reader[file_half].read_segment(seg_index=1, lazy=True))
         elif sub in ['s5']:
             for file_half in [0]:
                 reader.append(neo.io.BlackrockIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3))
-                if sub in ['s11']:
-                    block_size.append(reader[file_half].get_signal_size(seg_index=0, block_index=0))
-                else:
-                    block_size.append(reader[file_half].get_signal_size(seg_index=1, block_index=0))
+                block_size.append(reader[file_half].get_signal_size(seg_index=1, block_index=0))
                 orig_sampling_freq.append(int(reader[file_half].sig_sampling_rates[3]))        
                 # all of these will only be based on the second file. Should be equivalent!
                 channel_names = reader[file_half].header['signal_channels']
@@ -125,10 +128,7 @@ def load_LFPs(LFP_dir, sub, names_blks_short):
                         mPFC_indices.append(i)    
                 HC_channels = [channel_list[i] for i in HC_indices]
                 mPFC_channels = [channel_list[i] for i in mPFC_indices]
-                if sub in ['s11']:
-                    raw_file_lazy.append(reader[file_half].read_segment(seg_index=0, lazy=True))
-                else:
-                    raw_file_lazy.append(reader[file_half].read_segment(seg_index=1, lazy=True))
+                raw_file_lazy.append(reader[file_half].read_segment(seg_index=1, lazy=True))
         # import pdb; pdb.set_trace()            
         return raw_file_lazy, HC_channels, HC_indices, mPFC_channels, mPFC_indices, orig_sampling_freq, block_size
     
@@ -261,7 +261,7 @@ def normalise_task(ripple_info_dict, task_index):
         normalized_start, normalized_end = normalized_sections[section_idx]
         
         # Find events in the current section
-        section_events = [event for event in all_events_task if original_start <= event < original_end]
+        section_events = [event for event in all_events_task if original_start < event <= original_end]
         
         # Normalize each event in this section
         for event in section_events:
@@ -272,6 +272,56 @@ def normalise_task(ripple_info_dict, task_index):
     durations_per_section = [sections[0][1]-sections[0][0], sections[1][1]-sections[1][0], sections[2][1]-sections[2][0]]
     
     return normalised_ripples, durations_per_section
+
+
+
+
+
+def normalise_feedback(ripple_info_dict, fb_dict, task_index):
+    
+    
+    normalised_fb_pos, normalised_fb_neg = [], []
+    
+    sections = [((ripple_info_dict[f"{task_index}_start_task"]), (ripple_info_dict[f"{task_index}_found_all_locs"])),
+                ((ripple_info_dict[f"{task_index}_found_all_locs"]), (ripple_info_dict[f"{task_index}_first_corr_solve"])),
+                ((ripple_info_dict[f"{task_index}_first_corr_solve"]), (ripple_info_dict[f"{task_index}_end_task"]))]
+
+    # import pdb; pdb.set_trace()
+    
+    # CONTINUE HERE!!
+    # I NEED TO SPLIT BY SECTION IN THE DCITIONARY 
+    
+    
+    
+    pos_fb = fb_dict[f"{task_index}_correct"]
+    neg_fb = fb_dict[f"{task_index}_error"]
+    
+    # Define normalized section ranges (e.g., each section is a third of the normalized scale)
+    normalized_sections = [(0, 0.33), (0.33, 0.67), (0.67, 1.0)]
+
+    for section_idx, (original_start, original_end) in enumerate(sections):
+        normalized_start, normalized_end = normalized_sections[section_idx]
+        
+        # Find events in the current section
+        section_pos = [event for event in pos_fb if original_start < event <= original_end]
+        section_neg = [event for event in neg_fb if original_start < event <= original_end]
+        
+        # Normalize each event in this section
+        for event in section_pos:
+            # Normalize to [0, 1] scale within the section
+            normalized_event = ((event - original_start) / (original_end - original_start)) * (normalized_end - normalized_start) + normalized_start
+            normalised_fb_pos.append(normalized_event)
+        
+        for event in section_neg:
+            # Normalize to [0, 1] scale within the section
+            normalized_event = ((event - original_start) / (original_end - original_start)) * (normalized_end - normalized_start) + normalized_start
+            normalised_fb_neg.append(normalized_event)
+               
+    
+    return normalised_fb_pos, normalised_fb_neg
+
+
+
 
 
 def sort_in_three_sections(ripple_info_dict, task_index):
@@ -288,7 +338,7 @@ def sort_in_three_sections(ripple_info_dict, task_index):
     ripples_in_sections = {}
     for section_idx, (original_start, original_end) in enumerate(sections):
         # Find events in the current section
-        ripples_in_sections[section_labels[section_idx]] = [event for event in all_events_task if original_start <= event < original_end]
+        ripples_in_sections[section_labels[section_idx]] = [event for event in all_events_task if original_start < event <= original_end]
     durations_per_section = [sections[0][1]-sections[0][0], sections[1][1]-sections[1][0], sections[2][1]-sections[2][0]]
 
     return ripples_in_sections, durations_per_section

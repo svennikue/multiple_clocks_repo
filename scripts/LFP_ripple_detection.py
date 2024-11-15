@@ -33,7 +33,8 @@ gc.collect()
 save = False
 plotting_distr = False
 plotting_ripples = False
-referenced_data = True
+referenced_data = False
+
 if referenced_data == True:
     preproc_type = 'referenced'
 else:
@@ -84,7 +85,8 @@ ultra_high_gamma = [180, 250]
 #             's15', 's18', 's25'] #something weird in 16
 
 
-subjects = ['s18'] 
+subjects = ['s18'] #WHY DOES 18 NOT WORK????
+
 
 # subjects = ['s10']
 # subjects = ['s11', 's12', 's13', 's14', 's25']
@@ -233,13 +235,16 @@ for sub in subjects :
                 sec_lower_neuro = sec_lower-(block_size[0]/orig_sampling_freq[0])
                 sec_upper_neuro = sec_upper-(block_size[0]/orig_sampling_freq[0])
         
+            if sec_upper > block_size[0]/orig_sampling_freq[0]+block_size[1]/orig_sampling_freq[0]:
+                print("careful, the behavioural file for {sub} seems to be longer than the LFP files! Skipping rep {repeat}, trial {trial_index}")
+                continue
             
             reader, raw_file_lazy = [], []
             if sub not in ['s5']:
                 for file_half in [0,1]:
                     # does neo.io have an 'unload' function?
                     reader.append(neo.io.BlackrockIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3))
-                    if sub in ['s11'] and file_half == 0:
+                    if (sub in ['s11'] and file_half == 0) or (sub in ['s18'] and file_half == 1):
                         raw_file_lazy.append(reader[file_half].read_segment(seg_index=0, lazy=True))
                     else:
                         raw_file_lazy.append(reader[file_half].read_segment(seg_index=1, lazy=True))
@@ -443,7 +448,7 @@ for sub in subjects :
 
 
         # memory management
-        del raw_cropped
+        # del raw_cropped
         # del raw_cropped, raw_np_cropped
         # import pdb; pdb.set_trace()
         # Check memory allocation

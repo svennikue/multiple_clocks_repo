@@ -42,20 +42,21 @@ distribution = False
                     
             
 sessions = ['s5', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 
-            's15', 's16', 's18', 's25']
+            's18', 's25']
 session_per_subj = {
     'sub-1': ['s5'],
     'sub-2': ['s7', 's8', 's9'],
     'sub-3': ['s10', 's11'],
     'sub-4': ['s12', 's13', 's14'],
-    'sub-5': ['s15'], #something weird in 16
-    'sub-6': ['s18'],
+    'sub-6': ['s18'], #currently there is no regerenced ripples for s18.
     'sub-7': ['s25']
     }
 
-# sessions = ['s12', 's13', 's14']
+#     'sub-5': ['s15', 's16'], #something weird in 16, potentially formatting error in both
+
+# sessions = ['s7', 's8']
 # session_per_subj = {
-#    'sub-4': ['s12', 's13', 's14']
+#     'sub-2': ['s7', 's8']
 #     }
 
 
@@ -103,11 +104,13 @@ for sub in session_per_subj:
     ripple_count_correct_solve_cross_sessions = {}
     ripple_count_instant_correct_solve_cross_sessions = {}
     
-    ripple_overview_per_task = {}
+
     
     # maybe put it in the outer most one... not sure.
     ripples_per_task_all_subs = {}
     feedback_across_sessions = {}
+    
+    
     
     for sesh in session_per_subj[sub]:
         # at some point do all data computations in here, and then collect them all for all sessions one subject had.
@@ -158,12 +161,11 @@ for sub in session_per_subj:
             for channel in ripples[task_to_check]:
                 if any(coi in channel for coi in channels_of_interest):
                     ripples_per_task[channel] = ripples[task_to_check][channel]
-            ripple_hpc[task_to_check] = ripples_per_task
+            ripple_hpc[task_to_check] = ripples_per_task.copy()
         
-        
+        ripple_overview_per_task = {}
         for task_to_check in ripple_hpc:
-            feedback_correct_curr_task = feedback_dict[f"{int(task_to_check)}_correct"]
-            feedback_error_curr_task = feedback_dict[f"{int(task_to_check)}_error"]
+            print(task_to_check)
             index_lower = np.where(np.array(task_index)== task_to_check)[0][0]
             index_upper = np.where(np.array(task_index)== task_to_check)[0][-1]
             ripples_across_hpc_channels = []
@@ -184,7 +186,7 @@ for sub in session_per_subj:
             ripple_overview_per_task[f"{task_to_check}_first_corr_solve"] = seconds_upper[index_lower].copy()
             
             if distribution == True:
-                mc.analyse.plotting_ripples.plot_ripple_distribution(ripple_hpc, task_to_check, feedback_error_curr_task, feedback_correct_curr_task, ripples_across_hpc_channels, found_first_D, seconds_upper, index_upper, index_lower, seconds_lower, sub)
+                mc.analyse.plotting_ripples.plot_ripple_distribution(ripple_hpc, task_to_check, feedback_dict[f"{int(task_to_check)}_error"], feedback_dict[f"{int(task_to_check)}_correct"], ripples_across_hpc_channels, found_first_D, seconds_upper, index_upper, index_lower, seconds_lower, sub)
             
     
  
@@ -303,6 +305,10 @@ for sub in session_per_subj:
         # only for 'correct' solves. -> sum up incorrect repeats!
         # also collect if it's an instant correct solve
         # and split by 'incorrect' solve and finally, correct solve but repeated.
+    
+        
+        
+        
         rate_result_dict, amount_result_dict, no_instant_correct_dict, rate_instant_correct_dict, no_incorrect_solve_dict, rate_incorrect_solve_dict, no_later_correct_solve_dict, rate_later_correct_solve_dict = {}, {}, {}, {}, {}, {}, {}, {}
         durations_all_reps_correct_dict = {}
         for task in ripple_hpc:
@@ -634,11 +640,13 @@ for sub in session_per_subj:
  
     # create the ripple plot mathias suggested.
     # import pdb; pdb.set_trace() 
-    mc.analyse.plotting_ripples.plot_ripple_distribution_normalised_across_tasks_and_sessions(ripples_per_task_all_subs, sub)
-    mc.analyse.plotting_ripples.plot_ripple_count_three_bars(ripples_per_task_all_subs, sub)
+    # mc.analyse.plotting_ripples.plot_ripple_distribution_normalised_across_tasks_and_sessions(ripples_per_task_all_subs, sub)
+    # mc.analyse.plotting_ripples.plot_ripple_count_three_bars(ripples_per_task_all_subs, sub)
     
-    mc.analyse.plotting_ripples.plot_ripples_by_feedback(ripples_per_task_all_subs, feedback_across_sessions, sub, time_after_feedback=0.5)
+    # mc.analyse.plotting_ripples.plot_ripples_by_feedback(ripples_per_task_all_subs, feedback_across_sessions, sub, time_after_feedback=0.5)
     
+    
+    # CONTINUE HERE!!!
     mc.analyse.plotting_ripples.events_by_ripples(ripples_per_task_all_subs, feedback_across_sessions, sub)
     
     
