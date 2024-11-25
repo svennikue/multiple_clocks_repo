@@ -16,6 +16,8 @@ import neo
 import pandas as pd
 from scipy.stats import norm
 import mc
+import os
+import re
 
 
 def reference_electrodes(LFP_data, channels, rep):
@@ -72,10 +74,38 @@ def prep_behaviour(behaviour_all):
     return seconds_lower, seconds_upper, task_config, task_index, task_onset, new_grid_onset, found_first_D
 
 
-
+def load_spiking_data(sub):
+    # Path to the folder containing your CSV files
+    LFP_path = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/{sub}"
     
+    # Initialize the dictionary
+    spike_data = {}
+    
+    # Regular expression to match the desired file pattern
+    pattern = r"spikeTimes_(.+)_channel_no_(\d+)\.csv"
+    
+    # Iterate through files in the folder
+    for file_name in os.listdir(LFP_path):
+        # Check if the file name matches the pattern
+        match = re.match(pattern, file_name)
+        if match:
+            # Extract electrode_name and number from the file name
+            electrode_name = match.group(1)
+            channel_number = match.group(2)
+            key = f"{electrode_name}-{channel_number}"
+            
+            # Load the CSV file as a numpy array
+            file_path = os.path.join(LFP_path, file_name)
+            spike_data[key] = np.loadtxt(file_path, delimiter=",")
+            
+    return spike_data
+  
+    
+  
+    
+  
 
-def load_LFPs(LFP_dir, sub, names_blks_short):
+def load_LFPs(LFP_dir, sub, names_blks_short, channel_list_complete = False):
     # instead of fully loading the files, I am only loading the reader and then 
     # looking at them in lazy-mode, only calling the shorter segments.
         reader, block_size, channel_list, orig_sampling_freq, raw_file_lazy = [], [], [], [], []
@@ -106,10 +136,25 @@ def load_LFPs(LFP_dir, sub, names_blks_short):
                         mPFC_indices.append(i)    
                 HC_channels = [channel_list[i] for i in HC_indices]
                 mPFC_channels = [channel_list[i] for i in mPFC_indices]
+            
+                if channel_list_complete == True:
+                    ROI_dict = {}
+                    ROI_list, ROI_indices = [], []
+                    for i, channel in enumerate(channel_list):
+                        if "empty" in channel:  # Skip empty labels
+                            continue
+                        ROI_list.append(channel)
+                        ROI_indices.append(i)
+                        ROI = mc.analyse.ripple_helpers.extract_ROIs_from_channellist(channel)
+                        if ROI not in ROI_dict:
+                            ROI_dict[ROI] = []
+                        ROI_dict[ROI].append(channel)
+
                 if sub in ['s11', 's18']:
                     raw_file_lazy.append(reader[file_half].read_segment(seg_index=0, lazy=True))
                 else:
                     raw_file_lazy.append(reader[file_half].read_segment(seg_index=1, lazy=True))
+                    
         elif sub in ['s5']:
             for file_half in [0]:
                 reader.append(neo.io.BlackrockIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3))
@@ -128,11 +173,67 @@ def load_LFPs(LFP_dir, sub, names_blks_short):
                         mPFC_indices.append(i)    
                 HC_channels = [channel_list[i] for i in HC_indices]
                 mPFC_channels = [channel_list[i] for i in mPFC_indices]
+                if channel_list_complete == True:
+                    ROI_dict = {}
+                    ROI_list, ROI_indices = [], []
+                    for i, channel in enumerate(channel_list):
+                        if "empty" in channel:  # Skip empty labels
+                            continue
+                        ROI_list.append(channel)
+                        ROI_indices.append(i)
+                        ROI = mc.analyse.ripple_helpers.extract_ROIs_from_channellist(channel)
+                        if ROI not in ROI_dict:
+                            ROI_dict[ROI] = []
+                        ROI_dict[ROI].append(channel)
+                        
                 raw_file_lazy.append(reader[file_half].read_segment(seg_index=1, lazy=True))
+                if channel_list_complete == False:
+                    ROI_dict, ROI_list, ROI_indices = [], [], []
         # import pdb; pdb.set_trace()            
-        return raw_file_lazy, HC_channels, HC_indices, mPFC_channels, mPFC_indices, orig_sampling_freq, block_size
+        return raw_file_lazy, HC_channels, HC_indices, mPFC_channels, mPFC_indices, orig_sampling_freq, block_size, ROI_dict, ROI_list, ROI_indices
     
 
+
+def extract_ROIs_from_channellist(channel):
+    # Default values
+    hemisphere = "Left" if channel.startswith("L") else "Right" if channel.startswith("R") else "Unknown Hemisphere"
+    lobe = None
+    region = None
+    
+    # Determine the lobe based on the second character
+    if "F" in channel[:3]:
+        lobe = "Frontal"
+    elif "T" in channel[:3]:
+        lobe = "Temporal"
+    elif "P" in channel[:3]:
+        lobe = "Parietal"
+    elif "O" in channel[:3]:
+        lobe = "Occipital"
+    elif "C" in channel[:3]:
+        lobe = "Cerebellum"
+    
+    # Determine the brain region based on suffix
+    if "Ha" in channel:
+        region = "Hippocampus"
+    elif "Ca" in channel:
+        region = "Cingulate"
+    elif "E" in channel:
+        region = "Entorhinal Cortex"
+    elif "Ib" in channel:
+        region = "Insula"
+    elif "Cb" in channel:
+        region = "Cerebellum"
+    elif "Hc" in channel:
+        region = "Hypothalamus"
+    elif "A" in channel:
+        region = "Amygdala"
+    else:
+        region = f"{lobe or 'Unknown Lobe'} Region"  # Fallback to lobe if region not clear
+
+    # Combine hemisphere, lobe, and region for the key
+    ROI = f"{hemisphere} {lobe or 'Unknown Lobe'} {region}"
+    return ROI
+    
 
 def dict_unnesting_three_levels(three_level_dict):
     plotting_dict = {}
@@ -343,7 +444,29 @@ def sort_in_three_sections(ripple_info_dict, task_index):
 
     return ripples_in_sections, durations_per_section
 
+def sort_HFB_event_in_three_sections(ripple_info_dict, event_dict, task_index, region_list):
+    # import pdb; pdb.set_trace()
+    sections = [((ripple_info_dict[f"{task_index}_start_task"]), (ripple_info_dict[f"{task_index}_found_all_locs"])),
+                ((ripple_info_dict[f"{task_index}_found_all_locs"]), (ripple_info_dict[f"{task_index}_first_corr_solve"])),
+                ((ripple_info_dict[f"{task_index}_first_corr_solve"]), (ripple_info_dict[f"{task_index}_end_task"]))]
+
+    section_labels = ['find_ABCD', 'first_solve_correctly', 'all_repeats']
+    events_across_ROIs = {}
+    for ROI in region_list:
+        all_events_task = event_dict[f"{task_index}_HFB_event_across_{ROI}"]
+        
+        # # Define normalized section ranges (e.g., each section is a third of the normalized scale)
+        # normalized_sections = [(0, 0.33), (0.33, 0.67), (0.67, 1.0)]
+        events_in_sections = {}
+        for section_idx, (original_start, original_end) in enumerate(sections):
+            # Find events in the current section
+            events_in_sections[section_labels[section_idx]] = [event for event in all_events_task if original_start < event <= original_end]
+        events_across_ROIs[ROI] = events_in_sections.copy()
+        
+    return events_across_ROIs
+
     
+
     
 def sort_feedback_in_three_sections(ripple_info_dict, feedback_session_sub_dict, task_index):
     # import pdb; pdb.set_trace()
@@ -396,21 +519,18 @@ def extract_section_durations(ripple_info_dict, feedback_count, task_index, feed
 def sort_ripples_by_feedback(feedback_per_section_task, ripples_per_section_task, second_offset):
     # import pdb; pdb.set_trace()
     ripples_sorted_by_feedback_and_section_all_tasks = {}
+    
     for task in sorted(feedback_per_section_task.keys()):
         ripples_sorted_by_feedback_and_section = {}
         for section_feedback_type in sorted(feedback_per_section_task[task].keys()):
+            if section_feedback_type not in ripples_sorted_by_feedback_and_section:
+                ripples_sorted_by_feedback_and_section[section_feedback_type] = []
             for feedback_time in feedback_per_section_task[task][section_feedback_type]:
                 if section_feedback_type.endswith('find_ABCD'):
-                    if section_feedback_type not in ripples_sorted_by_feedback_and_section:
-                        ripples_sorted_by_feedback_and_section[section_feedback_type] = []
                     ripples_sorted_by_feedback_and_section[section_feedback_type].append([event for event in ripples_per_section_task[task]['find_ABCD'] if feedback_time <= event < feedback_time+second_offset])
                 if section_feedback_type.endswith('first_solve_correctly'):
-                    if section_feedback_type not in ripples_sorted_by_feedback_and_section:
-                        ripples_sorted_by_feedback_and_section[section_feedback_type] = []
                     ripples_sorted_by_feedback_and_section[section_feedback_type].append([event for event in ripples_per_section_task[task]['first_solve_correctly'] if feedback_time <= event < feedback_time+second_offset])
                 if section_feedback_type.endswith('all_repeats'):
-                    if section_feedback_type not in ripples_sorted_by_feedback_and_section:
-                        ripples_sorted_by_feedback_and_section[section_feedback_type] = []
                     ripples_sorted_by_feedback_and_section[section_feedback_type].append([event for event in ripples_per_section_task[task]['all_repeats'] if feedback_time <= event < feedback_time+second_offset])
             if section_feedback_type in ripples_sorted_by_feedback_and_section and len(ripples_sorted_by_feedback_and_section[section_feedback_type]) > 1:
                 ripples_sorted_by_feedback_and_section[section_feedback_type] = [item for sublist in ripples_sorted_by_feedback_and_section[section_feedback_type] for item in sublist]
@@ -421,6 +541,42 @@ def sort_ripples_by_feedback(feedback_per_section_task, ripples_per_section_task
     
     return ripples_sorted_by_feedback_and_section_all_tasks
     
+
+def sort_ripples_by_feedback_before_vs_after(feedback_per_section_task, ripples_per_section_task, second_offset):
+    # import pdb; pdb.set_trace()
+    ripples_sorted_by_feedback_and_section_all_tasks = {}
+    for task in sorted(feedback_per_section_task.keys()):
+        
+        ripples_sorted_by_feedback_and_section = {}
+        for section_feedback_type in sorted(feedback_per_section_task[task].keys()):
+            ripples_sorted_by_feedback_and_section[f"{section_feedback_type}_after_event"] = []
+            ripples_sorted_by_feedback_and_section[f"{section_feedback_type}_before_event"] = []
+            
+        for section_feedback_type in sorted(feedback_per_section_task[task].keys()):
+            for feedback_time in feedback_per_section_task[task][section_feedback_type]:
+                if section_feedback_type.endswith('find_ABCD'):
+                    ripples_sorted_by_feedback_and_section[f"{section_feedback_type}_after_event"].append([event for event in ripples_per_section_task[task]['find_ABCD'] if feedback_time <= event < feedback_time+second_offset])
+                    ripples_sorted_by_feedback_and_section[f"{section_feedback_type}_before_event"].append([event for event in ripples_per_section_task[task]['find_ABCD'] if feedback_time-second_offset <= event < feedback_time])
+                if section_feedback_type.endswith('first_solve_correctly'):
+                    ripples_sorted_by_feedback_and_section[f"{section_feedback_type}_after_event"].append([event for event in ripples_per_section_task[task]['first_solve_correctly'] if feedback_time <= event < feedback_time+second_offset])
+                    ripples_sorted_by_feedback_and_section[f"{section_feedback_type}_before_event"].append([event for event in ripples_per_section_task[task]['first_solve_correctly'] if feedback_time-second_offset <= event < feedback_time])
+                if section_feedback_type.endswith('all_repeats'):
+                    ripples_sorted_by_feedback_and_section[f"{section_feedback_type}_after_event"].append([event for event in ripples_per_section_task[task]['all_repeats'] if feedback_time <= event < feedback_time+second_offset])
+                    ripples_sorted_by_feedback_and_section[f"{section_feedback_type}_before_event"].append([event for event in ripples_per_section_task[task]['all_repeats'] if feedback_time-second_offset <= event < feedback_time])
+   
+            if f"{section_feedback_type}_after_event" in ripples_sorted_by_feedback_and_section and len(ripples_sorted_by_feedback_and_section[f"{section_feedback_type}_after_event"]) > 1:
+                ripples_sorted_by_feedback_and_section[f"{section_feedback_type}_after_event"] = [item for sublist in ripples_sorted_by_feedback_and_section[f"{section_feedback_type}_after_event"] for item in sublist]
+            if f"{section_feedback_type}_before_event" in ripples_sorted_by_feedback_and_section and len(ripples_sorted_by_feedback_and_section[f"{section_feedback_type}_before_event"]) > 1:    
+                ripples_sorted_by_feedback_and_section[f"{section_feedback_type}_before_event"] = [item for sublist in ripples_sorted_by_feedback_and_section[f"{section_feedback_type}_before_event"] for item in sublist]
+            
+            ripples_sorted_by_feedback_and_section_all_tasks[task] = ripples_sorted_by_feedback_and_section.copy()
+    
+    return ripples_sorted_by_feedback_and_section_all_tasks
+
+
+
+
+
 
 def count_event_values(ripple_dict, feedback_time, second_offset, sigma): 
     ripple_values = []

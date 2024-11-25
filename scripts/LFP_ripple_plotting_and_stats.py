@@ -22,9 +22,12 @@ import pandas as pd
 LFP_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
 result_dir = f"{LFP_dir}/results"
 ROI = 'HPC' # HPC mPFC
+
+ROI_HFB = 'all' # or mPFC
+
 analysis_type = 'grid_wise' # grid_wise, exploration_trials 
 
-preproc_type = 'referenced' # channel_wise 'referenced'
+preproc_type = 'channel_wise' # channel_wise 'referenced'
 
 distribution = False
 
@@ -41,23 +44,25 @@ distribution = False
 # ok right. So I'm not really seeing more ripples/time (ripplerate) for 
                     
             
-sessions = ['s5', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 
-            's18', 's25']
-session_per_subj = {
-    'sub-1': ['s5'],
-    'sub-2': ['s7', 's8', 's9'],
-    'sub-3': ['s10', 's11'],
-    'sub-4': ['s12', 's13', 's14'],
-    'sub-6': ['s18'], #currently there is no regerenced ripples for s18.
-    'sub-7': ['s25']
-    }
+# sessions = ['s5', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 
+#             's25']
+# session_per_subj = {
+#     'sub-1': ['s5'],
+#     'sub-2': ['s7', 's8', 's9'],
+#     'sub-3': ['s10', 's11'],
+#     'sub-4': ['s12', 's13', 's14'],
+#     'sub-7': ['s25']
+#     }
+
+
+
 
 #     'sub-5': ['s15', 's16'], #something weird in 16, potentially formatting error in both
 
-# sessions = ['s7', 's8']
-# session_per_subj = {
-#     'sub-2': ['s7', 's8']
-#     }
+sessions = ['s25']
+session_per_subj = {
+    'sub-7': ['s25']
+    }
 
 
 
@@ -105,12 +110,11 @@ for sub in session_per_subj:
     ripple_count_instant_correct_solve_cross_sessions = {}
     
 
-    
     # maybe put it in the outer most one... not sure.
     ripples_per_task_all_subs = {}
     feedback_across_sessions = {}
-    
-    
+    HFB_event_per_task_all_subs = {}
+    ROI_dict = {}
     
     for sesh in session_per_subj[sub]:
         # at some point do all data computations in here, and then collect them all for all sessions one subject had.
@@ -140,6 +144,18 @@ for sub in session_per_subj:
                     repeat_counter = 0
             index_repeat[trial] = repeat_counter
             repeat_counter = repeat_counter + 1
+        
+        
+        
+        with open(f"{result_dir}/{sesh}_{ROI_HFB}_{preproc_type}_HFB_by_seconds.pkl", 'rb') as file:
+            HFB = pickle.load(file)
+        
+        if ROI_HFB == 'all':
+            with open(f"{result_dir}/{sesh}_ROI_dict.pkl", 'rb') as file:
+                ROI_dict[sesh] = pickle.load(file)
+        else:
+            ROI_dict = 'empty'
+         
             
         # plot ripple distribution: all ripples.
         # for task_to_check in ripples:
@@ -187,9 +203,28 @@ for sub in session_per_subj:
             
             if distribution == True:
                 mc.analyse.plotting_ripples.plot_ripple_distribution(ripple_hpc, task_to_check, feedback_dict[f"{int(task_to_check)}_error"], feedback_dict[f"{int(task_to_check)}_correct"], ripples_across_hpc_channels, found_first_D, seconds_upper, index_upper, index_lower, seconds_lower, sub)
+        
+        HFB_event_overview_per_task = {}  
+        
+        for task_to_check in HFB:
+            if ROI_HFB == 'mpfc':
+                HFB_events_across_mPFC_channels = []
+                for channel in HFB[task_to_check]:
+                    HFB_events_across_mPFC_channels.extend(HFB[task_to_check][channel])
+                HFB_event_overview_per_task[f"{task_to_check}_HFB_event_across_mPFC"] = HFB_events_across_mPFC_channels.copy()
+            elif ROI_HFB == 'all':
+                for region in ROI_dict[sesh]:
+                    HFB_events_across_channels = []
+                    for channel in ROI_dict[sesh][region]:
+                        if channel in HFB[task_to_check]:
+                            HFB_events_across_channels.extend(HFB[task_to_check][channel])
+                    HFB_event_overview_per_task[f"{task_to_check}_HFB_event_across_{region}"] = HFB_events_across_channels.copy()
+                        
+                    
+                    
+        # import pdb; pdb.set_trace()   
             
-    
- 
+        
         # a. timebin in bins defined as subpaths of correct solves. Plot ripple amount per bin.
         # there will be 4*10 bins.
         ripples_by_state_per_repeat = {}
@@ -404,6 +439,7 @@ for sub in session_per_subj:
         rate_later_correct_solve_across_subs[sesh] = rate_later_correct_solve_dict.copy()
         ripples_per_task_all_subs[sesh] = ripple_overview_per_task.copy()
         feedback_across_sessions[sesh] = feedback_dict.copy()
+        HFB_event_per_task_all_subs[sesh] = HFB_event_overview_per_task.copy()
         
         
         
@@ -538,15 +574,15 @@ for sub in session_per_subj:
                             ripples_by_exploration['repeats'] = ripples_by_exploration['repeats'] + 1
                 
         
-        plt.figure();
-        categories = list(ripples_by_exploration.keys())
-        heights = list(ripples_by_exploration.values())
+        # plt.figure();
+        # categories = list(ripples_by_exploration.keys())
+        # heights = list(ripples_by_exploration.values())
         
-        # Create a bar plot
-        plt.bar(categories, heights)
-        plt.ylabel('Sum of ripples per execution phase across grids')
-        plt.title(f"Ripples per execution phase for {sub}")
-        plt.xlabel('Exploration - solving first grid correctly - the other 9 repeats')
+        # # Create a bar plot
+        # plt.bar(categories, heights)
+        # plt.ylabel('Sum of ripples per execution phase across grids')
+        # plt.title(f"Ripples per execution phase for {sub}")
+        # plt.xlabel('Exploration - solving first grid correctly - the other 9 repeats')
     
         
     
@@ -577,12 +613,12 @@ for sub in session_per_subj:
     # y_title = 'Ripple Count'
     # mc.analyse.plotting_ripples.ripple_amount_violin_scatter(unnested_ripple_count, title, x_title, y_title)
     
-    # plot duration
-    unnested_duration = mc.analyse.ripple_helpers.dict_unnesting_three_levels(durations_all_reps_correct_across_session)
-    title = f"Duration per solve across grids for {sub}, across {len(session_per_subj[sub])} sessions"
-    x_title = 'A-D = one correct solve. Repeats depend on errors made.'
-    y_title = 'Accumulated duration in secs'
-    mc.analyse.plotting_ripples.ripple_amount_violin_scatter(unnested_duration, title, x_title, y_title)
+    # # plot duration
+    # unnested_duration = mc.analyse.ripple_helpers.dict_unnesting_three_levels(durations_all_reps_correct_across_session)
+    # title = f"Duration per solve across grids for {sub}, across {len(session_per_subj[sub])} sessions"
+    # x_title = 'A-D = one correct solve. Repeats depend on errors made.'
+    # y_title = 'Accumulated duration in secs'
+    # mc.analyse.plotting_ripples.ripple_amount_violin_scatter(unnested_duration, title, x_title, y_title)
     
     
     
@@ -640,14 +676,22 @@ for sub in session_per_subj:
  
     # create the ripple plot mathias suggested.
     # import pdb; pdb.set_trace() 
+    
     # mc.analyse.plotting_ripples.plot_ripple_distribution_normalised_across_tasks_and_sessions(ripples_per_task_all_subs, sub)
     # mc.analyse.plotting_ripples.plot_ripple_count_three_bars(ripples_per_task_all_subs, sub)
     
-    # mc.analyse.plotting_ripples.plot_ripples_by_feedback(ripples_per_task_all_subs, feedback_across_sessions, sub, time_after_feedback=0.5)
+    mc.analyse.plotting_ripples.plot_ripples_by_feedback(ripples_per_task_all_subs, feedback_across_sessions, sub, time_after_feedback=0.8)
     
-    
-    # CONTINUE HERE!!!
+    mc.analyse.plotting_ripples.plot_ripples_before_vs_after_feedback(ripples_per_task_all_subs, feedback_across_sessions, sub, time_after_feedback=0.8)
+
+    # import pdb; pdb.set_trace()
     mc.analyse.plotting_ripples.events_by_ripples(ripples_per_task_all_subs, feedback_across_sessions, sub)
+    
+    mc.analyse.plotting_ripples.gaussian_ripples_feedback_aligned(ripples_per_task_all_subs, feedback_across_sessions, sub)
+    
+    # mc.analyse.plotting_ripples.gaussian_ripples_HFB_aligned(ripples_per_task_all_subs, HFB_event_per_task_all_subs, sub, ROI_dict)
+    
+    mc.analyse.plotting_ripples.gaussian_spikes_around_ripple(ripples_per_task_all_subs, sesh)
     
     
 # # do stats on first vs. all others collapsed across subjects.
@@ -661,9 +705,9 @@ n_sec_grp = len(unnested_no_incorrect_solve_across_subs)-4
 
 first_rep_vs_other_reps_incorrect_count, n_groups_group_one, n_groups_group_two =  mc.analyse.ripple_helpers.collapse_first_four_vs_rest(unnested_no_incorrect_solve_across_subs, group_labels, 4, n_sec_grp)
 
-title_string= 'All subjects: First repeat vs all other repeats, only incorrect attempts'
-y_label_string = 'Ripple Count'
-mc.analyse.plotting_ripples.ripples_compare_two_bars(first_rep_vs_other_reps_incorrect_count, title_string, y_label_string)
+# title_string= 'All subjects: First repeat vs all other repeats, only incorrect attempts'
+# y_label_string = 'Ripple Count'
+# mc.analyse.plotting_ripples.ripples_compare_two_bars(first_rep_vs_other_reps_incorrect_count, title_string, y_label_string)
   
     
     
