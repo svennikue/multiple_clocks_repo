@@ -422,6 +422,39 @@ def normalise_feedback(ripple_info_dict, fb_dict, task_index):
     return normalised_fb_pos, normalised_fb_neg
 
 
+def normalise_explore_by_pos_fb(start, end, explore_ripples, explore_fb, task_i):
+    # import pdb; pdb.set_trace()
+    
+    sections = [((start, explore_fb[f"{task_i}_pos"][0])),
+                ((explore_fb[f"{task_i}_pos"][0], explore_fb[f"{task_i}_pos"][1])),
+                ((explore_fb[f"{task_i}_pos"][1], explore_fb[f"{task_i}_pos"][2])),
+                ((explore_fb[f"{task_i}_pos"][2]), end)]
+    
+    normalised_ripples, normalised_fb_pos, normalised_fb_neg = [], [], []
+    
+
+    normalised_sections = [(0, 1/4), (1/4, 2/4), (2/4, 3/4), (3/4, 1)]
+    for section_idx, (original_start, original_end) in enumerate(sections):
+        normalised_start, normalised_end = normalised_sections[section_idx]
+        
+        ripples = [ripple for ripple in explore_ripples[task_i] if original_start < ripple <= original_end]
+        feedbacks_pos = [fb for fb in explore_fb[f"{task_i}_pos"] if original_start < fb <= original_end]
+        feedbacks_neg = [fb for fb in explore_fb[f"{task_i}_neg"] if original_start < fb <= original_end]
+        
+        for rip in ripples:
+            normalised_rip = ((rip-original_start) / (original_end - original_start)) * (normalised_end - normalised_start) + normalised_start
+            normalised_ripples.append(normalised_rip)
+        for fbi in feedbacks_pos:
+            normalised_fbi_pos = ((fbi - original_start) / (original_end - original_start)) * (normalised_end - normalised_start) + normalised_start
+            normalised_fb_pos.append(normalised_fbi_pos)
+    
+        for fbi_neg in feedbacks_neg:
+            normalised_fbi_neg = ((fbi_neg - original_start) / (original_end - original_start)) * (normalised_end - normalised_start) + normalised_start
+            normalised_fb_neg.append(normalised_fbi_neg)
+    
+        
+    return normalised_ripples, normalised_fb_pos, normalised_fb_neg
+
 
 
 
@@ -466,6 +499,219 @@ def sort_HFB_event_in_three_sections(ripple_info_dict, event_dict, task_index, r
     return events_across_ROIs
 
     
+def neg_pos_fb_combo_in_three_sections_normalised(ripple_info_dict, feedback_session_sub_dict, task_index):
+    # import pdb; pdb.set_trace()
+
+    # define the sections I want to sort feedbacks and ripples by
+    sections = [((ripple_info_dict[f"{task_index}_start_task"]), (ripple_info_dict[f"{task_index}_found_all_locs"])),
+                ((ripple_info_dict[f"{task_index}_found_all_locs"]), (ripple_info_dict[f"{task_index}_first_corr_solve"])),
+                ((ripple_info_dict[f"{task_index}_first_corr_solve"]), (ripple_info_dict[f"{task_index}_end_task"]))]
+
+    # extract positive and negative feedbacks from this task
+    if f"{task_index}_correct" in feedback_session_sub_dict:
+        all_pos_task = feedback_session_sub_dict[f"{task_index}_correct"]
+    if f"{task_index}_error" in feedback_session_sub_dict:
+        all_neg_task = feedback_session_sub_dict[f"{task_index}_error"]
+    
+    # extract ripple events of this task
+    all_events_task = ripple_info_dict[f"{task_index}_ripples_across_choi"]
+
+    # split ripples into sections
+    ripples_in_sections = {}
+    section_labels = ['find_ABCD', 'first_solve_correctly', 'all_repeats']
+    for section_idx, (original_start, original_end) in enumerate(sections):
+        # Find events in the current section
+        ripples_in_sections[section_labels[section_idx]] = [event for event in all_events_task if original_start < event <= original_end]
+
+    
+
+    # identify all positive-negative events combinations
+    # Identify adjacent negative-positive pairs
+    neg_pos_pairs = []
+    used_indices = set()  # Track indices of used feedback to avoid double counting
+    
+    for i, neg_event in enumerate(all_neg_task):
+        # Find the next positive feedback event after the current negative feedback
+        for j, pos_event in enumerate(all_pos_task):
+            if j in used_indices:  # Skip if the positive feedback was already paired
+                continue
+            if pos_event > neg_event:  # Check if the positive feedback is after the negative feedback
+                # Ensure there are no other feedbacks (neg or pos) between this pair
+                intermediate_events = [
+                    event for event in all_neg_task[i + 1:] + all_pos_task[:j]
+                    if neg_event < event < pos_event
+                ]
+                if not intermediate_events:
+                    neg_pos_pairs.append((neg_event, pos_event))
+                    used_indices.add(j)  # Mark the positive feedback as used
+                    break  # Move to the next negative feedback
+
+        
+    normalized_feedback_data = {label: [] for label in section_labels}
+    normalized_ripples_data = {label: [] for label in section_labels}
+    section_durations = {label: [] for label in section_labels}  # Store durations for each section
+
+    for neg_event, pos_event in neg_pos_pairs:
+        # Define the time windows
+        start_time = neg_event - 3
+        end_time = pos_event + 3
+        total_duration = end_time - start_time  # Always 6 seconds between -3 and +3 seconds
+
+        # *** Adjusted Normalization: Normalize ripples and feedback using the correct scale ***
+        def normalize_time(t):
+            return (t - start_time) / total_duration * 3  # Map times to [0, 3] range
+
+        # Normalize ripple events
+        ripples_within_window = [
+            normalize_time(ripple) for ripple in all_events_task
+            if start_time <= ripple <= end_time
+        ]
+
+        # Add normalized feedback and ripples to the appropriate section
+        for section_idx, (section_start, section_end) in enumerate(sections):
+            if section_start <= neg_event <= section_end:
+                section_label = section_labels[section_idx]
+                # Feedback data
+                normalized_feedback_data[section_label].append({
+                    "neg_event": neg_event,
+                    "pos_event": pos_event,
+                    "normalized_times": {
+                        "neg": normalize_time(neg_event),  # Should be 1.0
+                        "pos": normalize_time(pos_event)   # Should be 2.0
+                    }
+                })
+                # Ripple data
+                normalized_ripples_data[section_label].append({
+                    "neg_event": neg_event,
+                    "pos_event": pos_event,
+                    "normalized_ripples": ripples_within_window,
+                    "duration": total_duration
+                })
+                break
+
+    return normalized_ripples_data, normalized_feedback_data
+
+    # for neg_event, pos_event in neg_pos_pairs:
+    #     # # Define the time window: 3 seconds before the negative event to 3 seconds after the positive event
+    #     # start_time = neg_event - 3
+    #     # end_time = pos_event + 3
+    #     # duration = end_time - start_time
+        
+        
+    #     # Define the time windows for the three sections
+    #     pre_neg_start = neg_event - 3
+    #     pre_neg_end = neg_event
+    #     between_start = neg_event
+    #     between_end = pos_event
+    #     post_pos_start = pos_event
+    #     post_pos_end = pos_event + 3
+        
+    #     normalized_times = {
+    #         "pre_neg": lambda t: ((t - pre_neg_start) / (pre_neg_end - pre_neg_start)) * -1,
+    #         "between": lambda t: ((t - between_start) / (between_end - between_start)),
+    #         "post_pos": lambda t: ((t - post_pos_start) / (post_pos_end - post_pos_start)) + 1
+    #     }
+
+    #     def normalize_time(t):
+    #         if pre_neg_start <= t < pre_neg_end:  # Pre-negative
+    #             return ((t - pre_neg_start) / (pre_neg_end - pre_neg_start)) * -1
+    #         elif between_start <= t < between_end:  # Between negative and positive
+    #             return ((t - between_start) / (between_end - between_start))
+    #         elif post_pos_start <= t <= post_pos_end:  # Post-positive
+    #             return ((t - post_pos_start) / (post_pos_end - post_pos_start)) + 1
+    #         else:
+    #             return None
+
+    #     # Normalize ripples across the entire window
+    #     ripples_within_window = [
+    #         normalize_time(ripple) for ripple in all_events_task
+    #         if pre_neg_start <= ripple <= post_pos_end
+    #     ]
+
+    #     # Remove None values (if any)
+    #     ripples_within_window = [ripple for ripple in ripples_within_window if ripple is not None]
+
+    #     # Add normalized feedback and ripples to the appropriate section
+    #     for section_idx, (section_start, section_end) in enumerate(sections):
+    #         if section_start <= neg_event <= section_end:
+    #             section_label = section_labels[section_idx]
+    #             # Feedback data
+    #             normalized_feedback_data[section_label].append({
+    #                 "neg_event": neg_event,
+    #                 "pos_event": pos_event,
+    #                 "normalized_times": {
+    #                     "neg": normalize_time(neg_event),
+    #                     "pos": normalize_time(pos_event)
+    #                 }
+    #             })
+    #             # Ripple data
+    #             normalized_ripples_data[section_label].append({
+    #                 "neg_event": neg_event,
+    #                 "pos_event": pos_event,
+    #                 "normalized_ripples": ripples_within_window,
+    #                 "duration": post_pos_end - pre_neg_start  # Total duration of the window
+    #             })
+    #             break
+
+
+    # return normalized_ripples_data, normalized_feedback_data
+
+    #     # Normalize times: 
+    #     # -3 (start of the window) to 0 (negative feedback), 
+    #     # 0 to 1 (negative to positive interval), 
+    #     # 1 to 2 (positive feedback to end of window)
+    #     duration_neg_to_pos = pos_event - neg_event
+    #     normalized_times = [
+    #         ((time - start_time) / (end_time - start_time)) * 2 - 1  # Map to range [-1, 1]
+    #         for time in [start_time, neg_event, pos_event, end_time]
+    #     ]
+        
+    #     # Assign normalized feedback and duration to the appropriate section
+    #     for section_idx, (section_start, section_end) in enumerate(sections):
+    #         if section_start <= neg_event <= section_end:
+    #             section_label = section_labels[section_idx]
+    #             normalized_feedback_data[section_label].append({
+    #                 "neg_event": neg_event,
+    #                 "pos_event": pos_event,
+    #                 "normalized_times": normalized_times,
+    #                 "duration": duration
+    #             })
+    #             section_durations[section_label].append(duration)
+    #             break
+        
+    #     # Normalize ripple timings within the same window
+    #     ripples_within_window = []
+    #     for section_idx, section_ripples in ripples_in_sections.items():
+    #         ripples_in_window = [
+    #             ripple for ripple in section_ripples
+    #             if start_time <= ripple <= end_time  # Ripples within the window
+    #         ]
+    #         # Normalize these ripple timings
+    #         normalized_ripples = [
+    #             ((ripple - start_time) / (end_time - start_time)) * 2 - 1
+    #             for ripple in ripples_in_window
+    #         ]
+    #         ripples_within_window.extend(normalized_ripples)
+       
+        
+    #     # Add normalized ripples to the appropriate section
+    #     for section_idx, (section_start, section_end) in enumerate(sections):
+    #         if section_start <= neg_event <= section_end:
+    #             section_label = section_labels[section_idx]
+    #             normalized_ripples_data[section_label].append({
+    #                 "neg_event": neg_event,
+    #                 "pos_event": pos_event,
+    #                 "normalized_ripples": ripples_within_window,
+    #                 "duration": duration
+    #             })
+    #             break
+
+
+    # return normalized_ripples_data, normalized_feedback_data
+
+
+
+
 
     
 def sort_feedback_in_three_sections(ripple_info_dict, feedback_session_sub_dict, task_index):

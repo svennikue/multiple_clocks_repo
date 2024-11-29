@@ -395,8 +395,7 @@ def gaussian_ripples_HFB_aligned(ripple_info_dict_across_sesh_tasks, HFB_info_di
             axs[row_idx].axvline(0, color='black', linestyle='--', linewidth=0.8)
             axs[row_idx].set_title(f'HFB event: {section_label}')
             axs[row_idx].set_ylabel('Ripple Likelihood')
-            
-        
+
         # Add common x-axis label
         axs[-1].set_xlabel('Time (s)')
         
@@ -407,14 +406,134 @@ def gaussian_ripples_HFB_aligned(ripple_info_dict_across_sesh_tasks, HFB_info_di
         plt.tight_layout(rect=[0, 0, 1, 0.95]) 
         plt.show()
         
+
+def plot_ripple_rate_gaussian_exploration_phase(ripple_info_dict_across_sesh_tasks, feedback_across_sessions_tasks, sub):
+    sigma = 0.5
+    # plotting ripple rate for the exploration period.
+    # do it once with subplots per task, including the feedback plot.
+    # and then collapsed across tasks:
+        # align/normalise by correct feedback, and divide the gaussian by the time each section takes!
+
+    # for the first plot, literally plot in real time.
+    # just 'cut out' the exploration trials.
+    explore_trials_fb_pos,  explore_trials_fb_neg = {}, {}
+    explore_ripples = {}
+    durations = {}
+    duration_ABCD = {}
+    normalised_ripples = {}
+    for session in sorted(ripple_info_dict_across_sesh_tasks.keys()):
+        session_sub_dict = ripple_info_dict_across_sesh_tasks[session]
+        # then count how many tasks: split the string after first element and take max
+        # Extract the number before the underscore and convert to integers
+        task_numbers = sorted([int(key.split('_')[0]) for key in ripple_info_dict_across_sesh_tasks[session].keys()])
+        task_numbers = np.unique(task_numbers)
+        explore_ripples_curr_session, explore_trials_fb_curr_session, durations_curr_session = {}, {}, {}
+        explore_ripples_normalised_curr_session, explore_fb_pos_normalised_curr_session, explore_fb_neg_normalised_curr_session, duration_ABCD_curr_session = {}, {}, {}, {}
+        fig, axs = plt.subplots(math.ceil(len(task_numbers)/2), 2, figsize=(12, len(task_numbers) * 4), sharey = True)
+        
+        for task in task_numbers:
+            if task > math.ceil(len(task_numbers)):
+                continue
+                # to make it easy, just skip the last task.
+                
+            start_explore = ripple_info_dict_across_sesh_tasks[session][f"{task}_start_task"]
+            end_explore = ripple_info_dict_across_sesh_tasks[session][f"{task}_first_corr_solve"]
+            find_all_rews = ripple_info_dict_across_sesh_tasks[session][f"{task}_found_all_locs"]
+            explore_ripples_curr_session[task] = [ripple for ripple in ripple_info_dict_across_sesh_tasks[session][f"{task}_ripples_across_choi"] if start_explore < ripple < end_explore]
+            explore_trials_fb_curr_session[f"{task}_pos"] = [pos_fb for pos_fb in feedback_across_sessions_tasks[session][f"{task}_correct"] if start_explore < pos_fb < end_explore]
+            explore_trials_fb_curr_session[f"{task}_neg"] = [neg_fb for neg_fb in feedback_across_sessions_tasks[session][f"{task}_error"] if start_explore < neg_fb < end_explore]
+            durations_curr_session[task] = end_explore - start_explore
+            duration_ABCD_curr_session[task] = find_all_rews+3 - start_explore
+            explore_ripples_normalised_curr_session[task], explore_fb_pos_normalised_curr_session[task], explore_fb_neg_normalised_curr_session[task] = mc.analyse.ripple_helpers.normalise_explore_by_pos_fb(start_explore, find_all_rews+3, explore_ripples_curr_session, explore_trials_fb_curr_session, task)
+            
+            #then set up the real-time figure with each grid seperately.
+            if task <= math.ceil(len(task_numbers)/2):
+                col_idx = 0
+                row_idx = 0
+            elif task > math.ceil(len(task_numbers)/2):
+                col_idx = 1
+                row_idx = math.ceil(len(task_numbers)/2) * -1
+            time_range = np.linspace(start_explore, end_explore, 1000)
+            ripple_likelihood = np.zeros_like(time_range)
+            for ripple in explore_ripples_curr_session[task]:
+                ripple_likelihood += norm.pdf(time_range, loc=ripple, scale = sigma)
+            # normalise by duration to make it ripple rate
+            ripple_likelihood /= durations_curr_session[task]
+            axs[task-1 + row_idx, col_idx].plot(time_range, ripple_likelihood, color = 'teal', linewidth = 0.8)
+            axs[task-1 + row_idx, col_idx].fill_between(time_range, ripple_likelihood, color = 'teal', alpha = 0.3)
+            axs[task-1 + row_idx, col_idx].set_title(f"Ripple Rate for task {task} between {start_explore} and {end_explore}", fontsize = 8)
+            axs[task-1 + row_idx, col_idx].set_ylabel("Ripple Rate")
+            
+            axs[task-1 + row_idx, col_idx].axvline(find_all_rews, color='darkgreen', linestyle='--', linewidth=1.5)
+
+            # axs[task-1 + row_idx, col_idx].yticks()
+            for fb in explore_trials_fb_curr_session:
+                if fb in [f"{task}_pos"]:
+                    for event in explore_trials_fb_curr_session[fb]:
+                        axs[task-1 + row_idx, col_idx].axvline(event, color='darkgreen', linestyle='--', linewidth=0.8)
+                if fb in [f"{task}_neg"]:
+                    for event in explore_trials_fb_curr_session[fb]:
+                        axs[task-1 + row_idx, col_idx].axvline(event, color='maroon', linestyle='--', linewidth=0.8, alpha = 0.8)
+        
+        # Add common x-axis label
+        # for ax in axs[-1, :]:
+        #     ax.set_xlabel('Time (s)')
+        
+        plt.suptitle(f"Gaussian Kernels on Ripples in explore period (until first correct solve));\n" 
+                     f" ripple count normalised by duration of explore period for subject {sub} session {session}", 
+                     y=0.97)
+        
+        plt.tight_layout(rect=[0, 0, 1, 0.95]) 
+        plt.show()
+        
+        explore_ripples[session] = explore_ripples_curr_session.copy()
+        explore_trials_fb_neg[session] = explore_fb_neg_normalised_curr_session.copy()
+        explore_trials_fb_pos[session] = explore_fb_pos_normalised_curr_session.copy()
+        durations[session] = durations_curr_session.copy()
+        duration_ABCD[session] = duration_ABCD_curr_session.copy()
+        normalised_ripples[session] = explore_ripples_normalised_curr_session.copy()
+    # import pdb; pdb.set_trace() 
+    # next, plot the same but overimposed on each other, and aligned by the correct feedbacks!
     
+    plt.figure();
     
-    
-    
+    sigma_norm = 0.01
+    time_range = np.linspace(0,1, 1000)
+    ripple_likelihood = np.zeros_like(time_range)
+    counter = 0
+    for task in explore_trials_fb_neg[session]:
+        for fb_neg in explore_trials_fb_neg[session][task]:
+            plt.axvline(fb_neg, color='maroon', linestyle='-', linewidth=0.3, alpha = 0.5)
+            
+    for session in normalised_ripples:
+        for task in normalised_ripples[session]:
+            ripple_likelihood_curr_task = np.zeros_like(time_range)
+            for ripple in normalised_ripples[session][task]:
+                ripple_likelihood_curr_task += norm.pdf(time_range, loc=ripple, scale = sigma_norm)
+                counter += 1
+            ripple_likelihood_curr_task /= duration_ABCD[session][task]
+            ripple_likelihood += ripple_likelihood_curr_task
+            # # delete after
+            # plt.figure()
+            # plt.plot(time_range, ripple_likelihood, color = 'pink', linewidth = 0.8)
+    plt.plot(time_range, ripple_likelihood, color = 'teal', linewidth = 0.8)
+    plt.fill_between(time_range, ripple_likelihood, color = 'teal', alpha = 0.3)
+    plt.ylabel("Ripple Rate")
+    for fb in explore_trials_fb_pos[session][1]:
+        plt.axvline(fb, color='darkgreen', linestyle='--', linewidth=1.5)
+
+            
+    plt.title(f"Ripples in explore phase aligned by finding rewards for the first time: A-B-C-D. \n Ripplerate across grids and sessions for subject {sub}")
+    plt.show()
+            
+       
+
+
+   
 def gaussian_spikes_around_ripple(ripple_info_dict_across_sesh_tasks, sub):
     # first prepare the spike data dictionary. 
-    sigma = 0.01  # Standard deviation for the Gaussian kernel
-    time_window = 2
+    sigma = 0.005  # Standard deviation for the Gaussian kernel
+    time_window = 0.8
     
     spiking_dict = mc.analyse.ripple_helpers.load_spiking_data(sub)
     
@@ -443,7 +562,8 @@ def gaussian_spikes_around_ripple(ripple_info_dict_across_sesh_tasks, sub):
     aligned_spikes = {}
     for cell in spiking_dict:
         aligned_spikes[cell] = []
-                               
+    
+    print(f"plotting {len(aligned_spikes)} for subject {sub}")                           
     no_ripples = []
     ripple_spiking_likelihood = {}
     for session in sorted(ripple_count_per_task_all_sessions.keys()):
@@ -493,7 +613,7 @@ def gaussian_spikes_around_ripple(ripple_info_dict_across_sesh_tasks, sub):
         
         # Iterate over cells and plot the data
         for idx, (cell, spike_times) in enumerate(aligned_spikes.items()):
-            if idx < num_cells/2:
+            if idx < math.ceil(num_cells / 2):
                 # Compute the Gaussian kernel for aligned spikes
                 spike_likelihood = np.zeros_like(time_range)
                 for spike_time in spike_times:
@@ -508,7 +628,7 @@ def gaussian_spikes_around_ripple(ripple_info_dict_across_sesh_tasks, sub):
                 axs[idx,0].axvline(0, color='black', linestyle='--', linewidth=0.8)
                 axs[idx,0].set_title(f'Spike Likelihood for {cell}', fontsize=12)
                 axs[idx, 0].set_ylabel('Spike Likelihood')
-            if idx > num_cells/2:
+            if idx > math.ceil(num_cells / 2):
                 # Compute the Gaussian kernel for aligned spikes
                 spike_likelihood = np.zeros_like(time_range)
                 for spike_time in spike_times:
@@ -518,14 +638,12 @@ def gaussian_spikes_around_ripple(ripple_info_dict_across_sesh_tasks, sub):
                 spike_likelihood /= len(spike_times)
             
                 # Plot the data
-                axs[idx-num_cells/2,1].plot(time_range, spike_likelihood, color='teal', linewidth=0.8)
-                axs[idx-num_cells/2,1].fill_between(time_range, spike_likelihood, color='teal', alpha=0.3)
-                axs[idx-num_cells/2,1].axvline(0, color='black', linestyle='--', linewidth=0.8)
-                axs[idx-num_cells/2,1].set_title(f'Spike Likelihood for {cell}', fontsize=12)
-                axs[idx-num_cells/2,1].set_ylabel('Spike Likelihood')
+                axs[idx-math.ceil(num_cells / 2),1].plot(time_range, spike_likelihood, color='teal', linewidth=0.8)
+                axs[idx-math.ceil(num_cells / 2),1].fill_between(time_range, spike_likelihood, color='teal', alpha=0.3)
+                axs[idx-math.ceil(num_cells / 2),1].axvline(0, color='black', linestyle='--', linewidth=0.8)
+                axs[idx-math.ceil(num_cells / 2),1].set_title(f'Spike Likelihood for {cell}', fontsize=12)
+                axs[idx-math.ceil(num_cells / 2),1].set_ylabel('Spike Likelihood')
      
-        # Add a common x-axis label
-        axs[-1].set_xlabel('Time (s)', fontsize=12)
     
     # Add a global title
     plt.suptitle(f"Gaussian Kernels on Spikes aligned to hippocampal ripples;\n"
@@ -537,7 +655,131 @@ def gaussian_spikes_around_ripple(ripple_info_dict_across_sesh_tasks, sub):
     plt.show()        
          
 
+def gaussian_ripples_feedback_neg_pos_aligned(ripple_info_dict_across_sesh_tasks, feedback_across_sessions_tasks, sub):
+    # first detect those feedback combinations where a positive feedback follows a negative one.
+    # then align ripples with the positive-negative feedback combination, and normalise; while keep split in 3 sections.
+    # this will be a figure with 3 sub-figures: 
+    # first row is finding ABCD for first time; second is solving it correctly for first time, third all other repeats.
+    # plot in a normalised fashion, but always consider 3 seconds before negative and 3 seconds after the positive feedback.
+    
+    sigma = 0.05  # Standard deviation for the Gaussian kernel
+    time_before_after = 3
 
+    neg_pos_fb_combos_per_section, neg_pos_ripples_per_section = {}, {}
+        
+    for session in sorted(ripple_info_dict_across_sesh_tasks.keys()):
+        session_sub_dict = ripple_info_dict_across_sesh_tasks[session]
+        feedback_session_sub_dict = feedback_across_sessions_tasks[session]
+        # then count how many tasks: split the string after first element and take max
+        # Extract the number before the underscore and convert to integers
+        task_numbers = sorted([int(key.split('_')[0]) for key in ripple_info_dict_across_sesh_tasks[session].keys()])
+        task_numbers = np.unique(task_numbers)
+        neg_pos_ripples_per_section_task, neg_pos_fb_combos_per_section_task= {}, {}
+        for task_i in task_numbers:
+            neg_pos_ripples_per_section_task[task_i], neg_pos_fb_combos_per_section_task[task_i] = mc.analyse.ripple_helpers.neg_pos_fb_combo_in_three_sections_normalised(session_sub_dict, feedback_session_sub_dict, task_i)
+
+        neg_pos_fb_combos_per_section[session] = neg_pos_fb_combos_per_section_task.copy()
+        neg_pos_ripples_per_section[session] = neg_pos_ripples_per_section_task.copy()
+
+
+
+    # import pdb; pdb.set_trace()
+    
+    section_labels = ['find_ABCD', 'first_solve_correctly', 'all_repeats']
+    # Initialize dictionaries to store aligned ripples for each section
+    
+    # Set up the figure with 3 subplots
+    fig, axs = plt.subplots(3, 1, figsize=(6,8), sharex=True, sharey=True)
+    time_range = np.linspace(0, 3, 1000)
+
+    for row_idx, section in enumerate(section_labels): 
+        ripple_rate_likelihood = np.zeros_like(time_range)
+        for session in sorted(neg_pos_ripples_per_section.keys()):
+            for task in sorted(neg_pos_ripples_per_section[session].keys()):
+                for fb_pair in neg_pos_ripples_per_section[session][task][section]:
+                    gaussian_ripples = np.zeros_like(time_range)
+                    for ripple in fb_pair['normalized_ripples']:
+                        gaussian_ripples += norm.pdf(time_range, loc = ripple, scale = sigma)
+                    ripple_rate_likelihood += (gaussian_ripples / fb_pair['duration'])
+                    
+                    
+        axs[row_idx].plot(time_range, ripple_rate_likelihood, color='salmon', linewidth=0.8)
+        axs[row_idx].fill_between(time_range, ripple_rate_likelihood, color='salmon', alpha=0.3)
+        # neg_fb = neg_pos_fb_combos_per_section[session][task][section][0]['normalized_times'][1]
+        axs[row_idx].axvline(1, color='maroon', linestyle='--', linewidth=1.5)
+        # pos_fb = neg_pos_fb_combos_per_section[session][task][section][0]['normalized_times'][2]
+        axs[row_idx].axvline(2, color='darkgreen', linestyle='--', linewidth=1.5)
+   
+        axs[row_idx].set_title(f'Positive-Neg Feedback pair: {section}')
+        axs[row_idx].set_ylabel('Ripple Rate')
+    
+    
+    # for session in sorted(neg_pos_ripples_per_section.keys()):
+    #     for task in sorted(neg_pos_ripples_per_section[session].keys()):
+    #         for row_idx, section in enumerate(section_labels):
+    #             ripple_rate_likelihood = np.zeros_like(time_range)
+    #             for fb_pair in neg_pos_ripples_per_section[session][task][section]:
+    #                 gaussian_ripples = np.zeros_like(time_range)
+    #                 for ripple in fb_pair['normalized_ripples']:
+    #                     gaussian_ripples += norm.pdf(time_range, loc = ripple, scale = sigma)
+    #                 ripple_rate_likelihood += (gaussian_ripples / fb_pair['duration'])
+                    
+    #     axs[row_idx, 0].plot(time_range, ripple_rate_likelihood, color='salmon', linewidth=0.8)
+    #     axs[row_idx, 0].fill_between(time_range, ripple_rate_likelihood, color='salmon', alpha=0.3)
+    #     neg_fb = neg_pos_fb_combos_per_section[session][task][section]['normalized_times'][1]
+    #     axs[row_idx, 0].axvline(neg_fb, color='maroon', linestyle='--', linewidth=0.8)
+    #     pos_fb = neg_pos_fb_combos_per_section[session][task][section]['normalized_times'][2]
+    #     axs[row_idx, 0].axvline(pos_fb, color='darkgreen', linestyle='--', linewidth=0.8)
+   
+    #     axs[row_idx, 0].set_title(f'Positive-Neg Feedback pair: {section}')
+    #     axs[row_idx, 0].set_ylabel('Ripple Rate')
+
+    
+    # Add common x-axis label
+
+    plt.xlabel('Time (6 secs)', fontsize = 10)
+    
+    plt.suptitle(f"Gaussian Kernels on Ripples aligned to neg-pos feedback pairs;\n" 
+                 f"3secs before and 3 secs after; normalised by ripple count, plotted by section; across grids and sessions for {sub}", 
+                 fontsize=10, y=0.98, wrap =True)
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.95]) 
+    plt.show()
+    
+    
+    # import pdb; pdb.set_trace()
+    
+
+    # # Collapse across all sessions and tasks
+    # for session in sorted(ripple_count_per_task_section_all_sessions.keys()):
+    #     for task in sorted(ripple_count_per_task_section_all_sessions[session].keys()):
+    #         for condition in sorted(ripple_count_per_task_section_all_sessions[session][task].keys()):
+    #             ripple_times = ripple_count_per_task_section_all_sessions[session][task][condition]
+    #             feedback_pos = feedback_across_sessions[session][task][f"pos_{condition}"]
+    #             feedback_neg = feedback_across_sessions[session][task][f"neg_{condition}"]
+                
+    #             for pos_event in feedback_pos:
+    #                 aligned_ripples[f"pos_{condition}"].extend([ripple - pos_event for ripple in ripple_times if abs(ripple - pos_event) <= time_window])
+            
+    #             # Align ripples to negative feedback
+    #             for neg_event in feedback_neg:
+    #                 aligned_ripples[f"neg_{condition}"].extend([ripple - neg_event for ripple in ripple_times if abs(ripple - neg_event) <= time_window])
+                
+    #             no_fb[f"pos_{condition}"].append(len(feedback_across_sessions[session][task][f"pos_{condition}"]))
+    #             no_fb[f"neg_{condition}"].append(len(feedback_across_sessions[session][task][f"neg_{condition}"]))
+                
+                
+                
+    # # Define section labels and their corresponding keys
+    # sections = [
+    #     ('Finding ABCD', 'pos_find_ABCD', 'neg_find_ABCD'),
+    #     ('First Solve', 'pos_first_solve_correctly', 'neg_first_solve_correctly'),
+    #     ('All Repeats', 'pos_all_repeats', 'neg_all_repeats')
+    # ]
+    
+   
+    
+    # 
 
 def gaussian_ripples_feedback_aligned(ripple_info_dict_across_sesh_tasks, feedback_across_sessions_tasks, sub):
     # align all ripples by positive or negative feedback, keep split in 3 sections.

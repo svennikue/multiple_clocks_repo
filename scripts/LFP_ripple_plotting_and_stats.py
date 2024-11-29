@@ -44,25 +44,25 @@ distribution = False
 # ok right. So I'm not really seeing more ripples/time (ripplerate) for 
                     
             
-# sessions = ['s5', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 
-#             's25']
-# session_per_subj = {
-#     'sub-1': ['s5'],
-#     'sub-2': ['s7', 's8', 's9'],
-#     'sub-3': ['s10', 's11'],
-#     'sub-4': ['s12', 's13', 's14'],
-#     'sub-7': ['s25']
-#     }
+sessions = ['s5', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 
+            's25']
+session_per_subj = {
+    'sub-1': ['s5'],
+    'sub-2': ['s7', 's8', 's9'],
+    'sub-3': ['s10', 's11'],
+    'sub-4': ['s12', 's13', 's14'],
+    'sub-7': ['s25']
+    }
 
 
 
 
 #     'sub-5': ['s15', 's16'], #something weird in 16, potentially formatting error in both
 
-sessions = ['s25']
-session_per_subj = {
-    'sub-7': ['s25']
-    }
+# sessions = ['s25']
+# session_per_subj = {
+#     'sub-7': ['s25']
+#     }
 
 
 
@@ -80,12 +80,6 @@ session_per_subj = {
 # check what I want to show in the lab meeting
 # start with stats across subjects
 # 
-
-
-
-#subjects = ['s13', 's12', 's25']
-LFP_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
-result_dir = f"{LFP_dir}/results"
 
 
 
@@ -675,23 +669,40 @@ for sub in session_per_subj:
     # mc.analyse.plotting_ripples.ripples_compare_two_bars(first_incorr_rep_vs_other_reps_incorrect_count, title_string, y_label_string)
  
     # create the ripple plot mathias suggested.
+    
+    
+    # plotting ripple rate for the exploration period.
+    # do it once with subplots per task, including the feedback plot.
+    # and then collapsed across tasks:
+        # align/normalise by correct feedback, and divide the gaussian by the time each section takes!
+    mc.analyse.plotting_ripples.plot_ripple_rate_gaussian_exploration_phase(ripples_per_task_all_subs, feedback_across_sessions, sub)
+    
     # import pdb; pdb.set_trace() 
+    
     
     # mc.analyse.plotting_ripples.plot_ripple_distribution_normalised_across_tasks_and_sessions(ripples_per_task_all_subs, sub)
     # mc.analyse.plotting_ripples.plot_ripple_count_three_bars(ripples_per_task_all_subs, sub)
     
-    mc.analyse.plotting_ripples.plot_ripples_by_feedback(ripples_per_task_all_subs, feedback_across_sessions, sub, time_after_feedback=0.8)
+    # mc.analyse.plotting_ripples.plot_ripples_by_feedback(ripples_per_task_all_subs, feedback_across_sessions, sub, time_after_feedback=0.8)
     
-    mc.analyse.plotting_ripples.plot_ripples_before_vs_after_feedback(ripples_per_task_all_subs, feedback_across_sessions, sub, time_after_feedback=0.8)
+    # mc.analyse.plotting_ripples.plot_ripples_before_vs_after_feedback(ripples_per_task_all_subs, feedback_across_sessions, sub, time_after_feedback=0.8)
 
-    # import pdb; pdb.set_trace()
-    mc.analyse.plotting_ripples.events_by_ripples(ripples_per_task_all_subs, feedback_across_sessions, sub)
+    # # import pdb; pdb.set_trace()
+    # mc.analyse.plotting_ripples.events_by_ripples(ripples_per_task_all_subs, feedback_across_sessions, sub)
     
-    mc.analyse.plotting_ripples.gaussian_ripples_feedback_aligned(ripples_per_task_all_subs, feedback_across_sessions, sub)
+    # mc.analyse.plotting_ripples.gaussian_ripples_feedback_aligned(ripples_per_task_all_subs, feedback_across_sessions, sub)
+    
+    mc.analyse.plotting_ripples.gaussian_ripples_feedback_neg_pos_aligned(ripples_per_task_all_subs, feedback_across_sessions, sub)
+    import pdb; pdb.set_trace() 
+    # WHAT IS STILL MISSING IN THIS ONE I BELIEVE IS DIVIDING BY THE AMOUNT OF ACTUAL EVENTS GOING IN EACH SUBSECTION!!!
+    # RIGHT NOW THE RATE IS SUPER HIGH FOR THE FIRST< BUT NOT THE OTHER SECTIONS!
+    # CONTINUE HERE!!
+    
+    
     
     # mc.analyse.plotting_ripples.gaussian_ripples_HFB_aligned(ripples_per_task_all_subs, HFB_event_per_task_all_subs, sub, ROI_dict)
     
-    mc.analyse.plotting_ripples.gaussian_spikes_around_ripple(ripples_per_task_all_subs, sesh)
+    # mc.analyse.plotting_ripples.gaussian_spikes_around_ripple(ripples_per_task_all_subs, sesh)
     
     
 # # do stats on first vs. all others collapsed across subjects.
