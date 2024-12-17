@@ -39,7 +39,6 @@ import mc
 # tracemalloc.start()
 gc.collect()
           
-save = False
 plotting_distr = False
 referenced_data = False
 
@@ -71,7 +70,7 @@ HFB = [60, 160]
 
 
 # import pdb; pdb.set_trace() 
-subjects = ['s25']
+subjects = ['s5']
 
 # subjects = ['s7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 
 #             's15', 's18', 's25'] #16 doesnt have channel indices??
@@ -140,6 +139,7 @@ for sub in subjects :
     freq_bands = {freq_bands_keys[0]: (HFB[0], HFB[1])}
     
     # for task_to_check in range(1, 3):  
+    power_dict_across_tasks = {}
     for task_to_check in range(1, int(behaviour_all[-1,-1]+1)):  
         # first define where in behavioural table the task starts and ends
         index_lower = np.where(np.array(task_index)== task_to_check)[0][0]
@@ -239,8 +239,8 @@ for sub in subjects :
                 power_mean[band] = np.mean(l_power, axis=1)
                 power_stepwise[band] = l_power
             
-            power_dict[f"{repeat}_mean"] = power_mean
-            power_dict[f"{repeat}_stepwise"] = power_stepwise
+            power_dict[f"{repeat}_mean"] = power_mean.copy()
+            # power_dict[f"{repeat}_stepwise"] = power_stepwise
             
             
             
@@ -345,10 +345,11 @@ for sub in subjects :
             events, event_id = mne.events_from_annotations(raw_cropped, event_id=event_id)
             # events are times at which something happens, e.g. a ripple occurs
             events_dict[repeat] = events
+            # import pdb; pdb.set_trace()
 
-
-        events_dict_per_channel[task_to_check] = events_dict
-        onset_in_secs_dict[task_to_check] = onset_secs_per_channel
+        events_dict_per_channel[task_to_check] = events_dict.copy()
+        onset_in_secs_dict[task_to_check] = onset_secs_per_channel.copy()
+        power_dict_across_tasks[task_to_check] = power_dict.copy()
               
 
     if ROI == 'all':
@@ -357,6 +358,9 @@ for sub in subjects :
                 
         with open(f"{result_dir}/{sub}_ROI_dict.pkl", 'wb') as file:
             pickle.dump(ROI_dict, file)
+            
+        with open(f"{result_dir}/{sub}_HFB_power_dict.pkl", 'wb') as file:
+            pickle.dump(power_dict_across_tasks, file)
                     
 
     with open(f"{result_dir}/{sub}_{ROI}_{preproc_type}_HFB_events_dir.pkl", 'wb') as file:

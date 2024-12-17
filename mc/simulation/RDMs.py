@@ -439,7 +439,7 @@ def GLM_RDMs(data_matrix, regressor_dict, mask_within = True, no_tasks = None, t
     dimension = len(data_matrix) 
     reg_labels = []
     # import pdb; pdb.set_trace()
-    for i, regressor_matrix in enumerate(regressor_dict):
+    for i, regressor_matrix in sorted(enumerate(regressor_dict)):
         reg_labels.append(regressor_matrix)
         if i == 0:
             X = list(regressor_dict[regressor_matrix][np.tril_indices(dimension, -1)])
@@ -450,7 +450,6 @@ def GLM_RDMs(data_matrix, regressor_dict, mask_within = True, no_tasks = None, t
     # get rid of all nans, equally for data and regressors.
     
     diag_array_data = data_matrix[np.tril_indices(dimension , -1)]
-    
     
     if len(X) > 10:
         # this means that there is only one regressor
@@ -464,9 +463,13 @@ def GLM_RDMs(data_matrix, regressor_dict, mask_within = True, no_tasks = None, t
             
             
     diag_array_data = diag_array_data[~np.isnan(diag_array_data)]
-    
+    x_cl_reshaped = np.transpose(X_cleaned[:, ~np.isnan(diag_array_data)])
+
+
     # import pdb; pdb.set_trace()
-    x_cl_reshaped = np.transpose(X_cleaned)
+    # x_cl_reshaped = np.transpose(X_cleaned)
+    
+    
     if len(X) > 10: 
         regression_results = LinearRegression().fit(x_cl_reshaped.reshape(-1, 1), diag_array_data)
     else:
@@ -481,6 +484,7 @@ def GLM_RDMs(data_matrix, regressor_dict, mask_within = True, no_tasks = None, t
         est = sm.OLS(diag_array_data, X_3)
         scipy_reg_est = est.fit().tvalues
         results['t_vals'] = scipy_reg_est
+        # t = coef/std err. my t vals are big bc std err is small
     
     return results
     

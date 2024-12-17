@@ -21,6 +21,8 @@ import scipy
 import colormaps as cmaps 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import textwrap
+from scipy.stats import ttest_1samp
+
 
 def reg_per_task_config(task_configs, locations_all, neurons, timings_all, contrast_m, mouse_recday, continuous = True, no_bins_per_state = 0):
     # import pdb; pdb.set_trace()
@@ -1007,7 +1009,7 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
         mid_mask = np.where(ave_phase_separation[1,:] == max_val)[0]
         late_mask = np.where(ave_phase_separation[2,:] == max_val)[0]
     
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     if plotting == True:
         #import pdb; pdb.set_trace()
         # plot the averaged simulated and cleaned data
@@ -1089,14 +1091,17 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
     # run regressions separetly for each phase
     # import pdb; pdb.set_trace()
     # try the new regression.
-    # import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
     regressors = {}
     regressors['clocks']=RSM_clock_betas_ave
-    regressors['midnight']=RSM_midnight_betas_ave
+    # UNDO
+    #regressors['midnight']=RSM_midnight_betas_ave
     regressors['phase']=RSM_phase_betas_ave
     regressors['location']=RSM_location_betas_ave
     regressors['stat']=RSM_state_betas_ave
     results_normal = mc.simulation.RDMs.GLM_RDMs(RSM_neurons_betas_ave, regressors, mask_within, no_tasks = len(task_configs), plotting= True)
+    # all_results[mouse_res]['normal']['t_vals'][1]
+    
     
     # collect all values in a results table which I then output in the end.
     result_dict = {}
@@ -1143,9 +1148,13 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
         regs_reordered['midnight'] = RSM_reord_midn
         regs_reordered['location'] = RSM_reord_locs
         results_reord = mc.simulation.RDMs.GLM_RDMs(RSM_reord_neurons, regs_reordered, mask_within=False, no_tasks = len(task_configs))
-        result_dict["reord_coefs"] = results_reord['coefs']
-        result_dict["reord_t-vals"] = results_reord['t_vals']
+        result_dict["reord_coefs"] = results_reord['coefs'].copy()
+        result_dict["reord_t-vals"] = results_reord['t_vals'].copy()
+     
         
+    
+     
+     
     #import pdb; pdb.set_trace()
     # # LITTLE REGRESSION PLAYAROUND
     # # this is a regression where I put all early phases of all tasks behind each other
@@ -1617,7 +1626,7 @@ import colormaps as cmaps
 
 
 def plotting_hist_scat(data_list, label_string_list, label_tick_list, title_string, save_fig = False):
-    # import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
     
 
     fig, ax = plt.subplots(figsize=(8,6))
@@ -1630,29 +1639,66 @@ def plotting_hist_scat(data_list, label_string_list, label_tick_list, title_stri
     # Custom colors
     colors = ['#96C5D8'] + ['#882048'] * (len(data_list) - 1)  # First color for the first group, the rest in another color
 
+    global_min = 0
+    global_max = 0
+    
     for index, contrast in enumerate(data_list):
         noise = sigma * np.random.randn(len(contrast)) + mu
         data_to_plot = np.array(contrast)  # Ensure data_to_plot is an array for direct operations
         x_positions = index + 1 + noise  # Adjust index for boxplot's 1-based index
-    
+        if np.min(data_to_plot) < global_min:
+            global_min = np.min(data_to_plot)
+        if np.max(data_to_plot) > global_max:
+            global_max = np.max(data_to_plot)
         ax.scatter(x_positions, data_to_plot, color=colors[index], marker='o', s=100, edgecolors='black', linewidth=1)
     
-    ax.set_xticks(range(1, len(data_list) + 1))
+    
+    ax.set_xticks(label_tick_list)
+    #ax.set_xticks(range(1, len(data_list) + 1))
     plt.xticks(rotation=45)
     #ax.set_xticklabels(label_string_list, fontsize=26)
     ax.set_xticklabels(label_string_list)
     ax.set_ylabel('Betas')
+    
+    padding = global_max/10
+    
+    ax.set_ylim([global_min - padding*4, global_max+ padding])
+    
     plt.axhline(0, color='grey', ls='dashed', linewidth=1)
     
-    plt.title(title_string)
+    # Add statistical significance stars
+    for i, model in enumerate(data_list):
+        t_statistic, p_value = ttest_1samp(model, 0, alternative='greater')
+        if p_value < 0.001:
+            significance = '***'
+        elif p_value < 0.005:
+            significance = '**'
+        elif p_value < 0.05:
+            significance = '*'
+        else:
+            significance = ''
+        if significance:
+            ax.text(i + 1, global_min - padding*4, significance, ha='center', va='bottom', fontsize=30, color='black')
     
+
+
+    
+    # # check if these are better than 0.
+    # from scipy.stats import ttest_1samp
+    # for i, model in enumerate(data_list):
+    #     t_statistic, p_value = ttest_1samp(model, 0, alternative='greater')
+    #     # Output the results
+    #     print(f'T-statistic: {t_statistic} for {label_string_list[i]}')
+    #     print(f'P-value: {p_value} for {label_string_list[i]}')
+
+    
+    plt.title(title_string, pad = 30)
     plt.rcParams.update({'font.size': 30})
     # Customize grid lines
     ax.grid(True, linestyle='--', alpha=0.7)
     
     # Adjust the layout
     plt.tight_layout()
-    
     plt.show()
 
 

@@ -27,9 +27,9 @@ task_halves = ['1', '2']
 RDM_version = '04' # 04 res 10, more ordered stuff in code with dicts 11.12. # 03 is with resolution 1, no continuational model '02' # version 02 = with temp_res = 10
 regression_version = '06'
 
-fmriplotting = False
+fmriplotting = True
 fmriplotting_debug = False
-fmri_save = True
+fmri_save = False
 
 temporal_resolution = 10
 

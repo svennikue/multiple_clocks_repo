@@ -607,45 +607,60 @@ if load_old == True:
         data_normal_midn_phas.append(midnight_results[mouse_res]['normal']['t_vals'][3])
         data_normal_midn_loc.append(midnight_results[mouse_res]['normal']['t_vals'][4])
 
-for mouse_res in all_results:    
-    data_normal_all_clocks_t.append(all_results[mouse_res]['normal']['t_vals'][1])
-    data_normal_all_midn_t.append(all_results[mouse_res]['normal']['t_vals'][2])
-    data_normal_all_phas_t.append(all_results[mouse_res]['normal']['t_vals'][3])
-    data_normal_all_loc_t.append(all_results[mouse_res]['normal']['t_vals'][4])
-    data_normal_all_state_t.append(all_results[mouse_res]['normal']['t_vals'][5])
+# for mouse_res in all_results:    
+#     data_normal_all_clocks_t.append(all_results[mouse_res]['normal']['t_vals'][1])
+#     data_normal_all_midn_t.append(all_results[mouse_res]['normal']['t_vals'][2])
+#     data_normal_all_phas_t.append(all_results[mouse_res]['normal']['t_vals'][3])
+#     data_normal_all_loc_t.append(all_results[mouse_res]['normal']['t_vals'][4])
+#     data_normal_all_state_t.append(all_results[mouse_res]['normal']['t_vals'][5])
     
-    data_normal_all_clocks_b.append(all_results[mouse_res]['normal']['coefs'][0])
-    data_normal_all_midn_b.append(all_results[mouse_res]['normal']['coefs'][1])
-    data_normal_all_phas_b.append(all_results[mouse_res]['normal']['coefs'][2])
-    data_normal_all_loc_b.append(all_results[mouse_res]['normal']['coefs'][3])
-    data_normal_all_state_b.append(all_results[mouse_res]['normal']['coefs'][4])
+#     data_normal_all_clocks_b.append(all_results[mouse_res]['normal']['coefs'][0])
+#     data_normal_all_midn_b.append(all_results[mouse_res]['normal']['coefs'][1])
+#     data_normal_all_phas_b.append(all_results[mouse_res]['normal']['coefs'][2])
+#     data_normal_all_loc_b.append(all_results[mouse_res]['normal']['coefs'][3])
+#     data_normal_all_state_b.append(all_results[mouse_res]['normal']['coefs'][4])
 
 
 #data_comp = [data_normal_all_clocks, data_normal_all_midn, data_normal_all_phas, data_normal_all_loc, data_normal_midn_clocks, data_normal_midn_midn, data_normal_midn_phas, data_normal_midn_loc]
 #label_string_list_comp = ['all_clocks', 'all_midn', 'all_phas', 'all_loc', 'mid_clocks', 'mid_midn', 'mid_phas', 'mid_loc']
 
+# # betas
+# betas_across_subjects = [data_normal_all_clocks_b, data_normal_all_midn_b, data_normal_all_phas_b, data_normal_all_loc_b, data_normal_all_state_b]
+
+# # t-vals
+# data_to_plot = [data_normal_all_clocks_t, data_normal_all_midn_t, data_normal_all_phas_t, data_normal_all_loc_t, data_normal_all_state_t]
+
+
+# label_string_list_plot = ['SMB-Model', 'Partial SMB', "Subgoal-\n Progress", 'Location', 'State']
+# label_tick_list_plot = [1,2,3,4,5]
+# label_tick_list_plot = [0.5, 1.5, 2.5, 3.5, 4.5]
+
+# UNDO
+for mouse_res in all_results:    
+    data_normal_all_clocks_t.append(all_results[mouse_res]['normal']['t_vals'][1])
+    data_normal_all_phas_t.append(all_results[mouse_res]['normal']['t_vals'][2])
+    data_normal_all_loc_t.append(all_results[mouse_res]['normal']['t_vals'][3])
+    data_normal_all_state_t.append(all_results[mouse_res]['normal']['t_vals'][4])
+    
+    data_normal_all_clocks_b.append(all_results[mouse_res]['normal']['coefs'][0])
+    data_normal_all_phas_b.append(all_results[mouse_res]['normal']['coefs'][1])
+    data_normal_all_loc_b.append(all_results[mouse_res]['normal']['coefs'][2])
+    data_normal_all_state_b.append(all_results[mouse_res]['normal']['coefs'][3])
+
 # betas
-data_to_plot = [data_normal_all_clocks_b, data_normal_all_midn_b, data_normal_all_phas_b, data_normal_all_loc_b, data_normal_all_state_b]
+betas_across_subjects = [data_normal_all_clocks_b, data_normal_all_phas_b, data_normal_all_loc_b, data_normal_all_state_b]
 
 # t-vals
-data_to_plot = [data_normal_all_clocks_t, data_normal_all_midn_t, data_normal_all_phas_t, data_normal_all_loc_t, data_normal_all_state_t]
+data_to_plot = [data_normal_all_clocks_t, data_normal_all_phas_t, data_normal_all_loc_t, data_normal_all_state_t]
 
-label_string_list_plot = ['Schema', 'Partial Schema', 'Subgoal-Progress', 'Location', 'State']
-label_tick_list_plot = [1,2,3,4,5]
+
+label_string_list_plot = ['SMB-Model', "Subgoal-\n Progress", 'Location', 'State']
+label_tick_list_plot = [1,2,3,4]
+label_tick_list_plot = [0.5, 1.5, 2.5, 3.5]
+
 title_string_plot = 'betas per complete mouse dataset, regression with 5 models, across tasks, averaged over runs'
 
-
-data_to_test = [data_normal_all_clocks_b, data_normal_all_midn_b, data_normal_all_phas_b, data_normal_all_loc_b, data_normal_all_state_b]
-
-# check if these are better than 0.
-from scipy.stats import ttest_1samp
-for i, model in enumerate(data_to_test):
-    t_statistic, p_value = ttest_1samp(model, 0, alternative='greater')
-    # Output the results
-    print(f'T-statistic: {t_statistic} for {label_string_list_plot[i]}')
-    print(f'P-value: {p_value} for {label_string_list_plot[i]}')
-
-mc.analyse.analyse_ephys.plotting_hist_scat(data_to_plot, label_string_list_plot, label_tick_list_plot, title_string_plot, save_fig=out_path) 
+mc.analyse.analyse_ephys.plotting_hist_scat(betas_across_subjects, label_string_list_plot, label_tick_list_plot, title_string_plot, save_fig=out_path) 
 
 
 

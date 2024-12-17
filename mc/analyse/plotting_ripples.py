@@ -71,6 +71,7 @@ def plot_ripple_count_three_bars(ripple_info_dict_across_sesh_tasks, sub):
     # finding all 4 rewards, solving it correctyl once, all other solves
     # then divide by average duration per grid.
     # then plot across grids.
+    
     ripples_per_section = {}
     durations = {}
     for session in sorted(ripple_info_dict_across_sesh_tasks.keys()):
@@ -104,10 +105,11 @@ def plot_ripple_count_three_bars(ripple_info_dict_across_sesh_tasks, sub):
     # Calculate mean and standard error for bars
     means = [np.nanmean(find_ABCD_rate), np.nanmean(first_correct_rate), np.nanmean(all_reps_rate)]
     errors = [[0,0,0],[np.nanstd(find_ABCD_rate), np.nanstd(first_correct_rate), np.nanmean(all_reps_rate)]]
-    labels = ['find_ABCD_locs', 'until first correct solve', 'later repeats']
+    labels = ['explore', 'plan', 'repeats']
     
     # import pdb; pdb.set_trace() 
     # Create figure and axis
+    plt.rcParams.update({'font.size': 20})
     plt.figure(figsize=(5, 6))
     # Plot the bars
     bars = plt.bar(labels, means, yerr=errors, capsize=5, color=colors, alpha=0.5)
@@ -144,24 +146,24 @@ def plot_ripple_count_three_bars(ripple_info_dict_across_sesh_tasks, sub):
     
     # Draw line and star between find_ABCD_rate and first_correct_rate
     plt.plot([0, 1], [y_max, y_max], color='black')
-    plt.text(0.5, y_max + 0.02, stars_one, ha='center', fontsize=14)
+    plt.text(0.5, y_max + 0.02, stars_one, ha='center')
     
     # Draw line and star between first_correct_rate and all_reps_rate
     plt.plot([1, 2], [y_max + 0.1, y_max + 0.1], color='black')
-    plt.text(1.5, y_max + 0.12, stars_two, ha='center', fontsize=14)
+    plt.text(1.5, y_max + 0.12, stars_two, ha='center')
     
     # Draw line and star between find_ABCD_rate and all_reps_rate
     plt.plot([0, 2], [y_max + 0.2, y_max + 0.2], color='black')
-    plt.text(1, y_max + 0.22, stars_three, ha='center', fontsize=14)
+    plt.text(1, y_max + 0.22, stars_three, ha='center')
     
     # Adjust y-limits to accommodate lines and stars
     plt.ylim(0, y_max + 0.3)
 
 
     # Adding labels
-    plt.ylabel('ripple_rate per section')
-    plt.xticks(ticks=[0, 1, 2], labels=labels)
-    plt.title(f"Ripple count/duration per grid for {sub}", fontsize=14)
+    plt.ylabel('ripple rate', labelpad=20)
+    plt.xticks(ticks=[0, 1, 2], labels=labels, rotation = 45)
+    plt.title(f"Ripple count/duration per grid for {sub}", pad=20)
     
     # Remove top and right spines
     # sns.despine()
@@ -1529,58 +1531,93 @@ def plot_ripple_distribution(onset_in_secs_dict, task_to_check, feedback_error_c
     # Show the plot
     plt.show()
     
-def plot_ripple(freq_to_plot, title, downsampled_data, event, min_length_ripple, filtered_cropped_vhgamma_np, power_dict, repeat, freq_bands_keys, y_label_power):
+def plot_ripple(freq_to_plot, title, downsampled_data, event, min_length_ripple, filtered_cropped_vhgamma_np, power_dict, repeat, freq_bands_keys, y_label_power, for_publication = False):
+    # import pdb; pdb.set_trace()
     # event[0] = onset
     # event[1] = duration
     # event[-1] = channel index
-    fig, axs = plt.subplots(4)
-    fig.suptitle(title)
-
-    # Create x-values from 5500 to 9500
-    # x = np.linspace(event[0]-freq_to_plot, event[0]+freq_to_plot-1, freq_to_plot*2)
     x = np.arange(-freq_to_plot, freq_to_plot) * 2
     
-    # import pdb; pdb.set_trace()
-    # first subplot is the raw signal:
-    # axs[0].plot(x, raw_np_cropped[event[0]-freq_to_plot:event[0]+freq_to_plot, event[-1]], linewidth = 0.2)
-    axs[0].plot(x, downsampled_data[event[0]-freq_to_plot:event[0]+freq_to_plot, event[-1]], linewidth = 0.2)
-    axs[0].set_title('downsampled raw LFP')
-    axs[0].set_xlabel('Time (ms)')
-    # set a few x-ticks around the ripple in 20ms resolution. 
-    axs[0].set_xticks(np.arange(0-6*min_length_ripple, 7*min_length_ripple, 3*min_length_ripple))  # Set x-ticks from 0 to 10 with a step of 0.5
-
-
-    # the second subplot will be filtered for high gamma:
-    axs[1].plot(x, filtered_cropped_vhgamma_np[event[-1], event[0]-freq_to_plot:event[0]+freq_to_plot], linewidth = 0.2)    
-    axs[1].set_title('hgamma filtered signal')   
-    axs[1].set_xlabel('Time (ms)')
-    axs[1].set_xticks(np.arange(0-6*min_length_ripple, 7*min_length_ripple, 3*min_length_ripple))  # Set x-ticks from 0 to 10 with a step of 0.5
-
     
-    # the third subplot will be the mean power of this frequency: 
-    axs[2].plot(x,power_dict[f"{repeat}_mean"]['hgamma'][event[-1], event[0]-freq_to_plot:event[0]+freq_to_plot])
-    axs[2].set_title('Mean power hgamma')
-    axs[2].set_xticks(np.arange(0-6*min_length_ripple, 7*min_length_ripple, 3*min_length_ripple))  # Set x-ticks from 0 to 10 with a step of 0.5
+    if for_publication == True:
+        plt.rcParams.update({'font.size': 20})
+        fig, axs = plt.subplots(2)
+        # here, plot only 40ms before and after the event
+        no_of_samples = 0.03*freq_to_plot
+        x = np.arange(-no_of_samples, no_of_samples) * 2
+        freq_to_plot = int(no_of_samples)
+        
+    else:  
+        fig, axs = plt.subplots(4)
+        # here, plot 1 second window around ripple
 
-    ## the fourth subplot is the vhgamma power spectrum
-    #power_to_plot_low = power_dict[f"{repeat}_stepwise"]['vhgamma'][event[-1], :, event[0]-freq_to_plot:event[0]+freq_to_plot] # Select first epoch and the specified channel
-    #axs[3].imshow(power_to_plot_low, aspect='auto', origin='lower')
-    
+    # only plot half of this:
+    # freq_to_plot = freq_to_plot/2
+    # Create x-values from 5500 to 9500
+    # x = np.linspace(event[0]-freq_to_plot, event[0]+freq_to_plot-1, freq_to_plot*2)
+
+
     # the fifth subplot is the overall power spectrum
     # power_to_plot_all = np.stack(power_all[freq_bands_keys[0]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq], power_all[freq_bands_keys[1]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq], power_all[freq_bands_keys[2]][event[-1], :, event[0]-sampling_freq:event[0]+sampling_freq])
     power_to_plot_all = np.vstack((power_dict[f"{repeat}_stepwise"][freq_bands_keys[0]][event[-1], :, event[0]-freq_to_plot:event[0]+freq_to_plot], power_dict[f"{repeat}_stepwise"][freq_bands_keys[1]][event[-1], :, event[0]-freq_to_plot:event[0]+freq_to_plot]))
     power_to_plot_all = np.vstack((power_to_plot_all, power_dict[f"{repeat}_stepwise"][freq_bands_keys[2]][event[-1], :, event[0]-freq_to_plot:event[0]+freq_to_plot]))
     power_to_plot_all = np.vstack((power_to_plot_all, power_dict[f"{repeat}_stepwise"][freq_bands_keys[3]][event[-1], :, event[0]-freq_to_plot:event[0]+freq_to_plot]))
-    axs[3].imshow(power_to_plot_all, aspect='auto', origin='lower')
     y_ticks = [5, 25, 45, 65, power_to_plot_all.shape[0] - 1]  # 5, 25, 45, 65 and the max value (y-axis max)
-
-    # Setting the yticks and the labels
-    axs[3].set_title('Power spectra of all frequency bands stacked')
-    axs[3].set_yticks(y_ticks[:-1])  # Add the desired tick positions except the last one
-    axs[3].set_yticks([y_ticks[-1]], minor=True)  # Add the max position as a minor tick
-    axs[3].set_yticklabels(y_label_power)  # Add the desired tick labels
-    plt.tight_layout()
     
+    if for_publication == True:
+        axs[1].set_title('downsampled raw LFP', pad=20)
+        axs[1].set_xlabel('Time (ms)')
+        # set a few x-ticks around the ripple in 20ms resolution. 
+        axs[1].plot(x, downsampled_data[event[0]-freq_to_plot:event[0]+freq_to_plot, event[-1]], linewidth = 2, color='black')
+        axs[1].set_xticks(np.arange(0-3*min_length_ripple, 4*min_length_ripple, 1.5*min_length_ripple))  # Set x-ticks from 0 to 10 with a step of 0.5
+
+        axs[0].imshow(power_to_plot_all, aspect='auto', origin='lower')
+        axs[0].set_xticks([])
+        # Setting the yticks and the labels
+        axs[0].set_title('power spectrum', pad = 20)
+        axs[0].set_yticks(y_ticks[:-1])  # Add the desired tick positions except the last one
+        axs[0].set_yticks([y_ticks[-1]], minor=True)  # Add the max position as a minor tick
+        axs[0].set_yticklabels(y_label_power)  # Add the desired tick labels
+
+
+    else:
+        # import pdb; pdb.set_trace()
+        # first subplot is the raw signal:
+
+        axs[0].set_title('downsampled raw LFP')
+        axs[0].set_xlabel('Time (ms)')
+        # set a few x-ticks around the ripple in 20ms resolution. 
+        axs[0].set_xticks(np.arange(0-6*min_length_ripple, 7*min_length_ripple, 3*min_length_ripple))  # Set x-ticks from 0 to 10 with a step of 0.5
+        
+        axs[0].plot(x, downsampled_data[event[0]-freq_to_plot:event[0]+freq_to_plot, event[-1]], linewidth = 1, color='black')
+        
+        # the second subplot will be filtered for high gamma:
+        axs[1].plot(x, filtered_cropped_vhgamma_np[event[-1], event[0]-freq_to_plot:event[0]+freq_to_plot], linewidth = 1, color='black')    
+        axs[1].set_title('hgamma filtered signal')   
+        axs[1].set_xlabel('Time (ms)')
+        axs[1].set_xticks(np.arange(0-6*min_length_ripple, 7*min_length_ripple, 3*min_length_ripple))  # Set x-ticks from 0 to 10 with a step of 0.5
+    
+        
+        # the third subplot will be the mean power of this frequency: 
+        axs[2].plot(x,power_dict[f"{repeat}_mean"]['hgamma'][event[-1], event[0]-freq_to_plot:event[0]+freq_to_plot])
+        axs[2].set_title('Mean power hgamma')
+        axs[2].set_xticks(np.arange(0-6*min_length_ripple, 7*min_length_ripple, 3*min_length_ripple))  # Set x-ticks from 0 to 10 with a step of 0.5
+    
+        ## the fourth subplot is the vhgamma power spectrum
+        #power_to_plot_low = power_dict[f"{repeat}_stepwise"]['vhgamma'][event[-1], :, event[0]-freq_to_plot:event[0]+freq_to_plot] # Select first epoch and the specified channel
+        #axs[3].imshow(power_to_plot_low, aspect='auto', origin='lower')
+        axs[3].imshow(power_to_plot_all, aspect='auto', origin='lower')
+
+        # Setting the yticks and the labels
+        axs[3].set_title('Power spectra of all frequency bands stacked')
+        axs[3].set_yticks(y_ticks[:-1])  # Add the desired tick positions except the last one
+        axs[3].set_yticks([y_ticks[-1]], minor=True)  # Add the max position as a minor tick
+        axs[3].set_yticklabels(y_label_power)  # Add the desired tick labels
+        
+    
+    fig.suptitle(title)
+    plt.tight_layout()
+    # import pdb; pdb.set_trace()
     
     
     

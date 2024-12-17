@@ -44,25 +44,27 @@ distribution = False
 # ok right. So I'm not really seeing more ripples/time (ripplerate) for 
                     
             
-sessions = ['s5', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 
-            's25']
-session_per_subj = {
-    'sub-1': ['s5'],
-    'sub-2': ['s7', 's8', 's9'],
-    'sub-3': ['s10', 's11'],
-    'sub-4': ['s12', 's13', 's14'],
-    'sub-7': ['s25']
-    }
+# sessions = ['s5', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 
+#             's25', 's26', 's27', 's28']
+# session_per_subj = {
+#     'sub-1': ['s5'],
+#     'sub-2': ['s7', 's8', 's9'],
+#     'sub-3': ['s10', 's11'],
+#     'sub-4': ['s12', 's13', 's14'],
+#     'sub-7': ['s25'],
+#     'sub-8': ['s26'],
+#     'sub-9': ['s27', 's28']
+#     }
 
 
 
 
 #     'sub-5': ['s15', 's16'], #something weird in 16, potentially formatting error in both
-
-# sessions = ['s25']
-# session_per_subj = {
-#     'sub-7': ['s25']
-#     }
+# 'sub-6': ['s18']
+sessions = ['s26']
+session_per_subj = {
+    'sub-8': ['s26']
+    }
 
 
 
@@ -141,16 +143,20 @@ for sub in session_per_subj:
         
         
         
-        with open(f"{result_dir}/{sesh}_{ROI_HFB}_{preproc_type}_HFB_by_seconds.pkl", 'rb') as file:
-            HFB = pickle.load(file)
+        # with open(f"{result_dir}/{sesh}_{ROI_HFB}_{preproc_type}_HFB_by_seconds.pkl", 'rb') as file:
+        #     HFB = pickle.load(file)
         
-        if ROI_HFB == 'all':
-            with open(f"{result_dir}/{sesh}_ROI_dict.pkl", 'rb') as file:
-                ROI_dict[sesh] = pickle.load(file)
-        else:
-            ROI_dict = 'empty'
+        # with open(f"{result_dir}/{sesh}_HFB_power_dict.pkl", 'rb') as file:
+        #     HFB_power = pickle.load(file)
+        # CONTINUE HERE!
+        
+        # if ROI_HFB == 'all':
+        #     with open(f"{result_dir}/{sesh}_ROI_dict.pkl", 'rb') as file:
+        #         ROI_dict[sesh] = pickle.load(file)
+        # else:
+        #     ROI_dict = 'empty'
          
-            
+        # import pdb; pdb.set_trace() 
         # plot ripple distribution: all ripples.
         # for task_to_check in ripples:
         #     feedback_correct_curr_task = feedback_dict[f"{int(task_to_check)}_correct"]
@@ -200,23 +206,25 @@ for sub in session_per_subj:
         
         HFB_event_overview_per_task = {}  
         
-        for task_to_check in HFB:
-            if ROI_HFB == 'mpfc':
-                HFB_events_across_mPFC_channels = []
-                for channel in HFB[task_to_check]:
-                    HFB_events_across_mPFC_channels.extend(HFB[task_to_check][channel])
-                HFB_event_overview_per_task[f"{task_to_check}_HFB_event_across_mPFC"] = HFB_events_across_mPFC_channels.copy()
-            elif ROI_HFB == 'all':
-                for region in ROI_dict[sesh]:
-                    HFB_events_across_channels = []
-                    for channel in ROI_dict[sesh][region]:
-                        if channel in HFB[task_to_check]:
-                            HFB_events_across_channels.extend(HFB[task_to_check][channel])
-                    HFB_event_overview_per_task[f"{task_to_check}_HFB_event_across_{region}"] = HFB_events_across_channels.copy()
-                        
+        # for task_to_check in HFB:
+        #     if ROI_HFB == 'mpfc':
+        #         HFB_events_across_mPFC_channels = []
+        #         for channel in HFB[task_to_check]:
+        #             HFB_events_across_mPFC_channels.extend(HFB[task_to_check][channel])
+        #         HFB_event_overview_per_task[f"{task_to_check}_HFB_event_across_mPFC"] = HFB_events_across_mPFC_channels.copy()
+        #     elif ROI_HFB == 'all':
+        #         for region in ROI_dict[sesh]:
+        #             HFB_events_across_channels = []
+        #             for channel in ROI_dict[sesh][region]:
+        #                 if channel in HFB[task_to_check]:
+        #                     HFB_events_across_channels.extend(HFB[task_to_check][channel])
+        #             HFB_event_overview_per_task[f"{task_to_check}_HFB_event_across_{region}"] = HFB_events_across_channels.copy()
+        #             # HFB_power_overview_per_task[]
                     
-                    
-        # import pdb; pdb.set_trace()   
+        #             # DO THE SAME FOR HFB_power !!
+        # # import pdb; pdb.set_trace()   
+        # CONTINUE HERE!
+        
             
         
         # a. timebin in bins defined as subpaths of correct solves. Plot ripple amount per bin.
@@ -433,7 +441,11 @@ for sub in session_per_subj:
         rate_later_correct_solve_across_subs[sesh] = rate_later_correct_solve_dict.copy()
         ripples_per_task_all_subs[sesh] = ripple_overview_per_task.copy()
         feedback_across_sessions[sesh] = feedback_dict.copy()
-        HFB_event_per_task_all_subs[sesh] = HFB_event_overview_per_task.copy()
+        
+        
+        # CONTINUE HERE!
+        #HFB_event_per_task_all_subs[sesh] = HFB_event_overview_per_task.copy()
+        #HFB_power_per_task_all_subs[sesh] = HFB_power_overview_per_task.copy()
         
         
         
@@ -679,9 +691,8 @@ for sub in session_per_subj:
     
     # import pdb; pdb.set_trace() 
     
-    
     # mc.analyse.plotting_ripples.plot_ripple_distribution_normalised_across_tasks_and_sessions(ripples_per_task_all_subs, sub)
-    # mc.analyse.plotting_ripples.plot_ripple_count_three_bars(ripples_per_task_all_subs, sub)
+    mc.analyse.plotting_ripples.plot_ripple_count_three_bars(ripples_per_task_all_subs, sub)
     
     # mc.analyse.plotting_ripples.plot_ripples_by_feedback(ripples_per_task_all_subs, feedback_across_sessions, sub, time_after_feedback=0.8)
     
@@ -692,8 +703,8 @@ for sub in session_per_subj:
     
     # mc.analyse.plotting_ripples.gaussian_ripples_feedback_aligned(ripples_per_task_all_subs, feedback_across_sessions, sub)
     
-    mc.analyse.plotting_ripples.gaussian_ripples_feedback_neg_pos_aligned(ripples_per_task_all_subs, feedback_across_sessions, sub)
-    import pdb; pdb.set_trace() 
+    # mc.analyse.plotting_ripples.gaussian_ripples_feedback_neg_pos_aligned(ripples_per_task_all_subs, feedback_across_sessions, sub)
+    # import pdb; pdb.set_trace() 
     # WHAT IS STILL MISSING IN THIS ONE I BELIEVE IS DIVIDING BY THE AMOUNT OF ACTUAL EVENTS GOING IN EACH SUBSECTION!!!
     # RIGHT NOW THE RATE IS SUPER HIGH FOR THE FIRST< BUT NOT THE OTHER SECTIONS!
     # CONTINUE HERE!!

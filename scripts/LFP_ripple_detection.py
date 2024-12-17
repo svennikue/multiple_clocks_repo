@@ -30,9 +30,9 @@ import mc
 # tracemalloc.start()
 gc.collect()
           
-save = False
+save = True
 plotting_distr = False
-plotting_ripples = True
+plotting_ripples = False
 referenced_data = False
 
 if referenced_data == True:
@@ -84,8 +84,15 @@ ultra_high_gamma = [180, 250]
 # subjects = ['s5', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 
 #             's15', 's18', 's25'] #something weird in 16
 
+# 's27', 's28'
+# s27 might have had an error while recording, so the behavioural file is bad.
 
-subjects = ['s5'] #WHY DOES 18 NOT WORK????
+# s5 and s26 only have one task half.
+
+
+# make s15, s16, s18 work. 
+subjects = ['s15', 's16', 's18']
+# subjects = ['s5'] #WHY DOES 18 NOT WORK????
 
 
 # subjects = ['s10']
@@ -149,8 +156,8 @@ for sub in subjects :
 
     
     # preparing the file
-    raw_file_lazy, HC_channels, HC_indices, mPFC_channels, mPFC_indices, orig_sampling_freq, block_size = mc.analyse.ripple_helpers.load_LFPs(LFP_dir, sub, names_blks_short)
-            
+    raw_file_lazy, HC_channels, HC_indices, mPFC_channels, mPFC_indices, orig_sampling_freq, block_size, ROI_dict, ROI_list, ROI_indices = mc.analyse.ripple_helpers.load_LFPs(LFP_dir, sub, names_blks_short, channel_list_complete=False)
+         
     if ROI == 'mPFC':
         channels_to_use_in_task = mPFC_channels
         channel_indices_to_use = mPFC_indices
@@ -171,16 +178,18 @@ for sub in subjects :
     
     # for task_to_check in range(1, 3):  
     for task_to_check in range(1, int(behaviour_all[-1,-1]+1)):  
+        
+        # for task_to_check in range(12,17): 
         # first define where in behavioural table the task starts and ends
         index_lower = np.where(np.array(task_index)== task_to_check)[0][0]
         index_upper = np.where(np.array(task_index)== task_to_check)[0][-1]
 
-        if sub not in 's5':
+        if sub not in ['s5', 's26']:
             if skip_task_index != len(task_index) and task_to_check in [task_index[skip_task_index]]: 
                 continue
         if task_to_check in [10] and sub == 's25':
             continue
-        if task_to_check in [24] and sub in ['s8', 's11', 's15']:
+        if task_to_check in [24] and sub in ['s8', 's11', 's15', 's26']:
             continue
         if task_to_check in [14] and sub in ['s11']:
             continue
@@ -235,12 +244,14 @@ for sub in subjects :
                 sec_lower_neuro = sec_lower-(block_size[0]/orig_sampling_freq[0])
                 sec_upper_neuro = sec_upper-(block_size[0]/orig_sampling_freq[0])
         
-            if sec_upper > block_size[0]/orig_sampling_freq[0]+block_size[1]/orig_sampling_freq[0]:
-                print("careful, the behavioural file for {sub} seems to be longer than the LFP files! Skipping rep {repeat}, trial {trial_index}")
-                continue
+            if sub not in ['s5', 's26']:
+                # because of only having one block, this would create an error.
+                if sec_upper > block_size[0]/orig_sampling_freq[0]+block_size[1]/orig_sampling_freq[0]:
+                    print("careful, the behavioural file for {sub} seems to be longer than the LFP files! Skipping rep {repeat}, trial {trial_index}")
+                    continue
             
             reader, raw_file_lazy = [], []
-            if sub not in ['s5']:
+            if sub not in ['s5', 's26']:
                 for file_half in [0,1]:
                     # does neo.io have an 'unload' function?
                     reader.append(neo.io.BlackrockIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3))
@@ -424,18 +435,23 @@ for sub in subjects :
                 filtered_cropped_vhgamma = raw_cropped.filter(l_freq=gamma[0], h_freq=gamma[1], picks='all', fir_design='firwin')
                 filtered_cropped_vhgamma_np = filtered_cropped_vhgamma.get_data()
                 for ie, event in enumerate(events_dict[repeat]):
-                    freq_to_plot = int(downsampled_sampling_rate/2)
+                    # freq_to_plot = int(downsampled_sampling_rate/2)
+                    # freq_to_plot = 100
+                    freq_to_plot = 500
                     # freq_to_plot = int(sampling_freq[0]/2)
+                    title = f"1 sec window around ripple in subj {sub}, {channels_to_use[event[-1]]} - onset {event[0]/downsampled_sampling_rate} sec; [{downsampled_sampling_rate} samples = 1 sec]"
                     # don't plot more than 5 ripples
                     if wire_of_interest:
                         if event[0] > freq_to_plot and len(downsampled_data)-event[0]>freq_to_plot and event[-1] in indices_of_interest and ie < 5:
-                            title = f"1 sec window around ripple in subj {sub}, {channels_to_use[event[-1]]} - onset {event[0]/downsampled_sampling_rate} sec; [{downsampled_sampling_rate} samples = 1 sec]"
-                            mc.analyse.ripple_helpers.plot_ripple(freq_to_plot, title, downsampled_data, event, min_length_ripple, filtered_cropped_vhgamma_np, power_dict, repeat, freq_bands_keys, y_label_power)
+                            mc.analyse.plotting_ripples.plot_ripple(freq_to_plot, title, downsampled_data, event, min_length_ripple, filtered_cropped_vhgamma_np, power_dict, repeat, freq_bands_keys, y_label_power)
                     else:
                         if event[0] > freq_to_plot and len(downsampled_data)-event[0]>freq_to_plot and ie < 5:
-                            title = f"1 sec window around ripple in subj {sub}, {channels_to_use[event[-1]]} - onset {event[0]/downsampled_sampling_rate} sec; [{downsampled_sampling_rate} samples = 1 sec]"
                             mc.analyse.plotting_ripples.plot_ripple(freq_to_plot, title, downsampled_data, event, min_length_ripple, filtered_cropped_vhgamma_np, power_dict, repeat, freq_bands_keys, y_label_power)
                     
+                    # for publication 
+                    #if event[0] > freq_to_plot and len(downsampled_data)-event[0]>freq_to_plot and ie < 5:
+                     #   mc.analyse.plotting_ripples.plot_ripple(freq_to_plot, title, downsampled_data, event, min_length_ripple, filtered_cropped_vhgamma_np, power_dict, repeat, freq_bands_keys, y_label_power, for_publication=True)
+                
                             
         events_dict_per_channel[task_to_check] = events_dict
         onset_in_secs_dict[task_to_check] = onset_secs_per_channel

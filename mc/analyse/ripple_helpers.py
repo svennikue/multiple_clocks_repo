@@ -109,7 +109,7 @@ def load_LFPs(LFP_dir, sub, names_blks_short, channel_list_complete = False):
     # instead of fully loading the files, I am only loading the reader and then 
     # looking at them in lazy-mode, only calling the shorter segments.
         reader, block_size, channel_list, orig_sampling_freq, raw_file_lazy = [], [], [], [], []
-        if sub not in ['s5']: # doesn't have half 2 
+        if sub not in ['s5', 's26']: # doesn't have half 2 
             for file_half in [0,1]:
                 reader.append(neo.io.BlackrockIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3))
                 if (sub in ['s11'] and file_half == 0) or (sub in ['s18'] and file_half == 1):
@@ -155,7 +155,7 @@ def load_LFPs(LFP_dir, sub, names_blks_short, channel_list_complete = False):
                 else:
                     raw_file_lazy.append(reader[file_half].read_segment(seg_index=1, lazy=True))
                     
-        elif sub in ['s5']:
+        elif sub in ['s5', 's26']:
             for file_half in [0]:
                 reader.append(neo.io.BlackrockIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3))
                 block_size.append(reader[file_half].get_signal_size(seg_index=1, block_index=0))
@@ -187,8 +187,8 @@ def load_LFPs(LFP_dir, sub, names_blks_short, channel_list_complete = False):
                         ROI_dict[ROI].append(channel)
                         
                 raw_file_lazy.append(reader[file_half].read_segment(seg_index=1, lazy=True))
-                if channel_list_complete == False:
-                    ROI_dict, ROI_list, ROI_indices = [], [], []
+        if channel_list_complete == False:
+            ROI_dict, ROI_list, ROI_indices = [], [], []
         # import pdb; pdb.set_trace()            
         return raw_file_lazy, HC_channels, HC_indices, mPFC_channels, mPFC_indices, orig_sampling_freq, block_size, ROI_dict, ROI_list, ROI_indices
     
@@ -422,8 +422,8 @@ def normalise_feedback(ripple_info_dict, fb_dict, task_index):
     return normalised_fb_pos, normalised_fb_neg
 
 
-def normalise_explore_by_pos_fb(start, end, explore_ripples, explore_fb, task_i):
-    # import pdb; pdb.set_trace()
+def normalise_explore_by_pos_fb(start, end, explore_ripples, explore_fb, task_i, until_fb = False):
+    
     
     sections = [((start, explore_fb[f"{task_i}_pos"][0])),
                 ((explore_fb[f"{task_i}_pos"][0], explore_fb[f"{task_i}_pos"][1])),
@@ -452,7 +452,11 @@ def normalise_explore_by_pos_fb(start, end, explore_ripples, explore_fb, task_i)
             normalised_fbi_neg = ((fbi_neg - original_start) / (original_end - original_start)) * (normalised_end - normalised_start) + normalised_start
             normalised_fb_neg.append(normalised_fbi_neg)
     
-        
+    
+    if until_fb != False:
+        import pdb; pdb.set_trace()
+
+    
     return normalised_ripples, normalised_fb_pos, normalised_fb_neg
 
 

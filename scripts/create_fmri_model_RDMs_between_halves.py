@@ -82,7 +82,7 @@ import pandas as pd
 # import pdb; pdb.set_trace()
 
 regression_version = '03-4' 
-RDM_version = '02-act'
+RDM_version = '03-1'
 
 if RDM_version in ['02-act-1phas']:
     no_phase_neurons = 1
@@ -101,7 +101,7 @@ temporal_resolution = 10
 
 task_halves = ['1', '2']
 fmriplotting = True # incorrect for 01 false for 03-im!
-fmri_save = True
+fmri_save = False
 
 add_run_counts_model = False # this doesn't work with the current analysis
 
@@ -387,7 +387,7 @@ for sub in subjects:
                         # try if curr-and-future-steps-to-reward is the same as action box
                         all_models_dict['curr-and-future-steps2rew'][config] = np.concatenate((all_models_dict['buttons'][config], all_models_dict['one_future_step2rew'][config], all_models_dict['two_future_step2rew'][config], all_models_dict['three_future_step2rew'][config]), 0)
                   
-                # import pdb; pdb.set_trace()
+                import pdb; pdb.set_trace()
                     
                     
         # then, lastly, safe the all_models_dict in the respective task_half.
