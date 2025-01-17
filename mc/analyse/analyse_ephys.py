@@ -1205,225 +1205,261 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
 
 
 
-def load_ephys_data(Data_folder):
+def load_ephys_data(dict_labels, Data_folder):
     # import pdb; pdb.set_trace()
-    mouse_a = {}
-    mouse_b = {}
-    mouse_c = {}
-    mouse_d = {}
-    mouse_e = {}
-    mouse_f = {}
-    mouse_g = {}
-    mouse_h = {}
+    data = {}
+    rec_days = ['me11_05122021_06122021', 'me11_01122021_02122021', 'me10_09122021_10122021', 'me08_10092021_11092021', 
+                'ah04_09122021_10122021', 'ah04_05122021_06122021', 'ah04_01122021_02122021', 'ah04_01122021_02122021' ,
+                'ah03_18082021_19082021']
+    for mouse in dict_labels:
+        data[mouse] = {}
+    # mouse_a = {}
+    # mouse_b = {}
+    # mouse_c = {}
+    # mouse_d = {}
+    # mouse_e = {}
+    # mouse_f = {}
+    # mouse_g = {}
+    # mouse_h = {}
     
+    for i, mouse in enumerate(data):
+        mouse_recday=rec_days[i]
+        data[mouse]["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+        if mouse == 'mouse_d':
+            data[mouse]["rewards_configs"] = data[mouse]["rewards_configs"][0:-1, :].copy()
+            # apparently there is one run less for this day..., so exclude that one
+            # mohammady says: The ephys file for the last task on that day was lost
+        data[mouse]["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
+        data[mouse]["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
+        no_task_configs = len(data[mouse]["rewards_configs"])
+        data[mouse]["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
+        locations, neurons, timings = [], [], []
+        for session in range(0, no_task_configs):
+            locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+            neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+            timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
+        
+        #import pdb; pdb.set_trace()
+        data[mouse]["locations"] = locations
+        data[mouse]["neurons"] = neurons
+        data[mouse]["timings"] = timings
+        data[mouse]["recday"] = mouse_recday
+        
+        data[mouse]["neuron_type"] = np.zeros((len(data[mouse]["anchor_lag"]), len(data[mouse]["anchor_lag"][1])))
+        for i, neuron in enumerate(data[mouse]["anchor_lag"]):
+            max_neuron = np.argmax(neuron)
+            data[mouse]["neuron_type"][i, max_neuron] = 1
+            
+            
+        
+      
+        #
+        #
+        #
+        #
+        
+    # mouse_recday='me11_05122021_06122021' #mouse a
+    # mouse_a["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+    # mouse_a["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
+    # mouse_a["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
+    # a_no_task_configs = len(mouse_a["rewards_configs"])
+    # mouse_a["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
+    # a_locations = list()
+    # a_neurons = list()
+    # a_timings = list()
+    # for session in range(0, a_no_task_configs):
+    #     a_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    #     a_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    #     a_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
     
-    mouse_recday='me11_05122021_06122021' #mouse a
-    mouse_a["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-    mouse_a["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
-    mouse_a["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
-    a_no_task_configs = len(mouse_a["rewards_configs"])
-    mouse_a["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
-    a_locations = list()
-    a_neurons = list()
-    a_timings = list()
-    for session in range(0, a_no_task_configs):
-        a_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-        a_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-        a_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
+    # #import pdb; pdb.set_trace()
+    # mouse_a["locations"] = a_locations
+    # mouse_a["neurons"] = a_neurons
+    # mouse_a["timings"] = a_timings
+    # mouse_a["recday"] = mouse_recday
     
-    #import pdb; pdb.set_trace()
-    mouse_a["locations"] = a_locations
-    mouse_a["neurons"] = a_neurons
-    mouse_a["timings"] = a_timings
-    mouse_a["recday"] = mouse_recday
-    
-    mouse_a["neuron_type"] = np.zeros((len(mouse_a["anchor_lag"]), len(mouse_a["anchor_lag"][1])))
-    for i, neuron in enumerate(mouse_a["anchor_lag"]):
-        max_neuron = np.argmax(neuron)
-        mouse_a["neuron_type"][i, max_neuron] = 1
+    # mouse_a["neuron_type"] = np.zeros((len(mouse_a["anchor_lag"]), len(mouse_a["anchor_lag"][1])))
+    # for i, neuron in enumerate(mouse_a["anchor_lag"]):
+    #     max_neuron = np.argmax(neuron)
+    #     mouse_a["neuron_type"][i, max_neuron] = 1
         
         
     
     
     
 
-    mouse_recday='me11_01122021_02122021' #mouse b 
-    mouse_b["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-    mouse_b["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
-    mouse_b["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
-    b_no_task_configs = len(mouse_b["rewards_configs"])
-    mouse_b["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
-    b_locations = list()
-    b_neurons = list()
-    b_timings = list()
-    for session in range(0, b_no_task_configs):
-        b_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-        b_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-        b_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
-    mouse_b["locations"] = b_locations
-    mouse_b["neurons"] = b_neurons
-    mouse_b["timings"] = b_timings
-    mouse_b["recday"] = mouse_recday
-    mouse_b["neuron_type"] = np.zeros((len(mouse_b["anchor_lag"]), len(mouse_b["anchor_lag"][1])))
-    for i, neuron in enumerate(mouse_b["anchor_lag"]):
-        max_neuron = np.argmax(neuron)
-        mouse_b["neuron_type"][i, max_neuron] = 1
+    # mouse_recday='me11_01122021_02122021' #mouse b 
+    # mouse_b["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+    # mouse_b["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
+    # mouse_b["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
+    # b_no_task_configs = len(mouse_b["rewards_configs"])
+    # mouse_b["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
+    # b_locations = list()
+    # b_neurons = list()
+    # b_timings = list()
+    # for session in range(0, b_no_task_configs):
+    #     b_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    #     b_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    #     b_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
+    # mouse_b["locations"] = b_locations
+    # mouse_b["neurons"] = b_neurons
+    # mouse_b["timings"] = b_timings
+    # mouse_b["recday"] = mouse_recday
+    # mouse_b["neuron_type"] = np.zeros((len(mouse_b["anchor_lag"]), len(mouse_b["anchor_lag"][1])))
+    # for i, neuron in enumerate(mouse_b["anchor_lag"]):
+    #     max_neuron = np.argmax(neuron)
+    #     mouse_b["neuron_type"][i, max_neuron] = 1
         
 
-    mouse_recday='me10_09122021_10122021' #mouse c range 0,9
-    mouse_c["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-    mouse_c["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
-    mouse_c["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
-    c_no_task_configs = len(mouse_c["rewards_configs"])
-    mouse_c["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
-    c_locations = list()
-    c_neurons = list()
-    c_timings = list()
-    for session in range(0, c_no_task_configs):
-        c_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-        c_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-        c_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
-    mouse_c["locations"] = c_locations
-    mouse_c["neurons"] = c_neurons
-    mouse_c["timings"] = c_timings
-    mouse_c["recday"] = mouse_recday
-    mouse_c["neuron_type"] = np.zeros((len(mouse_c["anchor_lag"]), len(mouse_c["anchor_lag"][1])))
-    for i, neuron in enumerate(mouse_c["anchor_lag"]):
-        max_neuron = np.argmax(neuron)
-        mouse_c["neuron_type"][i, max_neuron] = 1   
+    # mouse_recday='me10_09122021_10122021' #mouse c range 0,9
+    # mouse_c["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+    # mouse_c["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
+    # mouse_c["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
+    # c_no_task_configs = len(mouse_c["rewards_configs"])
+    # mouse_c["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
+    # c_locations = list()
+    # c_neurons = list()
+    # c_timings = list()
+    # for session in range(0, c_no_task_configs):
+    #     c_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    #     c_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    #     c_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
+    # mouse_c["locations"] = c_locations
+    # mouse_c["neurons"] = c_neurons
+    # mouse_c["timings"] = c_timings
+    # mouse_c["recday"] = mouse_recday
+    # mouse_c["neuron_type"] = np.zeros((len(mouse_c["anchor_lag"]), len(mouse_c["anchor_lag"][1])))
+    # for i, neuron in enumerate(mouse_c["anchor_lag"]):
+    #     max_neuron = np.argmax(neuron)
+    #     mouse_c["neuron_type"][i, max_neuron] = 1   
 
-    mouse_recday='me08_10092021_11092021' #mouse d range 0,6
-    mouse_d["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-    mouse_d["rewards_configs"] = mouse_d["rewards_configs"][0:-1, :].copy()
-    # apparently there is one run less for this day..., so exclude that one
-    # mohammady says: The ephys file for the last task on that day was lost
-    mouse_d["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
-    mouse_d["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
-    d_no_task_configs = len(mouse_d["rewards_configs"])
-    mouse_d["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
-    d_locations = list()
-    d_neurons = list()
-    d_timings = list()
-    for session in range(0, d_no_task_configs):
-        d_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-        d_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-        d_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
-    mouse_d["locations"] = d_locations
-    mouse_d["neurons"] = d_neurons
-    mouse_d["timings"] = d_timings
-    mouse_d["recday"] = mouse_recday
-    mouse_d["neuron_type"] = np.zeros((len(mouse_d["anchor_lag"]), len(mouse_d["anchor_lag"][1])))
-    for i, neuron in enumerate(mouse_d["anchor_lag"]):
-        max_neuron = np.argmax(neuron)
-        mouse_d["neuron_type"][i, max_neuron] = 1
+    # mouse_recday='me08_10092021_11092021' #mouse d range 0,6
+    # mouse_d["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+    # mouse_d["rewards_configs"] = mouse_d["rewards_configs"][0:-1, :].copy()
+    # # apparently there is one run less for this day..., so exclude that one
+    # # mohammady says: The ephys file for the last task on that day was lost
+    # mouse_d["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
+    # mouse_d["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
+    # d_no_task_configs = len(mouse_d["rewards_configs"])
+    # mouse_d["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
+    # d_locations = list()
+    # d_neurons = list()
+    # d_timings = list()
+    # for session in range(0, d_no_task_configs):
+    #     d_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    #     d_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    #     d_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
+    # mouse_d["locations"] = d_locations
+    # mouse_d["neurons"] = d_neurons
+    # mouse_d["timings"] = d_timings
+    # mouse_d["recday"] = mouse_recday
+    # mouse_d["neuron_type"] = np.zeros((len(mouse_d["anchor_lag"]), len(mouse_d["anchor_lag"][1])))
+    # for i, neuron in enumerate(mouse_d["anchor_lag"]):
+    #     max_neuron = np.argmax(neuron)
+    #     mouse_d["neuron_type"][i, max_neuron] = 1
 
-    mouse_recday='ah04_09122021_10122021' #mouse e range 0,8
-    mouse_e["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-    mouse_e["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
-    mouse_e["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
-    e_no_task_configs = len(mouse_e["rewards_configs"])
-    mouse_e["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
-    e_locations = list()
-    e_neurons = list()
-    e_timings = list()
-    for session in range(0, e_no_task_configs):
-        e_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-        e_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-        e_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
-    mouse_e["locations"] = e_locations
-    mouse_e["neurons"] = e_neurons
-    mouse_e["timings"] = e_timings 
-    mouse_e["recday"] = mouse_recday
-    mouse_e["neuron_type"] = np.zeros((len(mouse_e["anchor_lag"]), len(mouse_e["anchor_lag"][1])))
-    for i, neuron in enumerate(mouse_e["anchor_lag"]):
-        max_neuron = np.argmax(neuron)
-        mouse_e["neuron_type"][i, max_neuron] = 1   
+    # mouse_recday='ah04_09122021_10122021' #mouse e range 0,8
+    # mouse_e["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+    # mouse_e["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
+    # mouse_e["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
+    # e_no_task_configs = len(mouse_e["rewards_configs"])
+    # mouse_e["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
+    # e_locations = list()
+    # e_neurons = list()
+    # e_timings = list()
+    # for session in range(0, e_no_task_configs):
+    #     e_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    #     e_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    #     e_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
+    # mouse_e["locations"] = e_locations
+    # mouse_e["neurons"] = e_neurons
+    # mouse_e["timings"] = e_timings 
+    # mouse_e["recday"] = mouse_recday
+    # mouse_e["neuron_type"] = np.zeros((len(mouse_e["anchor_lag"]), len(mouse_e["anchor_lag"][1])))
+    # for i, neuron in enumerate(mouse_e["anchor_lag"]):
+    #     max_neuron = np.argmax(neuron)
+    #     mouse_e["neuron_type"][i, max_neuron] = 1   
      
         
-    mouse_recday='ah04_05122021_06122021' #mouse f range 0,8
-    mouse_f["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-    mouse_f["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
-    mouse_f["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
-    f_no_task_configs = len(mouse_f["rewards_configs"])
-    mouse_f["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
-    f_locations = list()
-    f_neurons = list()
-    f_timings = list()
-    for session in range(0, f_no_task_configs):
-        f_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-        f_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-        f_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
-    mouse_f["locations"] = f_locations
-    mouse_f["neurons"] = f_neurons
-    mouse_f["timings"] = f_timings
-    mouse_f["recday"] = mouse_recday
-    mouse_f["neuron_type"] = np.zeros((len(mouse_f["anchor_lag"]), len(mouse_f["anchor_lag"][1])))
-    for i, neuron in enumerate(mouse_f["anchor_lag"]):
-        max_neuron = np.argmax(neuron)
-        mouse_f["neuron_type"][i, max_neuron] = 1
+    # mouse_recday='ah04_05122021_06122021' #mouse f range 0,8
+    # mouse_f["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+    # mouse_f["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
+    # mouse_f["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
+    # f_no_task_configs = len(mouse_f["rewards_configs"])
+    # mouse_f["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
+    # f_locations = list()
+    # f_neurons = list()
+    # f_timings = list()
+    # for session in range(0, f_no_task_configs):
+    #     f_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    #     f_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    #     f_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
+    # mouse_f["locations"] = f_locations
+    # mouse_f["neurons"] = f_neurons
+    # mouse_f["timings"] = f_timings
+    # mouse_f["recday"] = mouse_recday
+    # mouse_f["neuron_type"] = np.zeros((len(mouse_f["anchor_lag"]), len(mouse_f["anchor_lag"][1])))
+    # for i, neuron in enumerate(mouse_f["anchor_lag"]):
+    #     max_neuron = np.argmax(neuron)
+    #     mouse_f["neuron_type"][i, max_neuron] = 1
 
-    mouse_recday='ah04_01122021_02122021' #mouse g range 0,8
-    mouse_g["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-    mouse_g["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
-    mouse_g["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
-    g_no_task_configs = len(mouse_g["rewards_configs"])
-    mouse_g["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
-    g_locations = list()
-    g_neurons = list()
-    g_timings = list()
-    for session in range(0, g_no_task_configs):
-        g_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-        g_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-        g_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
-    mouse_g["locations"] = g_locations
-    mouse_g["neurons"] = g_neurons
-    mouse_g["timings"] = g_timings
-    mouse_g["recday"] = mouse_recday
-    mouse_g["neuron_type"] = np.zeros((len(mouse_g["anchor_lag"]), len(mouse_g["anchor_lag"][1])))
-    for i, neuron in enumerate(mouse_g["anchor_lag"]):
-        max_neuron = np.argmax(neuron)
-        mouse_g["neuron_type"][i, max_neuron] = 1
+    # mouse_recday='ah04_01122021_02122021' #mouse g range 0,8
+    # mouse_g["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+    # mouse_g["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
+    # mouse_g["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
+    # g_no_task_configs = len(mouse_g["rewards_configs"])
+    # mouse_g["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
+    # g_locations = list()
+    # g_neurons = list()
+    # g_timings = list()
+    # for session in range(0, g_no_task_configs):
+    #     g_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    #     g_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    #     g_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
+    # mouse_g["locations"] = g_locations
+    # mouse_g["neurons"] = g_neurons
+    # mouse_g["timings"] = g_timings
+    # mouse_g["recday"] = mouse_recday
+    # mouse_g["neuron_type"] = np.zeros((len(mouse_g["anchor_lag"]), len(mouse_g["anchor_lag"][1])))
+    # for i, neuron in enumerate(mouse_g["anchor_lag"]):
+    #     max_neuron = np.argmax(neuron)
+    #     mouse_g["neuron_type"][i, max_neuron] = 1
     
-    mouse_recday='ah03_18082021_19082021' #mouse h range 0,8
-    mouse_h["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
-    mouse_h["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
-    mouse_h["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
-    h_no_task_configs = len(mouse_h["rewards_configs"])
-    mouse_h["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
-    h_locations = list()
-    h_neurons = list()
-    h_timings = list()
-    for session in range(0, h_no_task_configs):
-        h_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-        h_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
-        h_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
-    mouse_h["locations"] = h_locations
-    mouse_h["neurons"] = h_neurons
-    mouse_h["timings"] = h_timings
-    mouse_h["recday"] = mouse_recday
-    mouse_h["neuron_type"] = np.zeros((len(mouse_h["anchor_lag"]), len(mouse_h["anchor_lag"][1])))
-    for i, neuron in enumerate(mouse_h["anchor_lag"]):
-        max_neuron = np.argmax(neuron)
-        mouse_h["neuron_type"][i, max_neuron] = 1
-    # # for h, the first timings array is missing
-    # # > delete the first task completely!
-    # h_timings = h_timings[1::]
-    # h_neurons = h_neurons[1::]
-    # h_locations = h_locations[1::]
-    # h_rewards_configs = h_rewards_configs[1::, :]
-    return(mouse_a, mouse_b, mouse_c, mouse_d, mouse_e, mouse_f, mouse_g, mouse_h)
+    # mouse_recday='ah03_18082021_19082021' #mouse h range 0,8
+    # mouse_h["rewards_configs"] = np.load(Data_folder+'Task_data_'+ mouse_recday+'.npy')
+    # mouse_h["anchor_lag"]= np.load(Data_folder+'Anchor_lag_'+mouse_recday+'.npy')
+    # mouse_h["anchor_lag_threshold"] = np.load(Data_folder+'Anchor_lag_threshold_'+mouse_recday+'.npy')
+    # h_no_task_configs = len(mouse_h["rewards_configs"])
+    # mouse_h["cells"] = np.load(Data_folder+'Phase_state_place_anchored_' + mouse_recday + '.npy')
+    # h_locations = list()
+    # h_neurons = list()
+    # h_timings = list()
+    # for session in range(0, h_no_task_configs):
+    #     h_locations.append(np.load(Data_folder+'Location_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    #     h_neurons.append(np.load(Data_folder+'Neuron_raw_'+mouse_recday+'_'+str(session)+'.npy'))
+    #     h_timings.append(np.load(Data_folder+'trialtimes_'+mouse_recday+'_'+str(session)+'.npy'))
+    # mouse_h["locations"] = h_locations
+    # mouse_h["neurons"] = h_neurons
+    # mouse_h["timings"] = h_timings
+    # mouse_h["recday"] = mouse_recday
+    # mouse_h["neuron_type"] = np.zeros((len(mouse_h["anchor_lag"]), len(mouse_h["anchor_lag"][1])))
+    # for i, neuron in enumerate(mouse_h["anchor_lag"]):
+    #     max_neuron = np.argmax(neuron)
+    #     mouse_h["neuron_type"][i, max_neuron] = 1
+    # # # for h, the first timings array is missing
+    # # # > delete the first task completely!
+    # # h_timings = h_timings[1::]
+    # # h_neurons = h_neurons[1::]
+    # # h_locations = h_locations[1::]
+    # # h_rewards_configs = h_rewards_configs[1::, :]
+    return(data)
 
 def clean_ephys_data(task_configs, locations_all, neurons, timings_all, mouse_recday, ignore_double_tasks = 1):
     # first clean data.
     # import pdb; pdb.set_trace()
     # load dataset
-    # # first thing: check for missing data. mark those and potentially ignore.
-    # # loop through the neurons.
-    # missing_neurons = []
-    # for task_no, recording_task in enumerate(neurons):
-    #     missing_neurons.append(list(map(tuple, np.where(recording_task ==[]))))
+    # first thing: check for missing data. mark those and potentially ignore.
 
-    
     # throw out those with significantly lower run numbers  
     too_short = []
     max_length = len(neurons[0][0])
@@ -1466,73 +1502,7 @@ def clean_ephys_data(task_configs, locations_all, neurons, timings_all, mouse_re
         for i in set(ignore):
             ignore_list.append(i)
         ignore_list.sort(reverse= True)
-            
-                
 
-    # if mouse_recday == 'me11_05122021_06122021': #mouse a
-    # # ALL FINE WITH a!
-    #     # task 5 and 9 are the same, as well as 6 and 7
-    #     # data of the first 4 tasks look similar, and tasks 5,6,7,8,9 look more similar
-    #     if ignore_double_tasks == 1:
-    #     # task 5 and 9 are the same, as well as 6 and 7
-    #     # throw out 6 and 9
-    #     # 1 and 4 are nearly the same, but have a different last field... so I leave them in.
-    #         ignore = [8,5]
-                
-    # if mouse_recday == 'me11_01122021_02122021':#mouse b
-        
-    #     if ignore_double_tasks == 1:
-    #         ignore = [-1, 3]
-    #         # and task 4 appears twice
-    #     elif ignore_double_tasks == 0:
-    #         ignore = [-1]
-    #         # get rid of the last task because it looks somewhat whacky
-        
-    # if mouse_recday == 'me10_09122021_10122021':#mouse c 
-    #     if ignore_double_tasks == 1:
-    #         ignore = [8,3,4]
-    #     elif ignore_double_tasks == 0:
-    #         ignore = [8,3]
-    #     # same tasks are: 1,4; and  5,6,9
-    #     # 4 and 9 look whacky, so remove those
-    #     # so then after removal 5 and 6 are still the same and 5 has only 6 repeats
-    #     # consider also removing the penultimum one... this was before task 7, now it is 6
-    #     # so far this is still inside
-         
-    # if mouse_recday == 'me08_10092021_11092021': #mouse d
-    #     if ignore_double_tasks == 1:
-    #         ignore = [3]
-    #         # DOUBLE CHECK THIS!!!
-    # # same tasks: 1, 4
-    # # ALL FINE WITH d ONCE THE LAST BUT THE LAST EPHYS FILE WAS LOST > deleted this before
-
-    # if mouse_recday == 'ah04_09122021_10122021': #mouse e range 0,8
-    # # throw out the 4th 
-    # # same tasks: (all tasks are unique, before 1 and 4 were the same but 4 is gone)
-    #     ignore = [4]
-    
-    # if mouse_recday == 'ah04_05122021_06122021': #mouse f range 0,8
-    # # throw out number 4
-    # # new 4 (previous 5) and last one - 7 (previous 8) are the same
-    #     if ignore_double_tasks == 1:
-    #         ignore = [-1, 3]
-    #     elif ignore_double_tasks == 0:
-    #         ignore = [3]
-     
-    # if mouse_recday == 'ah04_01122021_02122021': #mouse g range 0,8
-    # # same tasks: 1,4 and 5,8
-    # # ALL FINE WITH g 
-    #     if ignore_double_tasks == 1:
-    #         ignore = [4, 0]
-        
-    # if mouse_recday == 'ah03_18082021_19082021': #mouse h range 0,8
-    #     if ignore_double_tasks == 1:
-    #         ignore = [4, 0]
-    # # hmmmm here I am not sure... maybe it is alright??
-    # # the fourth task looks a bit off, but I am leaving it in for now
-    # # same tasks: 1,4 and 5,8
-   
-    
     task_configs_clean = [elem for elem in task_configs]
     locations_all_clean = locations_all.copy()
     neurons_clean = neurons.copy()

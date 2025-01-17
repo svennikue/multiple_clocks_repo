@@ -109,87 +109,96 @@ def load_LFPs(LFP_dir, sub, names_blks_short, channel_list_complete = False):
     # instead of fully loading the files, I am only loading the reader and then 
     # looking at them in lazy-mode, only calling the shorter segments.
         reader, block_size, channel_list, orig_sampling_freq, raw_file_lazy = [], [], [], [], []
-        if sub not in ['s5', 's26']: # doesn't have half 2 
-            for file_half in [0,1]:
-                reader.append(neo.io.BlackrockIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3))
-                if (sub in ['s11'] and file_half == 0) or (sub in ['s18'] and file_half == 1):
-                    block_size.append(reader[file_half].get_signal_size(seg_index=0, block_index=0))
-                else:
-                    block_size.append(reader[file_half].get_signal_size(seg_index=1, block_index=0))
-                    
-                    
-                # reader_test = neo.rawio.BlackrockRawIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3)
-                # reader_test.parse_header()
-                # delete this again
-                    
-                orig_sampling_freq.append(int(reader[file_half].sig_sampling_rates[3]))        
-                # all of these will only be based on the second file. Should be equivalent!
-                channel_names = reader[file_half].header['signal_channels']
-                channel_names = [str(elem) for elem in channel_names[:]]
-                channel_list = [name.split(",")[0].strip("('") for name in channel_names]
-                HC_indices = []
-                mPFC_indices = []
-                for i, channel in enumerate(channel_list):
-                    if 'Ha' in channel or 'Hb' in channel:
-                        HC_indices.append(i)
-                    if 'Ca' in channel:
-                        mPFC_indices.append(i)    
-                HC_channels = [channel_list[i] for i in HC_indices]
-                mPFC_channels = [channel_list[i] for i in mPFC_indices]
-            
-                if channel_list_complete == True:
-                    ROI_dict = {}
-                    ROI_list, ROI_indices = [], []
-                    for i, channel in enumerate(channel_list):
-                        if "empty" in channel:  # Skip empty labels
-                            continue
-                        ROI_list.append(channel)
-                        ROI_indices.append(i)
-                        ROI = mc.analyse.ripple_helpers.extract_ROIs_from_channellist(channel)
-                        if ROI not in ROI_dict:
-                            ROI_dict[ROI] = []
-                        ROI_dict[ROI].append(channel)
 
+        file_halve_list = [0,1]
+        if sub in ['s5', 's26']:
+            file_halve_list = [0]
+        if sub in ['s18']:
+            file_halve_list = [0,1,2]
+        
+        
+        # if sub not in ['s5', 's26']: # doesn't have half 2 
+        for file_half in file_halve_list:
+            reader.append(neo.io.BlackrockIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3))
+            if (sub in ['s11'] and file_half == 0) or (sub in ['s18'] and file_half in [1, 2]):
+                block_size.append(reader[file_half].get_signal_size(seg_index=0, block_index=0))
+            else:
+                block_size.append(reader[file_half].get_signal_size(seg_index=1, block_index=0))
+                
+                
+            # reader_test = neo.rawio.BlackrockRawIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3)
+            # reader_test.parse_header()
+            # delete this again
+                
+            orig_sampling_freq.append(int(reader[file_half].sig_sampling_rates[3]))        
+            # all of these will only be based on the second file. Should be equivalent!
+            channel_names = reader[file_half].header['signal_channels']
+            channel_names = [str(elem) for elem in channel_names[:]]
+            channel_list = [name.split(",")[0].strip("('") for name in channel_names]
+            HC_indices = []
+            mPFC_indices = []
+            for i, channel in enumerate(channel_list):
+                if 'Ha' in channel or 'Hb' in channel:
+                    HC_indices.append(i)
+                if 'Ca' in channel:
+                    mPFC_indices.append(i)    
+            HC_channels = [channel_list[i] for i in HC_indices]
+            mPFC_channels = [channel_list[i] for i in mPFC_indices]
+        
+            if channel_list_complete == True:
+                ROI_dict = {}
+                ROI_list, ROI_indices = [], []
+                for i, channel in enumerate(channel_list):
+                    if "empty" in channel:  # Skip empty labels
+                        continue
+                    ROI_list.append(channel)
+                    ROI_indices.append(i)
+                    ROI = mc.analyse.ripple_helpers.extract_ROIs_from_channellist(channel)
+                    if ROI not in ROI_dict:
+                        ROI_dict[ROI] = []
+                    ROI_dict[ROI].append(channel)
+                    
                 if sub in ['s11', 's18']:
                     raw_file_lazy.append(reader[file_half].read_segment(seg_index=0, lazy=True))
                 else:
                     raw_file_lazy.append(reader[file_half].read_segment(seg_index=1, lazy=True))
                     
-        elif sub in ['s5', 's26']:
-            for file_half in [0]:
-                reader.append(neo.io.BlackrockIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3))
-                block_size.append(reader[file_half].get_signal_size(seg_index=1, block_index=0))
-                orig_sampling_freq.append(int(reader[file_half].sig_sampling_rates[3]))        
-                # all of these will only be based on the second file. Should be equivalent!
-                channel_names = reader[file_half].header['signal_channels']
-                channel_names = [str(elem) for elem in channel_names[:]]
-                channel_list = [name.split(",")[0].strip("('") for name in channel_names]
-                HC_indices = []
-                mPFC_indices = []
-                for i, channel in enumerate(channel_list):
-                    if 'Ha' in channel or 'Hb' in channel:
-                        HC_indices.append(i)
-                    if 'Ca' in channel:
-                        mPFC_indices.append(i)    
-                HC_channels = [channel_list[i] for i in HC_indices]
-                mPFC_channels = [channel_list[i] for i in mPFC_indices]
-                if channel_list_complete == True:
-                    ROI_dict = {}
-                    ROI_list, ROI_indices = [], []
-                    for i, channel in enumerate(channel_list):
-                        if "empty" in channel:  # Skip empty labels
-                            continue
-                        ROI_list.append(channel)
-                        ROI_indices.append(i)
-                        ROI = mc.analyse.ripple_helpers.extract_ROIs_from_channellist(channel)
-                        if ROI not in ROI_dict:
-                            ROI_dict[ROI] = []
-                        ROI_dict[ROI].append(channel)
+        # elif sub in ['s5', 's26']:
+        #     for file_half in [0]:
+        #         reader.append(neo.io.BlackrockIO(filename=f"{LFP_dir}/{sub}/{names_blks_short[file_half]}", nsx_to_load=3))
+        #         block_size.append(reader[file_half].get_signal_size(seg_index=1, block_index=0))
+        #         orig_sampling_freq.append(int(reader[file_half].sig_sampling_rates[3]))        
+        #         # all of these will only be based on the second file. Should be equivalent!
+        #         channel_names = reader[file_half].header['signal_channels']
+        #         channel_names = [str(elem) for elem in channel_names[:]]
+        #         channel_list = [name.split(",")[0].strip("('") for name in channel_names]
+        #         HC_indices = []
+        #         mPFC_indices = []
+        #         for i, channel in enumerate(channel_list):
+        #             if 'Ha' in channel or 'Hb' in channel:
+        #                 HC_indices.append(i)
+        #             if 'Ca' in channel:
+        #                 mPFC_indices.append(i)    
+        #         HC_channels = [channel_list[i] for i in HC_indices]
+        #         mPFC_channels = [channel_list[i] for i in mPFC_indices]
+        #         if channel_list_complete == True:
+        #             ROI_dict = {}
+        #             ROI_list, ROI_indices = [], []
+        #             for i, channel in enumerate(channel_list):
+        #                 if "empty" in channel:  # Skip empty labels
+        #                     continue
+        #                 ROI_list.append(channel)
+        #                 ROI_indices.append(i)
+        #                 ROI = mc.analyse.ripple_helpers.extract_ROIs_from_channellist(channel)
+        #                 if ROI not in ROI_dict:
+        #                     ROI_dict[ROI] = []
+        #                 ROI_dict[ROI].append(channel)
                         
-                raw_file_lazy.append(reader[file_half].read_segment(seg_index=1, lazy=True))
+        #         raw_file_lazy.append(reader[file_half].read_segment(seg_index=1, lazy=True))
+        
         if channel_list_complete == False:
             ROI_dict, ROI_list, ROI_indices = [], [], []
-        # import pdb; pdb.set_trace()            
+                   
         return raw_file_lazy, HC_channels, HC_indices, mPFC_channels, mPFC_indices, orig_sampling_freq, block_size, ROI_dict, ROI_list, ROI_indices
     
 

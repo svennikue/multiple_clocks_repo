@@ -51,16 +51,16 @@ distribution = False
 #     'sub-2': ['s7', 's8', 's9'],
 #     'sub-3': ['s10', 's11'],
 #     'sub-4': ['s12', 's13', 's14'],
+#     'sub-6': ['s18']
 #     'sub-7': ['s25'],
 #     'sub-8': ['s26'],
 #     'sub-9': ['s27', 's28']
 #     }
 
 
+#     'sub-5': ['s15', 's16'], #something weird in 16, potentially formatting error in ephys file
 
 
-#     'sub-5': ['s15', 's16'], #something weird in 16, potentially formatting error in both
-# 'sub-6': ['s18']
 sessions = ['s26']
 session_per_subj = {
     'sub-8': ['s26']

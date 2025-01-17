@@ -65,7 +65,6 @@ ultra_high_gamma = [180, 250]
 # bandpass filtered between 70-180Hz 
 
 
-
 # SPW-R frequency band criterion for rodents (100 to 250 Hz) is generally higher 
 # than for monkeys (95 to 250 Hz) or humans (70–250 Hz, most use 80–150 Hz bandpass filters
 
@@ -84,24 +83,18 @@ ultra_high_gamma = [180, 250]
 # subjects = ['s5', 's7', 's8', 's9', 's10', 's11', 's12', 's13', 's14', 
 #             's15', 's18', 's25'] #something weird in 16
 
-# 's27', 's28'
+
+# currently not working:
 # s27 might have had an error while recording, so the behavioural file is bad.
+# s16 has empty files.
 
+# fixed, but different than others:
 # s5 and s26 only have one task half.
+# s18: I'm seeing 3 blocks of data for that day,
 
 
-# make s15, s16, s18 work. 
-subjects = ['s15', 's16', 's18']
-# subjects = ['s5'] #WHY DOES 18 NOT WORK????
+subjects = ['s18']
 
-
-# subjects = ['s10']
-# subjects = ['s11', 's12', 's13', 's14', 's25']
-
-# check what is wrong with s11 and also fix that s5 works- only a single run.
-# subjects = ['s5']
-
-#subjects = ['s13', 's12', 's25']
 LFP_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
 result_dir = f"{LFP_dir}/results"
 
@@ -112,6 +105,7 @@ for sub in subjects :
     file_blk_01 = None
     file_blk_02 = None
     
+
     # Loop through files and find the ones with 'blk-01' and 'blk-02'
     for file in ns3_files:
         if 'blk-01' in file:
@@ -122,7 +116,18 @@ for sub in subjects :
     # Create the final list in the specified order
     names_blks_short = [file_blk_01, file_blk_02]
 
-
+    
+    if sub in ['s18']:
+        file_blk_03 = None
+        for file in ns3_files:
+            if '058' in file:
+                file_blk_01 = os.path.splitext(os.path.basename(file))[0]
+            if '059' in file:
+                file_blk_02 = os.path.splitext(os.path.basename(file))[0]
+            if '060' in file:
+                file_blk_03 = os.path.splitext(os.path.basename(file))[0]
+        names_blks_short = [file_blk_01, file_blk_02, file_blk_03]
+    
     # load behaviour that defines my snippets.
     behaviour = np.genfromtxt(f"{LFP_dir}/{sub}/exploration_trials_times_and_ncorrect.csv", delimiter=',')
     behaviour_all = np.genfromtxt(f"{LFP_dir}/{sub}/all_trials_times.csv", delimiter=',')
