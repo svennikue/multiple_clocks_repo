@@ -16,7 +16,7 @@ import sys
 #import plotly.figure_factory as ff
 #import plotly.io as pio
 #pio.renderers.default = "browser"
-#import scipy.stats 
+import scipy.stats 
 import os
 import pickle
 import colormaps as cmaps
@@ -89,15 +89,11 @@ if load_old:
 # compare different binnings.
 
 
-
-# THIS IS A FREAKING MESS.
-# CLEAN THIS UP AT SOME POINT....
-# ok I think before I do the big thingy, I first have to go back to only running one single one.
-
-mouse_data_clean, regs_per_run, reg_result_dict, midn_result_dict = {}, {}, {}, {}
+# 17.01.2025 I deleted quite a big chunk here. look at git if I want to recover.
+mouse_data_clean, regs_per_run, all_results, midn_result_dict = {}, {}, {}, {}
 
 for mouse in mice_recdays:
-    mouse_data_clean[mouse],  regs_per_run[mouse], reg_result_dict[mouse], midn_result_dict[mouse] = {}, {}, {}, {}
+    mouse_data_clean[mouse],  regs_per_run[mouse], all_results[mouse], midn_result_dict[mouse] = {}, {}, {}, {}
         
         
 for mouse in sorted(mouse_data):
@@ -107,7 +103,7 @@ for mouse in sorted(mouse_data):
         regs_per_run[mouse] = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_data_clean[mouse]["rewards_configs"], mouse_data_clean[mouse]["locations"], mouse_data_clean[mouse]["neurons"], mouse_data_clean[mouse]["timings"], contrast_matrix, mouse_data[mouse]["recday"], contrast_split= contrast_split_by_phase ,continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True,plotting=False)                                         
     else:    
         # cleaned datasat
-        reg_result_dict[mouse] = mc.analyse.analyse_ephys.reg_across_tasks(mouse_data_clean[mouse]["rewards_configs"], mouse_data_clean[mouse]["locations"], mouse_data_clean[mouse]["neurons"], mouse_data_clean[mouse]["timings"], mouse_data[mouse]["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
+        all_results[mouse] = mc.analyse.analyse_ephys.reg_across_tasks(mouse_data_clean[mouse]["rewards_configs"], mouse_data_clean[mouse]["locations"], mouse_data_clean[mouse]["neurons"], mouse_data_clean[mouse]["timings"], mouse_data[mouse]["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
 
     if do_neuron_subset == True:
         # define a mask for clock and midnight neurons, respectively
@@ -123,524 +119,19 @@ if save:
             pickle.dump(regs_per_run, f)
     else:     
         with open(os.path.join(out_path,f"mouse_clean_res_dic"), 'wb') as f:
-            pickle.dump(reg_result_dict, f)
+            pickle.dump(all_results, f)
     if do_neuron_subset == True:
         with open(os.path.join(out_path,f"mouse_clean_midn_dic"), 'wb') as f:
             pickle.dump(midn_result_dict, f)
-        
-
-
-# mouse a
-# mouse_a_clean =  {}
-# mouse_a_clean["cells"] = mouse_a["cells"].copy()
-# # cell coding: Phase, State, Place and Anchoring
-#     # e.g. a cell thats True, True, True, False is phase, state and place tuned but not spatially anchored
-# mouse_a_clean["recday"] = mouse_a["recday"]
-# mouse_a_clean["neuron_type"] = mouse_a["neuron_type"].copy()
-
-
-# mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], mouse_a_clean["neurons"], mouse_a_clean["timings"] = mc.analyse.analyse_ephys.clean_ephys_data(mouse_a["rewards_configs"], mouse_a["locations"], mouse_a["neurons"], mouse_a["timings"], mouse_a_clean["recday"])
-
-# import pdb; pdb.set_trace()
-
-# if do_per_run == True:
-#     # cleaned datasat
-#     a_reg_per_run = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], mouse_a_clean["neurons"], mouse_a_clean["timings"], contrast_matrix, mouse_a_clean["recday"], contrast_split= contrast_split_by_phase ,continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True,plotting=False)
-                                      
-# else:    
-#     # cleaned datasat
-#     a_reg_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], mouse_a_clean["neurons"], mouse_a_clean["timings"], mouse_a_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
-
-
-
-
-# whole dataset
-# a_reg_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_a["rewards_configs"], mouse_a["locations"], mouse_a["neurons"], mouse_a["timings"], mouse_a["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-
-# if do_neuron_subset == True:
-#     # define a mask for clock and midnight neurons, respectively
-#     midnight_neurons = []
-#     midnight_mask = np.where(mouse_a_clean["neuron_type"][:,0] == 1)[0]
-#     for neurons in mouse_a_clean["neurons"]:
-#         midnight_neurons.append(neurons[midnight_mask, :])
-    
-#     a_midn_result_dict = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], midnight_neurons, mouse_a_clean["timings"], contrast_matrix, mouse_a_clean["recday"], contrast_split= contrast_split_by_phase ,continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
-    
-
-    
-#     # clock_neurons = []
-#     # midnight_neurons = []
-#     # clock_n_mask = mouse_a_clean["cells"][:,-1]
-#     # midnight_n_mask = np.logical_and(clock_n_mask, mouse_a_clean["cells"][:,-2])
-    
-#     # for neurons in mouse_a_clean["neurons"]:
-#     #     clock_neurons.append(neurons[clock_n_mask, :])
-#     #     midnight_neurons.append(neurons[midnight_n_mask, :])
-    
-    
-#     # print(f"Neuron number of recday {mouse_a['recday']} is {len(mouse_a_clean['neurons'][0])}, Midnight neuron number is {len(midnight_neurons[0])} and Clock neurons are {len(clock_neurons[0])}")    
                
-#     # a_midn_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], midnight_neurons, mouse_a_clean["timings"], mouse_a_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-#     # a_clocks_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_a_clean["rewards_configs"], mouse_a_clean["locations"], clock_neurons, mouse_a_clean["timings"], mouse_a_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-
-
-
-# if save:
-#     if do_per_run == True:
-#         with open(os.path.join(out_path,f"{mouse_a_clean['recday']}_res_perrun"), 'wb') as f:
-#             pickle.dump(a_reg_per_run, f)
-#     else:
-#         with open(os.path.join(out_path,f"{mouse_a_clean['recday']}_res_dic"), 'wb') as f:
-#             pickle.dump(a_reg_result_dict, f)
-#     if do_neuron_subset == True:
-#         with open(os.path.join(out_path,f"{mouse_a_clean['recday']}_midn_dic"), 'wb') as f:
-#             pickle.dump(a_midn_result_dict, f)
-        
-#         # with open(os.path.join(out_path,f"{mouse_a_clean['recday']}_clock_dic"), 'wb') as f:
-#         #     pickle.dump(a_clocks_result_dict, f)
-
-    
-
-# # mouse b
-# mouse_b_clean =  {}
-# mouse_b_clean["cells"] = mouse_b["cells"].copy()
-# mouse_b_clean["recday"] = mouse_b["recday"]
-# mouse_b_clean["neuron_type"] = mouse_b["neuron_type"].copy()
-
-# mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], mouse_b_clean["neurons"], mouse_b_clean["timings"] = mc.analyse.analyse_ephys.clean_ephys_data(mouse_b["rewards_configs"], mouse_b["locations"], mouse_b["neurons"], mouse_b["timings"], mouse_b_clean["recday"])
-
-# if do_per_run == True:
-#     b_reg_per_run = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], mouse_b_clean["neurons"], mouse_b_clean["timings"], contrast_matrix, mouse_b_clean["recday"], contrast_split= contrast_split_by_phase, continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
-# else:    
-#     # cleaned datasat
-#     b_reg_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], mouse_b_clean["neurons"], mouse_b_clean["timings"], mouse_b_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
-#     # whole dataset
-#     #b_reg_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_b["rewards_configs"], mouse_b["locations"], mouse_b["neurons"], mouse_b["timings"], mouse_b["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-
-# if do_neuron_subset == True:
-#     # define a mask for clock and midnight neurons, respectively
-#     midnight_neurons = []
-#     midnight_mask = np.where(mouse_b_clean["neuron_type"][:,0] == 1)[0]
-#     for neurons in mouse_b_clean["neurons"]:
-#         midnight_neurons.append(neurons[midnight_mask, :])
-    
-#     b_midn_result_dict = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], midnight_neurons, mouse_b_clean["timings"], contrast_matrix, mouse_b_clean["recday"], contrast_split= contrast_split_by_phase ,continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
-    
-#     # # define a mask for clock and midnight neurons, respectively
-#     # clock_neurons = []
-#     # midnight_neurons = []
-#     # clock_n_mask = mouse_b_clean["cells"][:,-1]
-#     # midnight_n_mask = np.logical_and(clock_n_mask, mouse_b_clean["cells"][:,-2])
-    
-#     # for neurons in mouse_b_clean["neurons"]:
-#     #     clock_neurons.append(neurons[clock_n_mask, :])
-#     #     midnight_neurons.append(neurons[midnight_n_mask, :])
-    
-#     # print(f"Neuron number of recday {mouse_b['recday']} is {len(mouse_b_clean['neurons'][0])}, Midnight neuron number is {len(midnight_neurons[0])} and Clock neurons are {len(clock_neurons[0])}")    
-        
-#     # b_midn_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], midnight_neurons, mouse_b_clean["timings"], mouse_b_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-#     # b_clocks_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_b_clean["rewards_configs"], mouse_b_clean["locations"], clock_neurons, mouse_b_clean["timings"], mouse_b_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-
-# if save: 
-#     if do_per_run == True:
-#         with open(os.path.join(out_path,f"{mouse_b_clean['recday']}_res_perrun"), 'wb') as f:
-#             pickle.dump(b_reg_per_run, f)
-#     else:    
-#         with open(os.path.join(out_path,f"{mouse_b_clean['recday']}_res_dic"), 'wb') as f:
-#             pickle.dump(b_reg_result_dict, f)
-#     if do_neuron_subset == True:    
-#         with open(os.path.join(out_path,f"{mouse_b_clean['recday']}_midn_dic"), 'wb') as f:
-#             pickle.dump(b_midn_result_dict, f)
-        
-#         # with open(os.path.join(out_path,f"{mouse_b_clean['recday']}_clock_dic"), 'wb') as f:
-#         #     pickle.dump(b_clocks_result_dict, f)
-
-
-
-    
-# # mouse c
-# mouse_c_clean =  {}
-# mouse_c_clean["neuron_type"] = mouse_c["neuron_type"].copy()
-# mouse_c_clean["cells"] = mouse_c["cells"].copy()
-# mouse_c_clean["recday"] = mouse_c["recday"]
-# mouse_c_clean["rewards_configs"], mouse_c_clean["locations"], mouse_c_clean["neurons"], mouse_c_clean["timings"] = mc.analyse.analyse_ephys.clean_ephys_data(mouse_c["rewards_configs"], mouse_c["locations"], mouse_c["neurons"], mouse_c["timings"], mouse_c_clean["recday"])
-
-# if do_per_run == True:
-#     c_reg_per_run = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_c_clean["rewards_configs"], mouse_c_clean["locations"], mouse_c_clean["neurons"], mouse_c_clean["timings"], contrast_matrix, mouse_c_clean["recday"],contrast_split= contrast_split_by_phase,  continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
-# else:
-#     # cleaned datasat
-#     c_reg_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_c_clean["rewards_configs"], mouse_c_clean["locations"], mouse_c_clean["neurons"], mouse_c_clean["timings"], mouse_c_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
-#     # whole dataset
-#     #c_reg_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_c["rewards_configs"], mouse_c["locations"], mouse_c["neurons"], mouse_c["timings"], mouse_c["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-
-# if do_neuron_subset == True:
-#     # define a mask for clock and midnight neurons, respectively
-#     midnight_neurons = []
-#     midnight_mask = np.where(mouse_c["neuron_type"][:,0] == 1)[0]
-#     for neurons in mouse_c_clean["neurons"]:
-#         midnight_neurons.append(neurons[midnight_mask, :])
-    
-#     c_midn_result_dict = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_c_clean["rewards_configs"], mouse_c_clean["locations"], midnight_neurons, mouse_c_clean["timings"], contrast_matrix, mouse_c_clean["recday"], contrast_split= contrast_split_by_phase ,continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
-    
-#     # # define a mask for clock and midnight neurons, respectively
-#     # clock_neurons = []
-#     # midnight_neurons = []
-#     # clock_n_mask = mouse_c_clean["cells"][:,-1]
-#     # midnight_n_mask = np.logical_and(clock_n_mask, mouse_c_clean["cells"][:,-2])
-    
-#     # for neurons in mouse_c_clean["neurons"]:
-#     #     clock_neurons.append(neurons[clock_n_mask, :])
-#     #     midnight_neurons.append(neurons[midnight_n_mask, :])
-        
-#     # c_midn_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_c_clean["rewards_configs"], mouse_c_clean["locations"], midnight_neurons, mouse_c_clean["timings"], mouse_c_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-#     # c_clocks_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_c_clean["rewards_configs"], mouse_c_clean["locations"], clock_neurons, mouse_c_clean["timings"], mouse_c_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-
-#     # print(f"Neuron number of recday {mouse_c['recday']} is {len(mouse_c_clean['neurons'][0])}, Midnight neuron number is {len(midnight_neurons[0])} and Clock neurons are {len(clock_neurons[0])}")    
-
-# if save: 
-#     if do_per_run == True:
-#         with open(os.path.join(out_path,f"{mouse_c_clean['recday']}_res_perrun"), 'wb') as f:
-#             pickle.dump(c_reg_per_run, f)
-#     else:     
-#         with open(os.path.join(out_path,f"{mouse_c_clean['recday']}_res_dic"), 'wb') as f:
-#             pickle.dump(c_reg_result_dict, f)
-#     if do_neuron_subset == True:
-#         with open(os.path.join(out_path,f"{mouse_c_clean['recday']}_midn_dic"), 'wb') as f:
-#             pickle.dump(c_midn_result_dict, f)
-        
-#         # with open(os.path.join(out_path,f"{mouse_c_clean['recday']}_clock_dic"), 'wb') as f:
-#         #     pickle.dump(c_clocks_result_dict, f)
-
-# # mouse d
-# mouse_d_clean =  {}
-# mouse_d_clean["neuron_type"] = mouse_d["neuron_type"].copy()
-# mouse_d_clean["cells"] = mouse_d["cells"].copy()
-# mouse_d_clean["recday"] = mouse_d["recday"]
-# mouse_d_clean["rewards_configs"], mouse_d_clean["locations"], mouse_d_clean["neurons"], mouse_d_clean["timings"] = mc.analyse.analyse_ephys.clean_ephys_data(mouse_d["rewards_configs"], mouse_d["locations"], mouse_d["neurons"], mouse_d["timings"], mouse_d_clean["recday"])
-
-# if do_per_run == True:
-#     d_reg_per_run = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_d_clean["rewards_configs"], mouse_d_clean["locations"], mouse_d_clean["neurons"], mouse_d_clean["timings"], contrast_matrix, mouse_d_clean["recday"], contrast_split= contrast_split_by_phase,  continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
-# else:
-#     # cleaned datasat
-#     d_reg_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_d_clean["rewards_configs"], mouse_d_clean["locations"], mouse_d_clean["neurons"], mouse_d_clean["timings"], mouse_d_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
-#     # whole dataset
-#     #d_reg_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_d["rewards_configs"], mouse_d["locations"], mouse_d["neurons"], mouse_d["timings"], mouse_d["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-
-# if do_neuron_subset == True:
-#     # define a mask for clock and midnight neurons, respectively
-#     midnight_neurons = []
-#     midnight_mask = np.where(mouse_d_clean["neuron_type"][:,0] == 1)[0]
-#     for neurons in mouse_d_clean["neurons"]:
-#         midnight_neurons.append(neurons[midnight_mask, :])
-    
-#     d_midn_result_dict = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_d_clean["rewards_configs"], mouse_d_clean["locations"], midnight_neurons, mouse_d_clean["timings"], contrast_matrix, mouse_d_clean["recday"], contrast_split= contrast_split_by_phase ,continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
-    
-# # define a mask for clock and midnight neurons, respectively
-#     # clock_neurons = []
-#     # midnight_neurons = []
-#     # clock_n_mask = mouse_d_clean["cells"][:,-1]
-#     # midnight_n_mask = np.logical_and(clock_n_mask, mouse_d_clean["cells"][:,-2])
-    
-#     # for neurons in mouse_d_clean["neurons"]:
-#     #     clock_neurons.append(neurons[clock_n_mask, :])
-#     #     midnight_neurons.append(neurons[midnight_n_mask, :])
-    
-#     # print(f"Neuron number of recday {mouse_d['recday']} is {len(mouse_d_clean['neurons'][0])}, Midnight neuron number is {len(midnight_neurons[0])} and Clock neurons are {len(clock_neurons[0])}")    
-        
-#     # d_midn_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_d_clean["rewards_configs"], mouse_d_clean["locations"], midnight_neurons, mouse_d_clean["timings"], mouse_d_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-#     # d_clocks_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_d_clean["rewards_configs"], mouse_d_clean["locations"], clock_neurons, mouse_d_clean["timings"], mouse_d_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-
-# if save: 
-#     if do_per_run == True:
-#         with open(os.path.join(out_path,f"{mouse_d_clean['recday']}_res_perrun"), 'wb') as f:
-#             pickle.dump(d_reg_per_run, f)
-#     else:        
-#         with open(os.path.join(out_path,f"{mouse_d_clean['recday']}_res_dic"), 'wb') as f:
-#             pickle.dump(d_reg_result_dict, f)
-#     if do_neuron_subset == True: 
-#         with open(os.path.join(out_path,f"{mouse_d_clean['recday']}_midn_dic"), 'wb') as f:
-#             pickle.dump(d_midn_result_dict, f)
-        
-#         # with open(os.path.join(out_path,f"{mouse_d_clean['recday']}_clock_dic"), 'wb') as f:
-#         #     pickle.dump(d_clocks_result_dict, f)
-
-
-
-# # mouse e
-# mouse_e_clean =  {}
-# mouse_e_clean["neuron_type"] = mouse_e["neuron_type"].copy()
-# mouse_e_clean["cells"] = mouse_e["cells"].copy()
-# mouse_e_clean["recday"] = mouse_e["recday"]
-# mouse_e_clean["rewards_configs"], mouse_e_clean["locations"], mouse_e_clean["neurons"], mouse_e_clean["timings"] = mc.analyse.analyse_ephys.clean_ephys_data(mouse_e["rewards_configs"], mouse_e["locations"], mouse_e["neurons"], mouse_e["timings"], mouse_e_clean["recday"])
-
-# if do_per_run == True:
-#     e_reg_per_run = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_e_clean["rewards_configs"], mouse_e_clean["locations"], mouse_e_clean["neurons"], mouse_e_clean["timings"], contrast_matrix, mouse_e_clean["recday"], contrast_split= contrast_split_by_phase,  continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
-# else:
-#     # cleaned datasat
-#     e_reg_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_e_clean["rewards_configs"], mouse_e_clean["locations"], mouse_e_clean["neurons"], mouse_e_clean["timings"], mouse_e_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
-#     #whole dataset
-#     #e_reg_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_e["rewards_configs"], mouse_e["locations"], mouse_e["neurons"], mouse_e["timings"], mouse_e["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3)
-
-# if do_neuron_subset == True:
-#     # define a mask for clock and midnight neurons, respectively
-#     midnight_neurons = []
-#     midnight_mask = np.where(mouse_e_clean["neuron_type"][:,0] == 1)[0]
-#     for neurons in mouse_e_clean["neurons"]:
-#         midnight_neurons.append(neurons[midnight_mask, :])
-    
-#     e_midn_result_dict = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_e_clean["rewards_configs"], mouse_e_clean["locations"], midnight_neurons, mouse_e_clean["timings"], contrast_matrix, mouse_e_clean["recday"], contrast_split= contrast_split_by_phase ,continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
-    
-#     # # define a mask for clock and midnight neurons, respectively
-#     # clock_neurons = []
-#     # midnight_neurons = []
-#     # clock_n_mask = mouse_e_clean["cells"][:,-1]
-#     # midnight_n_mask = np.logical_and(clock_n_mask, mouse_e_clean["cells"][:,-2])
-    
-#     # for neurons in mouse_e_clean["neurons"]:
-#     #     clock_neurons.append(neurons[clock_n_mask, :])
-#     #     midnight_neurons.append(neurons[midnight_n_mask, :])
-        
-#     # e_midn_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_e_clean["rewards_configs"], mouse_e_clean["locations"], midnight_neurons, mouse_e_clean["timings"], mouse_e_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-#     # e_clocks_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_e_clean["rewards_configs"], mouse_e_clean["locations"], clock_neurons, mouse_e_clean["timings"], mouse_e_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-    
-#     # print(f"Neuron number of recday {mouse_e['recday']} is {len(mouse_e_clean['neurons'][0])}, Midnight neuron number is {len(midnight_neurons[0])} and Clock neurons are {len(clock_neurons[0])}")    
-
-# if save: 
-#     if do_per_run == True:
-#         with open(os.path.join(out_path,f"{mouse_e_clean['recday']}_res_perrun"), 'wb') as f:
-#             pickle.dump(e_reg_per_run, f)
-#     else:          
-#         with open(os.path.join(out_path,f"{mouse_e_clean['recday']}_res_dic"), 'wb') as f:
-#             pickle.dump(e_reg_result_dict, f)
-#     if do_neuron_subset == True:
-#         with open(os.path.join(out_path,f"{mouse_e_clean['recday']}_midn_dic"), 'wb') as f:
-#             pickle.dump(e_midn_result_dict, f)
-        
-#         # with open(os.path.join(out_path,f"{mouse_e_clean['recday']}_clock_dic"), 'wb') as f:
-#         #     pickle.dump(e_clocks_result_dict, f)
-
-
-# # mouse f
-# mouse_f_clean =  {}
-# mouse_f_clean["neuron_type"] = mouse_f["neuron_type"].copy()
-# mouse_f_clean["cells"] = mouse_f["cells"].copy()
-# mouse_f_clean["recday"] = mouse_f["recday"]
-# mouse_f_clean["rewards_configs"], mouse_f_clean["locations"], mouse_f_clean["neurons"], mouse_f_clean["timings"] = mc.analyse.analyse_ephys.clean_ephys_data(mouse_f["rewards_configs"], mouse_f["locations"], mouse_f["neurons"], mouse_f["timings"], mouse_f_clean["recday"])
-
-# print('now all neurons') 
-
-# if do_per_run == True:
-#     f_reg_per_run = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_f_clean["rewards_configs"], mouse_f_clean["locations"], mouse_f_clean["neurons"], mouse_f_clean["timings"], contrast_matrix, mouse_f_clean["recday"], contrast_split= contrast_split_by_phase, continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
-# else: 
-#     # cleaned datasat
-#     f_reg_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_f_clean["rewards_configs"], mouse_f_clean["locations"], mouse_f_clean["neurons"], mouse_f_clean["timings"], mouse_f_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
-#     # whole dataset
-#     #f_reg_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_f["rewards_configs"], mouse_f["locations"], mouse_f["neurons"], mouse_f["timings"], mouse_f["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-
-# if do_neuron_subset == True:
-#     # define a mask for clock and midnight neurons, respectively
-#     midnight_neurons = []
-#     midnight_mask = np.where(mouse_f_clean["neuron_type"][:,0] == 1)[0]
-#     for neurons in mouse_f_clean["neurons"]:
-#         midnight_neurons.append(neurons[midnight_mask, :])
-    
-#     f_midn_result_dict = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_f_clean["rewards_configs"], mouse_f_clean["locations"], midnight_neurons, mouse_f_clean["timings"], contrast_matrix, mouse_f_clean["recday"], contrast_split= contrast_split_by_phase ,continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
-    
-#     # # define a mask for clock and midnight neurons, respectively
-#     # clock_neurons = []
-#     # midnight_neurons = []
-#     # clock_n_mask = mouse_f_clean["cells"][:,-1]
-#     # midnight_n_mask = np.logical_and(clock_n_mask, mouse_f_clean["cells"][:,-2])
-    
-#     # for neurons in mouse_f_clean["neurons"]:
-#     #     clock_neurons.append(neurons[clock_n_mask, :])
-#     #     midnight_neurons.append(neurons[midnight_n_mask, :])
-    
-#     # print('now only midnight neurons')      
-#     # f_midn_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_f_clean["rewards_configs"], mouse_f_clean["locations"], midnight_neurons, mouse_f_clean["timings"], mouse_f_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-#     # print('now only clock neurons neurons')  
-#     # f_clocks_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_f_clean["rewards_configs"], mouse_f_clean["locations"], clock_neurons, mouse_f_clean["timings"], mouse_f_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-
-#     # print(f"Neuron number of recday {mouse_f['recday']} is {len(mouse_f_clean['neurons'][0])}, Midnight neuron number is {len(midnight_neurons[0])} and Clock neurons are {len(clock_neurons[0])}")    
-
-# if save: 
-#     if do_per_run == True:
-#         with open(os.path.join(out_path,f"{mouse_f_clean['recday']}_res_perrun"), 'wb') as f:
-#             pickle.dump(f_reg_per_run, f)
-#     else:
-#         with open(os.path.join(out_path,f"{mouse_f_clean['recday']}_res_dic"), 'wb') as f:
-#             pickle.dump(f_reg_result_dict, f)
-#     if do_neuron_subset == True: 
-#         with open(os.path.join(out_path,f"{mouse_f_clean['recday']}_midn_dic"), 'wb') as f:
-#             pickle.dump(f_midn_result_dict, f)
-        
-#         # with open(os.path.join(out_path,f"{mouse_f_clean['recday']}_clock_dic"), 'wb') as f:
-#         #     pickle.dump(f_clocks_result_dict, f)
-
-
-# # mouse g
-# mouse_g_clean =  {}
-# mouse_g_clean["neuron_type"] = mouse_g["neuron_type"].copy()
-# mouse_g_clean["cells"] = mouse_g["cells"].copy()
-# mouse_g_clean["recday"] = mouse_g["recday"]
-# mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], mouse_g_clean["neurons"], mouse_g_clean["timings"] = mc.analyse.analyse_ephys.clean_ephys_data(mouse_g["rewards_configs"], mouse_g["locations"], mouse_g["neurons"], mouse_g["timings"], mouse_g_clean["recday"])
-
-# if do_per_run == True:
-#     g_reg_per_run = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], mouse_g_clean["neurons"], mouse_g_clean["timings"], contrast_matrix, mouse_g_clean["recday"], contrast_split= contrast_split_by_phase, continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
-# else:
-#     print('now all neurons')  
-#     # cleaned datasat
-#     g_reg_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], mouse_g_clean["neurons"], mouse_g_clean["timings"], mouse_g_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
-#     #g_reg_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_g["rewards_configs"], mouse_g["locations"], mouse_g["neurons"], mouse_g["timings"], mouse_g["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-        
-#     # check how all of this looks like if you separate the trials.
-#     # g_reg_result_dict_split = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], mouse_g_clean["neurons"], mouse_g_clean["timings"], contrast_matrix, mouse_g_clean['recday'], continuous=True, no_bins_per_state= 10, split_by_phase= 0, number_phase_neurons= 3, mask_within= True)
-    
-# if do_neuron_subset == True:
-#     # define a mask for clock and midnight neurons, respectively
-#     midnight_neurons = []
-#     midnight_mask = np.where(mouse_g_clean["neuron_type"][:,0] == 1)[0]
-#     for neurons in mouse_g_clean["neurons"]:
-#         midnight_neurons.append(neurons[midnight_mask, :])
-    
-#     g_midn_result_dict = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], midnight_neurons, mouse_g_clean["timings"], contrast_matrix, mouse_g_clean["recday"], contrast_split= contrast_split_by_phase ,continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
-    
-#     # # define a mask for clock and midnight neurons, respectively
-#     # clock_neurons = []
-#     # midnight_neurons = []
-#     # clock_n_mask = mouse_g_clean["cells"][:,-1]
-#     # midnight_n_mask = np.logical_and(clock_n_mask, mouse_g_clean["cells"][:,-2])
-    
-#     # for neurons in mouse_g_clean["neurons"]:
-#     #     clock_neurons.append(neurons[clock_n_mask, :])
-#     #     midnight_neurons.append(neurons[midnight_n_mask, :])
-        
-#     # print('now only midnight neurons')    
-#     # g_midn_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], midnight_neurons, mouse_g_clean["timings"], mouse_g_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-#     # print('now only clock neurons neurons')  
-#     # g_clocks_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_g_clean["rewards_configs"], mouse_g_clean["locations"], clock_neurons, mouse_g_clean["timings"], mouse_g_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-    
-#     # print(f"Neuron number of recday {mouse_g['recday']} is {len(mouse_g_clean['neurons'][0])}, Midnight neuron number is {len(midnight_neurons[0])} and Clock neurons are {len(clock_neurons[0])}")    
-
-# if save:
-#     if do_per_run == True:
-#         with open(os.path.join(out_path,f"{mouse_g_clean['recday']}_res_perrun"), 'wb') as f:
-#             pickle.dump(g_reg_per_run, f)
-#     else:        
-#         with open(os.path.join(out_path,f"{mouse_g_clean['recday']}_res_dic"), 'wb') as f:
-#             pickle.dump(g_reg_result_dict, f)
-#     if do_neuron_subset == True:
-#         with open(os.path.join(out_path,f"{mouse_g_clean['recday']}_midn_dic"), 'wb') as f:
-#             pickle.dump(g_midn_result_dict, f)
-        
-#         # with open(os.path.join(out_path,f"{mouse_g_clean['recday']}_clock_dic"), 'wb') as f:
-#         #     pickle.dump(g_clocks_result_dict, f)
-
-
-# # mouse h
-# mouse_h_clean =  {}
-# mouse_h_clean["neuron_type"] = mouse_h["neuron_type"].copy()
-# mouse_h_clean["cells"] = mouse_h["cells"].copy()
-# mouse_h_clean["recday"] = mouse_h["recday"]
-# mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], mouse_h_clean["neurons"], mouse_h_clean["timings"] = mc.analyse.analyse_ephys.clean_ephys_data(mouse_h["rewards_configs"], mouse_h["locations"], mouse_h["neurons"], mouse_h["timings"], mouse_h_clean["recday"])
-
-# if do_per_run == True:
-#     h_reg_per_run = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], mouse_h_clean["neurons"], mouse_h_clean["timings"], contrast_matrix, mouse_h_clean["recday"], contrast_split= contrast_split_by_phase, continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
-# else:
-#     h_reg_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], mouse_h_clean["neurons"], mouse_h_clean["timings"], mouse_h_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
-
-#     # compare what happens if I take the whole dataset.
-#     #h_reg_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_h["rewards_configs"], mouse_h["locations"], mouse_h["neurons"], mouse_h["timings"], mouse_h["recday"], plotting = True, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-
-
-# if do_neuron_subset == True: 
-#     # define a mask for clock and midnight neurons, respectively
-#     midnight_neurons = []
-#     midnight_mask = np.where(mouse_h_clean["neuron_type"][:,0] == 1)[0]
-#     for neurons in mouse_h_clean["neurons"]:
-#         midnight_neurons.append(neurons[midnight_mask, :])
-    
-#     h_midn_result_dict = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], midnight_neurons, mouse_h_clean["timings"], contrast_matrix, mouse_h_clean["recday"], contrast_split= contrast_split_by_phase ,continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True)
-    
-#     # # define a mask for clock and midnight neurons, respectively
-#     # clock_neurons = []
-#     # midnight_neurons = []
-#     # clock_n_mask = mouse_h_clean["cells"][:,-1]
-#     # midnight_n_mask = np.logical_and(clock_n_mask, mouse_h_clean["cells"][:,-2])
-    
-#     # for neurons in mouse_h_clean["neurons"]:
-#     #     clock_neurons.append(neurons[clock_n_mask, :])
-#     #     midnight_neurons.append(neurons[midnight_n_mask, :])
-        
-#     # h_midn_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], midnight_neurons, mouse_h_clean["timings"], mouse_h_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-#     # h_clocks_result_dict = mc.analyse.analyse_ephys.reg_across_tasks(mouse_h_clean["rewards_configs"], mouse_h_clean["locations"], clock_neurons, mouse_h_clean["timings"], mouse_h_clean["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within= True, split_by_phase = True)
-    
-#     # print(f"Neuron number of recday {mouse_h['recday']} is {len(mouse_h_clean['neurons'][0])}, Midnight neuron number is {len(midnight_neurons[0])} and Clock neurons are {len(clock_neurons[0])}")    
-
-# if save: 
-#     if do_per_run == True:
-#         with open(os.path.join(out_path,f"{mouse_h_clean['recday']}_res_perrun"), 'wb') as f:
-#             pickle.dump(h_reg_per_run, f)
-#     else:        
-#         with open(os.path.join(out_path,f"{mouse_h_clean['recday']}_res_dic"), 'wb') as f:
-#             pickle.dump(h_reg_result_dict, f)
-#     if do_neuron_subset == True:
-#         with open(os.path.join(out_path,f"{mouse_h_clean['recday']}_midn_dic"), 'wb') as f:
-#             pickle.dump(h_midn_result_dict, f)
-        
-#         # with open(os.path.join(out_path,f"{mouse_h_clean['recday']}_clock_dic"), 'wb') as f:
-#         #     pickle.dump(h_clocks_result_dict, f)
-
-
-
-
-
-
-# THIS CAN BE EASILY ADJUSTED, JUST COMMENTED OUT SO I CAN STORE THE RESULTS!!
-
-
-# PLOTTING
+# PLOTTING what I have on my posters in january 2025
 #  4 regressors
-data_normal_clocks_clocks = []
-data_normal_clocks_midn = []
-data_normal_clocks_phas = []
-data_normal_clocks_loc = []
-data_normal_midn_clocks = []
-data_normal_midn_midn = []
-data_normal_midn_phas = []
-data_normal_midn_loc = []
-data_normal_all_clocks_t = []
-data_normal_all_midn_t = []
-data_normal_all_phas_t = []
-data_normal_all_loc_t= []
-data_normal_all_state_t= []
-
+data_normal_clocks_clocks, data_normal_clocks_midn, data_normal_clocks_phas, data_normal_clocks_loc = [], [], [], []
+data_normal_midn_clocks, data_normal_midn_midn, data_normal_midn_phas, data_normal_midn_loc = [], [], [], []
+data_normal_all_clocks_t, data_normal_all_midn_t, data_normal_all_phas_t, data_normal_all_loc_t, data_normal_all_state_t= [], [], [], [], []
 # for the t-test
-data_normal_all_clocks_b = []
-data_normal_all_midn_b = []
-data_normal_all_phas_b = []
-data_normal_all_loc_b= []
-data_normal_all_state_b= []
+data_normal_all_clocks_b, data_normal_all_midn_b, data_normal_all_phas_b, data_normal_all_loc_b, data_normal_all_state_b= [], [], [], [], []
 
-
-# for mouse_res in clock_results:
-#     data_normal_clocks_clocks.append(clock_results[mouse_res]['normal']['t_vals'][1])
-#     data_normal_clocks_midn.append(clock_results[mouse_res]['normal']['t_vals'][2])
-#     data_normal_clocks_phas.append(clock_results[mouse_res]['normal']['t_vals'][3])
-#     data_normal_clocks_loc.append(clock_results[mouse_res]['normal']['t_vals'][4])
-
-if (load_old == False) and (do_per_run == False):
-    all_results = {}
-    all_results['mouse_a'] = a_reg_result_dict
-    all_results['mouse_b'] = b_reg_result_dict
-    all_results['mouse_c'] = c_reg_result_dict
-    all_results['mouse_d'] = d_reg_result_dict
-    all_results['mouse_e'] = e_reg_result_dict
-    all_results['mouse_f'] = f_reg_result_dict
-    all_results['mouse_g'] = g_reg_result_dict
-    all_results['mouse_h'] = h_reg_result_dict
-    
-    
 if load_old == True:   
     for mouse_res in midnight_results:
         data_normal_midn_clocks.append(midnight_results[mouse_res]['normal']['t_vals'][1])
@@ -648,36 +139,8 @@ if load_old == True:
         data_normal_midn_phas.append(midnight_results[mouse_res]['normal']['t_vals'][3])
         data_normal_midn_loc.append(midnight_results[mouse_res]['normal']['t_vals'][4])
 
-# for mouse_res in all_results:    
-#     data_normal_all_clocks_t.append(all_results[mouse_res]['normal']['t_vals'][1])
-#     data_normal_all_midn_t.append(all_results[mouse_res]['normal']['t_vals'][2])
-#     data_normal_all_phas_t.append(all_results[mouse_res]['normal']['t_vals'][3])
-#     data_normal_all_loc_t.append(all_results[mouse_res]['normal']['t_vals'][4])
-#     data_normal_all_state_t.append(all_results[mouse_res]['normal']['t_vals'][5])
-    
-#     data_normal_all_clocks_b.append(all_results[mouse_res]['normal']['coefs'][0])
-#     data_normal_all_midn_b.append(all_results[mouse_res]['normal']['coefs'][1])
-#     data_normal_all_phas_b.append(all_results[mouse_res]['normal']['coefs'][2])
-#     data_normal_all_loc_b.append(all_results[mouse_res]['normal']['coefs'][3])
-#     data_normal_all_state_b.append(all_results[mouse_res]['normal']['coefs'][4])
-
-
-#data_comp = [data_normal_all_clocks, data_normal_all_midn, data_normal_all_phas, data_normal_all_loc, data_normal_midn_clocks, data_normal_midn_midn, data_normal_midn_phas, data_normal_midn_loc]
-#label_string_list_comp = ['all_clocks', 'all_midn', 'all_phas', 'all_loc', 'mid_clocks', 'mid_midn', 'mid_phas', 'mid_loc']
-
-# # betas
-# betas_across_subjects = [data_normal_all_clocks_b, data_normal_all_midn_b, data_normal_all_phas_b, data_normal_all_loc_b, data_normal_all_state_b]
-
-# # t-vals
-# data_to_plot = [data_normal_all_clocks_t, data_normal_all_midn_t, data_normal_all_phas_t, data_normal_all_loc_t, data_normal_all_state_t]
-
-
-# label_string_list_plot = ['SMB-Model', 'Partial SMB', "Subgoal-\n Progress", 'Location', 'State']
-# label_tick_list_plot = [1,2,3,4,5]
-# label_tick_list_plot = [0.5, 1.5, 2.5, 3.5, 4.5]
-
-# UNDO
-for mouse_res in all_results:    
+for mouse_res in all_results: 
+    # depending if I want to include more regressors, you have to add more! 
     data_normal_all_clocks_t.append(all_results[mouse_res]['normal']['t_vals'][1])
     data_normal_all_phas_t.append(all_results[mouse_res]['normal']['t_vals'][2])
     data_normal_all_loc_t.append(all_results[mouse_res]['normal']['t_vals'][3])
@@ -700,17 +163,21 @@ label_tick_list_plot = [1,2,3,4]
 label_tick_list_plot = [0.5, 1.5, 2.5, 3.5]
 
 title_string_plot = 'betas per complete mouse dataset, regression with 5 models, across tasks, averaged over runs'
-
 mc.analyse.analyse_ephys.plotting_hist_scat(betas_across_subjects, label_string_list_plot, label_tick_list_plot, title_string_plot, save_fig=out_path) 
 
 
 
+
+
+# 17.01.2025 THIS IS WHERE I STOPPED!
+# I restructred the data into dicitonaries instead of singular mice.
+
 # then also just plot the betas per mouse across repeats.
 # so one dot is one beta where all different tasks are concatinated, but every run is treated separately.
-data_only_clocks_totest = [a_reg_per_run['coeffs_only_clock'],b_reg_per_run['coeffs_only_clock'],c_reg_per_run['coeffs_only_clock'],d_reg_per_run['coeffs_only_clock'],e_reg_per_run['coeffs_only_clock'],f_reg_per_run['coeffs_only_clock'], g_reg_per_run['coeffs_only_clock'], h_reg_per_run['coeffs_only_clock']]
-
-data_only_clocks_toplot = [a_reg_per_run['t-vals_only_clock'][:,1],b_reg_per_run['t-vals_only_clock'][:,1],c_reg_per_run['t-vals_only_clock'][:,1],d_reg_per_run['t-vals_only_clock'][:,1],e_reg_per_run['t-vals_only_clock'][:,1],f_reg_per_run['t-vals_only_clock'][:,1], g_reg_per_run['t-vals_only_clock'][:,1], h_reg_per_run['t-vals_only_clock'][:,1]]
-
+data_only_clocks_totest, data_only_clocks_toplot = [], []
+for mouse in regs_per_run:
+    data_only_clocks_totest.append(regs_per_run[mouse]['coeffs_only_clock'])
+    data_only_clocks_toplot.append(regs_per_run[mouse]['t-vals_only_clock'][:,1])
 
 for i, mouse in enumerate(data_only_clocks_totest):
     t_statistic, p_value = ttest_1samp(mouse, 0, alternative='greater')

@@ -2169,13 +2169,6 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
 
     if split_clock == True:
         result_dict.update(split_clock_model_dict)
-        
-    # if only_rew == True:
-    #     result_dict['midn_model'] = midn_model
-    #     result_dict['clo_model'] = clo_model
-    #     result_dict['state'] = stat_model
-    #     result_dict['task_prog'] = task_prog_matrix
-    #     result_dict['location'] = loc_model
     if lag_weighting == True:
         result_dict['midnight_only-rew'] = midn_model
         result_dict['clocks_only-rew'] = clo_model
@@ -2191,8 +2184,7 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
     else:
         result_dict['midnight'] = midn_model
         result_dict['clocks'] = clo_model
-        
-        
+  
     return result_dict
 
 

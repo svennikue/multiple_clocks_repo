@@ -1206,7 +1206,7 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
 
 
 def load_ephys_data(dict_labels, Data_folder):
-    # import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
     data = {}
     rec_days = ['me11_05122021_06122021', 'me11_01122021_02122021', 'me10_09122021_10122021', 'me08_10092021_11092021', 
                 'ah04_09122021_10122021', 'ah04_05122021_06122021', 'ah04_01122021_02122021', 'ah04_01122021_02122021' ,
@@ -1543,12 +1543,9 @@ def prep_ephys_per_trial(timings_all, locations_all, no_trial_in_each_task, task
     task_config = [int((field_no-1)) for field_no in task_config]
 
     # now select the run you are currently focussing on.
-    # I have no idea why I wrote thi... but I think it has to be this:
     row = timings_task[no_trial_in_each_task]
-    # row =  timings_task[-(no_trial_in_each_task+1),:].copy()
     # current data of this specific run
     trajectory = locations_task[row[0]:row[-1]].copy()
-
 
     curr_neurons = neurons[task_no][:,row[0]:row[-1]].copy()
     # z-score neurons
@@ -1596,8 +1593,7 @@ import colormaps as cmaps
 
 
 def plotting_hist_scat(data_list, label_string_list, label_tick_list, title_string, save_fig = False):
-    import pdb; pdb.set_trace()
-    
+    # import pdb; pdb.set_trace()
 
     fig, ax = plt.subplots(figsize=(8,6))
     ax.boxplot(data_list, medianprops=dict(color='black'))
@@ -1650,9 +1646,6 @@ def plotting_hist_scat(data_list, label_string_list, label_tick_list, title_stri
         if significance:
             ax.text(i + 1, global_min - padding*4, significance, ha='center', va='bottom', fontsize=30, color='black')
     
-
-
-    
     # # check if these are better than 0.
     # from scipy.stats import ttest_1samp
     # for i, model in enumerate(data_list):
@@ -1672,34 +1665,6 @@ def plotting_hist_scat(data_list, label_string_list, label_tick_list, title_stri
     plt.show()
 
 
-
-    # fig, ax = plt.subplots(figsize=(8,6))
-    # ax.boxplot(data_list)
-    # sigma = 0.08
-    # mu = 0.01
-    # #cmaps.Pastel1
-    # cmap = plt.get_cmap('Pastel1')
-    # for index, contrast in enumerate(data_list):
-    #     noise = np.ones(len(data_list[index])) + sigma * np.random.randn(len(data_list[index])) + mu
-    #     data_to_plot = contrast.copy()
-    #     for i, elem in enumerate(data_to_plot):
-    #         data_to_plot[i] = elem +noise[index]     
-    #     ax.scatter(noise+index, data_to_plot, cmap=cmap, marker='o', s=100, edgecolors = 'black', linewidth = 1)
-    
-    # ax.set_xticks(label_tick_list)
-    # plt.xticks(rotation = 45)
-    # ax.set_xticklabels(label_string_list, fontsize = 18)
-    # #ax.set_yticklabels(fontsize = 18)
-    # plt.axhline(0, color='grey', ls='dashed', linewidth = 1)
-    # plt.title(title_string)
-    
-
-    #ax.set_yticklabels([str(f) for f in field_names], fontsize = 16)
-    
-    
-    
-
-    
     if save_fig:
         fig.savefig(f"{save_fig}{title_string}.png", dpi=300, bbox_inches='tight')
         fig.savefig(f"{save_fig}{title_string}.tiff", dpi=300, bbox_inches='tight')
