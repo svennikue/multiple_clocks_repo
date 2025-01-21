@@ -430,26 +430,29 @@ def GLM_RDMs(data_matrix, regressor_dict, mask_within = True, no_tasks = None, t
             regressor_dict[regressor_matrix][within_task_mask == 1] = np.nan
     
     if plotting == True:
-        plot_data = np.tril(data_matrix, -1)
+        # CONTINUE HERE! 
+        import pdb; pdb.set_trace()
+        plot_data = np.triu(data_matrix, -1)
         plt.figure()
         plt.imshow(plot_data, aspect = 'auto')
         for interval in range(0, len(data_matrix), int(len(data_matrix)/(no_tasks))):
             plt.axvline(interval, color='white', ls='dashed')
     
+    #import pdb; pdb.set_trace()
     dimension = len(data_matrix) 
     reg_labels = []
     # import pdb; pdb.set_trace()
     for i, regressor_matrix in sorted(enumerate(regressor_dict)):
         reg_labels.append(regressor_matrix)
         if i == 0:
-            X = list(regressor_dict[regressor_matrix][np.tril_indices(dimension, -1)])
+            X = list(regressor_dict[regressor_matrix][np.triu_indices(dimension, -1)])
         else:
-            diag_reg_array = list(regressor_dict[regressor_matrix][np.tril_indices(dimension, -1)])
+            diag_reg_array = list(regressor_dict[regressor_matrix][np.triu_indices(dimension, -1)])
             X = np.vstack((X, diag_reg_array))
      
     # get rid of all nans, equally for data and regressors.
     
-    diag_array_data = data_matrix[np.tril_indices(dimension , -1)]
+    diag_array_data = data_matrix[np.triu_indices(dimension , -1)]
     
     if len(X) > 10:
         # this means that there is only one regressor
@@ -471,6 +474,12 @@ def GLM_RDMs(data_matrix, regressor_dict, mask_within = True, no_tasks = None, t
     
     
     if len(X) > 10: 
+        # CONTINUE HERE! 
+        import pdb; pdb.set_trace()
+        # WHY IS X ONLY NANS????
+        #
+        #
+        
         regression_results = LinearRegression().fit(x_cl_reshaped.reshape(-1, 1), diag_array_data)
     else:
         regression_results = LinearRegression().fit(x_cl_reshaped, diag_array_data)

@@ -1237,9 +1237,16 @@ def set_location_contin(walked_path, step_time, grid_size = 3, fire_radius = 0.2
 #4.1 ephys models: continuous - clocks - midnight - phase - location
 
 # ok now I need the same thing but for my ephys stuff.
-def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_number,  grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, plot = False):
-    # import pdb; pdb.set_trace()
-
+def set_continous_models_ephys(beh_data_curr_rep_dict,  grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, plot = False, split_clock = False, only_rew = False, only_path = False):
+    # first extract from dict
+    step_number = beh_data_curr_rep_dict['step_number']
+    subpath_timings = beh_data_curr_rep_dict['timings_repeat']
+    # note: I might need to add a start time for the human data. 
+    # timings need to be start- findA, findB, findC,findD
+    make_step = beh_data_curr_rep_dict['index_make_step']
+    walked_path = beh_data_curr_rep_dict['trajectory']
+    
+    cumsumsteps = np.cumsum(step_number)
     # build all possible coord combinations 
     all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
     # code up the 2d location neurons. this is e.g. a 3x3 grid tiled with multivatiate
@@ -1248,7 +1255,6 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
     for coord in all_coords:
         neuron_loc_functions.append(multivariate_normal(coord, cov = fire_radius))
     
-        
     # make the phase continuum
     # set the phases such that the mean is between 0 and 1/no_phase_neurons; 1/no_phase_neurons and 2/no_phase_neurons,
     # and 2/no_phase_neurons and 1.
@@ -1259,30 +1265,24 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
         means_at_phase = means_at_phase[1::2].copy()
         for div in means_at_phase: 
             neuron_phase_functions.append(norm(loc = div, scale = 1/(no_phase_neurons/2))) 
-    
         # # to plot the functions.
         # x = np.linspace(0,1,1000)
         # plt.figure();
         # for neuron in range(0, len(neuron_phase_functions)):
         #     plt.plot(x, neuron_phase_functions[neuron].pdf(x))
         # to plot the functions.
-
-        
+ 
     if wrap_around == 1:
         means_at_phase = np.linspace(-np.pi, np.pi, (no_phase_neurons*2)+1)
         means_at_phase = means_at_phase[1::2].copy()
-        
         for div in means_at_phase:
             neuron_phase_functions.append(scipy.stats.vonmises(1/(no_phase_neurons/10), loc=div))
             #neuron_phase_functions.append(scipy.stats.vonmises(1/(no_phase_neurons/2), loc=div))
-            # careful! this has to be read differently.
-        
         # to plot the functions.
         # plt.figure(); 
         # for f in neuron_phase_functions:
         #     plt.plot(np.linspace(0,1,1000), f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)/np.max(f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)))
                    
-
     # make the state continuum
     neuron_state_functions = []
     #if wrap_around == 0:
@@ -1295,15 +1295,12 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
     # plt.figure();
     # for neuron in range(0, len(neuron_state_functions)):
     #     plt.plot(x, neuron_state_functions[neuron].pdf(x))
-
-        
-       
-    # cumsumsteps = np.cumsum(step_number)
+    
     # this time, do it per subpath.
+    result_model_dict = {}
     for count_paths, pathlength in enumerate(step_number):
         # first step: divide into subpaths
         curr_path = walked_path[subpath_timings[count_paths]:subpath_timings[count_paths+1]]
-
         # second step: location model.
         coords_over_time = list(curr_path)
         for index, elem in enumerate(coords_over_time):
@@ -1316,22 +1313,16 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
         for timepoint, location in enumerate(coords_over_time):
             for row in range(0, grid_size*grid_size):
                 loc_matrix[row, timepoint] = neuron_loc_functions[row].pdf(location) # location has to be a coord
- 
+                
         # third: create the state matrix.
         state_matrix = np.empty([len(neuron_state_functions), len(curr_path)])
         state_matrix[:] = np.nan
-        # only consider the 1/no_states*count_paths+1 part of the functions
-        # then sample by timepoint
-        #sample_state = means_at_state[count_paths] if wrap_around == 1 else count_paths
-        sample_state = count_paths
-        
         for row in range(0, len(neuron_state_functions)):
-            state_matrix[row] = neuron_state_functions[row].pdf(sample_state)
+            state_matrix[row] = neuron_state_functions[row].pdf(count_paths)
         
         # fourth step: make phase neurons
         # fit subpaths into 0:1 trajectory
         samplepoints = np.linspace(-np.pi, np.pi, len(curr_path)) if wrap_around == 1 else np.linspace(0, 1, len(curr_path))
-        
         phase_matrix_subpath = np.empty([len(neuron_phase_functions), len(samplepoints)])
         phase_matrix_subpath[:] = np.nan
         # read out the respective phase coding 
@@ -1339,42 +1330,100 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
             for row in range(0, len(neuron_phase_functions)):
                 phase_matrix_subpath[row, timepoint] = neuron_phase_functions[row].pdf(read_out_point)
 
-        # fifth step: midnight. = make location neurons phase sensitive.
-        midnight_model_subpath = np.repeat(loc_matrix, repeats = no_phase_neurons, axis = 0)
+        # fifth step: prepare the clocks model 
+        # phase state neurons - these will be used to fill the musicbox with neurons that track progress.
+        phase_state_subpath = np.repeat(state_matrix, repeats = len(phase_matrix_subpath), axis = 0)
+        for phase in range(0, len(phase_state_subpath), len(phase_matrix_subpath)):
+            phase_state_subpath[phase: phase+len(phase_matrix_subpath)] = phase_matrix_subpath * phase_state_subpath[phase: phase+len(phase_matrix_subpath)]
+            
+        # sixth step: midnight. = make location neurons phase sensitive.
+        # Find the index where the subject arrives at rewarded field.
+        for i in range(len(curr_path) - 2, -1, -1):  # Start from second to last element and move backwards
+            if curr_path[i] != curr_path[-1]:
+                break
+        # Index where subject arrives at rewarded field.
+        index_rew_starts = -(len(curr_path) - i - 1)
+        # build in the option to only 'turn on' clusters that are rewarded.
+        if only_rew == True:
+            reward_mask = np.ones(len(coords_over_time))
+            # 0 all non-reward neurons!
+            reward_mask[0:index_rew_starts] = 0
+
+            loc_rew_matrix = np.zeros([grid_size*grid_size,len(coords_over_time)])
+            # and then simply fill the matrix with the respective functions
+            for timepoint, location in enumerate(coords_over_time):
+                if reward_mask[timepoint] > 0:
+                    for row in range(0, grid_size*grid_size):
+                        loc_rew_matrix[row, timepoint] = neuron_loc_functions[row].pdf(location) # location has to be a coord
+            midnight_model_subpath = np.repeat(loc_rew_matrix, repeats = no_phase_neurons, axis = 0)
+        
+        # if this filter is on, there will only be 'bumps' for those rings that are not at a reward (at the path)
+        elif only_path == True:
+            # 0 all non-path neurons!
+            path_mask = np.ones(len(coords_over_time))
+            path_mask[index_rew_starts:] = 0
+            
+            loc_path_matrix = np.zeros([grid_size*grid_size,len(coords_over_time)])
+            # and then simply fill the matrix with the respective functions
+            for timepoint, location in enumerate(coords_over_time):
+                if path_mask[timepoint] > 0:
+                    for row in range(0, grid_size*grid_size):
+                        loc_path_matrix[row, timepoint] = neuron_loc_functions[row].pdf(location) # location has to be a coord
+            midnight_model_subpath = np.repeat(loc_path_matrix, repeats = no_phase_neurons, axis = 0)
+        else:
+            # normal midnight model
+            midnight_model_subpath = np.repeat(loc_matrix, repeats = no_phase_neurons, axis = 0)
         # multiply three rows of the location matrix (1 location)
         # with the phase_matrix_subpath, respectively
         for location in range(0, len(midnight_model_subpath), no_phase_neurons):
             midnight_model_subpath[location:location+no_phase_neurons] = midnight_model_subpath[location:location+no_phase_neurons] * phase_matrix_subpath
+        
+        import pdb; pdb.set_trace()
+        # DOUBLE CHECK HERE IF THE MIDNIGHT MODEL REALLY IS THE WAY WE WANT IT TO BE!!
+        # plt.figure(); plt.imshow(midnight_model_subpath, aspect = 'auto')
+        # draw it and make sure it is!!
+        #
+        #
+        #
         
         
         # sixth. make the clock model. 
         # solving 2 (see below): make the neurons within the clock.
         # phase state neurons.
         
-        phase_state_subpath = np.repeat(state_matrix, repeats = len(phase_matrix_subpath), axis = 0)
-        for phase in range(0, len(phase_state_subpath), len(phase_matrix_subpath)):
-            phase_state_subpath[phase: phase+len(phase_matrix_subpath)] = phase_matrix_subpath * phase_state_subpath[phase: phase+len(phase_matrix_subpath)]
-        
-        # last step: put subpaths together and concat into a bigger matrix.
+               # last step: put subpaths together and concat into a bigger matrix.
         if count_paths == 0:
-            midn_model = midnight_model_subpath.copy()
-            phas_model = phase_matrix_subpath.copy()
-            loc_model = loc_matrix.copy()
-            stat_model = state_matrix.copy()
-            phas_stat = phase_state_subpath.copy()
+            result_model_dict['midn_model'] = midnight_model_subpath.copy()
+            result_model_dict['phas_model'] = phase_matrix_subpath.copy()
+            result_model_dict['loc_model'] = loc_matrix.copy()
+            result_model_dict['stat_model'] = state_matrix.copy()
+            result_model_dict['phas_stat'] = phase_state_subpath.copy()
         elif count_paths > 0:
-            midn_model = np.concatenate((midn_model,midnight_model_subpath), axis = 1)
-            phas_model = np.concatenate((phas_model, phase_matrix_subpath), axis = 1)
-            loc_model = np.concatenate((loc_model, loc_matrix), axis = 1)
-            stat_model = np.concatenate((stat_model, state_matrix), axis = 1)
-            phas_stat = np.concatenate((phas_stat, phase_state_subpath), axis = 1)
+            result_model_dict['midn_model'] = np.concatenate((result_model_dict['midn_model'],midnight_model_subpath), axis = 1)
+            result_model_dict['phas_model'] = np.concatenate((result_model_dict['phas_model'], phase_matrix_subpath), axis = 1)
+            result_model_dict['loc_model'] = np.concatenate((result_model_dict['loc_model'], loc_matrix), axis = 1)
+            result_model_dict['stat_model'] = np.concatenate((result_model_dict['stat_model'], state_matrix), axis = 1)
+            result_model_dict['phas_stat'] = np.concatenate((result_model_dict['phas_stat'], phase_state_subpath), axis = 1)
+            
+        # if count_paths == 0:
+        #     midn_model = midnight_model_subpath.copy()
+        #     phas_model = phase_matrix_subpath.copy()
+        #     loc_model = loc_matrix.copy()
+        #     stat_model = state_matrix.copy()
+        #     phas_stat = phase_state_subpath.copy()
+        # elif count_paths > 0:
+        #     midn_model = np.concatenate((midn_model,midnight_model_subpath), axis = 1)
+        #     phas_model = np.concatenate((phas_model, phase_matrix_subpath), axis = 1)
+        #     loc_model = np.concatenate((loc_model, loc_matrix), axis = 1)
+        #     stat_model = np.concatenate((stat_model, state_matrix), axis = 1)
+        #     phas_stat = np.concatenate((phas_stat, phase_state_subpath), axis = 1)
                        
     
     # I am going to fuse the midnight and the phas_stat model. Thus they need to be equally 'strong' > normalise!
-    norm_midn = (midn_model.copy()-np.min(midn_model))/(np.max(midn_model)-np.min(midn_model))
-    norm_phas_stat = (phas_stat.copy()-np.min(phas_stat))/(np.max(phas_stat)-np.min(phas_stat))
+    norm_midn = (result_model_dict['midn_model'].copy()-np.min(result_model_dict['midn_model']))/(np.max(result_model_dict['midn_model'])-np.min(result_model_dict['midn_model']))
+    norm_phas_stat = (result_model_dict['phas_stat'].copy()-np.min(result_model_dict['phas_stat']))/(np.max(result_model_dict['phas_stat'])-np.min(result_model_dict['phas_stat']))
     
-     
+
     # 5. stick the neuron-clock matrices in 
     full_clock_matrix_dummy = np.zeros([len(norm_midn)*len(norm_phas_stat),len(norm_midn[0])]) # fields times phases.
     # for ever 12th row, stick a row of the midnight matrix in (corresponds to the respective first neuron of the clock)
@@ -1421,6 +1470,7 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
             # Q: IS THIS WAY OF DEALING WIHT DOUBLE ACTIVATION OK???
             clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()
     
+    result_model_dict['clo_model'] = clo_model.copy()
     # # to plot the matrices
     # plt.figure()
     # plt.imshow(loc_model, aspect = 'auto', interpolation='none')
@@ -1428,14 +1478,19 @@ def set_continous_models_ephys(walked_path, subpath_timings, step_indices, step_
     #     plt.axvline(subpath, color='white', ls='dashed')
     # import pdb; pdb.set_trace()
     if plot == True:
-        mc.simulation.predictions.plot_without_legends(loc_model, titlestring='Location_model', timings_curr_run = subpath_timings)
-        mc.simulation.predictions.plot_without_legends(phas_model, titlestring='Phase Model', timings_curr_run = subpath_timings)
-        mc.simulation.predictions.plot_without_legends(stat_model, titlestring='State Model',timings_curr_run = subpath_timings)
-        mc.simulation.predictions.plot_without_legends(midn_model, titlestring='Midnight Model', timings_curr_run = subpath_timings)
-        mc.simulation.predictions.plot_without_legends(clo_model, titlestring='Musicbox model',timings_curr_run = subpath_timings)
-        mc.simulation.predictions.plot_without_legends(phas_stat, titlestring='One ring of musicbox', timings_curr_run = subpath_timings)
+        for model in result_model_dict:
+            mc.simulation.predictions.plot_without_legends(result_model_dict[model], titlestring=model, timings_curr_run = subpath_timings)
+            
+        # mc.simulation.predictions.plot_without_legends(loc_model, titlestring='Location_model', timings_curr_run = subpath_timings)
+        # mc.simulation.predictions.plot_without_legends(phas_model, titlestring='Phase Model', timings_curr_run = subpath_timings)
+        # mc.simulation.predictions.plot_without_legends(stat_model, titlestring='State Model',timings_curr_run = subpath_timings)
+        # mc.simulation.predictions.plot_without_legends(midn_model, titlestring='Midnight Model', timings_curr_run = subpath_timings)
+        # mc.simulation.predictions.plot_without_legends(clo_model, titlestring='Musicbox model',timings_curr_run = subpath_timings)
+        # mc.simulation.predictions.plot_without_legends(phas_stat, titlestring='One ring of musicbox', timings_curr_run = subpath_timings)
         
-    return loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat
+    return result_model_dict
+
+# loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat
 
 
 #4.2 ephys models: clocks & midnight
@@ -1763,7 +1818,7 @@ def set_phase_model_ephys(walked_path, subpath_timings, step_indices, step_numbe
             phase_model_ephys = phase_matrix_subpath.copy()
         elif count_paths > 0:
             phase_model_ephys = np.concatenate((phase_model_ephys,phase_matrix_subpath), axis = 1)
-        
+    # import pdb; pdb.set_trace()   
     return phase_model_ephys
         
         

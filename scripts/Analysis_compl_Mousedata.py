@@ -26,12 +26,16 @@ save = False
 load_old = False
 do_per_run = False
 do_neuron_subset = False
+date = np.datetime64('today')
+out_path = f"/Users/xpsy1114/Documents/projects/multiple_clocks/output/{date}"
 
+    
 # Part 1: load data
 # mouse_a, mouse_b, mouse_c, mouse_d, mouse_e, mouse_f, mouse_g, mouse_h = mc.analyse.analyse_ephys.load_ephys_data(Data_folder = '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_recordings_200423/')
 mice_recdays = ['mouse_a', 'mouse_b', 'mouse_c', 'mouse_d', 'mouse_e', 'mouse_f', 'mouse_g', 'mouse_h']
 mouse_data = mc.analyse.analyse_ephys.load_ephys_data(mice_recdays, Data_folder = '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_recordings_200423/')
 
+print("all mouse data is loaded")
 
 # defining contrasts.
 # if this is supposed to be with state, then it has to be one longer:
@@ -46,8 +50,6 @@ contrast_split_by_phase = ((1,0),(0,1), (1,-1))
 
 if save: 
     # to save the data later
-    date = np.datetime64('today')
-    out_path = f"/Users/xpsy1114/Documents/projects/multiple_clocks/output/{date}"
     res_path = "/Users/xpsy1114/Documents/projects/multiple_clocks/output/2023-06-26"
     if os.path.isdir(out_path) == False:
         os.mkdir(out_path)
@@ -97,13 +99,14 @@ for mouse in mice_recdays:
         
         
 for mouse in sorted(mouse_data):
+    print("Now starting to run simulations and RSAs.")
     mouse_data_clean[mouse]["rewards_configs"], mouse_data_clean[mouse]["locations"], mouse_data_clean[mouse]["neurons"], mouse_data_clean[mouse]["timings"]  = mc.analyse.analyse_ephys.clean_ephys_data(mouse_data[mouse]["rewards_configs"], mouse_data[mouse]["locations"], mouse_data[mouse]["neurons"], mouse_data[mouse]["timings"], mouse_data[mouse]["recday"])
     if do_per_run == True:
         # cleaned datasat
         regs_per_run[mouse] = mc.analyse.analyse_ephys.reg_between_tasks_singleruns(mouse_data_clean[mouse]["rewards_configs"], mouse_data_clean[mouse]["locations"], mouse_data_clean[mouse]["neurons"], mouse_data_clean[mouse]["timings"], contrast_matrix, mouse_data[mouse]["recday"], contrast_split= contrast_split_by_phase ,continuous = True, no_bins_per_state = 10, split_by_phase = 1, number_phase_neurons = 3, mask_within = True,plotting=False)                                         
     else:    
         # cleaned datasat
-        all_results[mouse] = mc.analyse.analyse_ephys.reg_across_tasks(mouse_data_clean[mouse]["rewards_configs"], mouse_data_clean[mouse]["locations"], mouse_data_clean[mouse]["neurons"], mouse_data_clean[mouse]["timings"], mouse_data[mouse]["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
+        all_results[mouse] = mc.analyse.analyse_ephys.reg_across_tasks(mouse_data_clean[mouse]["rewards_configs"], mouse_data_clean[mouse]["locations"], mouse_data_clean[mouse]["neurons"], mouse_data_clean[mouse]["timings"], mouse_data[mouse]["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = False)
 
     if do_neuron_subset == True:
         # define a mask for clock and midnight neurons, respectively
@@ -139,31 +142,49 @@ if load_old == True:
         data_normal_midn_phas.append(midnight_results[mouse_res]['normal']['t_vals'][3])
         data_normal_midn_loc.append(midnight_results[mouse_res]['normal']['t_vals'][4])
 
-for mouse_res in all_results: 
-    # depending if I want to include more regressors, you have to add more! 
-    data_normal_all_clocks_t.append(all_results[mouse_res]['normal']['t_vals'][1])
-    data_normal_all_phas_t.append(all_results[mouse_res]['normal']['t_vals'][2])
-    data_normal_all_loc_t.append(all_results[mouse_res]['normal']['t_vals'][3])
-    data_normal_all_state_t.append(all_results[mouse_res]['normal']['t_vals'][4])
+label_string_list_check = []
+data_t = {}
+data_b = {}
+
+# to make sure to not mess up the order, rather loop through the label lists.
+for i, model in enumerate(all_results['mouse_a']['normal']['label_regs']):
+    label_string_list_check.append(model)
+    data_b[model] = []
+    data_t[model] = []
+    for mouse_res in all_results:
+        data_b[model].append(all_results[mouse_res]['normal']['coefs'][i])
+        data_t[model].append(all_results[mouse_res]['normal']['t_vals'][i+1])
+        
+    # # depending if I want to include more regressors, you have to add more! 
+    # data_normal_all_clocks_t.append(all_results[mouse_res]['normal']['t_vals'][1])
+    # data_normal_all_phas_t.append(all_results[mouse_res]['normal']['t_vals'][2])
+    # data_normal_all_loc_t.append(all_results[mouse_res]['normal']['t_vals'][3])
+    # data_normal_all_state_t.append(all_results[mouse_res]['normal']['t_vals'][4])
     
-    data_normal_all_clocks_b.append(all_results[mouse_res]['normal']['coefs'][0])
-    data_normal_all_phas_b.append(all_results[mouse_res]['normal']['coefs'][1])
-    data_normal_all_loc_b.append(all_results[mouse_res]['normal']['coefs'][2])
-    data_normal_all_state_b.append(all_results[mouse_res]['normal']['coefs'][3])
+    # data_normal_all_clocks_b.append(all_results[mouse_res]['normal']['coefs'][0])
+    # data_normal_all_phas_b.append(all_results[mouse_res]['normal']['coefs'][1])
+    # data_normal_all_loc_b.append(all_results[mouse_res]['normal']['coefs'][2])
+    # data_normal_all_state_b.append(all_results[mouse_res]['normal']['coefs'][3])
 
 # betas
-betas_across_subjects = [data_normal_all_clocks_b, data_normal_all_phas_b, data_normal_all_loc_b, data_normal_all_state_b]
+# betas_across_subjects = [data_normal_all_clocks_b, data_normal_all_phas_b, data_normal_all_loc_b, data_normal_all_state_b]
+
+data_to_plot = []
+for i, model in enumerate(data_b):
+    data_to_plot.append(data_b[model])
+    print(f"{i} next will be {model}")
 
 # t-vals
-data_to_plot = [data_normal_all_clocks_t, data_normal_all_phas_t, data_normal_all_loc_t, data_normal_all_state_t]
+#data_to_plot = [data_normal_all_clocks_t, data_normal_all_phas_t, data_normal_all_loc_t, data_normal_all_state_t]
 
+label_string_list_plot = ['SMB-Model', 'Location', "Subgoal-\n Progress", 'State']
+print(f"make sure that these two are in same order: <{label_string_list_plot}> and <{label_string_list_check}>")
 
-label_string_list_plot = ['SMB-Model', "Subgoal-\n Progress", 'Location', 'State']
 label_tick_list_plot = [1,2,3,4]
 label_tick_list_plot = [0.5, 1.5, 2.5, 3.5]
 
 title_string_plot = 'betas per complete mouse dataset, regression with 5 models, across tasks, averaged over runs'
-mc.analyse.analyse_ephys.plotting_hist_scat(betas_across_subjects, label_string_list_plot, label_tick_list_plot, title_string_plot, save_fig=out_path) 
+mc.analyse.analyse_ephys.plotting_hist_scat(data_to_plot, label_string_list_plot, label_tick_list_plot, title_string_plot, save_fig=out_path) 
 
 
 
