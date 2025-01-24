@@ -537,7 +537,7 @@ def reg_across_tasks(task_configs, locations_all, neurons, timings_all, mouse_re
                      
             model_dict['curr_neurons'] = curr_neurons.copy()
             # now create the regressors per run
-            regs_phase_state_run = mc.simulation.predictions.create_x_regressors_per_state(walked_path = dict_per_repeat['trajectory'], subpath_timings = dict_per_repeat['timings_repeat'], step_no = dict_per_repeat['step_number'], no_regs_per_state = no_bins_per_state)
+            regs_phase_state_run = mc.simulation.predictions.create_x_regressors_per_state(dict_per_repeat, no_regs_per_state = no_bins_per_state)
             # then use these regressors to generate a beta per neuron per run
             
             beta_sim_models_dict = {}

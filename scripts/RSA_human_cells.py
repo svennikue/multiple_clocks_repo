@@ -19,19 +19,24 @@ Location_raw arrays are arrays of length equal to the number of bins for the Neu
 import numpy as np
 import mc
 import matplotlib.pyplot as plt
+import os
+import pickle
 
 # first, load all csv files as numpys
 # exclude 27 and 44 for now
 
 regression_version = '03' #for every tasks, only the rewards are modelled [using a stick function]
 RDM_version = '03-1' # modelling only reward rings + split ‘clocks model’ = just rotating the reward location around. 
- 
+save_results = True
 models_I_want = mc.analyse.analyse_MRI_behav.select_models_I_want(RDM_version)
 
 
 subjects = [28,31,32,33,34,35,36,37,38,40,43,45,46,49,50]
 data_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives"
-data = mc.analyse.helpers_human_cells.load_cell_data(data_folder, subjects)
+group_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group"
+
+if not os.path.isdir(group_folder):
+    os.mkdir(group_folder)
 
 # Steps: 
     # 1. Simulate neural timecourses based on behaviour
@@ -51,7 +56,6 @@ data = mc.analyse.helpers_human_cells.load_cell_data(data_folder, subjects)
     #       4. then compute the RSA for the ROI data RDMs
     
 
-
 #
 #
 # CONTINUE HERE 
@@ -60,11 +64,29 @@ data = mc.analyse.helpers_human_cells.load_cell_data(data_folder, subjects)
     
 # # all_results[mouse] = mc.analyse.analyse_ephys.reg_across_tasks(mouse_data_clean[mouse]["rewards_configs"], mouse_data_clean[mouse]["locations"], mouse_data_clean[mouse]["neurons"], mouse_data_clean[mouse]["timings"], mouse_data[mouse]["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = True)
 # trajectory, timings_curr_run, index_make_step, step_number, curr_neurons = mc.analyse.analyse_ephys.prep_ephys_per_trial(timings_all, locations_all, run_no, task_no, task_config, neurons)
-            
-data_prep = mc.analyse.helpers_human_cells.prep_and_model_human_cells(data)            
+
+if os.path.isfile(os.path.join(group_folder,"all_modelled_data_dict")):
+    with open(os.path.join(group_folder,"all_modelled_data_dict"), 'rb') as f:
+        all_modelled_data = pickle.load(f)
+        print(f"opened stored dataset")
+else:  
+    print(f"loading and running preprocessing of human cells")
+    data = mc.analyse.helpers_human_cells.load_cell_data(data_folder, subjects)
+    all_modelled_data = mc.analyse.helpers_human_cells.prep_and_model_human_cells(data)   
+    if save_results == True:
+        # save the all_modelled_data dict such that I don't need to always run it again.
+        with open(os.path.join(group_folder,"all_modelled_data_dict"), 'wb') as f:
+            pickle.dump(all_modelled_data, f)
+        print(f"saved the modelled data as {group_folder}/all_modelled_data_dict")
+     
+        
 # all_modelled_data = mc.simulation.predictions.set_continous_models_ephys(data_prep, no_phase_neurons= number_phase_neurons, plot = False)
 
-all_modelled_data = mc.simulation.predictions.prep_and_model_human_cells(data)
+# choose some settings
+# e.g. which models in RSA
+# and which cells to clump together
+results_RSA = mc.analyse.helpers_human_cells.run_RSA(all_modelled_data, per_ROI = True, plotting = True)
+
 
 import pdb; pdb.set_trace()
 
