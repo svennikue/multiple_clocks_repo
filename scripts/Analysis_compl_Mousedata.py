@@ -153,7 +153,7 @@ for i, model in enumerate(all_results['mouse_a']['normal']['label_regs']):
     data_t[model] = []
     for mouse_res in all_results:
         data_b[model].append(all_results[mouse_res]['normal']['coefs'][i])
-        data_t[model].append(all_results[mouse_res]['normal']['t_vals'][i+1])
+        data_t[model].append(all_results[mouse_res]['normal']['t_vals'][i]) # CHECK IF WITH OR WIHTOUT INTERCEPT!!!
         
     # # depending if I want to include more regressors, you have to add more! 
     # data_normal_all_clocks_t.append(all_results[mouse_res]['normal']['t_vals'][1])

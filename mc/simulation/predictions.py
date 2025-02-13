@@ -229,6 +229,7 @@ def create_x_regressors_per_state(beh_data_curr_rep_dict, no_regs_per_state=3, o
     if only_for_rewards == True:
         # do it differently. instead of dividing into 3 phases, determine 
         # for which timebins the agent is at the reward location.
+        #regressors = np.zeros([n_states, len(walked_path)-1])
         regressors = np.zeros([n_states, len(walked_path)])
         for rew_idx in range(0, n_states):
             reward_found_at = subpath_timings[rew_idx+1]
@@ -256,6 +257,25 @@ def create_x_regressors_per_state(beh_data_curr_rep_dict, no_regs_per_state=3, o
             cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
     return regressors
 
+
+# TO TEST IF EVERYTHING IS GOING OK
+def simulate_fake_data(beh_data_curr_rep_dict, model_to_simulate, repeat_idx):
+    # import pdb; pdb.set_trace()
+    step_no = beh_data_curr_rep_dict['step_number']
+    subpath_timings = beh_data_curr_rep_dict['timings_repeat']
+    walked_path = beh_data_curr_rep_dict['trajectory']
+    n_states = len(step_no)
+    
+    # basically this needs to be the model that I am expecting (i.e. for state, the entire state is the same)
+    # plus added noise. I want to add more noise the higher the repeat. Repeat 0,1,2 shall have comparably litte
+    # random noise, while repeats 3,4,5,6,7,8,9 shall have a lot of random noise.
+    # add noise depending on the repeat.
+    fake_neurons = np.random.rand(n_states*10, len(walked_path)) * repeat_idx*10
+    for count_paths, (pathlength) in enumerate(step_no):
+        fake_neurons[count_paths*10:count_paths*10+10, subpath_timings[count_paths]:subpath_timings[count_paths+1]] = fake_neurons[count_paths*10:count_paths*10+10, subpath_timings[count_paths]:subpath_timings[count_paths+1]] + 1
+
+    return fake_neurons
+    
 
 # CREATE A NEW, MORE FLEXIBLE ONE FOR MY FMRI DATA.
 def create_regressors_flexi(walked_path, subpath_timings, step_no, no_regs_per_state):
@@ -324,6 +344,16 @@ def transform_data_to_betas(data_matrix, regressors, intercept = False):
 
 
 
+def normalise_neurons(data):
+    norm_data = np.empty((data.shape[0], data.shape[1]))
+    data = np.nan_to_num(data)
+    for i, neuron in enumerate(data):
+        mean = np.mean(neuron)
+        std_dv = np.std(neuron)
+        normal_neuron = (neuron - mean)/std_dv
+        norm_data[i] = normal_neuron
+
+    return norm_data
 
 ##############################################
 ############### PART 2 #######################
@@ -1274,10 +1304,107 @@ def set_location_contin(walked_path, step_time, grid_size = 3, fire_radius = 0.2
 ##############################################
 
 
+# simple model for human cells.
+# models_per_repeat[f"rep_{repeat}"] = mc.simulation.predictions.set_simple_models_cells(prep_repeat_dict)
+
+def set_simple_models_cells(data_dict):
+    #import pdb; pdb.set_trace()
+    # simple models are: location model, current reward, next reward, 
+    # 2 future reward, 3 future reward,state
+
+    # a few hard-coded things
+    grid_size = 3
+    fire_radius = 0.25 # spatial overlap for location cells
+    
+    # first extract from dict
+    step_number = data_dict['step_number']
+    subpath_timings = data_dict['timings_repeat']
+    # note: I might need to add a start time for the human data. 
+    # timings need to be start- findA, findB, findC,findD
+    make_step = data_dict['index_make_step']
+    walked_path = data_dict['trajectory']
+    rewards = np.tile(data_dict['reward_locs'], 2)
+    
+    cumsumsteps = np.cumsum(step_number)
+    # build all possible coord combinations 
+    all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
+    # translate rewards to coords
+    reward_coords = list(rewards)
+    for index, elem in enumerate(reward_coords):
+        reward_coords[index] = all_coords[elem]
+    
+    
+    # code up the 2d location neurons. this is e.g. a 3x3 grid tiled with multivatiate
+    # gaussians that are centred around the grid locations.
+    neuron_loc_functions = []
+    for coord in all_coords:
+        neuron_loc_functions.append(multivariate_normal(coord, cov = fire_radius))
+    
+    model_dict = {}
+    for count_paths, pathlength in enumerate(step_number):
+        subpath_dict = {}
+        if count_paths == 0:
+            prev_end_state = 0
+        else:
+            prev_end_state = end_at_curr_rew
+        
+        # first, fine-tune the timings.
+        # DEFINITION NEW STATE = once they leave the reward location.
+        reward_found_at = subpath_timings[count_paths+1]
+        if reward_found_at > len(walked_path)+1 or reward_found_at == len(walked_path):
+            reward_found_at = -1
+        # consider this as end of a state.
+        start_curr_rew, end_at_curr_rew = mc.simulation.predictions.find_start_end_indices(walked_path, reward_found_at)
+         
+        # first step: divide into subpaths
+        curr_path = walked_path[prev_end_state:end_at_curr_rew] 
+        if count_paths == 3:
+            curr_path = walked_path[prev_end_state:]
+
+        # second step: location model.
+        coords_over_time = list(curr_path)
+        for index, elem in enumerate(coords_over_time):
+            coords_over_time[index] = all_coords[elem]
+     
+        # make the location based matrice
+        location_based_matrices = ['location', 'curr_rew', 'next_rew', 'second_next_rew', 'third_next_rew']
+        for loc_model in location_based_matrices:
+            subpath_dict[loc_model] = np.empty([grid_size*grid_size,len(coords_over_time)])
+            subpath_dict[loc_model][:] = np.nan
+        
+        # for location, simply fill the matrix with the respective functions
+        for timepoint, location in enumerate(coords_over_time):
+            for row in range(0, grid_size*grid_size):
+                subpath_dict['location'][row, timepoint] = neuron_loc_functions[row].pdf(location) # location has to be a coord
+                # make the split clocks matrices.
+                subpath_dict['curr_rew'][row, timepoint] = neuron_loc_functions[row].pdf(reward_coords[count_paths]) # location has to be a coord
+                subpath_dict['next_rew'][row, timepoint] = neuron_loc_functions[row].pdf(reward_coords[count_paths+1]) # location has to be a coord
+                subpath_dict['second_next_rew'][row, timepoint] = neuron_loc_functions[row].pdf(reward_coords[count_paths+2]) # location has to be a coord
+                subpath_dict['third_next_rew'][row, timepoint] = neuron_loc_functions[row].pdf(reward_coords[count_paths+3]) # location has to be a coord
+
+        # second: create the state matrix.
+        subpath_dict['state'] = np.zeros([len(step_number), len(curr_path)])
+        subpath_dict['state'][count_paths] = 1
+        
+        #last, concatenate.
+        for model in subpath_dict:
+            if count_paths == 0:
+                model_dict[model] = subpath_dict[model].copy()
+            else:
+                model_dict[model] = np.concatenate((model_dict[model], subpath_dict[model]), axis = 1)
+              
+    return model_dict
+    
+    
+    
+    
+    
+
 #4.1 ephys models: continuous - clocks - midnight - phase - location
 
 # ok now I need the same thing but for my ephys stuff.
 def set_continous_models_ephys(beh_data_curr_rep_dict,  grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, plot = False, split_clock = False, only_rew = False, only_path = False):
+    # import pdb; pdb.set_trace()
     # first extract from dict
     step_number = beh_data_curr_rep_dict['step_number']
     subpath_timings = beh_data_curr_rep_dict['timings_repeat']
@@ -1343,8 +1470,23 @@ def set_continous_models_ephys(beh_data_curr_rep_dict,  grid_size = 3, no_phase_
     # this time, do it per subpath.
     result_model_dict = {}
     for count_paths, pathlength in enumerate(step_number):
+        if count_paths == 0:
+            prev_end_state = 0
+        else:
+            prev_end_state = end_at_curr_rew
+        
+        # first, fine-tune the timings.
+        # DEFINITION NEW STATE = once they leave the reward location.
+        reward_found_at = subpath_timings[count_paths+1]
+        if reward_found_at > len(walked_path)+1 or reward_found_at == len(walked_path):
+            reward_found_at = -1
+        # consider this as end of a state.
+        start_curr_rew, end_at_curr_rew = mc.simulation.predictions.find_start_end_indices(walked_path, reward_found_at)
+            
         # first step: divide into subpaths
-        curr_path = walked_path[subpath_timings[count_paths]:subpath_timings[count_paths+1]]
+        curr_path = walked_path[prev_end_state:end_at_curr_rew]
+        
+        
         # second step: location model.
         coords_over_time = list(curr_path)
         for index, elem in enumerate(coords_over_time):
@@ -1557,7 +1699,7 @@ def set_clocks_raw_ephys(walked_path, subpath_timings, step_indices, step_number
         time_per_phase_in_clock_cum = np.cumsum(time_per_phase_in_clock)
         
         # fill the single clock matrix analoguos to the phase-switches.
-        # this means that every clock will be phase-matched to the whole matrix.
+        # this means tha t every clock will be phase-matched to the whole matrix.
         # note: btw this is pretty much the same as below for the phase-matrix_subpath, just for all 12 rows 
         # instead of only for 3. kind of obsolete
         for phase in range(0, phases):

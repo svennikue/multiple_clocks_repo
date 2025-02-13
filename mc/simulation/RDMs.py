@@ -19,7 +19,7 @@ from scipy import stats
 import statsmodels.api as sm
 import colormaps as cmaps
 
-def plot_RDMs(RDM_dict, no_tasks, save_dir = None, string_for_ticks = None, one_minus = True):
+def plot_RDMs(RDM_dict, no_tasks, save_dir = None, string_for_ticks = None, one_minus = True, flexyscale = False):
     for RDM in RDM_dict:
         # import pdb; pdb.set_trace()
         indexline_after = int(len(RDM_dict[RDM])/no_tasks)
@@ -32,6 +32,9 @@ def plot_RDMs(RDM_dict, no_tasks, save_dir = None, string_for_ticks = None, one_
             max_lim = 1
             min_lim = -1
             label = 'correlation'
+        if flexyscale == True:
+            max_lim = np.max(RDM_dict[RDM])
+            min_lim = np.min(RDM_dict[RDM])
         cmaps.BlueYellowRed
         cmap = plt.get_cmap('BlueYellowRed')
         # Set the upper triangle to be empty
@@ -110,7 +113,7 @@ def within_task_RDM(activation_matrix, ax=None, plotting = False, titlestring = 
         if intervalline:
             intervalline = int(intervalline)
             for interval in range(0, len(activation_matrix[0]), intervalline):
-                plt.axvline(interval, color='white', ls='dashed')
+                plt.axvline(interval-0.5, color='white', ls='dashed')
         # sn.heatmap(corr_matrix, annot = False)
     return RDM
 
@@ -436,7 +439,7 @@ def GLM_RDMs(data_matrix, regressor_dict, mask_within = True, no_tasks = None, t
         plt.figure()
         plt.imshow(plot_data, aspect = 'auto')
         for interval in range(0, len(data_matrix), int(len(data_matrix)/(no_tasks))):
-            plt.axvline(interval, color='white', ls='dashed')
+            plt.axvline(interval-0.5, color='white', ls='dashed')
     
     #import pdb; pdb.set_trace()
     dimension = len(data_matrix) 
@@ -450,51 +453,58 @@ def GLM_RDMs(data_matrix, regressor_dict, mask_within = True, no_tasks = None, t
             diag_reg_array = list(regressor_dict[regressor_matrix][np.triu_indices(dimension, -1)])
             X = np.vstack((X, diag_reg_array))
      
-    # get rid of all nans, equally for data and regressors.
+    # # get rid of all nans, equally for data and regressors.
+    # diag_array_data = data_matrix[np.triu_indices(dimension , -1)]
+    # if len(X) > 10:
+    #     # this means that there is only one regressor
+    #     X = np.array(X)
+    #     X_cleaned = np.empty(len(diag_array_data[~np.isnan(diag_array_data)]))
+    #     X_cleaned = X[~np.isnan(diag_array_data)]
+    # else:      
+    #     X_cleaned = np.empty((len(X),len(diag_array_data[~np.isnan(diag_array_data)])))
+    #     for i, row in enumerate(X):
+    #         X_cleaned[i] = row[~np.isnan(diag_array_data)]
+                 
+    # diag_array_data = diag_array_data[~np.isnan(diag_array_data)]
+    # x_cl_reshaped = np.transpose(X_cleaned[:, ~np.isnan(diag_array_data)])
     
-    diag_array_data = data_matrix[np.triu_indices(dimension , -1)]
+    # Extract the upper triangle, including the diagonal
+    diag_array_data = data_matrix[np.triu_indices(dimension, -1)]
     
-    if len(X) > 10:
-        # this means that there is only one regressor
-        X = np.array(X)
-        X_cleaned = np.empty(len(diag_array_data[~np.isnan(diag_array_data)]))
-        X_cleaned = X[~np.isnan(diag_array_data)]
-    else:      
-        X_cleaned = np.empty((len(X),len(diag_array_data[~np.isnan(diag_array_data)])))
-        for i, row in enumerate(X):
-            X_cleaned[i] = row[~np.isnan(diag_array_data)]
-            
-            
-    diag_array_data = diag_array_data[~np.isnan(diag_array_data)]
-    x_cl_reshaped = np.transpose(X_cleaned[:, ~np.isnan(diag_array_data)])
+    # Ensure X is a numpy array and check if X is 1D or 2D for proper handling
+    X = np.atleast_2d(X)
+    
+    # Determine indices where either diag_array_data or any row in X contains NaNs
+    nan_mask_data = np.isnan(diag_array_data)
+    nan_mask_X = np.isnan(X).any(axis=0)  # Checks across all rows in X
+    combined_nan_mask = nan_mask_data | nan_mask_X  # Combine masks with logical OR
+    
+    # Filter out the NaNs from both diag_array_data and X using the combined mask
+    diag_array_data_cleaned = diag_array_data[~combined_nan_mask]
+    X_cleaned = X[:, ~combined_nan_mask]
+    
+    # # If you need X to be a 1D array when it originally was, and it was a single row:
+    # if X.shape[0] == 1 and X.ndim == 2:
+    #     X_cleaned = X_cleaned.flatten()
 
-
-    # import pdb; pdb.set_trace()
-    # x_cl_reshaped = np.transpose(X_cleaned)
-    
-    
-    if len(X) > 10: 
-        # CONTINUE HERE! 
-        import pdb; pdb.set_trace()
-        # WHY IS X ONLY NANS????
-        #
-        #
-        
-        regression_results = LinearRegression().fit(x_cl_reshaped.reshape(-1, 1), diag_array_data)
-    else:
-        regression_results = LinearRegression().fit(x_cl_reshaped, diag_array_data)
+    # if len(X) > 10: 
+    #     # CONTINUE HERE! 
+    #     import pdb; pdb.set_trace()
+    #     regression_results = LinearRegression().fit(X_cleaned.reshape(-1, 1), diag_array_data_cleaned)
+    # else:
+    regression_results = LinearRegression().fit(np.transpose(X_cleaned), diag_array_data_cleaned)
     results = {}
     results['coefs'] = regression_results.coef_
     results['label_regs'] = reg_labels
     
     if t_val is not None:
     # second try
-        X_3 = sm.add_constant(x_cl_reshaped)
-        est = sm.OLS(diag_array_data, X_3)
-        scipy_reg_est = est.fit().tvalues
-        results['t_vals'] = scipy_reg_est
+        X_3 = sm.add_constant(np.transpose(X_cleaned))
+        est = sm.OLS(diag_array_data_cleaned, X_3)
+        results['t_vals'] = est.fit().tvalues[1:] # store without intercept
+        results['p_vals'] = est.fit().pvalues[1:] # store without intercept
         # t = coef/std err. my t vals are big bc std err is small
-    
+        
     return results
     
     

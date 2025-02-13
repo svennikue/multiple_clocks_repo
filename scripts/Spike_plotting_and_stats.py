@@ -53,15 +53,15 @@ session_per_subj = {
 for sub in session_per_subj:
     for sesh in session_per_subj[sub]:
         # at some point do all data computations in here, and then collect them all for all sessions one subject had.
-        timings_and_locs = np.genfromtxt(f"{LFP_dir}/{sesh}/location_and_timings.csv", delimiter=',')
+        timings_and_locs = np.genfromtxt(f"{LFP_dir}/s05/location_and_timings.csv", delimiter=',')
         # load behaviour that defines my snippets.
-        behaviour_all = np.genfromtxt(f"{LFP_dir}/{sesh}/all_trials_times.csv", delimiter=',')
+        behaviour_all = np.genfromtxt(f"{LFP_dir}/s05/all_trials_times.csv", delimiter=',')
         
-        button_presses = np.genfromtxt(f"{LFP_dir}/{sesh}/button_presses.csv", delimiter = ',')
+        button_presses = np.genfromtxt(f"{LFP_dir}/s05/button_presses.csv", delimiter = ',')
         # load behavioural stuff you need for plotting all sorts of stuff
         seconds_lower, seconds_upper, task_config, task_index, task_onset, new_grid_onset, found_first_D = mc.analyse.ripple_helpers.prep_behaviour(behaviour_all)
     
-        spiking_dict = mc.analyse.ripple_helpers.load_spiking_data(sesh)
+        spiking_dict = mc.analyse.ripple_helpers.load_spiking_data('s05')
 
         with open(f"{result_dir}/{sesh}_{ROI}_{analysis_type}_{preproc_type}_ripple_by_seconds.pkl", 'rb') as file:
             ripples = pickle.load(file)

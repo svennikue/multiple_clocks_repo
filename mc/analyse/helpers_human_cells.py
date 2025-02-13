@@ -35,128 +35,339 @@ def load_cell_data(source_folder, subject_list):
     # load all files I prepared with Matlab into a subject dictionary
     data_dir = {}
     for sub in subject_list:
+        print(f"loading files for subject {sub}")
         data_dir[f"sub-{sub}"] = {}
-        data_dir[f"sub-{sub}"]["reward_configs"] = np.genfromtxt(f"{source_folder}/s{sub}/LFP/all_configs_sub{sub}.csv", delimiter=',')
-        with open(f"{source_folder}/s{sub}/LFP/all_cells_region_labels_sub{sub}.txt", 'r') as file:
+        data_dir[f"sub-{sub}"]["reward_configs"] = np.genfromtxt(f"{source_folder}/s{sub}/cells_and_beh/all_configs_sub{sub}.csv", delimiter=',')
+        with open(f"{source_folder}/s{sub}/cells_and_beh/all_cells_region_labels_sub{sub}.txt", 'r') as file:
             data_dir[f"sub-{sub}"]["cell_labels"] = [line.strip() for line in file]
         timinges_pattern = r'timings_rewards_grid(\d+)_sub{sub}\.csv'.replace('{sub}', str(sub))
-        location_pattern = r'locations_per_50ms_grid(\d+)_sub{sub}\.csv'.replace('{sub}', str(sub))
+        location_pattern = r'locations_per_25ms_grid(\d+)_sub{sub}\.csv'.replace('{sub}', str(sub))
         cells_pattern = r'all_cells_firing_rate_grid(\d+)_sub{sub}\.csv'.replace('{sub}', str(sub))
-        data_dir[f"sub-{sub}"]["timings"] = read_files_to_list_ordered(f"{source_folder}/s{sub}/LFP", timinges_pattern)
-        data_dir[f"sub-{sub}"]["locations"] = read_files_to_list_ordered(f"{source_folder}/s{sub}/LFP", location_pattern)
-        data_dir[f"sub-{sub}"]["neurons"] = read_files_to_list_ordered(f"{source_folder}/s{sub}/LFP", cells_pattern)
+        data_dir[f"sub-{sub}"]["timings"] = read_files_to_list_ordered(f"{source_folder}/s{sub}/cells_and_beh", timinges_pattern)
+        data_dir[f"sub-{sub}"]["locations"] = read_files_to_list_ordered(f"{source_folder}/s{sub}/cells_and_beh", location_pattern)
+        data_dir[f"sub-{sub}"]["neurons"] = read_files_to_list_ordered(f"{source_folder}/s{sub}/cells_and_beh", cells_pattern)
     return data_dir
 
 
-def run_RSA(data, per_ROI = True, plotting = True):
+def neurons_concat_per_ROI_acrosstasks(neuron_dict, order, unique_tasks = False):
+    # import pdb; pdb.set_trace()
+    
+    if unique_tasks == True:
+        tasks_to_include = order[0:8]
+    elif unique_tasks == False:
+        tasks_to_include = order[0:6]
+        # # the smallest set of tasks here is 6.
+        # # instead of ignoring the data, average them with the others.
+        # # goal is to have the same dimensions of RDMs across ROIs.
+        # # if I only care for state, the order and configs don't matter anyways.
+        # # first find out for which ROI the least tasks
+        # smallest_size = 20000
+        # for ROI in neuron_dict:
+        #     if len(neuron_dict[ROI]) < smallest_size:
+        #         smallest_size = len(neuron_dict[ROI])
+        #         smallest_ROI = ROI
+        # # next, find how many tasks are in that shortest one.
+        # unique_tasks = set()
+        # # Regex to find the task part in each key
+        # pattern = re.compile(r"task_[A-Z]")
+        
+        # for key in dict_keys:
+        #     match = pattern.search(key)
+        #     if match:
+        #         unique_tasks.add(match.group())
+        
+    # next concatenate the neurons per ROI according to the order_of_task list
+    neuron_temp_dict = {}
+    for ROI in neuron_dict:
+        if ROI not in neuron_temp_dict:
+            neuron_temp_dict[ROI] = {}
+        for task in tasks_to_include:
+            task_data = {}
+            for label in sorted(neuron_dict[ROI]):
+                if label.startswith(task):
+                    # Extract the cell label which follows the task label format "task_cellLabel"
+                    _, cell_label = label.split(f"{task}_", 1)
+            
+                    # Initialize the cell label key if not present
+                    if cell_label not in task_data:
+                        task_data[cell_label] = neuron_dict[ROI][label]
+                        
+            # After processing all labels for the current task, add them to the main dictionary
+            neuron_temp_dict[ROI][task] = task_data
+    
+    neuron_concat_dict = {}
+    for ROI in sorted(neuron_temp_dict):
+        task_matrices = []
+        for task in sorted(neuron_temp_dict[ROI]):
+            cell_concat = []
+            for cell in sorted(neuron_temp_dict[ROI][task]):
+                #import pdb; pdb.set_trace()
+                if len(neuron_temp_dict[ROI][task][cell]) < 2:
+                    empty_cell = np.zeros((1,4))
+                    cell_concat.append(empty_cell)
+                else:
+                    cell_concat.append(np.transpose(np.expand_dims(neuron_temp_dict[ROI][task][cell], axis = 1)))
+            if cell_concat:
+                #import pdb; pdb.set_trace()   
+                task_concat = np.concatenate(cell_concat, axis=0)
+                task_matrices.append(task_concat)
+
+        # Concatenate all task matrices along columns (axis 1)
+        if task_matrices:
+            neuron_concat_dict[f"{ROI}_concat"] = np.concatenate(task_matrices, axis=1)
+    # clean the 0 rows if there are any!!
+    
+    for ROI in neuron_concat_dict:
+        # import pdb; pdb.set_trace()
+        zero_rows = np.all(neuron_concat_dict[ROI] == 0, axis=1)
+        if np.sum(zero_rows):
+            print(f"careful - excluding cells for ROI {ROI}")
+        not_all_zero_rows = ~zero_rows
+        neuron_concat_dict[ROI] = neuron_concat_dict[ROI][not_all_zero_rows]
+        
+    
+    return neuron_concat_dict
+
+
+
+                    
+def run_RSA(data, only_specific_model = False, per_ROI = True, plotting = True, simple_models = False):
+    # import pdb; pdb.set_trace()
     # normal version is going to be collapse all subjects, but split cells by ROIs
-    # first collapse subjects.
-    # also note that there are a couple of reward configs that are the same!!
-    # similarity here should be very high.
-    # eventually nan them out/average them?
+    # start by labelling the grids.
+    # CONTINUE HERE!!
+    if only_specific_model:
+        # DO SOMETHING DIFFERENT THAN SORT THE GRIDS!!!
+        prepared_data = mc.analyse.helpers_human_cells.label_unique_grids(data, unique = False)
+        neurons, grid_labels = mc.analyse.helpers_human_cells.pool_by_ROI_and_grid(prepared_data, specific_model = True)
+        # now next step is concatenate all grids in the correct order
+        # for all models.
+        simulated_data_concat, order_of_tasks =  mc.analyse.helpers_human_cells.models_concat_and_avg_across_subj(prepared_data, specific_model = True)
+    else:
+        prepared_data = mc.analyse.helpers_human_cells.label_unique_grids(data, unique = True)
+        neurons, grid_labels = mc.analyse.helpers_human_cells.pool_by_ROI_and_grid(prepared_data, specific_model = False)
+        # now next step is concatenate all grids in the correct order
+        # for all models.
+        simulated_data_concat, order_of_tasks =  mc.analyse.helpers_human_cells.models_concat_and_avg_across_subj(prepared_data, specific_model = False)
     
-    # then run one RSA per model on each ROI
-        # important: sort the configurations!!
-        # eventually go back and check which models I actually want.
-        # I am assuming one thing we are interested in is actually the split clocks for only rewards?
-    # the run a combined RSA on each ROI
-    # then return results
-    
-    # next: reorder.
-    
-    # take every cell that belongs to a ROI.
-    # second step: compute a within-task RSA
-    # third step: average all cells and models that belong to a unique grid
-    
-    # and compute a between-task RSA
-    
-    # maybe start by labelling the grids.
-    prepared_data = mc.analyse.helpers_human_cells.label_unique_grids(data)
     # instead of pooling by subject, pool by ROI.
-    neurons = mc.analyse.helpers_human_cells.pool_by_ROI_and_grid(prepared_data)
+    # next concatenate the neurons per ROI according to the order_of_task list
+    neurons_concat = mc.analyse.helpers_human_cells.neurons_concat_per_ROI_acrosstasks(neurons, order_of_tasks, unique_tasks = True)
 
+    task_configs = order_of_tasks[0:8]
+    RDM_dict = {}
+    # plot the averaged simulated and cleaned data
+    all_models_string = []
+    for model in simulated_data_concat:
+        all_models_string.append(model)
+        # mc.simulation.predictions.plot_without_legends(simulated_data_concat[model], titlestring= f"{model} model, averaged across runs", intervalline= 4, saving_file='/Users/xpsy1114/Documents/projects/multiple_clocks/output/')
+        RDM_dict[model] = mc.simulation.RDMs.within_task_RDM(simulated_data_concat[model], plotting = True, titlestring = f"Between tasks {model} RSM, 4*8, averaged over runs", intervalline= 4)
     
-    # now next step is concatenate all grids in the correct order, for neurons 
-    # per ROI and for all models. Maybe consider average the models across subjects first??
-    # in theory, the data models should be the same across all subjects...
+    if only_specific_model:
+        RDM_dict = {}
+        all_models_string = only_specific_model.copy()
+        for model in all_models_string:
+            RDM_dict[model] = mc.simulation.RDMs.within_task_RDM(simulated_data_concat[model], plotting = True, titlestring = f"Between tasks {model} RSM, 4*8, averaged over runs", intervalline= 4)
+    
+    mc.simulation.RDMs.plot_RDMs(RDM_dict, len(task_configs))       
 
-    simulated_data_concat, order_of_tasks =  mc.analyse.helpers_human_cells.models_concat_and_avg_across_subj(prepared_data)
+    if simple_models == True:
+        regressors_to_include = ['location', 'curr_rew', 'next_rew', 'second_next_rew', 'third_next_rew', 'state']
+    else:
+        # midn_model, phas_model, loc_model, stat_model, phas_stat, clo_model, curr_neurons
+        regressors_to_include = ['clo_model', 'phas_model', 'loc_model', 'stat_model'] #INCLUDE MIDNIGHT AGAIN AT SOME POINT!!
     
-    import pdb; pdb.set_trace()
-
-    
-    
-    #
-    #
-    # # JUST COPIED
-    # #
-    # #
-    # RDM_dict = {}
-    # #import pdb; pdb.set_trace()
-    # # plot the averaged simulated and cleaned data
-    # for model in ave_models_between:
-    #     mc.simulation.predictions.plot_without_legends(ave_models_between[model], titlestring= f"{model} model, averaged across runs for single mouse", intervalline= 4*no_bins_per_state, saving_file='/Users/xpsy1114/Documents/projects/multiple_clocks/output/')
-    #     RDM_dict[model] = mc.simulation.RDMs.within_task_RDM(ave_models_between[model], plotting = True, titlestring = f"Between tasks {model} RSM, 12*12, averaged over runs", intervalline= 4*no_bins_per_state)
-    # mc.simulation.RDMs.plot_RDMs(RDM_dict, len(task_configs))       
-    # # separately per phase
-    # if split_by_phase:
-    #     RDM_dict_phases = {}
-    #     for model in ave_models_between:
-    #         RDM_dict_phases[model] = {}
-    #         # ceither all models or fine-tune this to only those I want by defining a string of models I loop through
-    #         for phase in phase_string:
-    #             mc.simulation.predictions.plot_without_legends(ave_models_between[model][:, phase_masks[phase]], titlestring=f"{phase} {model} across tasks", intervalline= 4*no_bins_per_state/3)
-    #             RDM_dict_phases[model][phase] = mc.simulation.RDMs.within_task_RDM(ave_models_between[model][:, phase_masks[phase]], plotting=True, titlestring=f"RSM {phase} {model}, averaged over runs", intervalline= 4*no_bins_per_state/3)
-
-    # # run regressions separetly for each phase
-    # # import pdb; pdb.set_trace()
-    # # try the new regression.
-    
-    
-    # # midn_model, phas_model, loc_model, stat_model, phas_stat, clo_model, curr_neurons
-    # regressors_to_include = ['clo_model', 'phas_model', 'loc_model', 'stat_model'] #INCLUDE MIDNIGHT AGAIN AT SOME POINT!!
-    # regressors = {}
-    # for i, model in enumerate(sorted(regressors_to_include)):
-    #     print(f"the order of the regressors here is at {i} comes {model}")
-    #     regressors[model] = RDM_dict[model].copy()
-
-    # results_normal = mc.simulation.RDMs.GLM_RDMs(RDM_dict['curr_neurons'], regressors, mask_within, no_tasks = len(task_configs), plotting= False)
-    
-    
-    
-    
-    #
-    #
-    #
-    
+    if only_specific_model: 
+        regressors_to_include = all_models_string
+        
     results= {}
+    neuron_RDMs = {}
+    all_rois_string = []
+    for ROI in sorted(neurons_concat): 
+        all_rois_string.append(ROI)
+        plt.figure();
+        plt.imshow(neurons_concat[ROI], aspect = 'auto')
+        plt.title(ROI)
+        neuron_RDMs[ROI] = mc.simulation.RDMs.within_task_RDM(neurons_concat[ROI], plotting = True, titlestring = f"Between tasks {ROI} RSM, 4*8, averaged over runs", intervalline= 4)
+        regressors = {}
+        for i, model in enumerate(sorted(regressors_to_include)):
+            regressors[model] = RDM_dict[model].copy()
+        results[ROI] = mc.simulation.RDMs.GLM_RDMs(neuron_RDMs[ROI], regressors, mask_within = True, no_tasks = len(task_configs), plotting= False)
+
+    mc.simulation.RDMs.plot_RDMs(neuron_RDMs, len(task_configs), flexyscale=False)       
+    
+    if only_specific_model == True:         
+        mc.plotting.results.overview_regression(results, all_rois_string, regressors_to_include, combo = True)  
+    
+    if only_specific_model == False:  
+        results_single_model = {}
+        for ROI in neurons_concat:
+            results_single_model[ROI] = {}
+            for model in all_models_string:
+                regressors = {}
+                regressors[model] = RDM_dict[model].copy()
+                results_single_model[ROI][model] = mc.simulation.RDMs.GLM_RDMs(neuron_RDMs[ROI], regressors, mask_within = True, no_tasks = len(task_configs), plotting= False)
+       
+        mc.plotting.results.overview_regression(results_single_model, all_rois_string, all_models_string)
+        
+        if simple_models == True:
+            regressors_to_include = ['curr_rew', 'next_rew', 'second_next_rew', 'third_next_rew']
+        else:
+            # ['two_fut_rings_split_clock', 'phas_stat', 'phas_model', 'three_fut_rings_split_clock', 'loc_model', 'curr_rings_split_clock', 'stat_model', 'clo_model', 'midn_model', 'one_fut_rings_split_clock']
+            regressors_to_include = ['clo_model', 'midn_model'] #INCLUDE MIDNIGHT AGAIN AT SOME POINT!!
+        regressors = {}
+        for i, model in enumerate(sorted(regressors_to_include)):
+            regressors[model] = RDM_dict[model].copy()
+        results= {}
+        for ROI in neurons_concat: 
+            results[ROI] = mc.simulation.RDMs.GLM_RDMs(neuron_RDMs[ROI], regressors, mask_within = True, no_tasks = len(task_configs), plotting= False)
+        mc.plotting.results.overview_regression(results, all_rois_string, regressors_to_include, combo = True)  
+        
+            
+        if simple_models == True:
+            regressors_to_include = ['curr_rew', 'next_rew', 'second_next_rew', 'third_next_rew', 'state']
+        else:
+            # ['two_fut_rings_split_clock', 'phas_stat', 'phas_model', 'three_fut_rings_split_clock', 'loc_model', 'curr_rings_split_clock', 'stat_model', 'clo_model', 'midn_model', 'one_fut_rings_split_clock']
+            regressors_to_include = ['clo_model', 'phas_model'] #INCLUDE MIDNIGHT AGAIN AT SOME POINT!!
+        regressors = {}
+        for i, model in enumerate(sorted(regressors_to_include)):
+            regressors[model] = RDM_dict[model].copy()
+        results= {}
+        for ROI in neurons_concat: 
+            results[ROI] = mc.simulation.RDMs.GLM_RDMs(neuron_RDMs[ROI], regressors, mask_within = True, no_tasks = len(task_configs), plotting= False)
+        mc.plotting.results.overview_regression(results, all_rois_string, regressors_to_include, combo = True)  
+        
+        if simple_models == False:
+            # ['two_fut_rings_split_clock', 'phas_stat', 'phas_model', 'three_fut_rings_split_clock', 'loc_model', 'curr_rings_split_clock', 'stat_model', 'clo_model', 'midn_model', 'one_fut_rings_split_clock']
+            regressors_to_include = ['curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock'] #INCLUDE MIDNIGHT AGAIN AT SOME POINT!!
+            regressors = {}
+            for i, model in enumerate(sorted(regressors_to_include)):
+                regressors[model] = RDM_dict[model].copy()
+            results= {}
+            for ROI in neurons_concat: 
+                results[ROI] = mc.simulation.RDMs.GLM_RDMs(neuron_RDMs[ROI], regressors, mask_within = True, no_tasks = len(task_configs), plotting= False)
+            mc.plotting.results.overview_regression(results, all_rois_string, regressors_to_include, combo = True)  
+            
+
+    import pdb; pdb.set_trace()
     return results
 
-    
 
-def models_concat_and_avg_across_subj(data):
+
+def run_state_RSA(data,  per_ROI = True, plotting = True, only_reward_times = None, no_bins_per_state= None, sim_fake_data =False):
+    
+    # normal version is going to be collapse all subjects, but split cells by ROIs
+    # start by labelling the grids.
+
+    prepared_data = mc.analyse.helpers_human_cells.label_unique_grids(data, unique = False)
+    neurons, grids = mc.analyse.helpers_human_cells.pool_by_ROI_and_grid(prepared_data, specific_model = True)
+
+        
     # now next step is concatenate all grids in the correct order
+    # for all models.
+
+    # instead, create state model in the correct order.
+    states = ['A','B','C','D']
+    for ROI in neurons:
+        for task in neurons[ROI]:
+            length_averaged_task = len(neurons[ROI][task])
+            
+    state_model = np.zeros((int(length_averaged_task),len(states)))
+    length_state = int(len(neurons[ROI][task])/len(states))
+
+    for s_i, state in enumerate(states):
+        if s_i == 0:
+            state_model[0:length_state,s_i] = 1
+        else:
+            state_model[length_state*s_i:length_state*(s_i+1),s_i] = 1
+    state_model = np.tile(np.transpose(state_model), (1,len(grids)))
+    # pool by ROI and concatenate the neurons per ROI according to the order_of_task list
+    neurons_concat = mc.analyse.helpers_human_cells.neurons_concat_per_ROI_acrosstasks(neurons, grids)
+    
+    RDM_dict = {}
+    RDM_dict['state'] = mc.simulation.RDMs.within_task_RDM(state_model, plotting = True, titlestring = f"Between tasks state RSM, {4*len(grids)}, averaged over runs", intervalline= length_averaged_task)
+    
+    
+    if sim_fake_data:
+        fake_neurons = {}
+        fake_neurons['fake_ROI'], grid_labels = mc.analyse.helpers_human_cells.pool_by_grid(prepared_data)
+        fake_neurons_concat = mc.analyse.helpers_human_cells.neurons_concat_per_ROI_acrosstasks(fake_neurons, grids)
+        #RDM_dict['fake_neurons_RDM'] = mc.simulation.RDMs.within_task_RDM(fake_neurons_concat['fake_ROI_concat'], plotting = True, titlestring = f"Between tasks simualted neurons RSM, {4*len(grids)}, averaged over runs", intervalline= length_averaged_task)
+        neurons_concat['fake_neurons'] = fake_neurons_concat['fake_ROI_concat'].copy()
+
+    mc.simulation.RDMs.plot_RDMs(RDM_dict, len(grids))       
+    results= {}
+    neuron_RDMs = {}
+    all_rois_string = []
+    for ROI in sorted(neurons_concat): 
+        results[ROI] = {}
+           
+    for ROI in sorted(neurons_concat): 
+        all_rois_string.append(ROI)
+        plt.figure();
+        plt.imshow(neurons_concat[ROI], aspect = 'auto')
+        plt.title(ROI)
+        neuron_RDMs[ROI] = mc.simulation.RDMs.within_task_RDM(neurons_concat[ROI], plotting = True, titlestring = f"Between tasks {ROI} RSM, {4*len(grids)}, averaged over runs", intervalline= length_averaged_task)
+        results[ROI]['state'] = mc.simulation.RDMs.GLM_RDMs(neuron_RDMs[ROI], RDM_dict, mask_within = True, no_tasks = len(grids), t_val = True, plotting= False)
+    mc.simulation.RDMs.plot_RDMs(neuron_RDMs, len(grids), flexyscale=False)       
+    mc.plotting.results.overview_regression(results, all_rois_string, ['state'], combo = False, only_reward_times =only_reward_times, no_bins_per_state =no_bins_per_state)  
+
+    import pdb; pdb.set_trace()
+    return results    
+
+
+
+
+
+
+
+def models_concat_and_avg_across_subj(data, specific_model = False):
+    # concatenate all grids in the correct order
     # first loop: collect the same model for the same task for all subjects with np.stack
     # second loop: average the same model same task across all subjects
     # and in the end average across task repeats
-    
+    # first figure out which grids to consider.
+    if specific_model == True:
+        grid_labels = ['average_task_A', 'average_task_B', 'average_task_C', 
+                       'average_task_D', 'average_task_E', 'average_task_F']
+        grid_distribution = mc.analyse.helpers_human_cells.redistribute_grids(data, grid_labels)
+
     temp_stacked = {}
     for sub in data:
         for grid in data[sub]:
             if grid.startswith('average'):
-                temp_stacked[grid] = {}
+                if specific_model == True:
+                    # first redistribute the tasks.
+                    # Determine which predefined grid label this grid should be associated with
+                    for label, grids in grid_distribution.items():
+                        if grid in grids or grid == label:
+                            current_grid = label  # Use the predefined grid label for processing
+                            break
+                else: 
+                    current_grid = grid 
+                temp_stacked[current_grid] = {}
     all_models_set = set()
     # reduce data for models and grids by subject dimension, make a list instead.
+    # import pdb; pdb.set_trace() 
     for sub in data:
         for grid in data[sub]:
             if grid.startswith('average'):
-                for model in data[sub][grid]:
+                if specific_model == True:
+                    # first redistribute the tasks.
+                    # Determine which predefined grid label this grid should be associated with
+                    for label, grids in grid_distribution.items():
+                        if grid in grids or grid == label:
+                            current_grid = label  # Use the predefined grid label for processing
+                            break
+                else: 
+                    current_grid = grid 
+                for model in data[sub][current_grid]:
                     if model not in ['neurons']:
                         all_models_set.add(model)
-                        if model not in temp_stacked[grid]:
-                            temp_stacked[grid][model] = [data[sub][grid][model]]
+                        if model not in temp_stacked[current_grid]:
+                            temp_stacked[current_grid][model] = [data[sub][current_grid][model]]
                         else:
-                            temp_stacked[grid][model].append(data[sub][grid][model])
+                            temp_stacked[current_grid][model].append(data[sub][current_grid][model])
     # stack all lists and average across subjects
     for task in temp_stacked:
         for model in temp_stacked[task]:
@@ -178,7 +389,160 @@ def models_concat_and_avg_across_subj(data):
     return models_task_concat, order_of_tasks
 
 
-def pool_by_ROI_and_grid(data):
+# def pool_by_ROI_and_grid(data, specific_model = False):
+#     # first create the ROI sets
+#     ROIs = {}
+#     ROI_labels = ['hippocampal', "PCC", "ACC", "OFC", "entorhinal", "amygdala", "mixed"]
+#     for ROI in ROI_labels:
+#         ROIs[ROI] = set()
+#     for sub in data:
+#         for region in data[sub]['cell_labels']:
+#             if 'HC' in region:
+#                 ROIs['hippocampal'].add(region)
+#             elif 'ACC' in region:
+#                 ROIs['ACC'].add(region)
+#             elif 'PCC' in region:
+#                 ROIs['PCC'].add(region)
+#             elif 'EC' in region:
+#                 ROIs['entorhinal'].add(region)
+#             elif 'AMYG' in region:
+#                 ROIs['amygdala'].add(region)
+#             elif 'OFC' in region:
+#                 ROIs['OFC'].add(region)
+#             else:
+#                 ROIs['mixed'].add(region)
+#     ROIs['entorhinal'] = {'REC', 'LEC'}
+#     # then create a neuron dictionary, split by ROIs, where I save how each cell 
+#     # of that ROI fires for each grid.
+    
+    
+#     if specific_model == False:
+#         grid_labels = ['task_A', 'task_B', 'task_C', 'task_D', 'task_E', 'task_F', 'task_G', 'task_H']
+#         neurons = {}
+#         for ROI in ROIs:
+#             neurons[ROI] = {}
+#         # import pdb; pdb.set_trace()  
+#         # outer: loop through old data dict
+#         for sub in data:
+#             for grid in data[sub]:
+#                 if grid.startswith('average'):
+#                     for i_c, cell in enumerate(data[sub]['cell_labels']):
+#                         # inner: loop through new dict
+#                         for ROI in ROIs:
+#                             if cell in ROIs[ROI]:
+#                                 if neurons[ROI].get(f"{grid}_{sub}_{i_c}_{cell}") is None:
+#                                     # if sub == 'sub-43':
+#                                     #     neurons[ROI][f"{grid}_{sub}_{i_c}_{cell}"] = []
+#                                     # else:
+#                                     neurons[ROI][f"{grid}_{sub}_{i_c}_{cell}"] = data[sub][grid]['neurons'][i_c]
+        
+#     elif specific_model == True:
+#         grid_labels = ['task_A', 'task_B', 'task_C', 'task_D', 'task_E', 'task_F']
+#         # and the rest have to be distributed.
+#         # Step 1: Find all unique grids
+#         all_grids = set()
+#         for sub in data:
+#             for grid in data[sub]:
+#                 if grid.startswith('average'):
+#                     all_grids.add(grid)
+        
+#         # Step 2: Separate additional grids
+#         additional_grids = [grid for grid in all_grids if grid not in grid_labels]
+        
+#         # Initialize a counter for distributing grids
+#         from collections import defaultdict
+#         grid_distribution = defaultdict(list)
+        
+#         # Step 3: Distribute additional grids equally among predefined grid_labels
+#         for i, grid in enumerate(additional_grids):
+#             assigned_label = grid_labels[i % len(grid_labels)]
+#             grid_distribution[assigned_label].append(grid)
+
+#         # Initialize neurons dictionary
+#         neurons = {}
+#         for ROI in ROIs:
+#             neurons[ROI] = {}
+        
+#         # Process data
+#         for sub in data:
+#             for grid in data[sub]:
+#                 if grid.startswith('average'):
+#                     # Determine which predefined grid label this grid should be associated with
+#                     for label, grids in grid_distribution.items():
+#                         if grid in grids or grid == label:
+#                             current_grid = label  # Use the predefined grid label for processing
+#                             break
+#                     else:
+#                         # If no distribution is found, continue with the actual grid label (only if necessary)
+#                         current_grid = grid
+#                     # Loop through cells in the subject's data
+#                     for i_c, cell in enumerate(data[sub]['cell_labels']):
+#                         for ROI in ROIs:
+#                             if cell in ROIs[ROI]:
+#                                 # Construct unique key for neurons dictionary
+#                                 neuron_key = f"{current_grid}_{sub}_{i_c}_{cell}"
+#                                 if neurons[ROI].get(neuron_key) is None:
+#                                     neurons[ROI][neuron_key] = data[sub][grid]['neurons'][i_c]
+ 
+
+# #     # import pdb; pdb.set_trace()
+# #     return neurons
+
+
+def redistribute_grids(data_dict, grid_string):
+    # Step 1: Find all unique grids
+    all_grids = set()
+    for sub in data_dict:
+        for grid in data_dict[sub]:
+            if grid.startswith('average'):
+                all_grids.add(grid)
+    
+    # Step 2: Separate additional grids
+    additional_grids = [grid for grid in all_grids if grid not in grid_string]
+    
+    # Initialize a counter for distributing grids
+    from collections import defaultdict
+    grid_distribution = defaultdict(list)
+    
+    # Step 3: Distribute additional grids equally among predefined grid_labels
+    for i, grid in enumerate(additional_grids):
+        assigned_label = grid_string[i % len(grid_string)]
+        grid_distribution[assigned_label].append(grid)
+        
+    return grid_distribution
+      
+
+def pool_by_grid(data, specific_model = False):
+    neurons = {}
+    if specific_model == True:
+        grid_labels = ['average_task_A', 'average_task_B', 'average_task_C', 
+                       'average_task_D', 'average_task_E', 'average_task_F']
+        grid_distribution = mc.analyse.helpers_human_cells.redistribute_grids(data, grid_labels)
+    else:
+        grid_labels = []
+        
+    for sub in data:
+        for grid in data[sub]:
+            if grid.startswith('average'):
+                if specific_model == True:
+                    # first redistribute the tasks.
+                    # Determine which predefined grid label this grid should be associated with
+                    for label, grids in grid_distribution.items():
+                        if grid in grids or grid == label:
+                            current_grid = label  # Use the predefined grid label for processing
+                            break
+                else:
+                    current_grid = grid
+                # Loop through cells in the subject's data    
+                for i_c, cell in enumerate(data[sub][grid]['fake_neurons']):    
+                    neurons[f"{current_grid}_{sub}_fake_ROI_{i_c}"] = cell
+                                
+    return neurons, grid_labels
+
+    
+
+                          
+def pool_by_ROI_and_grid(data, specific_model = False):
     # first create the ROI sets
     ROIs = {}
     ROI_labels = ['hippocampal', "PCC", "ACC", "OFC", "entorhinal", "amygdala", "mixed"]
@@ -203,7 +567,14 @@ def pool_by_ROI_and_grid(data):
     ROIs['entorhinal'] = {'REC', 'LEC'}
     # then create a neuron dictionary, split by ROIs, where I save how each cell 
     # of that ROI fires for each grid.
-    grid_labels = ['task_A', 'task_B', 'task_C', 'task_D', 'task_E', 'task_F', 'task_G', 'task_H']
+    
+    if specific_model == True:
+        grid_labels = ['average_task_A', 'average_task_B', 'average_task_C', 
+                       'average_task_D', 'average_task_E', 'average_task_F']
+        grid_distribution = mc.analyse.helpers_human_cells.redistribute_grids(data, grid_labels)
+    else:
+        grid_labels = []
+        
     neurons = {}
     for ROI in ROIs:
         neurons[ROI] = {}
@@ -212,39 +583,70 @@ def pool_by_ROI_and_grid(data):
     for sub in data:
         for grid in data[sub]:
             if grid.startswith('average'):
+                if specific_model == True:
+                    # first redistribute the tasks.
+                    # Determine which predefined grid label this grid should be associated with
+                    for label, grids in grid_distribution.items():
+                        if grid in grids or grid == label:
+                            current_grid = label  # Use the predefined grid label for processing
+                            break
+                else:
+                    current_grid = grid
+                # Loop through cells in the subject's data    
                 for i_c, cell in enumerate(data[sub]['cell_labels']):
                     # inner: loop through new dict
                     for ROI in ROIs:
                         if cell in ROIs[ROI]:
-                            if neurons[ROI].get(f"{grid}_{sub}_{i_c}_{cell}") is None:
-                                if sub == 'sub-43':
-                                    neurons[ROI][f"{grid}_{sub}_{i_c}_{cell}"] = []
-                                else:
-                                    neurons[ROI][f"{grid}_{sub}_{i_c}_{cell}"] = data[sub][grid]['neurons'][i_c]
-    
-    # import pdb; pdb.set_trace()
-    return neurons
-                                
+                            if neurons[ROI].get(f"{current_grid}_{sub}_{i_c}_{cell}") is None:
+                                # if sub == 'sub-43':
+                                #     neurons[ROI][f"{grid}_{sub}_{i_c}_{cell}"] = []
+                                # else:
+                                neurons[ROI][f"{current_grid}_{sub}_{i_c}_{cell}"] = data[sub][grid]['neurons'][i_c]
+    return neurons, grid_labels
+
         
         
     
   
-def label_unique_grids(data_dict):
-    task_labels = {'task_A': ([1., 9., 5., 8.]), 'task_B': ([2., 5., 7., 6.]), 'task_C': ([3., 7., 9., 5.]), 'task_D': ([4., 8., 1., 3.]), 'task_E': ([6., 4., 2., 9.]), 'task_F': ([7., 3., 4., 2.]), 'task_G': ([8., 2., 6., 7.]), 'task_H': ([9., 1., 3., 4.])}
-    for sub in data_dict:
-        keys_to_modify = []
-        for unique_task in task_labels:
-            for grid_idx, grid in enumerate(data_dict[sub]['reward_configs']):
-                if list(grid) == list(task_labels[unique_task]):
-                    new_key = f"{unique_task}_grid_{grid_idx}"
-                    old_key = f"grid_{grid_idx}"
-                    keys_to_modify.append((old_key, new_key))
-        for old_grid_key, new_grid_key in keys_to_modify:
-            # print(old_grid_key, new_grid_key)
-            data_dict[sub][new_grid_key] = data_dict[sub].pop(old_grid_key)
+def label_unique_grids(data_dict, unique = True):
+    # import pdb; pdb.set_trace()
+    if unique == True:
+        task_labels = {}
+        for sub in data_dict:
+            task_labels[sub] = {'task_A': ([1., 9., 5., 8.]), 'task_B': ([2., 5., 7., 6.]), 'task_C': ([3., 7., 9., 5.]), 'task_D': ([4., 8., 1., 3.]), 'task_E': ([6., 4., 2., 9.]), 'task_F': ([7., 3., 4., 2.]), 'task_G': ([8., 2., 6., 7.]), 'task_H': ([9., 1., 3., 4.])}
+        #task_labels = {'task_A': ([1., 9., 5., 8.]), 'task_B': ([2., 5., 7., 6.]), 'task_C': ([3., 7., 9., 5.]), 'task_D': ([4., 8., 1., 3.]), 'task_E': ([6., 4., 2., 9.]), 'task_F': ([7., 3., 4., 2.]), 'task_G': ([8., 2., 6., 7.]), 'task_H': ([9., 1., 3., 4.])}
+    else:
         # import pdb; pdb.set_trace()
+        task_labels = {}
+        for sub in data_dict:
+            task_labels[sub] = {}
+            unique_quadruplets = {tuple(row) for row in data_dict[sub]['reward_configs']}
+            for i, quad in enumerate(unique_quadruplets):
+                task_labels[sub][f'task_{chr(65 + i)}'] = [int(num) for num in quad]  # chr(65) is 'A'
+                
+    
+        for sub in data_dict:
+            keys_to_modify = []
+            for unique_task in task_labels[sub]:
+                for grid_idx, grid in enumerate(data_dict[sub]['reward_configs']):
+                    if list(grid) == list(task_labels[sub][unique_task]):
+                        if sub == 'sub-43' and grid_idx == 3:
+                            continue
+                        if sub == 'sub-15' and grid_idx == 23:
+                            continue
+                            
+                        new_key = f"{unique_task}_grid_{grid_idx}"
+                        old_key = f"grid_{grid_idx}"
+                        keys_to_modify.append((old_key, new_key))
+            for old_grid_key, new_grid_key in keys_to_modify:
+                # print(old_grid_key, new_grid_key)
+                data_dict[sub][new_grid_key] = data_dict[sub].pop(old_grid_key)
+                
+    for sub in data_dict:
         # last, but not least, create grid averages.
-        for unique_task in task_labels:
+        # if there aren't 3 averages, just make 2 averages instead.
+        # import pdb; pdb.set_trace()
+        for unique_task in task_labels[sub]:
             data_dict[sub][f"average_{unique_task}"] = {}
             for grid in data_dict[sub]:
                 if grid.startswith(unique_task):
@@ -253,7 +655,8 @@ def label_unique_grids(data_dict):
                             data_dict[sub][f"average_{unique_task}"][model] = [data_dict[sub][grid][model]]
                         else:
                            data_dict[sub][f"average_{unique_task}"][model].append(data_dict[sub][grid][model]) 
-          
+    
+    # import pdb; pdb.set_trace()
     # and in the end average across task repeats
     for sub in data_dict:
         for grid in data_dict[sub]:
@@ -262,10 +665,7 @@ def label_unique_grids(data_dict):
                 for model in data_dict[sub][grid]:
                     # first collect all grids that are the same
                     # Stack the arrays along a new axis (axis 0)
-            
                     temp_stacked[model] = np.stack(data_dict[sub][grid][model], axis=0)
-                    # make sure this works!!
-                    print(f"{model} stacked has shape {temp_stacked[model].shape}")
                     # Compute the mean across the stacked dimension
                 # then average
                 for model in temp_stacked:
@@ -273,36 +673,44 @@ def label_unique_grids(data_dict):
                 #import pdb; pdb.set_trace()
     return data_dict
             
-            
-    
-def prep_and_model_human_cells(data_dict):
+def prep_neurons_and_state(data_dict, repeats, only_reward_times, no_bins_per_state, sim_fake_data = False):
+    # import pdb; pdb.set_trace()
     # first, do some modifications (integers, start from 0, make timings to bins)
     # then, call the simulate functions that model the different neurons
     # do this for every repeat < for ever grid < for every subject.
-    modelled_data = {}
+    data_prep = {}
+    
+    # assume that every task has at least 10 repeats.
     for sub in data_dict:
-        print(f"now starting to process data from subejct {sub}")
-        modelled_data[sub] = {}
-        modelled_data[sub]['cell_labels'] = data_dict[sub]['cell_labels'].copy()
-        modelled_data[sub]['reward_configs'] = data_dict[sub]['reward_configs'].copy()
+        print(f"now starting to process data from subject {sub}")
+        data_prep[sub] = {}
+        data_prep[sub]['cell_labels'] = data_dict[sub]['cell_labels'].copy()
+        data_prep[sub]['reward_configs'] = data_dict[sub]['reward_configs'].copy()
         #import pdb; pdb.set_trace()
         for grid_idx, grid_config in enumerate(data_dict[sub]['reward_configs']):
-            if sub == 'sub-43' and grid_idx == 3:
+            if (sub == 'sub-43' and grid_idx == 3) or (sub == 'sub-15' and grid_idx == 23) or (sub == 'sub-02' and grid_idx == 18):
                 # probably aborted the experiment here
-                modelled_data[sub][f"grid_{grid_idx}"] = {}
+                data_prep[sub][f"grid_{grid_idx}"] = {}
                 continue
-            modelled_data[sub][f"grid_{grid_idx}"] = {}
+            data_prep[sub][f"grid_{grid_idx}"] = {}
             # timings task is start A - find A - find B - find C - find D
             timings_task = data_dict[sub]['timings'][grid_idx].copy()
             # fields need to be between 0 and 8, and keep them as integers
             locations_curr_grid = [int((field_no-1)) for field_no in data_dict[sub]['locations'][grid_idx]]
+            # current neural recordings 
+            neurons_for_task = data_dict[sub]['neurons'][grid_idx].copy()
             task_config = [int((field_no-1)) for field_no in data_dict[sub]['reward_configs'][grid_idx]]
-            regression_across_repeats = {}
-            models_per_repeat = {}
-            for repeat in range(0, len(timings_task)):
-                # then per repeat, simulate my neurons
-                # if len(timings_task[repeat])
+            regression_across_repeats, simulated_state_data, prep_repeat_dict = {}, {}, {}
+            repeats_list = []
+            for repeat in range(repeats[0], repeats[1]):
+                repeats_list.append(repeat)
+                
+                # then figure out the precise timings.
                 if math.isnan(timings_task[repeat][-1]) == True:
+                    # test if there are more nans than only the last, and if 
+                    # this anyways the last repeat, skip this one
+                    if math.isnan(timings_task[repeat][-2]) == True and repeat+1 == len(timings_task):
+                        continue
                     if repeat+1 == len(timings_task):
                         # note this is a dumb fix. 
                         # cleaner if ignoring this trial as patient probably didn't finish
@@ -312,65 +720,190 @@ def prep_and_model_human_cells(data_dict):
                 # I also need the next repeat
                 if repeat+1 < len(timings_task):
                     if math.isnan(timings_task[repeat+1][-1]) == True:
+                        # if this is the penultimum repeat and there are more nans, skip this one
+                        if math.isnan(timings_task[repeat+1][-2]) == True and repeat+2 == len(timings_task):
+                            continue
                         # note this is a dumb fix. 
                         # cleaner if ignoring this trial as patient probably didn't finish
+                        timings_task[repeat+1][-1] = timings_task[repeat+1][-2]+2
+                    
+                    timings_next_repeat = [int(elem) for elem in timings_task[repeat+1]]
+                else:
+                    timings_next_repeat = None
+                
+                # then create the regressors 
+                prep_repeat_dict[f"rep_{repeat}"] = mc.analyse.helpers_human_cells.prep_behaviour_one_repeat(timings_repeat, locations_curr_grid, timings_next_repeat, task_config, neurons_for_task)
+                regression_across_repeats[f"rep_{repeat}"] = mc.simulation.predictions.create_x_regressors_per_state(prep_repeat_dict[f"rep_{repeat}"], no_regs_per_state=no_bins_per_state, only_for_rewards=only_reward_times)
+                if sim_fake_data == True:
+                    simulated_state_data[f"rep_{repeat}"] = mc.simulation.predictions.simulate_fake_data(prep_repeat_dict[f"rep_{repeat}"], model_to_simulate = 'state', repeat_idx = repeat)
+
+            # lastly, run the same regression on the cells
+            # the regressor sometimes is a few timebins shorter. make equal in size.
+            # before doing so, normalise the neurons.
+            # subtract mean and divide by standard deviation.
+            # first, concatenate all repeats.
+            for i, repeat in enumerate(sorted(regression_across_repeats)):
+                if i == 0:
+                    prep_repeat_dict["concat_neurons"] = prep_repeat_dict[repeat]['neuron_rep'].copy()
+                    regression_across_repeats["concat"] = regression_across_repeats[repeat].copy()
+                    if sim_fake_data == True:
+                        simulated_state_data["concat"]  = simulated_state_data[repeat].copy()
+                else:
+                    prep_repeat_dict["concat_neurons"] = np.concatenate((prep_repeat_dict["concat_neurons"], prep_repeat_dict[repeat]['neuron_rep']), axis = 1)
+                    regression_across_repeats["concat"] = np.concatenate((regression_across_repeats["concat"], regression_across_repeats[repeat]), axis = 1)
+                    if sim_fake_data == True:
+                        simulated_state_data["concat"]  = np.concatenate((simulated_state_data["concat"], simulated_state_data[repeat]), axis = 1)
+
+            prep_repeat_dict["concat_neurons_normal"] = mc.simulation.predictions.normalise_neurons(prep_repeat_dict["concat_neurons"])
+            data_prep[sub][f"grid_{grid_idx}"]['neurons'] = mc.simulation.predictions.transform_data_to_betas(prep_repeat_dict["concat_neurons_normal"], regression_across_repeats["concat"])     
+            if sim_fake_data == True:
+                data_prep[sub][f"grid_{grid_idx}"]['fake_neurons'] = mc.simulation.predictions.transform_data_to_betas(simulated_state_data["concat"], regression_across_repeats["concat"])  
+                
+    return data_prep           
+ 
+
+
+
+   
+def prep_and_model_human_cells(data_dict, repeats, model_simple = True):
+    #import pdb; pdb.set_trace()
+    task_labels = {'task_A': ([1., 9., 5., 8.]), 'task_B': ([2., 5., 7., 6.]), 'task_C': ([3., 7., 9., 5.]), 'task_D': ([4., 8., 1., 3.]), 'task_E': ([6., 4., 2., 9.]), 'task_F': ([7., 3., 4., 2.]), 'task_G': ([8., 2., 6., 7.]), 'task_H': ([9., 1., 3., 4.])}
+    
+    # import pdb; pdb.set_trace()
+    # first, do some modifications (integers, start from 0, make timings to bins)
+    # then, call the simulate functions that model the different neurons
+    # do this for every repeat < for ever grid < for every subject.
+    
+    modelled_data = {}
+    for sub in data_dict:
+        print(f"now starting to process data from subject {sub}")
+        modelled_data[sub] = {}
+        modelled_data[sub]['cell_labels'] = data_dict[sub]['cell_labels'].copy()
+        modelled_data[sub]['reward_configs'] = data_dict[sub]['reward_configs'].copy()
+
+        for grid_idx, grid_config in enumerate(data_dict[sub]['reward_configs']):
+            # first identify which task you are currently modelling.
+            for task_config_pre_defined in task_labels:
+                if task_labels[task_config_pre_defined] == list(grid_config):
+                    grid_label = f"{task_config_pre_defined}_{grid_idx}"
+                    
+            modelled_data[sub][grid_label] = {}
+            
+            if (sub == 'sub-43' and grid_idx == 3) or (sub == 'sub-15' and grid_idx == 23) or (sub == 'sub-02' and grid_idx == 18):
+                # probably aborted the experiment here
+                continue
+            # timings task is start A - find A - find B - find C - find D
+            timings_task = data_dict[sub]['timings'][grid_idx].copy()
+            # current neural recordings 
+            neurons_for_task = data_dict[sub]['neurons'][grid_idx].copy()
+            # fields need to be between 0 and 8, and keep them as integers
+            locations_curr_grid = [int((field_no-1)) for field_no in data_dict[sub]['locations'][grid_idx]]
+            task_config = [int((field_no-1)) for field_no in data_dict[sub]['reward_configs'][grid_idx]]
+            
+            regression_across_repeats = {}
+            models_per_repeat = {}
+            # for repeat in range(1, len(timings_task)):
+            prep_repeat_dict = {}   
+            for repeat in range(repeats[0], repeats[1]):
+                # first check if this repeat wasn't completed
+                # for current repeat
+                if math.isnan(timings_task[repeat][-1]) == True:
+                    # test if there are more nans than only the last, and if 
+                    # this anyways the last repeat, skip this one
+                    if math.isnan(timings_task[repeat][-2]) == True and repeat+1 == len(timings_task):
+                        continue
+                    if repeat+1 == len(timings_task):
+                        timings_task[repeat][-1] = timings_task[repeat][-2]+2
+                timings_repeat = [int(elem) for elem in timings_task[repeat]]
+                
+                # and for next repeat
+                if repeat+1 < len(timings_task):
+                    if math.isnan(timings_task[repeat+1][-1]) == True:
+                        # if this is the penultimum repeat and there are more nans, skip this one
+                        if math.isnan(timings_task[repeat+1][-2]) == True and repeat+2 == len(timings_task):
+                            continue
                         timings_task[repeat+1][-1] = timings_task[repeat+1][-2]+2
                     timings_next_repeat = [int(elem) for elem in timings_task[repeat+1]]
                 else:
                     timings_next_repeat = None
-                prep_repeat_dict = mc.analyse.helpers_human_cells.prep_behaviour_one_repeat(timings_repeat, locations_curr_grid, timings_next_repeat)
+                # this includes the trajectory, and the according neural recording
+                prep_repeat_dict[f"rep_{repeat}"] = mc.analyse.helpers_human_cells.prep_behaviour_one_repeat(timings_repeat, locations_curr_grid, timings_next_repeat, task_config, neurons_for_task)
                 # then model per repeat/grid/subject
-                models_per_repeat[f"rep_{repeat}"] = mc.simulation.predictions.set_continous_models_ephys(prep_repeat_dict, split_clock = True)
-
-                # then set everything back together
-                #modelled_data[sub][grid][]
-                regression_across_repeats[f"rep_{repeat}"] = mc.simulation.predictions.create_x_regressors_per_state(prep_repeat_dict, only_for_rewards=True)
+                if model_simple == True:
+                    models_per_repeat[f"rep_{repeat}"] = mc.simulation.predictions.set_simple_models_cells(prep_repeat_dict[f"rep_{repeat}"])
+                else:
+                    models_per_repeat[f"rep_{repeat}"] = mc.simulation.predictions.set_continous_models_ephys(prep_repeat_dict[f"rep_{repeat}"], split_clock = True)
+                # then prepare regressors per repeat; will be same length as the walked path/trajectory/modelled data.
+                regression_across_repeats[f"rep_{repeat}"] = mc.simulation.predictions.create_x_regressors_per_state(prep_repeat_dict[f"rep_{repeat}"], only_for_rewards=True)
             
             model_list = []
-            for key in models_per_repeat[f"rep_{repeat}"]:
+            for key in models_per_repeat[f"rep_{repeats[0]}"]:
                 model_list.append(key)
             
             # then, per grid, average the runs to one. 
             # NOTE: later, HERE IS WHERE YOU COULD DO EARLY VS LATE !!
             # first, concatenate all repeats.
-            for i, repeat in enumerate(sorted(models_per_repeat)):
+            # import pdb; pdb.set_trace()
+            for i, rep in enumerate(sorted(models_per_repeat)):
                 if i == 0:
-                    regression_across_repeats["concat"] = regression_across_repeats[repeat].copy()
+                    prep_repeat_dict["concat_neurons"] = prep_repeat_dict[rep]['neuron_rep'].copy()
+                    regression_across_repeats["concat"] = regression_across_repeats[rep].copy()
+                    for model in model_list:
+                        models_per_repeat[f"{model}_concat"] = models_per_repeat[rep][model].copy()
                 else:
-                    regression_across_repeats["concat"] = np.concatenate((regression_across_repeats["concat"], regression_across_repeats[repeat]), axis = 1)
-                for model in model_list:
-                    if i == 0:
-                        models_per_repeat[f"{model}_concat"] = models_per_repeat[repeat][model].copy()
-                    else:
-                        models_per_repeat[f"{model}_concat"] = np.concatenate((models_per_repeat[f"{model}_concat"], models_per_repeat[repeat][model]), axis = 1)
-            
+                    regression_across_repeats["concat"] = np.concatenate((regression_across_repeats["concat"], regression_across_repeats[rep]), axis = 1)
+                    prep_repeat_dict["concat_neurons"] = np.concatenate((prep_repeat_dict["concat_neurons"], prep_repeat_dict[rep]['neuron_rep']), axis = 1)
+                    for model in model_list:
+                        models_per_repeat[f"{model}_concat"] = np.concatenate((models_per_repeat[f"{model}_concat"], models_per_repeat[rep][model]), axis = 1)
+            # then average across all trials by running the regression and save each grid and model per subject.
             for model in model_list:
-                # then average across all trials by running the regression and save each grid and model per subject.
-                # import pdb; pdb.set_trace()
-                # something is wrong here for state.... not how I want it to look..
-                # maybe because of the timings actually????
-                # because I am kind of saying a new state starts once they reached the reward
-                # maybe i need to recode this
-                modelled_data[sub][f"grid_{grid_idx}"][model] = mc.simulation.predictions.transform_data_to_betas(models_per_repeat[f"{model}_concat"], regression_across_repeats["concat"])
+                modelled_data[sub][grid_label][model] = mc.simulation.predictions.transform_data_to_betas(models_per_repeat[f"{model}_concat"], regression_across_repeats["concat"])
             # lastly, run the same regression on the cells
-            # the regressor sometimes is a few timebins shorter. make equal in size.
-            modelled_data[sub][f"grid_{grid_idx}"]['neurons'] = mc.simulation.predictions.transform_data_to_betas(data_dict[sub]['neurons'][grid_idx][:, 0:regression_across_repeats["concat"].shape[1]], regression_across_repeats["concat"])     
+            prep_repeat_dict["concat_neurons_normal"] = mc.simulation.predictions.normalise_neurons(prep_repeat_dict["concat_neurons"])
+            modelled_data[sub][grid_label]['neurons'] = mc.simulation.predictions.transform_data_to_betas(prep_repeat_dict["concat_neurons_normal"], regression_across_repeats["concat"])     
+            # import pdb; pdb.set_trace()
+            # # the regressor sometimes is a few timebins shorter. make equal in size.
+           
+            # # before doing so, normalise the neurons.
+            # # subtract mean and divide by standard deviation.
+            # data_dict[sub]['neurons'][grid_idx] = mc.simulation.predictions.normalise_neurons(data_dict[sub]['neurons'][grid_idx])
+            # # import pdb; pdb.set_trace()
+            # # actually, 0 needs to be the first repeat index. How do I find that one??
+            # start_modelling_from = int(timings_task[repeats[0]][0])
+            # import pdb; pdb.set_trace()
+            # # THIS ISNT RIGHT!!!!
+            
+            # modelled_data[sub][grid_label]['neurons'] = mc.simulation.predictions.transform_data_to_betas(prep_repeat_dict["concat_neurons"], regression_across_repeats["concat"])     
+            # modelled_data[sub][grid_label]['neurons'] = mc.simulation.predictions.transform_data_to_betas(data_dict[sub]['neurons'][grid_idx][:, start_modelling_from:start_modelling_from + regression_across_repeats["concat"].shape[1]], regression_across_repeats["concat"])     
+    #import pdb; pdb.set_trace()
+    #fake_data = mc.analyse.helpers_human_cells(data_dict, modelled_data)
+    
     print(f"the following models have been simulated and averaged for all repeats and all grids: {model_list}")
     return modelled_data
     
 
+# THIS IS A LITTLE HELPER.
+#def create_fake_data(og_data, model):
+    
+    # then store the 
 
-def prep_behaviour_one_repeat(timings_repeat, locations_curr_grid, timings_next_repeat):
+
+
+
+
+def prep_behaviour_one_repeat(timings_repeat, locations_curr_grid, timings_next_repeat, reward_locs, neurons):
     # import pdb; pdb.set_trace()
     # some pre-processing to create my models.
     # cut the neurons file such to include only the current repeat
     prep_dict = {}
+    prep_dict['reward_locs'] = reward_locs
     # I think this needs to be adjusted to: 
     # adjust the timings such that they fit whatever you cut from the timings!    
     prep_dict['timings_repeat'] = [elem - timings_repeat[0] for elem in timings_repeat]
     # prep_dict['timings_repeat'] = timings_repeat, bins for ABCD
     # locations for current repeat
     prep_dict['trajectory'] = locations_curr_grid[timings_repeat[0]:timings_repeat[-1]]
+    prep_dict['neuron_rep'] = neurons[:, timings_repeat[0]:timings_repeat[-1]]
     # split trajectory into subpaths
     if timings_next_repeat:
         subpath_locs = [locations_curr_grid[timings_repeat[0]:timings_repeat[1]], 
