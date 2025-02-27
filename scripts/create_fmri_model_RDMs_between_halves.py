@@ -103,8 +103,6 @@ task_halves = ['1', '2']
 fmriplotting = True # incorrect for 01 false for 03-im!
 fmri_save = False
 
-add_run_counts_model = False # this doesn't work with the current analysis
-
   
 models_I_want = mc.analyse.analyse_MRI_behav.select_models_I_want(RDM_version)
 if 'state_masked' in models_I_want:
@@ -148,23 +146,35 @@ for sub in subjects:
                             regressors[key][i] = elem + regressors[reward_key][i]
                             
         # lastly, remove all '_reward' regressors as they are integrated in the first bit.
-        regressors = {key: value for key, value in regressors.items() if not key.endswith('_reward')}
-
+        # NOTE: not sure why this is happening??? i specifically want to be able to choose
+                # if rewards are wanted or not...
+                # CHECK AGAIN LATER!!
+                
+        #
+        #
+        # I think this is wrong. so I comment it out for now
+        # regressors = {key: value for key, value in regressors.items() if not key.endswith('_reward')}
+        #
+        #
+        #
+        #
+        
         # so now, account for the temporal resolution that you want:
         for reg in regressors:
             regressors[reg] = np.repeat(regressors[reg], repeats = temporal_resolution)
         
-        # overview of the reward fields per task.
+        
+        # overview of how many steps to each reward per subpath in each task
         steps_subpath_alltasks = mc.analyse.analyse_MRI_behav.subpath_files(configs, subpath_after_steps, rew_list, rew_index, steps_subpath_alltasks_empty)
 
         if regression_version in ['02-4', '03-4', '03-4-e', '03-4-l','04-4', '03-4-rep1', '03-4-rep2', '03-4-rep3', '03-4-rep4', '03-4-rep5', '07-4']:
+            # in these regressions, tasks B and D aren't included.
             for config in configs:
                 if config.startswith('B') or config.startswith('D'):
                     del rew_list[config]
-                
             configs = np.array([config for config in configs if config.startswith('A') or config.startswith('C') or config.startswith('E')])
 
-    
+        
         # finally, create simulations and time-bin per run.
         # prepare the between-tasks dictionary.
         all_models_dict = {f"{model}": {key: "" for key in configs} for model in models_I_want}
@@ -182,8 +192,6 @@ for sub in subjects:
                         buttons_pressed.append(None)
                     else:
                         buttons_pressed.append(int(press[0]))   
-                # select the timings of this task
-                timings_curr_run = timings[config]
   
                 # select file that shows step no per subpath
                 step_number = [[int(value) for value in sub_list] for sub_list in steps_subpath_alltasks[config]]
@@ -202,22 +210,29 @@ for sub in subjects:
                         stop_after_x_runs = len(subpath_after_steps[config]) // 4 # 4 subpaths
                         if no_run >= stop_after_x_runs:
                             continue
-                    #import pdb; pdb.set_trace()
                     if no_run == 0:
                         # careful: fields is always one more than the step number
                         curr_trajectory = trajectory[0:cumsteps_task[no_run]+1]
-                        curr_timings = timings_curr_run[0:cumsteps_task[no_run]+1]
+                        curr_timings = timings[config][0:cumsteps_task[no_run]+1]
                         curr_stepnumber = step_number[no_run]
                         # but keys isn't
                         curr_keys = buttons_pressed[0:cumsteps_task[no_run]]
                     elif no_run > 0:
                         # careful: fields is always one more than the step number
                         curr_trajectory = trajectory[cumsteps_task[no_run-1]:cumsteps_task[no_run]+1]
-                        curr_timings = timings_curr_run[cumsteps_task[no_run-1]:cumsteps_task[no_run]+1]
+                        curr_timings = timings[config][cumsteps_task[no_run-1]:cumsteps_task[no_run]+1]
                         # but keys isn't
                         curr_keys = buttons_pressed[cumsteps_task[no_run-1]:cumsteps_task[no_run]]
                         curr_stepnumber = step_number[no_run]
                         curr_cumsumsteps = cumsteps_task[no_run]
+                    
+                    # DELETE later
+                    # check if locations map back to the reward configs
+                    errors = 0
+                    for i, step in enumerate(np.cumsum(curr_stepnumber)):
+                        if curr_trajectory[step] != rew_list[config][i]:
+                            errors = errors + 1
+                            print("careful! reward doesn't match location!")
                     
                     # KEY STEP
                     # create all models.
@@ -242,7 +257,16 @@ for sub in subjects:
                         model_from_action = mc.simulation.predictions.create_action_model_RDMs_fmri(curr_keys, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, only_rew = True, only_path= False, split_future_actions = False)    
                         result_model_dict = {**models_from_03_1, **model_from_action}
                     elif RDM_version in ['03-1', '03-2', '03-3']:# modelling only clocks + splitting clocks later in different way.
-                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
+                        # 
+                        #
+                        # USING A SIMPLER MODEL NOW
+                        result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri_simple(curr_trajectory, curr_timings, curr_stepnumber, rew_list[config])
+                        #
+                        #
+                        
+                        #
+                        
+                        # result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
                     elif RDM_version in ['04', '04-5-A', '04-A']: # modelling only paths + splitting clocks [new]
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path = True, split_clock=True)
                     elif RDM_version in ['05']:
@@ -271,7 +295,7 @@ for sub in subjects:
                         for model in result_model_dict:
                             repeats_model_dict[model] = np.concatenate((repeats_model_dict[model], result_model_dict[model]), 1)
                 
-                   
+                import pdb; pdb.set_trace()   
                 # NEXT STEP: prepare the regression- select the correct regressors, filter keys starting with 'A1_backw'
                 regressors_curr_task = {key: value for key, value in regressors.items() if key.startswith(config)}
 
@@ -315,6 +339,7 @@ for sub in subjects:
                     raise ValueError("All lists must have the same length.")
                 
                 # if not all regressors shall be included, filter them according to the regression setting
+                import pdb; pdb.set_trace() 
                 if regression_version in ['02', '02-4']:
                     if RDM_version == '02-A':
                         regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key}
@@ -394,7 +419,7 @@ for sub in subjects:
         models_between_task_halves[task_half] = all_models_dict
         print(f"task half {task_half}")
         configs_dict[task_half] = rew_list
-  
+        import pdb; pdb.set_trace()
 
 
 

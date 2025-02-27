@@ -50,13 +50,13 @@ import mc
 import scipy.signal
 from matplotlib.patches import Circle
 import scipy
-import colormaps as cmap
 from sklearn.linear_model import LinearRegression
 from scipy.stats import multivariate_normal
 from scipy.stats import norm
 from itertools import product
 from scipy.signal import argrelextrema
 from scipy import interpolate
+import math
 
 # PART 1
 ############ Helpers ################
@@ -204,7 +204,8 @@ def find_start_end_indices(locations, index):
     end_idx = index
     
     if index == -1:
-        # import pdb; pdb.set_trace()
+        # if reward is found at last index, only test
+        # if it was actually found slightly earlier
         while locations[start_idx - 1] == target_value:
             start_idx -= 1
     else:
@@ -232,6 +233,7 @@ def create_x_regressors_per_state(beh_data_curr_rep_dict, no_regs_per_state=3, o
         #regressors = np.zeros([n_states, len(walked_path)-1])
         regressors = np.zeros([n_states, len(walked_path)])
         for rew_idx in range(0, n_states):
+            #import pdb; pdb.set_trace()
             reward_found_at = subpath_timings[rew_idx+1]
             if reward_found_at < len(walked_path)+1:
                 if reward_found_at == len(walked_path):
@@ -239,6 +241,8 @@ def create_x_regressors_per_state(beh_data_curr_rep_dict, no_regs_per_state=3, o
                 start_curr_rew, end_at_curr_rew = mc.simulation.predictions.find_start_end_indices(walked_path, reward_found_at)
             regressors[rew_idx, start_curr_rew:end_at_curr_rew] = 1
         # import pdb; pdb.set_trace()
+        # THIS IS WHERE THE ERROR COMES FROM
+        # CHANGE HOW I DEAL WITH THE LAST REWARD!!!
     else:
         regressors = np.zeros([n_states*no_regs_per_state, len(walked_path)])
         cols_to_fill_previous = 0
@@ -255,6 +259,7 @@ def create_x_regressors_per_state(beh_data_curr_rep_dict, no_regs_per_state=3, o
                 else:
                     regressors[nth_part+(count_paths*no_regs_per_state), cols_to_fill_previous + time_per_state_in_nth_part_cum[nth_part-1]: cols_to_fill_previous + time_per_state_in_nth_part_cum[nth_part]] = 1
             cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
+    
     return regressors
 
 
@@ -1308,7 +1313,11 @@ def set_location_contin(walked_path, step_time, grid_size = 3, fire_radius = 0.2
 # models_per_repeat[f"rep_{repeat}"] = mc.simulation.predictions.set_simple_models_cells(prep_repeat_dict)
 
 def set_simple_models_cells(data_dict):
+<<<<<<< HEAD
+    # import pdb; pdb.set_trace()
+=======
     #import pdb; pdb.set_trace()
+>>>>>>> origin/main
     # simple models are: location model, current reward, next reward, 
     # 2 future reward, 3 future reward,state
 
@@ -1342,6 +1351,11 @@ def set_simple_models_cells(data_dict):
     
     model_dict = {}
     for count_paths, pathlength in enumerate(step_number):
+<<<<<<< HEAD
+        # if count_paths == 3:
+        #     import pdb; pdb.set_trace()
+=======
+>>>>>>> origin/main
         subpath_dict = {}
         if count_paths == 0:
             prev_end_state = 0
@@ -1355,7 +1369,14 @@ def set_simple_models_cells(data_dict):
             reward_found_at = -1
         # consider this as end of a state.
         start_curr_rew, end_at_curr_rew = mc.simulation.predictions.find_start_end_indices(walked_path, reward_found_at)
+<<<<<<< HEAD
+        # to test if the paths matches the current reward configuration
+        if walked_path[start_curr_rew] != rewards[count_paths]:
+            import pdb; pdb.set_trace()
+        
+=======
          
+>>>>>>> origin/main
         # first step: divide into subpaths
         curr_path = walked_path[prev_end_state:end_at_curr_rew] 
         if count_paths == 3:
@@ -1392,7 +1413,11 @@ def set_simple_models_cells(data_dict):
                 model_dict[model] = subpath_dict[model].copy()
             else:
                 model_dict[model] = np.concatenate((model_dict[model], subpath_dict[model]), axis = 1)
+<<<<<<< HEAD
+    # import pdb; pdb.set_trace() 
+=======
               
+>>>>>>> origin/main
     return model_dict
     
     
@@ -2088,7 +2113,82 @@ def set_location_ephys(walked_path, reward_fields, grid_size = 3, plotting = Fal
 ############### PART 4 #######################
 ############# fMRI MODELS ###################
 ##############################################
+def create_model_RDMs_fmri_simple(walked_path, timings_per_step, step_number, rewards, temporal_resolution = 10):
+    #import pdb; pdb.set_trace()
+    # this is ONLY for the following settings:
+    # rewards only, state, split clock, no phase-tuning, locations
 
+    # a few hard-coded things
+    grid_size = 3
+    fire_radius = 0.25 # spatial overlap for location cells
+    
+    
+    rewards_twice = rewards * 2
+    cumsumsteps = np.insert(np.cumsum(step_number),0,-1)
+    
+    # build all possible coord combinations 
+    all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
+    # code up the 2d location neurons. this is e.g. a 3x3 grid tiled with multivatiate
+    # gaussians that are centred around the grid locations.
+    neuron_loc_functions = []
+    for coord in all_coords:
+        neuron_loc_functions.append(multivariate_normal(coord, cov = fire_radius))
+        
+    model_dict = {}
+    for count_paths, pathlength in enumerate(step_number):
+        subpath_dict = {}
+        prev_end_state = cumsumsteps[count_paths]+1
+        end_at_curr_rew = cumsumsteps[count_paths+1]
+        
+        # THINK ABOUT HOW TO DO THE SLICING AND INDEXING CORRECTLY!!!
+        # to test if the paths matches the current reward configuration
+        if walked_path[end_at_curr_rew] != rewards[count_paths]:
+            print('careful! reward does not match last field of walked path')
+            import pdb; pdb.set_trace()
+        
+        # first step: divide into subpaths
+        curr_path = walked_path[prev_end_state:end_at_curr_rew+1] 
+        if count_paths == 3:
+            curr_path = walked_path[prev_end_state:]
+        # THINK ABOUT HOW TO DO THE SLICING AND INDEXING CORRECTLY!!!
+        
+        #import pdb; pdb.set_trace()
+        # second step: prepare models based on locations.
+        location_based_matrices = ['location', 'curr_rew', 'next_rew', 'second_next_rew', 'third_next_rew']
+        for loc_model in location_based_matrices:
+            subpath_dict[loc_model] = np.empty([grid_size*grid_size,len(curr_path)])
+            subpath_dict[loc_model][:] = np.nan
+            
+        # for location, simply fill the matrix with the respective functions
+        for timepoint, location in enumerate(curr_path):
+            for row in range(0, grid_size*grid_size):
+                subpath_dict['location'][row, timepoint] = neuron_loc_functions[row].pdf(location) # location has to be a coord
+                # make the split clocks matrices.
+                subpath_dict['curr_rew'][row, timepoint] = neuron_loc_functions[row].pdf(rewards_twice[count_paths]) # location has to be a coord
+                subpath_dict['next_rew'][row, timepoint] = neuron_loc_functions[row].pdf(rewards_twice[count_paths+1]) # location has to be a coord
+                subpath_dict['second_next_rew'][row, timepoint] = neuron_loc_functions[row].pdf(rewards_twice[count_paths+2]) # location has to be a coord
+                subpath_dict['third_next_rew'][row, timepoint] = neuron_loc_functions[row].pdf(rewards_twice[count_paths+3]) # location has to be a coord
+
+
+        # second: create the state matrix.
+        subpath_dict['state'] = np.zeros([len(step_number), len(curr_path)])
+        subpath_dict['state'][count_paths] = 1
+        
+        #last, concatenate.
+        for model in subpath_dict:
+            if count_paths == 0:
+                model_dict[model] = subpath_dict[model].copy()
+            else:
+                model_dict[model] = np.concatenate((model_dict[model], subpath_dict[model]), axis = 1)
+
+    clocks_string = ['curr_rew', 'next_rew','second_next_rew','third_next_rew']
+    model_dict['clocks'] = np.zeros((len(model_dict['curr_rew'])*4, model_dict['curr_rew'].shape[1]))
+    for row in range(0, len(model_dict['curr_rew'])):
+        for i, c in enumerate(clocks_string):
+            model_dict['clocks'][4*row+i] = model_dict[c][row]
+            
+    
+    return model_dict
 
 
 # to create the model RDMs.
@@ -2147,7 +2247,8 @@ def create_model_RDMs_fmri(walked_path, timings_per_step, step_number, grid_size
         # plt.figure(); 
         # for f in neuron_task_progress_functions:
         #     plt.plot(np.linspace(0,1,1000), f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)/np.max(f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)))                
-    
+            
+            
         
     # make a task progress model    
     samplepoints = np.linspace(-np.pi, np.pi, (temporal_resolution*cumsumsteps[-1])) if wrap_around == 1 else np.linspace(0, 1, len(temporal_resolution*cumsumsteps[-1]))
@@ -2951,13 +3052,118 @@ def create_instruction_model(rewards_of_task, trial_type, grid_size = 3, fire_ra
     
     return result_dict
 
+
+################################
+####### PART 4: cells ############
+################################
+#### regressors for human cells ####
+
+def state_cells(empty_reg, grid_t_all, reward_locs):
+    # import pdb; pdb.set_trace()
+    state_regressors = empty_reg.copy()
+    for repeat_idx, grid_times in enumerate(grid_t_all):
+        if np.isnan(grid_times).any():
+            continue
+        else:
+            state_regressors[0, int(grid_times[0]):int(grid_times[1])] = 1
+            state_regressors[1, int(grid_times[1]):int(grid_times[2])] = 1
+            state_regressors[2, int(grid_times[2]):int(grid_times[3])] = 1
+            state_regressors[3, int(grid_times[3]):int(grid_times[4])] = 1
+    return state_regressors
+
+
+def test_timings_rew(subject, locations, grid_t_all, reward_locs, number_of_grid):  
+    for repeat_idx, grid_times in enumerate(grid_t_all):
+        for state in range(0,4):
+            if repeat_idx == len(grid_t_all)-1 and state == 3: #ignore the last state/ repeat
+                continue
+            elif reward_locs[state] != locations[int(grid_times[state+1])]:
+                print(f"careful! timings don't match for {subject}, grid {number_of_grid}; location at state {state+1} and step {grid_times[state+1]} is {locations[int(grid_times[state+1])]}, and should be one of {reward_locs}!")
+                import pdb; pdb.set_trace()
+    print(f"all timings matched with finding correct rewarded location for subject {subject} and grid {reward_locs}!")
+
+def music_box_simple_cells(location, empty_reg, grid_t_all, reward_locs): 
+    musicbox_regressors = empty_reg.copy()
+    for repeat_idx, rep_times in enumerate(grid_t_all):
+        if np.isnan(rep_times).any():
+            continue
+        if repeat_idx < len(grid_t_all)-1:
+            rep_and_next_times = np.concatenate((rep_times, grid_t_all[repeat_idx+1][1:]))
+        for state in range(0,4):
+            # current
+            start_state = int(rep_times[state])
+            end_state = int(rep_times[state+1])
+            musicbox_regressors[int(location[end_state]-1), start_state:end_state] = 1
+            # plus 1
+            end_next_state = int(rep_and_next_times[state+2])
+            musicbox_regressors[int(location[end_next_state]-1)+9, start_state:end_state] = 1
+
+            # plus 2
+            end_secnext_state = int(rep_and_next_times[state+3])
+            musicbox_regressors[int(location[end_secnext_state]-1)+2*9, start_state:end_state] = 1
+
+            # plus 3
+            end_thirnext_state = int(rep_and_next_times[state+4])
+            musicbox_regressors[int(location[end_thirnext_state]-1)+3*9, start_state:end_state] = 1
+
+    # plt.figure()
+    # plt.imshow(musicbox_regressors, aspect = 'auto')
+    # plt.axhline(8.5, color='white', linewidth=1)
+    # plt.axhline(17.5, color='white', linewidth=1)
+    # plt.axhline(26.5, color='white', linewidth=1)
+    # import pdb; pdb.set_trace()        
+    return musicbox_regressors
+
+
+
+
+def button_box_simple_cells(buttons, empty_reg, grid_t_all): 
+    #import pdb; pdb.set_trace() 
+    buttonbox_regressors = empty_reg.copy()
+    # first convert buttons to integers
+    # left = 0; up = 1; right = 2; down = 3; return = 99
+    buttons_ints = mc.analyse.helpers_human_cells.buttons_to_ints(buttons)
+    
+    # for the 'future button presses" I will shift the buttons by the time it takes
+    # them to press the next. This means that I need to find out how long until
+    # the next button is pressed: 
+    next_button_index = np.insert(mc.analyse.helpers_human_cells.button_change_indices(buttons_ints), 0,0)
+    for no_button, b_idx in enumerate(next_button_index):
+        curr_button = buttons_ints[b_idx]
+        if curr_button != 99:
+            buttonbox_regressors[curr_button, b_idx: next_button_index[no_button+1]] = 1
+        
+        if no_button < len(next_button_index)-1:
+            next_button = buttons_ints[next_button_index[no_button+1]]
+            if next_button != 99:
+                buttonbox_regressors[next_button+4, b_idx: next_button_index[no_button+1]] = 1
+        
+        if no_button < len(next_button_index)-2:
+            second_next_button = buttons_ints[next_button_index[no_button+2]]
+            if second_next_button != 99:
+                buttonbox_regressors[second_next_button+2*4, b_idx: next_button_index[no_button+1]] = 1
+        
+        if no_button < len(next_button_index)-3:
+            third_next_button = buttons_ints[next_button_index[no_button+3]]
+            if third_next_button != 99:    
+                buttonbox_regressors[third_next_button+3*4, b_idx: next_button_index[no_button+1]] = 1
+
+    # plt.figure()
+    # plt.imshow(buttonbox_regressors, aspect = 'auto')
+    # plt.axhline(3.5, color='white', linewidth=1)
+    # plt.axhline(7.5, color='white', linewidth=1)
+    # plt.axhline(11.5, color='white', linewidth=1)      
+    return buttonbox_regressors
+
+    
+
 ################################
 ####### PLOTTING ###############
 ################################
     
 #
 #
-# PART 4: PLOTTING
+# PART 5: PLOTTING
 # create functions to plot the matrices
 import textwrap
 

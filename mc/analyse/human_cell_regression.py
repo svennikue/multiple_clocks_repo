@@ -5,6 +5,134 @@ Created on Wed Feb  5 11:05:55 2025
 
 elastic net regression
 
+<<<<<<< HEAD
+@author: Svenja Küchenhoff
+
+replicating and somewhat adjusting El-Gaby's Figure 5 regression
+
+
+
+"""
+import numpy as np
+import mc
+import matplotlib.pyplot as plt
+import os
+import pickle
+
+#from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import ElasticNet
+#from sklearn.linear_model import PoissonRegressor
+
+### SETTINGS
+data_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives"
+group_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group"
+file_name_all_subj_reg_prep = f"prep_data_for_regression"
+
+subjects = [f"{i:02}" for i in range(1, 55) if i not in [6, 9, 27, 44]]
+
+save_results = True
+
+if not os.path.isdir(group_folder):
+    os.mkdir(group_folder)
+
+
+if os.path.isfile(os.path.join(group_folder,file_name_all_subj_reg_prep)):
+    with open(os.path.join(group_folder,file_name_all_subj_reg_prep), 'rb') as f:
+        prep_data = pickle.load(f)
+        print(f"opened stored dataset")
+else:  
+    print(f"loading and running preprocessing of human cells")
+    data = mc.analyse.helpers_human_cells.load_cell_data(data_folder, subjects)
+    # PART 1 
+    # prepare all regressors for the data I want, in the same array format as the cells.
+    data_and_regressors = mc.analyse.helpers_human_cells.prep_regressors_for_neurons(data)
+    
+    if save_results == True:
+        # save the all_modelled_data dict such that I don't need to always run it again.
+        with open(os.path.join(group_folder,file_name_all_subj_reg_prep), 'wb') as f:
+            pickle.dump(data_and_regressors, f)
+        print(f"saved the modelled data as {group_folder}/{file_name_all_subj_reg_prep}")
+  
+        
+  
+    
+
+# PART 1
+# concatenating all repeats, all grids for
+    # neurons
+    # any regressors I want (e.g. current location, next location, state etc)
+    # for all grids, all subjects: 
+        # simulate 4x 9 location neurons
+        # fires when currently at location, when next reward, next next, and prev. reward location
+        
+    
+# PART 2
+# run a regression per neuron (ALL neurons and ALL subjects! 
+# careful, you have to simulate always from scratch per subj)
+# exclude a task (a few tasks?) that you are using to predict, e.g. with np.setdiff1d
+    #training_sessions=np.setdiff1d(np.arange(num_non_repeat_ses_found),ses_ind_ind_test)
+    ##concatenating arrays
+    #regressors_flat_trainingTasks_=regressors_flat_allTasks[training_sessions]
+#
+
+
+# alpha=0.01 ##0.01 used in paper
+# X = regressors_flat
+# y = Neuron_raw_eq_neuron_nonan
+# reg = ElasticNet(alpha=alpha,positive=True).fit(X, y)            
+# coeffs_flat=reg.coef_
+# coeffs_all[neuron,ses_ind_ind_test]=coeffs_flat
+# if Poisson_regression==True:
+#     np.save(Input_folder+'Poisson_GLM_anchoring_coeffs_all_'+addition+mouse_recday+'.npy',coeffs_all)
+# else:
+#     np.save(Input_folder+'GLM_anchoring_coeffs_all_'+addition+mouse_recday+'.npy',coeffs_all)
+    
+
+
+# PART 3
+# correlation.
+# how exactly does this work??
+
+# Qs for Mohamady: did you ever do only next goal location rather than next location?
+# how did you do you 'phasic shift' of next locations?
+# how many tasks concatenating and testing? what is best if it's not very precise?
+# do you repeat this procedure with different left-out tasks or just one? yes! permute!!
+# concatenate all of the same grid
+
+# first find the goal-progress tuning
+# average all neurons (binned) and find out for which bin it fires most
+# but only if I include phase
+
+# multiply the regressors for the left out task with the beta weights of the trained set
+# actually this will be a weighted sum, so add up all the fake regressors so that I have a singel time series
+# correlation is noisy, so maybe just do the correlation on 4 state bins
+# then repeat this for every held-out task, and average the value 
+# for each cell 
+
+# consider doing this only on state cells
+# scipy.stats.entropy(cell, 4)
+# top 50% or top 75% to see if a cell cares for a certain state
+# average across all tasks and bin the neurons
+
+
+# check alignment first!!
+# if state change and locations matches with timing of 
+# state change times and grid rewards
+
+
+
+
+# from sklearn.linear_model import ElasticNet
+# from sklearn.model_selection import train_test_split
+# from sklearn.metrics import r2_score
+# import numpy as np
+# X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# model = ElasticNet(alpha=0.1, l1_ratio=0.5)  # adjust alpha and l1_ratio based on your dataset
+# model.fit(X_train, y_train)
+# y_pred = model.predict(X_test)
+# correlation = np.corrcoef(y_test, y_pred)[0, 1]
+# print(f"Correlation: {correlation}")
+=======
 @author: xpsy1114
 """
 
@@ -18,6 +146,7 @@ model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
 correlation = np.corrcoef(y_test, y_pred)[0, 1]
 print(f"Correlation: {correlation}")
+>>>>>>> origin/main
 
 
 

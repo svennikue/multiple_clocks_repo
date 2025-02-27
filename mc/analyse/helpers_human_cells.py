@@ -16,6 +16,8 @@ import scipy
 import math
 import mc
 from matplotlib import pyplot as plt
+import glob
+import pandas as pd
 # import pdb; pdb.set_trace()
 
 def read_files_to_list_ordered(folder, pattern_string):
@@ -29,7 +31,53 @@ def read_files_to_list_ordered(folder, pattern_string):
     # Read each file into a pandas DataFrame and store them in a list
     data_list = [np.genfromtxt(f"{folder}/{file}", delimiter=',') for file in files] 
     return data_list
+
+def read_string_files_to_list_ordered(folder, pattern_string):
+    # Create a list to store the file contents
+    file_contents = []
+    pattern = re.compile(pattern_string)
+    files = [f for f in os.listdir(folder) if pattern.match(f)]
+    # Sort files by the numerical value following "grid"
+    files.sort(key=lambda x: int(pattern.search(x).group(1)))
     
+    
+    # # Construct the full pattern to search for files
+    # full_pattern = f"{source_folder}/{pattern}"
+    # # Use glob to find all files that match the pattern
+    # file_list = sorted(glob.glob(full_pattern))
+    # # Read each file and append the contents to the list
+    for file in files:
+        df = pd.read_csv(f"{folder}/{file}", header=None)
+        file_contents.append(df.iloc[0].tolist())
+    return file_contents
+
+
+
+def buttons_to_ints(button_list):
+    buttons_int = []
+    for elem in button_list:
+        if elem == 'LeftArrow':
+            buttons_int.append(0)
+        if elem == 'UpArrow':
+            buttons_int.append(1)
+        if elem == 'RightArrow':
+            buttons_int.append(2)
+        if elem == 'DownArrow':
+            buttons_int.append(3)
+        if elem == 'Return':
+            buttons_int.append(99)
+    return buttons_int
+    
+
+
+def button_change_indices(buttons):
+    # Convert list to NumPy array
+    arr = np.array(buttons)
+    # Find the differences between consecutive elements
+    changes = np.where(arr[:-1] != arr[1:])[0] + 1
+    return changes
+    
+
     
 def load_cell_data(source_folder, subject_list):
     # load all files I prepared with Matlab into a subject dictionary
@@ -43,6 +91,130 @@ def load_cell_data(source_folder, subject_list):
         timinges_pattern = r'timings_rewards_grid(\d+)_sub{sub}\.csv'.replace('{sub}', str(sub))
         location_pattern = r'locations_per_25ms_grid(\d+)_sub{sub}\.csv'.replace('{sub}', str(sub))
         cells_pattern = r'all_cells_firing_rate_grid(\d+)_sub{sub}\.csv'.replace('{sub}', str(sub))
+<<<<<<< HEAD
+        button_pattern = r'buttons_per_25ms_grid(\d+)_sub{sub}\.csv'.replace('{sub}', str(sub))
+        data_dir[f"sub-{sub}"]["timings"] = read_files_to_list_ordered(f"{source_folder}/s{sub}/cells_and_beh", timinges_pattern)
+        data_dir[f"sub-{sub}"]["locations"] = read_files_to_list_ordered(f"{source_folder}/s{sub}/cells_and_beh", location_pattern)
+        data_dir[f"sub-{sub}"]["neurons"] = read_files_to_list_ordered(f"{source_folder}/s{sub}/cells_and_beh", cells_pattern)
+        
+        data_dir[f"sub-{sub}"]["buttons"] = read_string_files_to_list_ordered(f"{source_folder}/s{sub}/cells_and_beh", button_pattern)
+        # import pdb; pdb.set_trace() 
+    return data_dir
+
+
+def neurons_concat_per_ROI_acrosstasks(neuron_dict, order, unique_tasks = False, dont_average_tasks = False):
+    # import pdb; pdb.set_trace()
+    
+    if unique_tasks == True:
+        tasks_to_include = order[0:8]
+    elif unique_tasks == False:
+        tasks_to_include = order[0:6]
+    if dont_average_tasks == True:
+        tasks_to_include = ['task_A_0','task_A_1','task_A_2', 
+                        'task_B_0','task_B_1','task_B_2',
+                        'task_C_0', 'task_C_1','task_C_2',
+                        'task_D_0', 'task_D_1', 'task_D_2',
+                        'task_E_0', 'task_E_1', 'task_E_2',
+                        'task_F_0', 'task_F_1', 'task_F_2']
+        
+    # next concatenate the neurons per ROI according to the order_of_task list
+    neuron_temp_dict = {}
+    for ROI in neuron_dict:
+        if ROI not in neuron_temp_dict:
+            neuron_temp_dict[ROI] = {}
+        for task in tasks_to_include:
+            task_data = {}
+            for label in sorted(neuron_dict[ROI]):
+                if label.startswith(task):
+                    # Extract the cell label which follows the task label format "task_cellLabel"
+                    _, cell_label = label.split(f"{task}_", 1)
+            
+                    # Initialize the cell label key if not present
+                    if cell_label not in task_data:
+                        task_data[cell_label] = neuron_dict[ROI][label]
+                        
+            # After processing all labels for the current task, add them to the main dictionary
+            neuron_temp_dict[ROI][task] = task_data
+
+    import pdb; pdb.set_trace()
+    neuron_concat_dict = {}
+    for ROI in sorted(neuron_temp_dict):
+        task_matrices = []
+        for task in sorted(neuron_temp_dict[ROI]):
+            cell_concat = []
+            for cell in sorted(neuron_temp_dict[ROI][task]):
+                #import pdb; pdb.set_trace()
+                if len(neuron_temp_dict[ROI][task][cell]) < 2:
+                    empty_cell = np.zeros((1,4))
+                    cell_concat.append(empty_cell)
+                else:
+                    cell_concat.append(np.transpose(np.expand_dims(neuron_temp_dict[ROI][task][cell], axis = 1)))
+            if cell_concat:
+                #import pdb; pdb.set_trace()   
+                task_concat = np.concatenate(cell_concat, axis=0)
+                task_matrices.append(task_concat)
+
+        # Concatenate all task matrices along columns (axis 1)
+        if task_matrices:
+            neuron_concat_dict[f"{ROI}_concat"] = np.concatenate(task_matrices, axis=1)
+    # clean the 0 rows if there are any!!
+    
+    for ROI in neuron_concat_dict:
+        # import pdb; pdb.set_trace()
+        zero_rows = np.all(neuron_concat_dict[ROI] == 0, axis=1)
+        if np.sum(zero_rows):
+            print(f"careful - excluding cells for ROI {ROI}")
+        not_all_zero_rows = ~zero_rows
+        neuron_concat_dict[ROI] = neuron_concat_dict[ROI][not_all_zero_rows]
+        
+    
+    return neuron_concat_dict
+
+
+
+                    
+def run_RSA(data, only_specific_model = False, per_ROI = True, plotting = True, simple_models = False, dont_avg_rep_tasks = False):
+    # import pdb; pdb.set_trace()
+    # normal version is going to be collapse all subjects, but split cells by ROIs
+    # start by labelling the grids.
+    # CONTINUE HERE!!
+    if only_specific_model:
+        # DO SOMETHING DIFFERENT THAN SORT THE GRIDS!!!
+        prepared_data = mc.analyse.helpers_human_cells.label_unique_grids(data, unique = False)
+        neurons, grid_labels = mc.analyse.helpers_human_cells.pool_by_ROI_and_grid(prepared_data, specific_model = True)
+        # now next step is concatenate all grids in the correct order
+        # for all models.
+        simulated_data_concat, order_of_tasks =  mc.analyse.helpers_human_cells.models_concat_and_avg_across_subj(prepared_data, specific_model = True)
+    else:
+        if dont_avg_rep_tasks == True:
+            # CHANGE THIS HERE SUCH THAT ONE CAN ALSO CHOOSE TO NOT AVERAGE A TASK!
+            # THIS WOULD MAKE THE RDMS BIGGER
+            # WIHTOUT AVERAGING; JUST SORT BY TASK_A ETC
+            prepared_data = mc.analyse.helpers_human_cells.label_unique_grids(data, unique = True, dont_average_tasks= True)
+            neurons, grid_labels = mc.analyse.helpers_human_cells.pool_by_ROI_and_grid(prepared_data, specific_model = False, collapse_PFC = True, dont_avg_grids=True)
+            simulated_data_concat, order_of_tasks =  mc.analyse.helpers_human_cells.models_concat_and_avg_across_subj(prepared_data, specific_model = False, dont_average= True)
+
+        else:
+            # now next step is concatenate all grids in the correct order for all models.
+            prepared_data = mc.analyse.helpers_human_cells.label_unique_grids(data, unique = True)
+            neurons, grid_labels = mc.analyse.helpers_human_cells.pool_by_ROI_and_grid(prepared_data, specific_model = False, collapse_PFC = True)
+            simulated_data_concat, order_of_tasks =  mc.analyse.helpers_human_cells.models_concat_and_avg_across_subj(prepared_data, specific_model = False, dont_average= False)
+      
+    #import pdb; pdb.set_trace()
+    
+    if dont_avg_rep_tasks == False:
+        # instead of pooling by subject, pool by ROI.
+        # next concatenate the neurons per ROI according to the order_of_task list
+        neurons_concat = mc.analyse.helpers_human_cells.neurons_concat_per_ROI_acrosstasks(neurons, order_of_tasks, unique_tasks = True)
+        task_configs = order_of_tasks[0:8]
+    
+    elif dont_avg_rep_tasks == True:
+        # instead of pooling by subject, pool by ROI.
+        # next concatenate the neurons per ROI according to the order_of_task list
+        neurons_concat = mc.analyse.helpers_human_cells.neurons_concat_per_ROI_acrosstasks(neurons, order_of_tasks, unique_tasks = True, dont_average_tasks=True)
+        task_configs = order_of_tasks[0:8*3]
+    
+=======
         data_dir[f"sub-{sub}"]["timings"] = read_files_to_list_ordered(f"{source_folder}/s{sub}/cells_and_beh", timinges_pattern)
         data_dir[f"sub-{sub}"]["locations"] = read_files_to_list_ordered(f"{source_folder}/s{sub}/cells_and_beh", location_pattern)
         data_dir[f"sub-{sub}"]["neurons"] = read_files_to_list_ordered(f"{source_folder}/s{sub}/cells_and_beh", cells_pattern)
@@ -155,6 +327,7 @@ def run_RSA(data, only_specific_model = False, per_ROI = True, plotting = True, 
     neurons_concat = mc.analyse.helpers_human_cells.neurons_concat_per_ROI_acrosstasks(neurons, order_of_tasks, unique_tasks = True)
 
     task_configs = order_of_tasks[0:8]
+>>>>>>> origin/main
     RDM_dict = {}
     # plot the averaged simulated and cleaned data
     all_models_string = []
@@ -168,6 +341,7 @@ def run_RSA(data, only_specific_model = False, per_ROI = True, plotting = True, 
         all_models_string = only_specific_model.copy()
         for model in all_models_string:
             RDM_dict[model] = mc.simulation.RDMs.within_task_RDM(simulated_data_concat[model], plotting = True, titlestring = f"Between tasks {model} RSM, 4*8, averaged over runs", intervalline= 4)
+<<<<<<< HEAD
     
     mc.simulation.RDMs.plot_RDMs(RDM_dict, len(task_configs))       
 
@@ -177,6 +351,17 @@ def run_RSA(data, only_specific_model = False, per_ROI = True, plotting = True, 
         # midn_model, phas_model, loc_model, stat_model, phas_stat, clo_model, curr_neurons
         regressors_to_include = ['clo_model', 'phas_model', 'loc_model', 'stat_model'] #INCLUDE MIDNIGHT AGAIN AT SOME POINT!!
     
+=======
+    
+    mc.simulation.RDMs.plot_RDMs(RDM_dict, len(task_configs))       
+
+    if simple_models == True:
+        regressors_to_include = ['location', 'curr_rew', 'next_rew', 'second_next_rew', 'third_next_rew', 'state']
+    else:
+        # midn_model, phas_model, loc_model, stat_model, phas_stat, clo_model, curr_neurons
+        regressors_to_include = ['clo_model', 'phas_model', 'loc_model', 'stat_model'] #INCLUDE MIDNIGHT AGAIN AT SOME POINT!!
+    
+>>>>>>> origin/main
     if only_specific_model: 
         regressors_to_include = all_models_string
         
@@ -321,12 +506,103 @@ def run_state_RSA(data,  per_ROI = True, plotting = True, only_reward_times = No
 
 
 
+<<<<<<< HEAD
+def models_concat_and_avg_across_subj(data, specific_model = False, dont_average = False):
+=======
 def models_concat_and_avg_across_subj(data, specific_model = False):
+>>>>>>> origin/main
     # concatenate all grids in the correct order
     # first loop: collect the same model for the same task for all subjects with np.stack
     # second loop: average the same model same task across all subjects
     # and in the end average across task repeats
     # first figure out which grids to consider.
+<<<<<<< HEAD
+    temp_stacked = {}
+    all_models_set = set()
+    
+    if specific_model == True:
+        grid_labels = ['average_task_A', 'average_task_B', 'average_task_C', 
+                       'average_task_D', 'average_task_E', 'average_task_F']
+        grid_distribution = mc.analyse.helpers_human_cells.redistribute_grids(data, grid_labels)
+
+    if dont_average == True:
+        grid_labels = ['task_A', 'task_B', 'task_C', 
+                           'task_D', 'task_E', 'task_F']
+        
+
+        for sub in data:
+            for task in grid_labels:  
+                count_to_three = 0
+                for grid in data[sub]:
+                    if count_to_three > 2:
+                        continue
+                    elif grid.startswith(task):
+                        temp_stacked[f"{task}_{count_to_three}_{sub}"] = {}
+                        count_to_three = count_to_three+1
+        
+        # if no average across tasks, just average across subjects.
+        for sub in data:
+            for task in grid_labels:  
+                count_to_three = 0
+                for grid in data[sub]:
+                    if count_to_three > 2:
+                        continue
+                    elif grid.startswith(task):
+                        curr_grid = f"{task}_{count_to_three}_{sub}"
+                        count_to_three = count_to_three+1
+                        
+                        if grid == 'task_A_3_sub_sub-43':
+                            grid = 'task_A_14_sub_sub-43'
+                        if grid == 'task_A_19_sub_sub-51':
+                            grid = 'task_A_11_sub_sub-51'
+                        for model in data[sub][grid]:
+                            if model not in ['neurons']:
+                                all_models_set.add(model)
+                                # here always append 3x 
+                                if model not in temp_stacked[curr_grid]:
+                                    temp_stacked[curr_grid][model] = [data[sub][grid][model]]
+                                else:
+                                    temp_stacked[curr_grid][model].append(data[sub][grid][model])
+                            
+
+    elif dont_average == False:                  
+        for sub in data:
+            count_to_three = 0
+            for grid in data[sub]: 
+                if grid.startswith('average'):
+                    if specific_model == True:
+                        # first redistribute the tasks.
+                        # Determine which predefined grid label this grid should be associated with
+                        for label, grids in grid_distribution.items():
+                            if grid in grids or grid == label:
+                                current_grid = label  # Use the predefined grid label for processing
+                                break
+                    else: 
+                        current_grid = grid 
+                    temp_stacked[current_grid] = {}
+    
+        # reduce data for models and grids by subject dimension, make a list instead.
+        for sub in data:
+            for grid in data[sub]:
+                if grid.startswith('average'):
+                    if specific_model == True:
+                        # first redistribute the tasks.
+                        # Determine which predefined grid label this grid should be associated with
+                        for label, grids in grid_distribution.items():
+                            if grid in grids or grid == label:
+                                current_grid = label  # Use the predefined grid label for processing
+                                break
+                    else: 
+                        current_grid = grid 
+                    for model in data[sub][current_grid]:
+                        if model not in ['neurons']:
+                            all_models_set.add(model)
+                            if model not in temp_stacked[current_grid]:
+                                temp_stacked[current_grid][model] = [data[sub][current_grid][model]]
+                            else:
+                                temp_stacked[current_grid][model].append(data[sub][current_grid][model])
+    
+=======
     if specific_model == True:
         grid_labels = ['average_task_A', 'average_task_B', 'average_task_C', 
                        'average_task_D', 'average_task_E', 'average_task_F']
@@ -368,6 +644,7 @@ def models_concat_and_avg_across_subj(data, specific_model = False):
                             temp_stacked[current_grid][model] = [data[sub][current_grid][model]]
                         else:
                             temp_stacked[current_grid][model].append(data[sub][current_grid][model])
+>>>>>>> origin/main
     # stack all lists and average across subjects
     for task in temp_stacked:
         for model in temp_stacked[task]:
@@ -389,6 +666,8 @@ def models_concat_and_avg_across_subj(data, specific_model = False):
     return models_task_concat, order_of_tasks
 
 
+<<<<<<< HEAD
+=======
 # def pool_by_ROI_and_grid(data, specific_model = False):
 #     # first create the ROI sets
 #     ROIs = {}
@@ -487,6 +766,7 @@ def models_concat_and_avg_across_subj(data, specific_model = False):
 
 # #     # import pdb; pdb.set_trace()
 # #     return neurons
+>>>>>>> origin/main
 
 
 def redistribute_grids(data_dict, grid_string):
@@ -542,28 +822,55 @@ def pool_by_grid(data, specific_model = False):
     
 
                           
+<<<<<<< HEAD
+def pool_by_ROI_and_grid(data, specific_model = False, collapse_PFC = False, dont_avg_grids = False):
+=======
 def pool_by_ROI_and_grid(data, specific_model = False):
+>>>>>>> origin/main
     # first create the ROI sets
+    # import pdb; pdb.set_trace()
     ROIs = {}
-    ROI_labels = ['hippocampal', "PCC", "ACC", "OFC", "entorhinal", "amygdala", "mixed"]
+        
+    if collapse_PFC == True:
+        ROI_labels = ['hippocampal', "PFC", "entorhinal", "amygdala", "mixed"]
+    else:
+        ROI_labels = ['hippocampal', "PCC", "ACC", "OFC", "entorhinal", "amygdala", "mixed"]
     for ROI in ROI_labels:
         ROIs[ROI] = set()
     for sub in data:
         for region in data[sub]['cell_labels']:
-            if 'HC' in region:
-                ROIs['hippocampal'].add(region)
-            elif 'ACC' in region:
-                ROIs['ACC'].add(region)
-            elif 'PCC' in region:
-                ROIs['PCC'].add(region)
-            elif 'EC' in region:
-                ROIs['entorhinal'].add(region)
-            elif 'AMYG' in region:
-                ROIs['amygdala'].add(region)
-            elif 'OFC' in region:
-                ROIs['OFC'].add(region)
+            if collapse_PFC == True:
+                if 'ACC' in region or 'PCC' in region or 'OFC' in region:
+                    ROIs['PFC'].add(region)
+                elif 'HC' in region:
+                    ROIs['hippocampal'].add(region)
+                elif 'EC' in region:
+                    ROIs['entorhinal'].add(region)
+                elif 'AMYG' in region:
+                    ROIs['amygdala'].add(region)
+                    
+                else:
+                    ROIs['mixed'].add(region)
             else:
-                ROIs['mixed'].add(region)
+                if 'ACC' in region:
+                    ROIs['ACC'].add(region)
+                elif 'PCC' in region:
+                    ROIs['PCC'].add(region)
+                elif 'OFC' in region:
+                    ROIs['OFC'].add(region)   
+                elif 'HC' in region:
+                    ROIs['hippocampal'].add(region)
+                elif 'EC' in region:
+                    ROIs['entorhinal'].add(region)
+                elif 'AMYG' in region:
+                    ROIs['amygdala'].add(region)
+                    
+                else:
+                    ROIs['mixed'].add(region)
+
+                    
+                    
+    print(f"mixed ROI includes: {ROIs['mixed']}")
     ROIs['entorhinal'] = {'REC', 'LEC'}
     # then create a neuron dictionary, split by ROIs, where I save how each cell 
     # of that ROI fires for each grid.
@@ -574,6 +881,62 @@ def pool_by_ROI_and_grid(data, specific_model = False):
         grid_distribution = mc.analyse.helpers_human_cells.redistribute_grids(data, grid_labels)
     else:
         grid_labels = []
+<<<<<<< HEAD
+    
+        
+    if dont_avg_grids == True:
+        grid_labels = ['task_A', 'task_B', 'task_C', 
+                       'task_D', 'task_E', 'task_F']
+    neurons = {}
+    for ROI in ROIs:
+        neurons[ROI] = {}
+    import pdb; pdb.set_trace()  
+    if dont_avg_grids == True:
+        # outer: loop through old data dict
+        for sub in data:
+            for grid in data[sub]:
+                for task in grid_labels:
+                    if grid.startswith(task):
+                        current_grid = grid.split('_sub_sub')[0]
+                        # Loop through cells in the subject's data    
+                        for i_c, cell in enumerate(data[sub]['cell_labels']):
+                            # inner: loop through new dict
+                            for ROI in ROIs:
+                                if cell in ROIs[ROI]:
+                                    if neurons[ROI].get(f"{current_grid}_{sub}_{i_c}_{cell}") is None:
+                                        if grid in ['task_A_3_sub_sub-43', 'task_A_19_sub_sub-51']:
+                                            continue
+                                        else:
+                                            neurons[ROI][f"{current_grid}_{sub}_{i_c}_{cell}"] = data[sub][grid]['neurons'][i_c]
+                                                          
+    else:
+        # outer: loop through old data dict
+        for sub in data:
+            for grid in data[sub]:
+                if grid.startswith('average'):
+                    if specific_model == True:
+                        # first redistribute the tasks.
+                        # Determine which predefined grid label this grid should be associated with
+                        for label, grids in grid_distribution.items():
+                            if grid in grids or grid == label:
+                                current_grid = label  # Use the predefined grid label for processing
+                                break
+                    else:
+                        current_grid = grid
+                    # Loop through cells in the subject's data    
+                    for i_c, cell in enumerate(data[sub]['cell_labels']):
+                        # inner: loop through new dict
+                        for ROI in ROIs:
+                            if cell in ROIs[ROI]:
+                                if neurons[ROI].get(f"{current_grid}_{sub}_{i_c}_{cell}") is None:
+                                    # if sub == 'sub-43':
+                                    #     neurons[ROI][f"{grid}_{sub}_{i_c}_{cell}"] = []
+                                    # else:
+                                    neurons[ROI][f"{current_grid}_{sub}_{i_c}_{cell}"] = data[sub][grid]['neurons'][i_c]
+                                    
+                                
+                                
+=======
         
     neurons = {}
     for ROI in ROIs:
@@ -602,13 +965,18 @@ def pool_by_ROI_and_grid(data, specific_model = False):
                                 #     neurons[ROI][f"{grid}_{sub}_{i_c}_{cell}"] = []
                                 # else:
                                 neurons[ROI][f"{current_grid}_{sub}_{i_c}_{cell}"] = data[sub][grid]['neurons'][i_c]
+>>>>>>> origin/main
     return neurons, grid_labels
 
         
         
     
   
+<<<<<<< HEAD
+def label_unique_grids(data_dict, unique = True, dont_average_tasks = False):
+=======
 def label_unique_grids(data_dict, unique = True):
+>>>>>>> origin/main
     # import pdb; pdb.set_trace()
     if unique == True:
         task_labels = {}
@@ -634,13 +1002,112 @@ def label_unique_grids(data_dict, unique = True):
                             continue
                         if sub == 'sub-15' and grid_idx == 23:
                             continue
+<<<<<<< HEAD
+                        new_key = f"{unique_task}_grid_{grid_idx}_sub_{sub}"
+=======
                             
                         new_key = f"{unique_task}_grid_{grid_idx}"
+>>>>>>> origin/main
                         old_key = f"grid_{grid_idx}"
                         keys_to_modify.append((old_key, new_key))
             for old_grid_key, new_grid_key in keys_to_modify:
                 # print(old_grid_key, new_grid_key)
                 data_dict[sub][new_grid_key] = data_dict[sub].pop(old_grid_key)
+<<<<<<< HEAD
+    if dont_average_tasks == False:                      
+        for sub in data_dict:
+            # last, but not least, create grid averages.
+            # if there aren't 3 averages, just make 2 averages instead.
+            # import pdb; pdb.set_trace()
+            for unique_task in task_labels[sub]:
+                data_dict[sub][f"average_{unique_task}"] = {}
+                for grid in data_dict[sub]:
+                    if grid.startswith(unique_task):
+                        for model in data_dict[sub][grid]:
+                            if model not in data_dict[sub][f"average_{unique_task}"]:
+                                data_dict[sub][f"average_{unique_task}"][model] = [data_dict[sub][grid][model]]
+                            else:
+                               data_dict[sub][f"average_{unique_task}"][model].append(data_dict[sub][grid][model]) 
+        # and in the end average across task repeats
+        for sub in data_dict:
+            for grid in data_dict[sub]:
+                temp_stacked = {}
+                if grid.startswith('average'):
+                    for model in data_dict[sub][grid]:
+                        # first collect all grids that are the same
+                        # Stack the arrays along a new axis (axis 0)
+                        temp_stacked[model] = np.stack(data_dict[sub][grid][model], axis=0)
+                        # Compute the mean across the stacked dimension
+                    # then average
+                    for model in temp_stacked:
+                        data_dict[sub][grid][model] = np.mean(temp_stacked[model], axis=0)
+                        
+    # i think basically don't do anything here if no average is needed.
+    
+    # elif dont_average_tasks == True:
+    #     import pdb; pdb.set_trace()
+    #     for sub in data_dict:
+    #         # dont create averages across tasks.
+    #         for unique_task in task_labels[sub]:
+    #             data_dict[sub][f"average_{unique_task}"] = {}
+    #             for grid in data_dict[sub]:
+    #                 if grid.startswith(unique_task):
+    #                     for model in data_dict[sub][grid]:
+    #                         if model not in data_dict[sub][f"average_{unique_task}"]:
+    #                             data_dict[sub][f"average_{unique_task}"][model] = [data_dict[sub][grid][model]]
+    #                         else:
+    #                            data_dict[sub][f"average_{unique_task}"][model].append(data_dict[sub][grid][model]) 
+        
+        
+    #     for sub in data_dict:
+    #         for grid in data_dict[sub]:
+    #             temp_stacked = {}
+    #             for task in task_labels[sub]:
+    #                 if grid.startswith(task):
+    #                     for model in data_dict[sub][grid]:
+    #                         # first collect all grids that are the same
+    #                         # Stack the arrays along a new axis (axis 0)
+    #                         temp_stacked[model] = np.stack(data_dict[sub][grid][model], axis=0)
+    #                         # Compute the mean across the stacked dimension
+    #                     # then average
+    #                     for model in temp_stacked:
+    #                         data_dict[sub][grid][model] = np.mean(temp_stacked[model], axis=0)
+    return data_dict
+
+
+def prep_regressors_for_neurons(data_dict):
+    # import pdb; pdb.set_trace()
+    # settings
+    no_state = 4
+    no_locations = 9
+    no_buttons = 4
+    
+    data_prep = data_dict.copy()
+    for sub in data_dict:
+        print(f"now starting to process data from subject {sub}")
+        data_prep[sub]['state_reg'], data_prep[sub]['musicbox_reg'], data_prep[sub]['buttonbox_reg'] = [],[],[]
+        for grid_idx, grid_config in enumerate(data_dict[sub]['reward_configs']):
+            timings_task = data_dict[sub]['timings'][grid_idx]-1 
+            # check the match between timings and reward configs
+            mc.simulation.predictions.test_timings_rew(sub, data_dict[sub]['locations'][grid_idx],timings_task, grid_config, grid_idx)
+            
+            # now create empty regressors:
+            # 4x state regressors
+            # 4x 9 current/future reward location regressors
+            # 4x 4 current/future button press regressors
+            data_prep[sub]['state_reg'].append(np.zeros((no_state, data_prep[sub]['neurons'][grid_idx].shape[1])))
+            data_prep[sub]['musicbox_reg'].append(np.zeros((no_state*no_locations, data_prep[sub]['neurons'][grid_idx].shape[1])))
+            data_prep[sub]['buttonbox_reg'].append(np.zeros((no_state*no_buttons, data_prep[sub]['neurons'][grid_idx].shape[1])))
+            # the following ones should take the timings as input, and fill in the 
+            # empty arrays of the following regressors, according to the timings
+            # and locations/buttonpresses:
+            data_prep[sub]['state_reg'][grid_idx] = mc.simulation.predictions.state_cells(data_prep[sub]['state_reg'][grid_idx],timings_task, grid_config)
+            data_prep[sub]['musicbox_reg'][grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_dict[sub]['locations'][grid_idx], data_prep[sub]['musicbox_reg'][grid_idx], timings_task, grid_config)
+            data_prep[sub]['buttonbox_reg'][grid_idx] = mc.simulation.predictions.button_box_simple_cells(data_dict[sub]['buttons'][grid_idx], data_prep[sub]['buttonbox_reg'][grid_idx], timings_task)
+            
+    return data_prep
+
+=======
                 
     for sub in data_dict:
         # last, but not least, create grid averages.
@@ -672,6 +1139,7 @@ def label_unique_grids(data_dict, unique = True):
                     data_dict[sub][grid][model] = np.mean(temp_stacked[model], axis=0)
                 #import pdb; pdb.set_trace()
     return data_dict
+>>>>>>> origin/main
             
 def prep_neurons_and_state(data_dict, repeats, only_reward_times, no_bins_per_state, sim_fake_data = False):
     # import pdb; pdb.set_trace()
@@ -704,7 +1172,12 @@ def prep_neurons_and_state(data_dict, repeats, only_reward_times, no_bins_per_st
             repeats_list = []
             for repeat in range(repeats[0], repeats[1]):
                 repeats_list.append(repeat)
+<<<<<<< HEAD
+                if repeat == 9 and sub == 'sub-52':
+                    continue
+=======
                 
+>>>>>>> origin/main
                 # then figure out the precise timings.
                 if math.isnan(timings_task[repeat][-1]) == True:
                     # test if there are more nans than only the last, and if 
@@ -785,6 +1258,18 @@ def prep_and_model_human_cells(data_dict, repeats, model_simple = True):
             # first identify which task you are currently modelling.
             for task_config_pre_defined in task_labels:
                 if task_labels[task_config_pre_defined] == list(grid_config):
+<<<<<<< HEAD
+                    grid_label = f"{task_config_pre_defined}_{grid_idx}_sub_{sub}"
+                    
+            modelled_data[sub][grid_label] = {}
+            # wrong timings for some reason in subject 51 in grid 17, 18 and probably more
+            if (sub == 'sub-43' and grid_idx == 3) or (sub == 'sub-15' and grid_idx == 23) or (sub == 'sub-02' and grid_idx == 18) or (sub == 'sub-51' and grid_idx > 17):
+                # probably aborted the experiment here
+                continue
+            # timings task is start A - find A - find B - find C - find D
+            # subtract one because of python's different way of indexing!
+            timings_task = data_dict[sub]['timings'][grid_idx]-1
+=======
                     grid_label = f"{task_config_pre_defined}_{grid_idx}"
                     
             modelled_data[sub][grid_label] = {}
@@ -794,17 +1279,26 @@ def prep_and_model_human_cells(data_dict, repeats, model_simple = True):
                 continue
             # timings task is start A - find A - find B - find C - find D
             timings_task = data_dict[sub]['timings'][grid_idx].copy()
+>>>>>>> origin/main
             # current neural recordings 
             neurons_for_task = data_dict[sub]['neurons'][grid_idx].copy()
             # fields need to be between 0 and 8, and keep them as integers
             locations_curr_grid = [int((field_no-1)) for field_no in data_dict[sub]['locations'][grid_idx]]
             task_config = [int((field_no-1)) for field_no in data_dict[sub]['reward_configs'][grid_idx]]
+<<<<<<< HEAD
+                
+=======
             
+>>>>>>> origin/main
             regression_across_repeats = {}
             models_per_repeat = {}
             # for repeat in range(1, len(timings_task)):
             prep_repeat_dict = {}   
             for repeat in range(repeats[0], repeats[1]):
+<<<<<<< HEAD
+                
+=======
+>>>>>>> origin/main
                 # first check if this repeat wasn't completed
                 # for current repeat
                 if math.isnan(timings_task[repeat][-1]) == True:
@@ -875,7 +1369,11 @@ def prep_and_model_human_cells(data_dict, repeats, model_simple = True):
             
             # modelled_data[sub][grid_label]['neurons'] = mc.simulation.predictions.transform_data_to_betas(prep_repeat_dict["concat_neurons"], regression_across_repeats["concat"])     
             # modelled_data[sub][grid_label]['neurons'] = mc.simulation.predictions.transform_data_to_betas(data_dict[sub]['neurons'][grid_idx][:, start_modelling_from:start_modelling_from + regression_across_repeats["concat"].shape[1]], regression_across_repeats["concat"])     
+<<<<<<< HEAD
+            # import pdb; pdb.set_trace()
+=======
     #import pdb; pdb.set_trace()
+>>>>>>> origin/main
     #fake_data = mc.analyse.helpers_human_cells(data_dict, modelled_data)
     
     print(f"the following models have been simulated and averaged for all repeats and all grids: {model_list}")
@@ -902,14 +1400,35 @@ def prep_behaviour_one_repeat(timings_repeat, locations_curr_grid, timings_next_
     prep_dict['timings_repeat'] = [elem - timings_repeat[0] for elem in timings_repeat]
     # prep_dict['timings_repeat'] = timings_repeat, bins for ABCD
     # locations for current repeat
+<<<<<<< HEAD
+    
+    # 26.02.25 
+    # CHANGE
+    # curr trajectory should actually end only once you leave reward position. 
+    # so instead of using timings_repeat[-1], find the relevant index.
+    # this simply cuts longer chunks so that I can later select those longer chunks
+    # in my regression and simulation.
+    start_at_rew, end_at_rew = mc.simulation.predictions.find_start_end_indices(locations_curr_grid, timings_repeat[-1])
+    prep_dict['trajectory'] = locations_curr_grid[timings_repeat[0]:end_at_rew]
+    prep_dict['neuron_rep'] = neurons[:, timings_repeat[0]:end_at_rew] 
+=======
     prep_dict['trajectory'] = locations_curr_grid[timings_repeat[0]:timings_repeat[-1]]
     prep_dict['neuron_rep'] = neurons[:, timings_repeat[0]:timings_repeat[-1]]
     # split trajectory into subpaths
+>>>>>>> origin/main
     if timings_next_repeat:
         subpath_locs = [locations_curr_grid[timings_repeat[0]:timings_repeat[1]], 
                         locations_curr_grid[timings_repeat[1]:timings_repeat[2]], 
                         locations_curr_grid[timings_repeat[2]:timings_repeat[3]], 
-                        locations_curr_grid[timings_repeat[3]:timings_next_repeat[0]]]
+                        locations_curr_grid[timings_repeat[3]:end_at_rew]]
+    # prep_dict['trajectory'] = locations_curr_grid[timings_repeat[0]:timings_repeat[-1]]
+    # prep_dict['neuron_rep'] = neurons[:, timings_repeat[0]:timings_repeat[-1]]
+    # split trajectory into subpaths
+    # if timings_next_repeat:
+    #     subpath_locs = [locations_curr_grid[timings_repeat[0]:timings_repeat[1]], 
+    #                     locations_curr_grid[timings_repeat[1]:timings_repeat[2]], 
+    #                     locations_curr_grid[timings_repeat[2]:timings_repeat[3]], 
+    #                     locations_curr_grid[timings_repeat[3]:timings_next_repeat[0]]]
     elif not timings_next_repeat:
         # this means it's the last repeat, and the last timing is actually correct.
         subpath_locs = [locations_curr_grid[timings_repeat[0]:timings_repeat[1]], 
