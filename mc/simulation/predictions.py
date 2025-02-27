@@ -1313,11 +1313,7 @@ def set_location_contin(walked_path, step_time, grid_size = 3, fire_radius = 0.2
 # models_per_repeat[f"rep_{repeat}"] = mc.simulation.predictions.set_simple_models_cells(prep_repeat_dict)
 
 def set_simple_models_cells(data_dict):
-<<<<<<< HEAD
-    # import pdb; pdb.set_trace()
-=======
     #import pdb; pdb.set_trace()
->>>>>>> origin/main
     # simple models are: location model, current reward, next reward, 
     # 2 future reward, 3 future reward,state
 
@@ -1351,11 +1347,6 @@ def set_simple_models_cells(data_dict):
     
     model_dict = {}
     for count_paths, pathlength in enumerate(step_number):
-<<<<<<< HEAD
-        # if count_paths == 3:
-        #     import pdb; pdb.set_trace()
-=======
->>>>>>> origin/main
         subpath_dict = {}
         if count_paths == 0:
             prev_end_state = 0
@@ -1369,14 +1360,10 @@ def set_simple_models_cells(data_dict):
             reward_found_at = -1
         # consider this as end of a state.
         start_curr_rew, end_at_curr_rew = mc.simulation.predictions.find_start_end_indices(walked_path, reward_found_at)
-<<<<<<< HEAD
         # to test if the paths matches the current reward configuration
         if walked_path[start_curr_rew] != rewards[count_paths]:
             import pdb; pdb.set_trace()
         
-=======
-         
->>>>>>> origin/main
         # first step: divide into subpaths
         curr_path = walked_path[prev_end_state:end_at_curr_rew] 
         if count_paths == 3:
@@ -1413,11 +1400,7 @@ def set_simple_models_cells(data_dict):
                 model_dict[model] = subpath_dict[model].copy()
             else:
                 model_dict[model] = np.concatenate((model_dict[model], subpath_dict[model]), axis = 1)
-<<<<<<< HEAD
-    # import pdb; pdb.set_trace() 
-=======
               
->>>>>>> origin/main
     return model_dict
     
     
