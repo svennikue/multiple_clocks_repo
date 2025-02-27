@@ -61,19 +61,6 @@ def any_entry_in_row_notnan(entry):
             x = False
     else:
         x = False
-
-    # if np.isnan(entry):
-    #     x = True    
-    # elif isinstance(entry, list):
-    #     if pd.notna(entry).any:
-    #         x = True  
-    #     else:
-    #         x = False
-    # elif isinstance(entry, int):
-    #     if pd.notna(entry):
-    #         x = True
-    #     else:
-    #         x = False
     return x
 
         
@@ -309,10 +296,10 @@ def read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM
 
 
 def subpath_files(configs, subpath_after_steps, rew_list, rew_index, steps_subpath_alltasks):
+    # import pdb; pdb.set_trace()
     for config in configs:
         rew_list[config] = [[int(value) for value in sub_list] for sub_list in rew_list[config][0:4]]
         # next step: create subpath files with rew_index and how many steps there are per subpath.
-        
         # if task is completed
         if (len(subpath_after_steps[config])%4) == 0:
             for r in range(0, len(subpath_after_steps[config]), 4):
@@ -339,8 +326,10 @@ def subpath_files(configs, subpath_after_steps, rew_list, rew_index, steps_subpa
 
 
 def extract_behaviour(file):
+    # import pdb; pdb.set_trace()
     # load the two required excel sheets
     df = pd.read_csv(file)
+    df_backup = df.copy()
     # the first row is empty so delete to get indices right
     df = df.iloc[1:].reset_index(drop=True)
     # fill gapss
@@ -365,10 +354,14 @@ def extract_behaviour(file):
         if task_no == 0:
             # import pdb; pdb.set_trace()
             for i in range(0, indices_with_nav_keys[task_no]):
+                # if the data stored a value smaller than t = 0, correct that
                 if round(df.at[i, 't_step_press_curr_run'],3) < 0:
                     curr_key_times = np.insert(curr_key_times, 0, 0)
                     curr_list_of_keys = np.insert(curr_list_of_keys, 0, 0)
                     df.at[i, 't_step_press_curr_run'] = 0  
+                # next, track which button was pressed. It is possible to press more buttons than
+                # actually are executed (only the button that was pressed last is executed)
+                # thus, check if the button press is aligned with the time the subject moved
                 if round(df.at[i, 't_step_press_curr_run'],3) == round(curr_key_times[i + overall_error_counter],3):
                     count_error_keys = 0
                     df.at[i, 'curr_key'] = curr_list_of_keys[i]
@@ -399,8 +392,7 @@ def extract_behaviour(file):
                     df.at[i, 'non-exe_key_counter'] = count_error_keys
                     count_error_keys = 0        
 
-        elif task_no > 0:  
-            #import pdb; pdb.set_trace()              
+        elif task_no > 0:               
             for i_list,i in enumerate(range(indices_with_nav_keys[task_no-1]+1, indices_with_nav_keys[task_no])): 
                 # for some sad reason, there are some (rare) glitches in the behavioural tables.
                 # one glitch is that the first time of t_step_press_curr_run is shorter than 0
@@ -408,10 +400,10 @@ def extract_behaviour(file):
                     curr_key_times = np.insert(curr_key_times, 0, 0)
                     curr_list_of_keys = np.insert(curr_list_of_keys, 0, 0)
                     df.at[indices_with_nav_keys[task_no-1]+1, 't_step_press_curr_run'] = 0
-                # one glitch is that the first time of t_step_press_curr_run is even longer than the last recorded press of this task
+                # another glitch is that the first time of t_step_press_curr_run is even later than the last recorded press of this task
                 if round(df.at[indices_with_nav_keys[task_no-1]+1, 't_step_press_curr_run'],3) > round(df.at[indices_with_nav_keys[task_no]-1, 't_step_press_curr_run'],3):
                     df.at[indices_with_nav_keys[task_no-1]+1, 't_step_press_curr_run'] = curr_key_times[i_list]
-                # another glitch is that there is a negative number somewhere in the middle of the task
+                # another glitch is that there is a negative time somewhere in the middle of the task
                 if round(df.at[i, 't_step_press_curr_run'],3) < 0:
                     df.at[i, 't_step_press_curr_run'] = curr_key_times[i_list]
 
@@ -463,40 +455,25 @@ def extract_behaviour(file):
             elif np.isnan(row['rew_loc_x']):
                 df.at[index, 'time_bin_type'] = df.at[index, 'config_type'] + '_' + df.at[index, 'state'] + '_path'
     
-
+     
     # create a dictionnary with all future regressors, to make sure the names are not messed up.
     time_bin_types = df['time_bin_type'].dropna().unique()
     regressors = {}
     for time_bin_type in time_bin_types:
         regressors[time_bin_type] = []
        
-
     configs = df['config_type'].dropna().unique()
     
-    # import pdb; pdb.set_trace()   
-    walked_path = {}
-    timings = {}
-    rew_list = {}
-    rew_timing = {}
-    rew_index = {}
-    subpath_after_steps = {}
-    steps_subpath_alltasks = {}
-    keys_executed = {}
-    keys_not_exe = {}
-    timings_not_exe = {}
+    # initialise all dictionaries
+    walked_path, timings, rew_list, rew_timing, rew_index, subpath_after_steps = {}, {}, {}, {}, {}, {}
+    steps_subpath_alltasks, keys_executed, keys_not_exe, timings_not_exe = {}, {}, {}, {}
+     # and all lists per dictionary
     for config in configs:
-        walked_path[config] = []
-        keys_executed[config] = []
-        timings[config] = []
-        rew_list[config] = []
-        rew_timing[config] = []
-        rew_index[config] = []
-        subpath_after_steps[config] = []
-        steps_subpath_alltasks[config] = []
-        keys_not_exe[config] = []
-        timings_not_exe[config] = []
-    
-    
+        walked_path[config], keys_executed[config], timings[config], rew_list[config] = [], [], [], []
+        rew_timing[config], rew_index[config], subpath_after_steps[config], steps_subpath_alltasks[config] = [], [], [], []
+        keys_not_exe[config], timings_not_exe[config] = [], []
+
+
     for index, row in df.iterrows():
         # import pdb; pdb.set_trace()   
         task_config = row['config_type']
@@ -510,7 +487,7 @@ def extract_behaviour(file):
                     regressors[key].append(1)
                 elif pd.notna(time_bin_type):
                     regressors[key].append(0) 
-
+                    
         # in case a new task has just started
         if not np.isnan(row['next_task']): 
             # first check if this is the first task of several repeats.
@@ -520,9 +497,9 @@ def extract_behaviour(file):
                 timings[task_config].append(df.at[index -1, 't_step_press_global'])
             walked_path[task_config].append([row['curr_loc_x_coord'], row['curr_loc_y_coord']])
             keys_executed[task_config].append([row['curr_key']])
+            
+            # check in case a key had been pressed that wasn't executed
             if mc.analyse.analyse_MRI_behav.any_entry_in_row_notnan(row['non-exe_key']):
-            # if pd.notna(row['non-exe_key']):
-            # if not pd.isna(row['non-exe_key'])[0]:
                 keys_not_exe[task_config].append([row['non-exe_key']])
                 timings_not_exe[task_config].append([row['non-exe_key_time']])
         
