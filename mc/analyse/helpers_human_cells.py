@@ -135,7 +135,7 @@ def neurons_concat_per_ROI_acrosstasks(neuron_dict, order, unique_tasks = False,
             # After processing all labels for the current task, add them to the main dictionary
             neuron_temp_dict[ROI][task] = task_data
 
-    import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
     neuron_concat_dict = {}
     for ROI in sorted(neuron_temp_dict):
         task_matrices = []
@@ -609,25 +609,34 @@ def pool_by_ROI_and_grid(data, specific_model = False, collapse_PFC = False, don
     neurons = {}
     for ROI in ROIs:
         neurons[ROI] = {}
-    import pdb; pdb.set_trace()  
+    # import pdb; pdb.set_trace()  
     if dont_avg_grids == True:
-        # outer: loop through old data dict
         for sub in data:
-            for grid in data[sub]:
-                for task in grid_labels:
-                    if grid.startswith(task):
-                        current_grid = grid.split('_sub_sub')[0]
+            for task in grid_labels:  
+                count_to_three = 0
+                for grid in sorted(data[sub]):
+                    if count_to_three > 2:
+                        continue
+                    elif grid.startswith(task):
+                        if grid == 'task_A_3_sub_sub-43':
+                            grid = 'task_A_14_sub_sub-43'
+                        if grid == 'task_A_19_sub_sub-51':
+                            grid = 'task_A_11_sub_sub-51'
+                        
+                        curr_grid = f"{task}_{count_to_three}_{sub}"
+                        count_to_three = count_to_three+1
+                        
                         # Loop through cells in the subject's data    
                         for i_c, cell in enumerate(data[sub]['cell_labels']):
                             # inner: loop through new dict
                             for ROI in ROIs:
                                 if cell in ROIs[ROI]:
-                                    if neurons[ROI].get(f"{current_grid}_{sub}_{i_c}_{cell}") is None:
-                                        if grid in ['task_A_3_sub_sub-43', 'task_A_19_sub_sub-51']:
-                                            continue
-                                        else:
-                                            neurons[ROI][f"{current_grid}_{sub}_{i_c}_{cell}"] = data[sub][grid]['neurons'][i_c]
-                                                          
+                                    if neurons[ROI].get(f"{curr_grid}_{i_c}_{cell}") is None:
+                                        # if grid in ['task_A_3_sub_sub-43', 'task_A_19_sub_sub-51']:
+                                        #     continue
+                                        # else:
+                                        neurons[ROI][f"{curr_grid}_{i_c}_{cell}"] = data[sub][grid]['neurons'][i_c]
+
     else:
         # outer: loop through old data dict
         for sub in data:
@@ -648,9 +657,6 @@ def pool_by_ROI_and_grid(data, specific_model = False, collapse_PFC = False, don
                         for ROI in ROIs:
                             if cell in ROIs[ROI]:
                                 if neurons[ROI].get(f"{current_grid}_{sub}_{i_c}_{cell}") is None:
-                                    # if sub == 'sub-43':
-                                    #     neurons[ROI][f"{grid}_{sub}_{i_c}_{cell}"] = []
-                                    # else:
                                     neurons[ROI][f"{current_grid}_{sub}_{i_c}_{cell}"] = data[sub][grid]['neurons'][i_c]
                                     
                                 
