@@ -157,6 +157,10 @@ def neurons_concat_per_ROI_acrosstasks(neuron_dict, order, unique_tasks = False,
         if task_matrices:
             neuron_concat_dict[f"{ROI}_concat"] = np.concatenate(task_matrices, axis=1)
     # clean the 0 rows if there are any!!
+    # i think some of the tasks dont have 3 repeats. I'm wondering how to solve this
+    # including the same data twice would make some tasks a lot more similar to each other later
+    # maybe just exclude those subjects???
+    
     
     for ROI in neuron_concat_dict:
         # import pdb; pdb.set_trace()
@@ -211,7 +215,7 @@ def run_RSA(data, only_specific_model = False, per_ROI = True, plotting = True, 
         # instead of pooling by subject, pool by ROI.
         # next concatenate the neurons per ROI according to the order_of_task list
         neurons_concat = mc.analyse.helpers_human_cells.neurons_concat_per_ROI_acrosstasks(neurons, order_of_tasks, unique_tasks = True, dont_average_tasks=True)
-        task_configs = order_of_tasks[0:8*3]
+        task_configs = order_of_tasks[0:8*2]
     
     RDM_dict = {}
     # plot the averaged simulated and cleaned data
@@ -402,18 +406,18 @@ def models_concat_and_avg_across_subj(data, specific_model = False, dont_average
             for task in grid_labels:  
                 count_to_three = 0
                 for grid in data[sub]:
-                    if count_to_three > 2:
+                    if count_to_three > 1:
                         continue
                     elif grid.startswith(task):
                         temp_stacked[f"{task}_{count_to_three}_{sub}"] = {}
                         count_to_three = count_to_three+1
         
-        # if no average across tasks, just average across subjects.
+        # if no average across tasks, only average across subjects.
         for sub in data:
             for task in grid_labels:  
                 count_to_three = 0
                 for grid in data[sub]:
-                    if count_to_three > 2:
+                    if count_to_three > 1:
                         continue
                     elif grid.startswith(task):
                         curr_grid = f"{task}_{count_to_three}_{sub}"
@@ -431,7 +435,31 @@ def models_concat_and_avg_across_subj(data, specific_model = False, dont_average
                                     temp_stacked[curr_grid][model] = [data[sub][grid][model]]
                                 else:
                                     temp_stacked[curr_grid][model].append(data[sub][grid][model])
-                            
+            
+        temp_across_subs = {}
+        for task in temp_stacked:
+            task_across_subs = task.split("_sub")[0]
+            temp_across_subs[task_across_subs] = {}
+            for model in temp_stacked[task]:
+                temp_across_subs[task_across_subs][model] = np.stack(temp_stacked[task][model], axis = 0)
+        
+        for task in temp_across_subs:
+            for model in temp_across_subs[task]:
+                temp_across_subs[task][model] = np.mean(temp_across_subs[task][model], axis = 0)
+    
+        # then, last step, concatenate all tasks. store which order you concatenated.
+        models_task_concat = {}
+        order_of_tasks = []
+        for model in all_models_set:
+            for task in sorted(temp_across_subs):
+                order_of_tasks.append(task)
+                if model not in models_task_concat:
+                    models_task_concat[model] = temp_across_subs[task][model]
+                else:
+                    models_task_concat[model] = np.concatenate((models_task_concat[model], temp_across_subs[task][model]), axis = 1)
+            
+    
+    
 
     elif dont_average == False:                  
         for sub in data:
@@ -448,7 +476,7 @@ def models_concat_and_avg_across_subj(data, specific_model = False, dont_average
                     else: 
                         current_grid = grid 
                     temp_stacked[current_grid] = {}
-    
+
         # reduce data for models and grids by subject dimension, make a list instead.
         for sub in data:
             for grid in data[sub]:
@@ -469,24 +497,25 @@ def models_concat_and_avg_across_subj(data, specific_model = False, dont_average
                                 temp_stacked[current_grid][model] = [data[sub][current_grid][model]]
                             else:
                                 temp_stacked[current_grid][model].append(data[sub][current_grid][model])
-    
-    # stack all lists and average across subjects
-    for task in temp_stacked:
-        for model in temp_stacked[task]:
-            temp_stacked[task][model] = np.stack(temp_stacked[task][model], axis = 0)
-        for model in temp_stacked[task]:
-            temp_stacked[task][model] = np.mean(temp_stacked[task][model], axis = 0)
-                  
-    # then, last step, concatenate all tasks. store which order you concatenated.
-    models_task_concat = {}
-    order_of_tasks = []
-    for model in all_models_set:
-        for task in sorted(temp_stacked):
-            order_of_tasks.append(task)
-            if model not in models_task_concat:
-                models_task_concat[model] = temp_stacked[task][model]
-            else:
-                models_task_concat[model] = np.concatenate((models_task_concat[model], temp_stacked[task][model]), axis = 1)
+
+        # stack all lists and average across subjects
+        for task in temp_stacked:
+            # probably do something like split after sub and then average across subs.
+            for model in temp_stacked[task]:
+                temp_stacked[task][model] = np.stack(temp_stacked[task][model], axis = 0)
+            for model in temp_stacked[task]:
+                temp_stacked[task][model] = np.mean(temp_stacked[task][model], axis = 0)
+                      
+        # then, last step, concatenate all tasks. store which order you concatenated.
+        models_task_concat = {}
+        order_of_tasks = []
+        for model in all_models_set:
+            for task in sorted(temp_stacked):
+                order_of_tasks.append(task)
+                if model not in models_task_concat:
+                    models_task_concat[model] = temp_stacked[task][model]
+                else:
+                    models_task_concat[model] = np.concatenate((models_task_concat[model], temp_stacked[task][model]), axis = 1)
         
     return models_task_concat, order_of_tasks
 
@@ -615,7 +644,7 @@ def pool_by_ROI_and_grid(data, specific_model = False, collapse_PFC = False, don
             for task in grid_labels:  
                 count_to_three = 0
                 for grid in sorted(data[sub]):
-                    if count_to_three > 2:
+                    if count_to_three > 1:
                         continue
                     elif grid.startswith(task):
                         if grid == 'task_A_3_sub_sub-43':
@@ -699,6 +728,7 @@ def label_unique_grids(data_dict, unique = True, dont_average_tasks = False):
             for old_grid_key, new_grid_key in keys_to_modify:
                 # print(old_grid_key, new_grid_key)
                 data_dict[sub][new_grid_key] = data_dict[sub].pop(old_grid_key)
+    
     if dont_average_tasks == False:                      
         for sub in data_dict:
             # last, but not least, create grid averages.

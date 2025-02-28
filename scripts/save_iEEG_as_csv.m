@@ -7,9 +7,12 @@ clear all
 source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
 if ~exist(source_dir, 'dir')
     source_dir = '/ceph/behrens/svenja/human_ABCD_ephys'
-    abcd_data = load(sprintf("%s/beh_cells/abcd_data_FIXED_19-Feb-2025.mat", source_dir));
+    %abcd_data = load(sprintf("%s/beh_cells/abcd_data_FIXED_19-Feb-2025.mat", source_dir));
+    abcd_data = load(sprintf("%s/beh_cells/abcd_data_26-Feb-2025.mat", source_dir));
+    
 else
-    abcd_data = load(sprintf("%s/abcd_data_FIXED_19-Feb-2025.mat", source_dir));
+    %abcd_data = load(sprintf("%s/abcd_data_FIXED_19-Feb-2025.mat", source_dir));
+    abcd_data = load(sprintf("%s/abcd_data_26-Feb-2025.mat", source_dir));
 end
 
 deriv_dir = sprintf("%s/derivatives/", source_dir);
@@ -81,11 +84,13 @@ for sub = 1:length(subject_list)
     % for the neural data, I am creating bins in one go from
     % 0 seconds to end_time
     onset_time_behaviour = subj.trial_vars(1).rule_onset_timestamp;
-    if sub > 51
-        end_time_behaviour = subj.trial_vars(end).DONOTUSE_button_pressed_timestamp(end);
-    else
-        end_time_behaviour = subj.trial_vars(end).button_pressed_timestamp(end);
-    end
+    end_time_behaviour = subj.trial_vars(end).end_trial_timestamp;
+
+    % if sub > 51
+    %     end_time_behaviour = subj.trial_vars(end).DONOTUSE_button_pressed_timestamp(end);
+    % else
+    %     end_time_behaviour = subj.trial_vars(end).button_pressed_timestamp(end);
+    % end
 
     for c = 1:length(subj.neural_data)
         curr_spike_times = subj.neural_data(c).spikeTimes;
@@ -110,25 +115,25 @@ for sub = 1:length(subject_list)
 
     % concatenate the positions and position changes for each grid and repeat
     for c = 1:length(subj.trial_vars)
-        if sub > 51
-            curr_button_t = subj.trial_vars(c).DONOTUSE_button_pressed_timestamp;
-        else
-            curr_button_t = subj.trial_vars(c).button_pressed_timestamp;
-        end
-        curr_button = subj.trial_vars(c).button_pressed;
+        % if sub > 51
+        %     curr_button_t = subj.trial_vars(c).DONOTUSE_button_pressed_timestamp;
+        % else
+        %     curr_button_t = subj.trial_vars(c).button_pressed_timestamp;
+        % end
+        % curr_button = subj.trial_vars(c).button_pressed;
 
         curr_position_time = subj.trial_vars(c).visit_begin_timestamp_c;
         curr_position = subj.trial_vars(c).visited_locations_c;
 
         if c == 1
-            all_button_t = curr_button_t;
-            all_buttons = curr_button;
+            % all_button_t = curr_button_t;
+            % all_buttons = curr_button;
 
             all_positions_time = curr_position_time;
             all_positions = curr_position;
         else
-            all_button_t = [all_button_t, curr_button_t];
-            all_buttons = [all_buttons, curr_button];
+            % all_button_t = [all_button_t, curr_button_t];
+            % all_buttons = [all_buttons, curr_button];
 
             all_positions_time = [all_positions_time, curr_position_time];
             all_positions = [all_positions, curr_position];
@@ -170,21 +175,21 @@ for sub = 1:length(subject_list)
     % do the same for buttons
     % to do that, first identify from which to which bin they stayed in the
     % same location.
-    buttons_per_ms_bin = cell(1,num_bins);
-    for press_button = 1:length(all_button_t)
-        if press_button == 1
-            first_bin_to_fill = 1;
-        else 
-            first_bin_to_fill = floor(all_button_t(press_button)/bin_size);
-        end
-        if press_button < length(all_button_t)
-            last_bin_to_fill = floor(all_button_t(press_button+1)/bin_size);
-        else
-            last_bin_to_fill = length(buttons_per_ms_bin);
-        end
-        current_but = all_buttons(press_button);
-        buttons_per_ms_bin(first_bin_to_fill:last_bin_to_fill) = current_but;
-    end
+    % buttons_per_ms_bin = cell(1,num_bins);
+    % for press_button = 1:length(all_button_t)
+    %     if press_button == 1
+    %         first_bin_to_fill = 1;
+    %     else 
+    %         first_bin_to_fill = floor(all_button_t(press_button)/bin_size);
+    %     end
+    %     if press_button < length(all_button_t)
+    %         last_bin_to_fill = floor(all_button_t(press_button+1)/bin_size);
+    %     else
+    %         last_bin_to_fill = length(buttons_per_ms_bin);
+    %     end
+    %     current_but = all_buttons(press_button);
+    %     buttons_per_ms_bin(first_bin_to_fill:last_bin_to_fill) = current_but;
+    % end
 
 
     % disp(sprintf("length cell recordings is %d and location bins is %d ", length(all_cells), length(locations_per_50ms)))
@@ -226,13 +231,13 @@ for sub = 1:length(subject_list)
         
         start_idx_bin = floor(start_idx/bin_size);
         t_end_trial = subj.trial_vars(last_repeat).end_trial_timestamp;
-        if isnan(t_end_trial)
-           if sub > 51
-                t_end_trial = subj.trial_vars(last_repeat).DONOTUSE_button_pressed_timestamp(end);
-            else
-                t_end_trial = subj.trial_vars(last_repeat).button_pressed_timestamp(end);
-           end
-        end
+        % if isnan(t_end_trial)
+        %    if sub > 51
+        %         t_end_trial = subj.trial_vars(last_repeat).DONOTUSE_button_pressed_timestamp(end);
+        %     else
+        %         t_end_trial = subj.trial_vars(last_repeat).button_pressed_timestamp(end);
+        %    end
+        % end
 
         % note that because t_end_trial is always a bit later than finding
         % the last grid, location and cell arrays a slightly longer than
@@ -247,9 +252,9 @@ for sub = 1:length(subject_list)
         csvwrite(sprintf("%s/all_cells_firing_rate_grid%d_sub%02d.csv", subject_folder, grid_num(last_repeat), sub), all_cells_curr_grid);
         locations_per_50ms_curr_grid = locations_per_50ms(start_idx_bin:end_idx_bin);
         csvwrite(sprintf("%s/locations_per_25ms_grid%d_sub%02d.csv", subject_folder, grid_num(last_repeat), sub), locations_per_50ms_curr_grid);
-        all_buttons_curr_grid = buttons_per_ms_bin(start_idx_bin:end_idx_bin);
         
-        writecell(all_buttons_curr_grid,sprintf("%s/buttons_per_25ms_grid%d_sub%02d.csv", subject_folder, grid_num(last_repeat), sub));
+        % all_buttons_curr_grid = buttons_per_ms_bin(start_idx_bin:end_idx_bin);
+        % writecell(all_buttons_curr_grid,sprintf("%s/buttons_per_25ms_grid%d_sub%02d.csv", subject_folder, grid_num(last_repeat), sub));
 
         % change timings to bins that always start with the first bin that
         % I cut the timings and locations to 
