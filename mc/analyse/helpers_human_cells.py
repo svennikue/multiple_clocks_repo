@@ -802,7 +802,15 @@ def prep_regressors_for_neurons(data_dict):
         print(f"now starting to process data from subject {sub}")
         data_prep[sub]['state_reg'], data_prep[sub]['musicbox_reg'], data_prep[sub]['buttonbox_reg'] = [],[],[]
         for grid_idx, grid_config in enumerate(data_dict[sub]['reward_configs']):
-            timings_task = data_dict[sub]['timings'][grid_idx]-1 
+            timings_task = data_dict[sub]['timings'][grid_idx]-1
+            if (sub == 'sub-15' and grid_idx == 23) or (sub == 'sub-43' and grid_idx == 3) :
+                continue
+            if (sub == 'sub-25' and grid_idx == 9) or (sub == 'sub-52' and grid_idx == 6):
+                # cut the last row of the timings
+                timings_task = timings_task[:-1, :]
+            
+            # if np.isnan(timings_task[-1,-1]) or np.isnan(timings_task[-1,-2]):
+            #     continue
             # check the match between timings and reward configs
             mc.simulation.predictions.test_timings_rew(sub, data_dict[sub]['locations'][grid_idx],timings_task, grid_config, grid_idx)
             
@@ -816,10 +824,17 @@ def prep_regressors_for_neurons(data_dict):
             # the following ones should take the timings as input, and fill in the 
             # empty arrays of the following regressors, according to the timings
             # and locations/buttonpresses:
-            data_prep[sub]['state_reg'][grid_idx] = mc.simulation.predictions.state_cells(data_prep[sub]['state_reg'][grid_idx],timings_task, grid_config)
-            data_prep[sub]['musicbox_reg'][grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_dict[sub]['locations'][grid_idx], data_prep[sub]['musicbox_reg'][grid_idx], timings_task, grid_config)
-            data_prep[sub]['buttonbox_reg'][grid_idx] = mc.simulation.predictions.button_box_simple_cells(data_dict[sub]['buttons'][grid_idx], data_prep[sub]['buttonbox_reg'][grid_idx], timings_task)
-            
+            if sub == 'sub-43' and grid_idx > 3:
+                # account for the skipped grid. no added regressor for that grid, so data_prep dict is one shorter
+                data_prep[sub]['state_reg'][grid_idx-1] = mc.simulation.predictions.state_cells(data_prep[sub]['state_reg'][grid_idx-1],timings_task, grid_config)
+                data_prep[sub]['musicbox_reg'][grid_idx-1] = mc.simulation.predictions.music_box_simple_cells(data_dict[sub]['locations'][grid_idx], data_prep[sub]['musicbox_reg'][grid_idx-1], timings_task, grid_config)
+                data_prep[sub]['buttonbox_reg'][grid_idx-1] = mc.simulation.predictions.button_box_simple_cells(data_dict[sub]['buttons'][grid_idx], data_prep[sub]['buttonbox_reg'][grid_idx-1], timings_task)
+
+            else:
+                data_prep[sub]['state_reg'][grid_idx] = mc.simulation.predictions.state_cells(data_prep[sub]['state_reg'][grid_idx],timings_task, grid_config)
+                data_prep[sub]['musicbox_reg'][grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_dict[sub]['locations'][grid_idx], data_prep[sub]['musicbox_reg'][grid_idx], timings_task, grid_config)
+                data_prep[sub]['buttonbox_reg'][grid_idx] = mc.simulation.predictions.button_box_simple_cells(data_dict[sub]['buttons'][grid_idx], data_prep[sub]['buttonbox_reg'][grid_idx], timings_task)
+                
     return data_prep
 
             

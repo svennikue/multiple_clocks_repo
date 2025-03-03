@@ -3113,8 +3113,9 @@ def button_box_simple_cells(buttons, empty_reg, grid_t_all):
     next_button_index = np.insert(mc.analyse.helpers_human_cells.button_change_indices(buttons_ints), 0,0)
     for no_button, b_idx in enumerate(next_button_index):
         curr_button = buttons_ints[b_idx]
-        if curr_button != 99:
-            buttonbox_regressors[curr_button, b_idx: next_button_index[no_button+1]] = 1
+        if no_button+1 < len(next_button_index):
+            if curr_button != 99:
+                buttonbox_regressors[curr_button, b_idx: next_button_index[no_button+1]] = 1
         
         if no_button < len(next_button_index)-1:
             next_button = buttons_ints[next_button_index[no_button+1]]
