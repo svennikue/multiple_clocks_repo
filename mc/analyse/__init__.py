@@ -12,6 +12,7 @@ import mc.analyse.handle_MRI_files
 import mc.analyse.ripple_helpers
 import mc.analyse.plotting_ripples
 import mc.analyse.helpers_human_cells
+import mc.analyse.plotting_cells
 
 #import mc.set_clocks
 #import mc.set_location_matrix

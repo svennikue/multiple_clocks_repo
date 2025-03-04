@@ -3065,7 +3065,8 @@ def test_timings_rew(subject, locations, grid_t_all, reward_locs, number_of_grid
                 import pdb; pdb.set_trace()
     print(f"all timings matched with finding correct rewarded location for subject {subject} and grid {reward_locs}!")
 
-def music_box_simple_cells(location, empty_reg, grid_t_all, reward_locs): 
+def music_box_simple_cells(location, empty_reg, grid_t_all, reward_locs, setting = None): 
+    # setting can be 'withoutnow, only2and3future','onlynowandnext'
     musicbox_regressors = empty_reg.copy()
     for repeat_idx, rep_times in enumerate(grid_t_all):
         if np.isnan(rep_times).any():
@@ -3076,18 +3077,48 @@ def music_box_simple_cells(location, empty_reg, grid_t_all, reward_locs):
             # current
             start_state = int(rep_times[state])
             end_state = int(rep_times[state+1])
-            musicbox_regressors[int(location[end_state]-1), start_state:end_state] = 1
-            # plus 1
-            end_next_state = int(rep_and_next_times[state+2])
-            musicbox_regressors[int(location[end_next_state]-1)+9, start_state:end_state] = 1
+            if setting not in ['withoutnow', 'only2and3future']:
+                musicbox_regressors[int(location[end_state]-1), start_state:end_state] = 1
+            
+                # plus 1
+                end_next_state = int(rep_and_next_times[state+2])
+                musicbox_regressors[int(location[end_next_state]-1)+9, start_state:end_state] = 1
+    
+                if setting not in ['onlynowandnext']:
+                    # plus 2
+                    end_secnext_state = int(rep_and_next_times[state+3])
+                    musicbox_regressors[int(location[end_secnext_state]-1)+2*9, start_state:end_state] = 1
+        
+                    # plus 3
+                    end_thirnext_state = int(rep_and_next_times[state+4])
+                    musicbox_regressors[int(location[end_thirnext_state]-1)+3*9, start_state:end_state] = 1
+            elif setting == 'withoutnow':
+                #import pdb; pdb.set_trace()
+                # plus 1
+                end_next_state = int(rep_and_next_times[state+2])
+                musicbox_regressors[int(location[end_next_state]-1), start_state:end_state] = 1
+    
+                # plus 2
+                end_secnext_state = int(rep_and_next_times[state+3])
+                musicbox_regressors[int(location[end_secnext_state]-1)+9, start_state:end_state] = 1
+    
+                # plus 3
+                end_thirnext_state = int(rep_and_next_times[state+4])
+                musicbox_regressors[int(location[end_thirnext_state]-1)+2*9, start_state:end_state] = 1
+            
+            elif setting == 'only2and3future':
+                #import pdb; pdb.set_trace()
+                # plus 2
+                end_secnext_state = int(rep_and_next_times[state+3])
+                musicbox_regressors[int(location[end_secnext_state]-1), start_state:end_state] = 1
+    
+                # plus 3
+                end_thirnext_state = int(rep_and_next_times[state+4])
+                musicbox_regressors[int(location[end_thirnext_state]-1)+9, start_state:end_state] = 1
+              
+             
 
-            # plus 2
-            end_secnext_state = int(rep_and_next_times[state+3])
-            musicbox_regressors[int(location[end_secnext_state]-1)+2*9, start_state:end_state] = 1
 
-            # plus 3
-            end_thirnext_state = int(rep_and_next_times[state+4])
-            musicbox_regressors[int(location[end_thirnext_state]-1)+3*9, start_state:end_state] = 1
 
     # plt.figure()
     # plt.imshow(musicbox_regressors, aspect = 'auto')
