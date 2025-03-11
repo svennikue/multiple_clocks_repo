@@ -30,6 +30,7 @@ data_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_hum
 group_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group"
 
 subjects = [28,31,32,33,34,35,36,37,38,40,43,45,46,49,50,51,53, 55]
+
 # subjects = [f"{i:02}" for i in range(1, 51) if i not in [6, 9, 27, 44]]
 
 certain_model = ['stat_model']

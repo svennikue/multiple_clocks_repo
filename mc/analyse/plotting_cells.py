@@ -14,7 +14,7 @@ import scipy.stats as st
 def prep_result_for_plotting_by_rois(results):
     
     # Define your ROI labels
-    ROI_labels = ['hippocampal', 'PFC', 'entorhinal', 'amygdala', 'mixed']
+    ROI_labels = ['ACC', 'OFC', 'PCC','hippocampal', 'PFC', 'entorhinal', 'amygdala', 'mixed']
     
     # Initialize a dictionary for the collapsed results.
     # This dictionary will be structured as:
@@ -31,8 +31,14 @@ def prep_result_for_plotting_by_rois(results):
             for cell_label, corr_values in cells.items():
                 # Determine ROI based on the cell label.
                 # Adjust the rules as needed.
-                if ('ACC' in cell_label) or ('PCC' in cell_label) or ('OFC' in cell_label):
-                    roi = 'PFC'
+                # if ('ACC' in cell_label) or ('PCC' in cell_label) or ('OFC' in cell_label):
+                #     roi = 'PFC'
+                if 'ACC' in cell_label:
+                    roi = 'ACC'
+                elif 'PCC' in cell_label:
+                    roi = 'PCC'
+                elif 'OFC' in cell_label:
+                    roi = 'OFC'
                 elif 'HC' in cell_label:
                     roi = 'hippocampal'
                 elif 'EC' in cell_label:
@@ -173,7 +179,7 @@ def plotting_corr_perm_histogram(results_of_corr, title_string_add):
         
         
 def plotting_corr_perm_histogram_by_ROIs(collapsed_results, title_string_add):
-    ROI_labels = ['hippocampal', 'PFC', 'entorhinal', 'amygdala', 'mixed']
+    ROI_labels = ['hippocampal', 'ACC','PCC','OFC', 'entorhinal', 'amygdala', 'mixed']
     bins=50
     for model in collapsed_results:
         roi_dict = collapsed_results[model]
@@ -221,12 +227,12 @@ def plotting_corr_perm_histogram_by_ROIs(collapsed_results, title_string_add):
             ax.axvline(0, color='black', linestyle='dashed', linewidth=2)
             
             # Set subplot title and labels
-            ax.set_title(f"{model}: {roi} \n for {len(corrs_allneurons[~nan_filter])} neurons", fontsize=16)
+            ax.set_title(f"{model}\n {roi} \n for {len(corrs_allneurons[~nan_filter])} neurons", fontsize=12)
             ax.set_xlabel("Correlation coefficient", fontsize=14)
             ax.tick_params(axis='both', labelsize=12, width=2, length=6)
             
             # Only set y-label on the first subplot (or adjust as desired)
-            ax.set_ylabel("Frequency", fontsize=14)
+            ax.set_ylabel("Frequency", fontsize=12)
             
             # Annotate with significance and p-value
             ax.text(0.95, 0.95, f"Significance: {significance}\n(p = {p_value:.3e})\n mean = {mean_sample:.2f}",

@@ -3044,6 +3044,7 @@ def create_instruction_model(rewards_of_task, trial_type, grid_size = 3, fire_ra
 def state_cells(empty_reg, grid_t_all, reward_locs):
     # import pdb; pdb.set_trace()
     state_regressors = empty_reg.copy()
+    grid_t_all = grid_t_all-grid_t_all[0,0]
     for repeat_idx, grid_times in enumerate(grid_t_all):
         if np.isnan(grid_times).any():
             continue
@@ -3067,6 +3068,10 @@ def test_timings_rew(subject, locations, grid_t_all, reward_locs, number_of_grid
 
 def music_box_simple_cells(location, empty_reg, grid_t_all, reward_locs, setting = None): 
     # setting can be 'withoutnow, only2and3future','onlynowandnext'
+    # import pdb; pdb.set_trace()
+    grid_t_all = grid_t_all-grid_t_all[0,0]
+    all_reward_locs = np.tile(reward_locs, 2)
+    
     musicbox_regressors = empty_reg.copy()
     for repeat_idx, rep_times in enumerate(grid_t_all):
         if np.isnan(rep_times).any():
@@ -3074,52 +3079,61 @@ def music_box_simple_cells(location, empty_reg, grid_t_all, reward_locs, setting
         if repeat_idx < len(grid_t_all)-1:
             rep_and_next_times = np.concatenate((rep_times, grid_t_all[repeat_idx+1][1:]))
         for state in range(0,4):
+            # curr_rew_loc = int(location[end_state]-1
+            # this should be equal to int(reward_locs[state]-1) if not random!
+            
+            # this can be used for actual locations. int(location[end_next_state]-1)
+            
+            curr_rew_loc = int(all_reward_locs[state]-1)
+            next_rew_loc = int(all_reward_locs[state+1]-1)
+            second_next_rew_loc = int(all_reward_locs[state+2]-1)
+            third_next_rew_loc = int(all_reward_locs[state+3]-1)
+            
             # current
             start_state = int(rep_times[state])
             end_state = int(rep_times[state+1])
             if setting not in ['withoutnow', 'only2and3future']:
-                musicbox_regressors[int(location[end_state]-1), start_state:end_state] = 1
+                musicbox_regressors[curr_rew_loc, start_state:end_state] = 1
             
                 # plus 1
                 end_next_state = int(rep_and_next_times[state+2])
-                musicbox_regressors[int(location[end_next_state]-1)+9, start_state:end_state] = 1
+                musicbox_regressors[next_rew_loc+9, start_state:end_state] = 1
     
                 if setting not in ['onlynowandnext']:
                     # plus 2
                     end_secnext_state = int(rep_and_next_times[state+3])
-                    musicbox_regressors[int(location[end_secnext_state]-1)+2*9, start_state:end_state] = 1
+                    musicbox_regressors[second_next_rew_loc+2*9, start_state:end_state] = 1
         
                     # plus 3
                     end_thirnext_state = int(rep_and_next_times[state+4])
-                    musicbox_regressors[int(location[end_thirnext_state]-1)+3*9, start_state:end_state] = 1
+                    musicbox_regressors[third_next_rew_loc+3*9, start_state:end_state] = 1
+            
             elif setting == 'withoutnow':
                 #import pdb; pdb.set_trace()
                 # plus 1
                 end_next_state = int(rep_and_next_times[state+2])
-                musicbox_regressors[int(location[end_next_state]-1), start_state:end_state] = 1
+                
+                musicbox_regressors[next_rew_loc, start_state:end_state] = 1
     
                 # plus 2
                 end_secnext_state = int(rep_and_next_times[state+3])
-                musicbox_regressors[int(location[end_secnext_state]-1)+9, start_state:end_state] = 1
+                musicbox_regressors[second_next_rew_loc+9, start_state:end_state] = 1
     
                 # plus 3
                 end_thirnext_state = int(rep_and_next_times[state+4])
-                musicbox_regressors[int(location[end_thirnext_state]-1)+2*9, start_state:end_state] = 1
+                musicbox_regressors[third_next_rew_loc+2*9, start_state:end_state] = 1
             
             elif setting == 'only2and3future':
                 #import pdb; pdb.set_trace()
                 # plus 2
                 end_secnext_state = int(rep_and_next_times[state+3])
-                musicbox_regressors[int(location[end_secnext_state]-1), start_state:end_state] = 1
+                musicbox_regressors[second_next_rew_loc, start_state:end_state] = 1
     
                 # plus 3
                 end_thirnext_state = int(rep_and_next_times[state+4])
-                musicbox_regressors[int(location[end_thirnext_state]-1)+9, start_state:end_state] = 1
+                musicbox_regressors[third_next_rew_loc+9, start_state:end_state] = 1
               
-             
-
-
-
+        
     # plt.figure()
     # plt.imshow(musicbox_regressors, aspect = 'auto')
     # plt.axhline(8.5, color='white', linewidth=1)
@@ -3127,6 +3141,157 @@ def music_box_simple_cells(location, empty_reg, grid_t_all, reward_locs, setting
     # plt.axhline(26.5, color='white', linewidth=1)
     # import pdb; pdb.set_trace()        
     return musicbox_regressors
+
+
+def locations_cells(location, empty_reg): 
+    location_regressors = empty_reg.copy()
+    loc_change_points = np.where(np.diff(location) != 0)[0] + 1  # Find where index changes
+    
+    for i, step_at in enumerate(loc_change_points):
+        curr_loc = int(location[step_at-1]-1) # location before step, -1 because of py indexing
+        previous_step_at = loc_change_points[i-1]
+        if i == 0:
+            location_regressors[curr_loc, 0:step_at] = 1
+        else:
+            location_regressors[curr_loc, previous_step_at:step_at] = 1
+    
+    # import pdb; pdb.set_trace()
+    return location_regressors
+        
+
+def musicbox_cells_complete(location, empty_reg, grid_t_all, reward_locs, setting = None):
+    # import pdb; pdb.set_trace()
+    
+    # CAREFUL!
+    # this musicbox currently encodes the future.
+    # from 3 subpaths back, it predicts when you are going to walk on the fields
+    # you are currently walking on. 
+    # this is fine if they take the same paths, but it may make a difference if they are not.
+    # I also don't include any phase-coding.
+    grid_t_all = grid_t_all-grid_t_all[0,0]
+    
+    state_regressors = empty_reg[0:4, :].copy()
+    musicbox_complete = empty_reg.copy() 
+    location = [int(l-1) for l in location] # -1 because of py indexing
+    location = np.array(location)
+    for repeat_idx, grid_times in enumerate(grid_t_all):
+        if np.isnan(grid_times).any():
+            continue
+        else:
+            state_regressors[0, int(grid_times[0]):int(grid_times[1])] = 1
+            state_regressors[1, int(grid_times[1]):int(grid_times[2])] = 2
+            state_regressors[2, int(grid_times[2]):int(grid_times[3])] = 3
+            state_regressors[3, int(grid_times[3]):int(grid_times[4])] = 4
+    
+    state_model_bins = np.sum(state_regressors, axis = 0)
+    # Identify change points (boundaries) in the index array
+    state_change_points = np.where(np.diff(state_model_bins) != 0)[0] + 1  # Find where index changes
+    # import pdb; pdb.set_trace()
+    
+    
+    # this is current location
+    loc_change_points = np.where(np.diff(location) != 0)[0] + 1  # Find where index changes
+    for i, step_at in enumerate(loc_change_points):
+        curr_loc = location[step_at-1] # location before step
+        previous_step_at = loc_change_points[i-1]
+        if i == 0:
+            musicbox_complete[curr_loc, 0:step_at] = 1
+        else:
+            musicbox_complete[curr_loc, previous_step_at:step_at] = 1
+
+    
+    
+    # Additionally, propagate locations of current state around in the other states.
+    # this will create only 4 musicboxneurons, where 'current' is the most precise.
+    # import pdb; pdb.set_trace()
+    # For each state segment (as defined by state_change_points), compute future projections.
+    # We process each segment and, for each future offset (1,2,3), project the location.
+    
+    num_future_states = 3  # we want 1-, 2-, and 3-state ahead projections
+    
+    for no_state_change, state_end in enumerate(state_change_points):
+        state_start = int(grid_t_all[0,0]) if no_state_change == 0 else state_change_points[no_state_change-1]
+        state_length = state_end-state_start
+        if state_length <=0:
+            continue
+        
+        # Values from 0 up to (but not including) 1 for each timepoint in the subpath
+        relative_time_in_state = np.linspace(0,1,state_length, endpoint=False)
+        
+        
+        # For each future subpath, if a future state exists, map the current relative time onto it.
+        for x_states_in_future in range(1, num_future_states + 1):
+            # Check if the future path exists.
+            if no_state_change + x_states_in_future < len(state_change_points):
+                # For 1 in future: future state is [state_change_points[no_state_change], state_change_points[no_state_change+1])
+                # For 2 in future: future state is [state_change_points[no_state_change+1], state_change_points[no_state_change+2])
+                # For 3 in future: future state is [state_change_points[no_state_change+2], state_change_points[no_state_change+3])
+                future_state_start = state_change_points[no_state_change] if x_states_in_future == 1 else state_change_points[no_state_change + x_states_in_future - 1]
+                future_state_end = state_change_points[no_state_change + x_states_in_future]
+                future_state_length = future_state_end - future_state_start
+                if future_state_length <= 0:
+                    continue
+                # Map each relative time in the current subpath to an index within the future subpath.
+                indices = (relative_time_in_state * future_state_length).astype(int)
+                # For each timepoint in the current segment, pick the future location.
+                future_state_locs = location[future_state_start + indices]  # 1-indexed locations
+    
+                # Create one-hot encoded predictions for subpath x_states_in_future
+                one_hot = np.zeros((9, state_length), dtype=int)
+                one_hot[future_state_locs, np.arange(state_length)] = 1
+    
+                # Place these predictions into final_matrix.
+                # The appropriate row block is: rows offset*9 to (offset+1)*9,
+                # and the columns correspond to the current segment [seg_start:seg_end].
+                row_start = x_states_in_future * 9
+                row_end = (x_states_in_future + 1) * 9
+                musicbox_complete[row_start:row_end, state_start:state_end] = one_hot
+                # to also fill in the final bits of the shifted musicbox
+                if no_state_change + x_states_in_future + 1 == len(state_change_points):
+                    # import pdb; pdb.set_trace()
+                    # copy the last state repeat in. this will be x_states_in_future long
+                    for n_states_to_copy in range(0,x_states_in_future):
+                        # For x_states_in_future = 1, we copy the last activation of 4 states ago;
+                        # for x_states_in_future = 2, we copy the last two activations of 4 states ago; etc.
+                        sim_state_start = state_change_points[no_state_change+n_states_to_copy]
+                        sim_state_end = state_change_points[no_state_change+n_states_to_copy+1]
+                        sim_state_length = sim_state_end-sim_state_start
+                        relative_time_in_sim_state = np.linspace(0,1,sim_state_length, endpoint=False)
+                        past_start = state_change_points[no_state_change-(4-x_states_in_future)+n_states_to_copy]  # starting index of the block to copy
+                        past_state_end = state_change_points[no_state_change-(3-x_states_in_future)+n_states_to_copy]
+                        past_state_length = past_state_end - past_start
+                        
+                        # this needs to be adjusted to the actual locations
+                        # for 3 in future this is like one in past
+                        # for 2 in future this is 2 in past
+                        # for 1 in future this is 3 in past
+                        # and then just move forward on the location vector
+                        # adjusting no_state_change presumably.
+                        
+                        # Stretch/squeeze the current relative time into this smaller block.
+                        indices = (relative_time_in_sim_state * past_state_length).astype(int)
+                        past_state_locs = location[past_start + indices]
+                        
+                        # Create one-hot encoded predictions for subpath x_states_in_future
+                        one_hot = np.zeros((9, sim_state_length), dtype=int)
+                        one_hot[past_state_locs, np.arange(sim_state_length)] = 1
+                        musicbox_complete[row_start:row_end, sim_state_start:sim_state_end] = one_hot
+
+    
+    # import pdb; pdb.set_trace()
+    # figure out if the indexing works correclty!! 8 vs 9 - starting at 0 vs at 1
+    # depending on which setting I want, cut the musicbox_complete matrix.
+    # ['withoutnow', 'only2and3future','onlynowandnext']
+    if setting in ['withoutnow']:
+        musicbox_complete = musicbox_complete[9:, :]
+    elif setting in ['only2and3future']:
+        musicbox_complete = musicbox_complete[18:, :]
+    elif setting in ['onlynowandnext']:
+        musicbox_complete = musicbox_complete[0:18, :]
+
+    # import pdb; pdb.set_trace()
+    return musicbox_complete 
+
 
 
 

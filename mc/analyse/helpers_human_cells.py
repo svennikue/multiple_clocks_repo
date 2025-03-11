@@ -18,6 +18,7 @@ import mc
 from matplotlib import pyplot as plt
 import glob
 import pandas as pd
+import copy
 # import pdb; pdb.set_trace()
 
 def read_files_to_list_ordered(folder, pattern_string):
@@ -807,40 +808,75 @@ def label_unique_grids(data_dict, unique = True, dont_average_tasks = False):
     return data_dict
 
 
-def prep_regressors_for_neurons(data_dict, models_I_want = None):
+def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repeats = None, randomised_reward_locations = False):
     # import pdb; pdb.set_trace()
     # settings
     no_state = 4
     no_locations = 9
     no_buttons = 4
     
-    data_prep = data_dict.copy()
+    data_prep = copy.deepcopy(data_dict)
     for sub in data_dict:
         print(f"now starting to process data from subject {sub}")
-        data_prep[sub]['state_reg'], data_prep[sub]['musicbox_reg'], data_prep[sub]['buttonbox_reg'] = [],[],[]
+        data_prep[sub]['state_reg'], data_prep[sub]['complete_musicbox_reg'], data_prep[sub]['reward_musicbox_reg'], data_prep[sub]['buttonbox_reg'], data_prep[sub]['location_reg'] = [],[],[],[],[]
         if models_I_want:
             for model in models_I_want:
-                data_prep[sub][f"musicbox_{model}_reg"] = []
+                data_prep[sub][f"musicbox_{model}_rew_reg"] = []
+                data_prep[sub][f"musicbox_{model}_complete_reg"] = []
+        
+        if randomised_reward_locations == False:
+            reward_configurations = data_dict[sub]['reward_configs'].copy()
+            
+        elif randomised_reward_locations == True:
+            # randomize reward configurations 
+            shuffled_tasks = np.zeros((data_dict[sub]['reward_configs'].shape))
+            indices = np.random.permutation(len(data_dict[sub]['reward_configs']))
+            for j, i in enumerate(indices):
+                if i != j:
+                    shuffled_tasks[j] = data_dict[sub]['reward_configs'][i]
+                elif i == j:
+                    if i+1 == len(indices):
+                        shuffled_tasks[j] = data_dict[sub]['reward_configs'][i-1]
+                    else:
+                        shuffled_tasks[j] = data_dict[sub]['reward_configs'][i+1]
+
+                    
+            reward_configurations = shuffled_tasks.copy()
+            data_prep[sub]['shuffled_tasks'] = shuffled_tasks.copy()
+            
+            
+        for grid_idx, grid_config in enumerate(reward_configurations):
+            if exclude_x_repeats:
+                start_from_repeat = np.max(exclude_x_repeats)
+                timings_task = data_dict[sub]['timings'][grid_idx][start_from_repeat:]-1
+            else:  
+                timings_task = data_dict[sub]['timings'][grid_idx]-1
                 
-        for grid_idx, grid_config in enumerate(data_dict[sub]['reward_configs']):
-            timings_task = data_dict[sub]['timings'][grid_idx]-1
             if (sub == 'sub-15' and grid_idx == 23) or (sub == 'sub-43' and grid_idx == 3) :
                 continue
             if (sub == 'sub-25' and grid_idx == 9) or (sub == 'sub-52' and grid_idx == 6) or (sub == 'sub-44' and grid_idx == 3):
                 # cut the last row of the timings
                 timings_task = timings_task[:-1, :]
             
-            # if np.isnan(timings_task[-1,-1]) or np.isnan(timings_task[-1,-2]):
-            #     continue
-            # check the match between timings and reward configs
-            mc.simulation.predictions.test_timings_rew(sub, data_dict[sub]['locations'][grid_idx],timings_task, grid_config, grid_idx)
+            if randomised_reward_locations == False:
+                # check the match between timings and reward configs
+                mc.simulation.predictions.test_timings_rew(sub, data_dict[sub]['locations'][grid_idx],timings_task, grid_config, grid_idx)
             
             # now create empty regressors:
             # 4x state regressors
             # 4x 9 current/future reward location regressors
             # 4x 4 current/future button press regressors
-            data_prep[sub]['state_reg'].append(np.zeros((no_state, data_prep[sub]['neurons'][grid_idx].shape[1])))
-            data_prep[sub]['musicbox_reg'].append(np.zeros((no_state*no_locations, data_prep[sub]['neurons'][grid_idx].shape[1])))
+            length_curr_grid = data_prep[sub]['neurons'][grid_idx].shape[1] - int(timings_task[0,0])
+            data_prep[sub]['neurons'][grid_idx]= data_prep[sub]['neurons'][grid_idx][:, int(timings_task[0,0]):]
+            data_prep[sub]['locations'][grid_idx] = data_prep[sub]['locations'][grid_idx][int(timings_task[0,0]):]
+            data_prep[sub]['buttons'][grid_idx] = data_prep[sub]['buttons'][grid_idx][int(timings_task[0,0]):]
+            
+            
+            data_prep[sub]['state_reg'].append(np.zeros((no_state, length_curr_grid)))
+            data_prep[sub]['complete_musicbox_reg'].append(np.zeros((no_state*no_locations, length_curr_grid)))
+            data_prep[sub]['reward_musicbox_reg'].append(np.zeros((no_state*no_locations, length_curr_grid)))
+            data_prep[sub]['location_reg'].append(np.zeros((no_locations, length_curr_grid)))
+            
             if models_I_want:
                 for model in models_I_want:
                     if model == 'withoutnow':
@@ -848,44 +884,85 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None):
                     if model in ['only2and3future', 'onlynowandnext']:
                         less_rows = 2
                     
-                    data_prep[sub][f"musicbox_{model}_reg"].append(np.zeros(((no_state-less_rows)*no_locations, data_prep[sub]['neurons'][grid_idx].shape[1])))
+                    data_prep[sub][f"musicbox_{model}_rew_reg"].append(np.zeros(((no_state-less_rows)*no_locations, length_curr_grid)))
+                    data_prep[sub][f"musicbox_{model}_complete_reg"].append(np.zeros(((no_state-less_rows)*no_locations, length_curr_grid)))
             
-            
-            # data_prep[sub]['musicbox_withoutnow_reg'].append(np.zeros(((no_state-1)*no_locations, data_prep[sub]['neurons'][grid_idx].shape[1])))
-            # data_prep[sub]['musicbox_only2and3future_reg'].append(np.zeros(((no_state-2)*no_locations, data_prep[sub]['neurons'][grid_idx].shape[1])))
-            # data_prep[sub]['musicbox_onlynowandnext_reg'].append(np.zeros(((no_state-2)*no_locations, data_prep[sub]['neurons'][grid_idx].shape[1])))
-            
-            data_prep[sub]['buttonbox_reg'].append(np.zeros((no_state*no_buttons, data_prep[sub]['neurons'][grid_idx].shape[1])))
+
+            data_prep[sub]['buttonbox_reg'].append(np.zeros((no_state*no_buttons, length_curr_grid)))
             # the following ones should take the timings as input, and fill in the 
             # empty arrays of the following regressors, according to the timings
             # and locations/buttonpresses:
+            if randomised_reward_locations == True:
+                # if shuffled_tasks[grid_idx][0] != data_dict[sub]['reward_configs'][grid_idx][0]:
+                #     grid_config = shuffled_tasks[grid_idx]
+                # elif grid_idx == 0:
+                #     grid_config = shuffled_tasks[grid_idx+1]
+                # elif grid_idx == len(data_dict[sub]['reward_configs']):
+                #     grid_config = shuffled_tasks[grid_idx-1]
+                print(f"shuffled reward config is {grid_config} and actual was {data_dict[sub]['reward_configs'][grid_idx]}")
+            
+            # import pdb; pdb.set_trace()   
             if sub == 'sub-43' and grid_idx > 3:
                 # account for the skipped grid. no added regressor for that grid, so data_prep dict is one shorter
                 data_prep[sub]['state_reg'][grid_idx-1] = mc.simulation.predictions.state_cells(data_prep[sub]['state_reg'][grid_idx-1],timings_task, grid_config)
-                data_prep[sub]['musicbox_reg'][grid_idx-1] = mc.simulation.predictions.music_box_simple_cells(data_dict[sub]['locations'][grid_idx], data_prep[sub]['musicbox_reg'][grid_idx-1], timings_task, grid_config)
-                data_prep[sub]['buttonbox_reg'][grid_idx-1] = mc.simulation.predictions.button_box_simple_cells(data_dict[sub]['buttons'][grid_idx], data_prep[sub]['buttonbox_reg'][grid_idx-1], timings_task)
-                
+                data_prep[sub]['reward_musicbox_reg'][grid_idx-1] = mc.simulation.predictions.music_box_simple_cells(data_prep[sub]['locations'][grid_idx], data_prep[sub]['reward_musicbox_reg'][grid_idx-1], timings_task, grid_config)
+                data_prep[sub]['complete_musicbox_reg'][grid_idx-1] = mc.simulation.predictions.musicbox_cells_complete(data_prep[sub]['locations'][grid_idx], data_prep[sub]['complete_musicbox_reg'][grid_idx-1], timings_task, grid_config)
+                data_prep[sub]['buttonbox_reg'][grid_idx-1] = mc.simulation.predictions.button_box_simple_cells(data_prep[sub]['buttons'][grid_idx], data_prep[sub]['buttonbox_reg'][grid_idx-1], timings_task)
+                data_prep[sub]['location_reg'][grid_idx-1] = mc.simulation.predictions.locations_cells(data_prep[sub]['locations'][grid_idx], data_prep[sub]['location_reg'][grid_idx-1])
+     
             else:
+                # import pdb; pdb.set_trace()
                 data_prep[sub]['state_reg'][grid_idx] = mc.simulation.predictions.state_cells(data_prep[sub]['state_reg'][grid_idx],timings_task, grid_config)
-                data_prep[sub]['musicbox_reg'][grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_dict[sub]['locations'][grid_idx], data_prep[sub]['musicbox_reg'][grid_idx], timings_task, grid_config)
-                data_prep[sub]['buttonbox_reg'][grid_idx] = mc.simulation.predictions.button_box_simple_cells(data_dict[sub]['buttons'][grid_idx], data_prep[sub]['buttonbox_reg'][grid_idx], timings_task)
+                data_prep[sub]['reward_musicbox_reg'][grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_prep[sub]['locations'][grid_idx], data_prep[sub]['reward_musicbox_reg'][grid_idx], timings_task, grid_config)
+                data_prep[sub]['complete_musicbox_reg'][grid_idx] = mc.simulation.predictions.musicbox_cells_complete(data_prep[sub]['locations'][grid_idx], data_prep[sub]['complete_musicbox_reg'][grid_idx], timings_task, grid_config)
+                data_prep[sub]['buttonbox_reg'][grid_idx] = mc.simulation.predictions.button_box_simple_cells(data_prep[sub]['buttons'][grid_idx], data_prep[sub]['buttonbox_reg'][grid_idx], timings_task)
+                data_prep[sub]['location_reg'][grid_idx] = mc.simulation.predictions.locations_cells(data_prep[sub]['locations'][grid_idx], data_prep[sub]['location_reg'][grid_idx])
                 # new ones
                 if models_I_want:
                     for model in models_I_want:
-                        data_prep[sub][f"musicbox_{model}_reg"][grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_dict[sub]['locations'][grid_idx], data_prep[sub][f"musicbox_{model}_reg"][grid_idx], timings_task, grid_config, setting = model)
-                        
-                #         data_prep[sub]['musicbox_reg'][grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_dict[sub]['locations'][grid_idx], data_prep[sub]['musicbox_reg'][grid_idx], timings_task, grid_config)
-                        
-                #         data_prep[sub][f"musicbox_reg"][grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_dict[sub]['locations'][grid_idx], data_prep[sub]['musicbox_reg'][grid_idx], timings_task, grid_config)
-                        
-                # data_prep[sub]['musicbox_withoutnow_reg'][grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_dict[sub]['locations'][grid_idx], data_prep[sub]['musicbox_reg'][grid_idx], timings_task, grid_config, setting = 'withoutnow')
-                # data_prep[sub]['musicbox_only2and3future_reg'][grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_dict[sub]['locations'][grid_idx], data_prep[sub]['musicbox_reg'][grid_idx], timings_task, grid_config, setting = 'only2and3future')
-                # data_prep[sub]['musicbox_onlynowandnext_reg'][grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_dict[sub]['locations'][grid_idx], data_prep[sub]['musicbox_reg'][grid_idx], timings_task, grid_config, setting = 'onlynowandnext')
-
-
+                        data_prep[sub][f"musicbox_{model}_rew_reg"][grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_prep[sub]['locations'][grid_idx], data_prep[sub][f"musicbox_{model}_rew_reg"][grid_idx], timings_task, grid_config, setting = model)
+                        data_prep[sub][f"musicbox_{model}_complete_reg"][grid_idx] = mc.simulation.predictions.musicbox_cells_complete(data_prep[sub]['locations'][grid_idx], data_prep[sub]['complete_musicbox_reg'][grid_idx], timings_task, grid_config, setting = model)
+            
+            # import pdb; pdb.set_trace()
     return data_prep
 
-            
+
+def identify_max_cells_for_model(result_dir):
+    # Dictionary to store top cells per subject per model.
+    top_cells = {}
+    
+    # Aggregate across subjects for each model.
+    for subject, models in result_dir.items():
+        for model, cells in models.items():
+            if model not in top_cells:
+                top_cells[model] = []
+            for cell, values in cells.items():
+                avg_val = np.mean(values)
+                top_cells[model].append({
+                    'subject': subject,
+                    'cell': cell,
+                    'average': avg_val,
+                    'values': values
+                })
+    
+    # Now, for each model, sort by average (descending) and keep only the top 10% performing cells.
+    final_top_cells = {}
+    for model, entries in top_cells.items():
+        sorted_entries = sorted(entries, key=lambda x: x['average'], reverse=True)
+        total_cells = len(sorted_entries)
+        # Calculate the number of cells to keep (at least one).
+        top_n = max(1, int(total_cells * 0.1))
+        final_top_cells[model] = sorted_entries[:top_n]
+        for entry in final_top_cells[model]:
+            print(f"Model: {model}, Subject: {entry['subject']}, Cell: {entry['cell']}, Average: {entry['average']}")
+    
+    # final_top_cells 
+    # Now top_cells_by_model holds the top 10% cells for each model.
+    return final_top_cells
+
+
+
+           
 def prep_neurons_and_state(data_dict, repeats, only_reward_times, no_bins_per_state, sim_fake_data = False):
     # import pdb; pdb.set_trace()
     # first, do some modifications (integers, start from 0, make timings to bins)
