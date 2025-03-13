@@ -38,6 +38,12 @@ import copy
 ### SETTINGS
 data_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives"
 group_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group"
+# check if on server or local
+if not os.path.isdir(group_folder):
+    print("running on ceph")
+    group_folder = "/ceph/behrens/svenja/human_ABCD_ephys/derivatives/group/elastic_net_reg"
+    data_folder = "/ceph/behrens/svenja/human_ABCD_ephys/derivatives"
+
 file_name_all_subj_reg_prep = f"prep_data_for_regression"
 
 subjects = [f"{i:02}" for i in range(1, 58) if i not in [9, 27, 43, 44]]
@@ -53,7 +59,7 @@ l1_ratio= 0.01
 jumbled_regressors = False
 randomised_reward_locations = False
 models_I_want = ['withoutnow', 'only2and3future','onlynowandnext'] # ['withoutnow', 'only2and3future','onlynowandnext']# None or 'withoutnow, only2and3future','onlynowandnext'
-exclude_repeats = [1,2,3,4] # None or values
+exclude_repeats = [1,2] # None or values
 
 # check following subjects cells:
     # s42
@@ -123,7 +129,7 @@ for sub in data_and_regressors:
         single_sub_dict['reward_configs'] = np.delete(single_sub_dict['reward_configs'], 23, axis = 0)
 
     for model in single_sub_dict:
-        if model.endswith('reg'):
+        if model.endswith('reg') or model.endswith('model'):
             corr_dict[sub][model], corr_dict_binned[sub][model] = {}, {}
             
     # # PART 2
@@ -131,7 +137,7 @@ for sub in data_and_regressors:
     # # load if already exists
     file_name = f"standard_regs_all_cells_all_models_{sub}"
     if models_I_want:
-        file_name = f"all_regs_w_partial_musicboxes_all_cells_{sub}"
+        file_name = f"all_regs_w_any_musicbox_all_cells_{sub}"
     if jumbled_regressors == True:
         file_name = f"jumbled_all_regs_all_cells_all_models_{sub}"
     if randomised_reward_locations == True:
@@ -194,6 +200,7 @@ for sub in data_and_regressors:
                 
                 # depending on the permutations, change the train and test dataset.
                 for entry in single_sub_dict:
+                    import pdb; pdb.set_trace()
                     # only the regressors I created.
                     if entry.endswith('reg'):
                         result_dict[curr_cell][entry] = []
@@ -297,6 +304,7 @@ else:
 
 
 predicted_cells = mc.analyse.helpers_human_cells.identify_max_cells_for_model(corr_dict_binned)
+mc.analyse.helpers_human_cells.store_best_cells(predicted_cells, data)
 
 
 if save_results == True:

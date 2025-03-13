@@ -726,7 +726,6 @@ def transform_coord(coord, is_x = False, is_y = False):
         return None
 
 
-
 # use to check if the EV making went wrong
 def check_for_nan(array):
     # import pdb; pdb.set_trace()
@@ -744,7 +743,6 @@ def check_for_nan(array):
 
 def make_loc_EV(dataframe, x_coord, y_coord):
     # import pdb; pdb.set_trace()
-
     skip_next = False
     loc_dur = []
     loc_on = []

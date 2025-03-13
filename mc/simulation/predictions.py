@@ -1418,10 +1418,10 @@ def set_continous_models_ephys(beh_data_curr_rep_dict,  grid_size = 3, no_phase_
     subpath_timings = beh_data_curr_rep_dict['timings_repeat']
     # note: I might need to add a start time for the human data. 
     # timings need to be start- findA, findB, findC,findD
-    make_step = beh_data_curr_rep_dict['index_make_step']
+    #make_step = beh_data_curr_rep_dict['index_make_step']
     walked_path = beh_data_curr_rep_dict['trajectory']
     
-    cumsumsteps = np.cumsum(step_number)
+    #cumsumsteps = np.cumsum(step_number)
     # build all possible coord combinations 
     all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
     # code up the 2d location neurons. this is e.g. a 3x3 grid tiled with multivatiate
@@ -1586,19 +1586,19 @@ def set_continous_models_ephys(beh_data_curr_rep_dict,  grid_size = 3, no_phase_
             result_model_dict['phas_model'] = phase_matrix_subpath.copy()
             result_model_dict['loc_model'] = loc_matrix.copy()
             result_model_dict['stat_model'] = state_matrix.copy()
-            result_model_dict['phas_stat'] = phase_state_subpath.copy()
+            result_model_dict['phas_stat_model'] = phase_state_subpath.copy()
         elif count_paths > 0:
             result_model_dict['midn_model'] = np.concatenate((result_model_dict['midn_model'],midnight_model_subpath), axis = 1)
             result_model_dict['phas_model'] = np.concatenate((result_model_dict['phas_model'], phase_matrix_subpath), axis = 1)
             result_model_dict['loc_model'] = np.concatenate((result_model_dict['loc_model'], loc_matrix), axis = 1)
             result_model_dict['stat_model'] = np.concatenate((result_model_dict['stat_model'], state_matrix), axis = 1)
-            result_model_dict['phas_stat'] = np.concatenate((result_model_dict['phas_stat'], phase_state_subpath), axis = 1)
+            result_model_dict['phas_stat_model'] = np.concatenate((result_model_dict['phas_stat_model'], phase_state_subpath), axis = 1)
 
     
     # sixth. make the CLOCK MODEL by filling the midnight model with progress neurons.
     # 6.1 I am going to fuse the midnight and the phas_stat model. Thus they need to be equally 'strong' > normalise!
     norm_midn = (result_model_dict['midn_model'].copy()-np.min(result_model_dict['midn_model']))/(np.max(result_model_dict['midn_model'])-np.min(result_model_dict['midn_model']))
-    norm_phas_stat = (result_model_dict['phas_stat'].copy()-np.min(result_model_dict['phas_stat']))/(np.max(result_model_dict['phas_stat'])-np.min(result_model_dict['phas_stat']))
+    norm_phas_stat = (result_model_dict['phas_stat_model'].copy()-np.min(result_model_dict['phas_stat_model']))/(np.max(result_model_dict['phas_stat_model'])-np.min(result_model_dict['phas_stat_model']))
 
     # 6.2 Stick the neuron-clock matrices in 
     full_clock_matrix_dummy = np.zeros([len(norm_midn)*len(norm_phas_stat),len(norm_midn[0])]) # fields times phases.
@@ -1612,7 +1612,7 @@ def set_continous_models_ephys(beh_data_curr_rep_dict,  grid_size = 3, no_phase_
     
     if split_clock == True:
         split_clock_model_dict = {}
-        split_clock_strings = ['curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock']
+        split_clock_strings = ['curr_rings_split_clock_model', 'one_fut_rings_split_clock_model', 'two_fut_rings_split_clock_model', 'three_fut_rings_split_clock_model']
         for model in split_clock_strings:
             # length of the future clock model will be 3x midnight: predicting the subpaths, not only the reward.
                split_clock_model_dict[model] = np.zeros([len(norm_midn)*no_phase_neurons,len(norm_midn[0])]) 
@@ -1641,10 +1641,10 @@ def set_continous_models_ephys(beh_data_curr_rep_dict,  grid_size = 3, no_phase_
             #firing_factor = norm_midn[row,activation_neuron]/ max_firing
             shifted_adjusted_clock = shifted_clock.copy()*firing_factor
             if split_clock == True:
-                split_clock_model_dict['curr_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[0:no_phase_neurons] + split_clock_model_dict['curr_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
-                split_clock_model_dict['one_fut_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[no_phase_neurons:no_phase_neurons*2] + split_clock_model_dict['one_fut_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
-                split_clock_model_dict['two_fut_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[no_phase_neurons*2:no_phase_neurons*3] + split_clock_model_dict['two_fut_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
-                split_clock_model_dict['three_fut_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[no_phase_neurons*3:] + split_clock_model_dict['three_fut_rings_split_clock'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
+                split_clock_model_dict['curr_rings_split_clock_model'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[0:no_phase_neurons] + split_clock_model_dict['curr_rings_split_clock_model'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
+                split_clock_model_dict['one_fut_rings_split_clock_model'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[no_phase_neurons:no_phase_neurons*2] + split_clock_model_dict['one_fut_rings_split_clock_model'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
+                split_clock_model_dict['two_fut_rings_split_clock_model'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[no_phase_neurons*2:no_phase_neurons*3] + split_clock_model_dict['two_fut_rings_split_clock_model'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
+                split_clock_model_dict['three_fut_rings_split_clock_model'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :] = shifted_adjusted_clock[no_phase_neurons*3:] + split_clock_model_dict['three_fut_rings_split_clock_model'][row*no_phase_neurons:row*no_phase_neurons+no_phase_neurons, :]
                 
             # then add the values to the existing clocks, but also replace the first row by 0!!
             shifted_adjusted_clock[0] = np.zeros((len(shifted_adjusted_clock[0])))
@@ -3157,7 +3157,140 @@ def locations_cells(location, empty_reg):
     
     # import pdb; pdb.set_trace()
     return location_regressors
+     
+def musicbox_cells_complete_withoutphase(location, empty_reg, grid_t_all, reward_locs, setting = None):
+    # import pdb; pdb.set_trace()
+    
+    # CAREFUL!
+    # this musicbox currently encodes the future.
+    # from 3 subpaths back, it predicts when you are going to walk on the fields
+    # you are currently walking on. 
+    # this is fine if they take the same paths, but it may make a difference if they are not.
+    # I also don't include any phase-coding.
+    grid_t_all = grid_t_all-grid_t_all[0,0]
+    
+    state_regressors = empty_reg[0:4, :].copy()
+    musicbox_complete = empty_reg.copy() 
+    location = [int(l-1) for l in location] # -1 because of py indexing
+    location = np.array(location)
+    for repeat_idx, grid_times in enumerate(grid_t_all):
+        if np.isnan(grid_times).any():
+            continue
+        else:
+            state_regressors[0, int(grid_times[0]):int(grid_times[1])] = 1
+            state_regressors[1, int(grid_times[1]):int(grid_times[2])] = 2
+            state_regressors[2, int(grid_times[2]):int(grid_times[3])] = 3
+            state_regressors[3, int(grid_times[3]):int(grid_times[4])] = 4
+    
+    state_model_bins = np.sum(state_regressors, axis = 0)
+    # Identify change points (boundaries) in the index array
+    state_change_points = np.where(np.diff(state_model_bins) != 0)[0] + 1  # Find where index changes
+    # import pdb; pdb.set_trace()
+    
+    
+    # this is current location
+    loc_change_points = np.where(np.diff(location) != 0)[0] + 1  # Find where index changes
+    for i, step_at in enumerate(loc_change_points):
+        curr_loc = location[step_at-1] # location before step
+        previous_step_at = loc_change_points[i-1]
+        if i == 0:
+            musicbox_complete[curr_loc, 0:step_at] = 1
+        else:
+            musicbox_complete[curr_loc, previous_step_at:step_at] = 1
+
+    
+    
+    # Additionally, propagate locations of current state around in the other states.
+    # this will create only 4 musicboxneurons, where 'current' is the most precise.
+    # import pdb; pdb.set_trace()
+    # For each state segment (as defined by state_change_points), compute future projections.
+    # We process each segment and, for each future offset (1,2,3), project the location.
+    
+    num_future_states = 3  # we want 1-, 2-, and 3-state ahead projections
+    
+    for no_state_change, state_end in enumerate(state_change_points):
+        state_start = int(grid_t_all[0,0]) if no_state_change == 0 else state_change_points[no_state_change-1]
+        state_length = state_end-state_start
+        if state_length <=0:
+            continue
         
+        # Values from 0 up to (but not including) 1 for each timepoint in the subpath
+        relative_time_in_state = np.linspace(0,1,state_length, endpoint=False)
+        
+        
+        # For each future subpath, if a future state exists, map the current relative time onto it.
+        for x_states_in_future in range(1, num_future_states + 1):
+            # Check if the future path exists.
+            if no_state_change + x_states_in_future < len(state_change_points):
+                # For 1 in future: future state is [state_change_points[no_state_change], state_change_points[no_state_change+1])
+                # For 2 in future: future state is [state_change_points[no_state_change+1], state_change_points[no_state_change+2])
+                # For 3 in future: future state is [state_change_points[no_state_change+2], state_change_points[no_state_change+3])
+                future_state_start = state_change_points[no_state_change] if x_states_in_future == 1 else state_change_points[no_state_change + x_states_in_future - 1]
+                future_state_end = state_change_points[no_state_change + x_states_in_future]
+                future_state_length = future_state_end - future_state_start
+                if future_state_length <= 0:
+                    continue
+                # Map each relative time in the current subpath to an index within the future subpath.
+                indices = (relative_time_in_state * future_state_length).astype(int)
+                # For each timepoint in the current segment, pick the future location.
+                future_state_locs = location[future_state_start + indices]  # 1-indexed locations
+    
+                # Create one-hot encoded predictions for subpath x_states_in_future
+                one_hot = np.zeros((9, state_length), dtype=int)
+                one_hot[future_state_locs, np.arange(state_length)] = 1
+    
+                # Place these predictions into final_matrix.
+                # The appropriate row block is: rows offset*9 to (offset+1)*9,
+                # and the columns correspond to the current segment [seg_start:seg_end].
+                row_start = x_states_in_future * 9
+                row_end = (x_states_in_future + 1) * 9
+                musicbox_complete[row_start:row_end, state_start:state_end] = one_hot
+                # to also fill in the final bits of the shifted musicbox
+                if no_state_change + x_states_in_future + 1 == len(state_change_points):
+                    # import pdb; pdb.set_trace()
+                    # copy the last state repeat in. this will be x_states_in_future long
+                    for n_states_to_copy in range(0,x_states_in_future):
+                        # For x_states_in_future = 1, we copy the last activation of 4 states ago;
+                        # for x_states_in_future = 2, we copy the last two activations of 4 states ago; etc.
+                        sim_state_start = state_change_points[no_state_change+n_states_to_copy]
+                        sim_state_end = state_change_points[no_state_change+n_states_to_copy+1]
+                        sim_state_length = sim_state_end-sim_state_start
+                        relative_time_in_sim_state = np.linspace(0,1,sim_state_length, endpoint=False)
+                        past_start = state_change_points[no_state_change-(4-x_states_in_future)+n_states_to_copy]  # starting index of the block to copy
+                        past_state_end = state_change_points[no_state_change-(3-x_states_in_future)+n_states_to_copy]
+                        past_state_length = past_state_end - past_start
+                        
+                        # this needs to be adjusted to the actual locations
+                        # for 3 in future this is like one in past
+                        # for 2 in future this is 2 in past
+                        # for 1 in future this is 3 in past
+                        # and then just move forward on the location vector
+                        # adjusting no_state_change presumably.
+                        
+                        # Stretch/squeeze the current relative time into this smaller block.
+                        indices = (relative_time_in_sim_state * past_state_length).astype(int)
+                        past_state_locs = location[past_start + indices]
+                        
+                        # Create one-hot encoded predictions for subpath x_states_in_future
+                        one_hot = np.zeros((9, sim_state_length), dtype=int)
+                        one_hot[past_state_locs, np.arange(sim_state_length)] = 1
+                        musicbox_complete[row_start:row_end, sim_state_start:sim_state_end] = one_hot
+
+    
+    # import pdb; pdb.set_trace()
+    # figure out if the indexing works correclty!! 8 vs 9 - starting at 0 vs at 1
+    # depending on which setting I want, cut the musicbox_complete matrix.
+    # ['withoutnow', 'only2and3future','onlynowandnext']
+    if setting in ['withoutnow']:
+        musicbox_complete = musicbox_complete[9:, :]
+    elif setting in ['only2and3future']:
+        musicbox_complete = musicbox_complete[18:, :]
+    elif setting in ['onlynowandnext']:
+        musicbox_complete = musicbox_complete[0:18, :]
+
+    # import pdb; pdb.set_trace()
+    return musicbox_complete 
+   
 
 def musicbox_cells_complete(location, empty_reg, grid_t_all, reward_locs, setting = None):
     # import pdb; pdb.set_trace()
@@ -3218,7 +3351,7 @@ def musicbox_cells_complete(location, empty_reg, grid_t_all, reward_locs, settin
         # Values from 0 up to (but not including) 1 for each timepoint in the subpath
         relative_time_in_state = np.linspace(0,1,state_length, endpoint=False)
         
-        
+        # import pdb; pdb.set_trace()
         # For each future subpath, if a future state exists, map the current relative time onto it.
         for x_states_in_future in range(1, num_future_states + 1):
             # Check if the future path exists.

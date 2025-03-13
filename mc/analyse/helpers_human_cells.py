@@ -8,7 +8,7 @@ helpers functions to analyse human cells
 
 
 """
-
+import pickle
 import numpy as np
 import os
 import re
@@ -846,21 +846,46 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
             
             
         for grid_idx, grid_config in enumerate(reward_configurations):
+            
             if exclude_x_repeats:
                 start_from_repeat = np.max(exclude_x_repeats)
                 timings_task = data_dict[sub]['timings'][grid_idx][start_from_repeat:]-1
             else:  
                 timings_task = data_dict[sub]['timings'][grid_idx]-1
                 
-            if (sub == 'sub-15' and grid_idx == 23) or (sub == 'sub-43' and grid_idx == 3) :
+            if (sub == 'sub-15' and grid_idx == 23) or (sub == 'sub-43' and grid_idx == 3) or (sub == 'sub-02' and grid_idx == 18):
                 continue
-            if (sub == 'sub-25' and grid_idx == 9) or (sub == 'sub-52' and grid_idx == 6) or (sub == 'sub-44' and grid_idx == 3):
+            if (sub == 'sub-25' and grid_idx == 9) or (sub == 'sub-52' and grid_idx == 6) or (sub == 'sub-44' and grid_idx == 3) or (sub == 'sub-28' and grid_idx == 16):
                 # cut the last row of the timings
                 timings_task = timings_task[:-1, :]
             
             if randomised_reward_locations == False:
                 # check the match between timings and reward configs
                 mc.simulation.predictions.test_timings_rew(sub, data_dict[sub]['locations'][grid_idx],timings_task, grid_config, grid_idx)
+            
+            # first run the old way of modelling.
+            # this needs to loop more
+            per_rep_prep = {}
+
+            for i, reps in enumerate(timings_task):
+                per_rep_prep['timings_repeat'] = [int(r) for r in reps]
+                per_rep_prep['trajectory'] = data_dict[sub]['locations'][grid_idx][per_rep_prep['timings_repeat'][0]:per_rep_prep['timings_repeat'][4]]
+                per_rep_prep['trajectory'] = [int(t-1) for t in per_rep_prep['trajectory']]
+                per_rep_prep['step_number'] = [1,2,3,4] # potentially change later but i don't think I need this
+                models_per_rep = mc.simulation.predictions.set_continous_models_ephys(per_rep_prep,  grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, plot = False, split_clock = True)
+                # then prepare concatenating all of them
+                for model in models_per_rep:
+                    if model not in data_prep[sub]:
+                        data_prep[sub][model] = {}
+                    if grid_idx not in data_prep[sub][model]:
+                        data_prep[sub][model][grid_idx] = []
+                    else:
+                        data_prep[sub][model][grid_idx].append(models_per_rep[model])
+            
+            # import pdb; pdb.set_trace()
+            for m in data_prep[sub]:
+                if m.endswith('model'):
+                    data_prep[sub][m][grid_idx] = np.concatenate(data_prep[sub][m][grid_idx], axis = 1)
             
             # now create empty regressors:
             # 4x state regressors
@@ -873,7 +898,7 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
             
             
             data_prep[sub]['state_reg'].append(np.zeros((no_state, length_curr_grid)))
-            data_prep[sub]['complete_musicbox_reg'].append(np.zeros((no_state*no_locations, length_curr_grid)))
+            data_prep[sub]['complete_musicbox_reg'].append(np.zeros((3*no_state*no_locations, length_curr_grid)))
             data_prep[sub]['reward_musicbox_reg'].append(np.zeros((no_state*no_locations, length_curr_grid)))
             data_prep[sub]['location_reg'].append(np.zeros((no_locations, length_curr_grid)))
             
@@ -911,7 +936,7 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
                 data_prep[sub]['location_reg'][grid_idx-1] = mc.simulation.predictions.locations_cells(data_prep[sub]['locations'][grid_idx], data_prep[sub]['location_reg'][grid_idx-1])
      
             else:
-                # import pdb; pdb.set_trace()
+                # import pdb; pdb.set_trace() 
                 data_prep[sub]['state_reg'][grid_idx] = mc.simulation.predictions.state_cells(data_prep[sub]['state_reg'][grid_idx],timings_task, grid_config)
                 data_prep[sub]['reward_musicbox_reg'][grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_prep[sub]['locations'][grid_idx], data_prep[sub]['reward_musicbox_reg'][grid_idx], timings_task, grid_config)
                 data_prep[sub]['complete_musicbox_reg'][grid_idx] = mc.simulation.predictions.musicbox_cells_complete(data_prep[sub]['locations'][grid_idx], data_prep[sub]['complete_musicbox_reg'][grid_idx], timings_task, grid_config)
@@ -928,39 +953,56 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
 
 
 def identify_max_cells_for_model(result_dir):
-    # Dictionary to store top cells per subject per model.
-    top_cells = {}
+    # import pdb; pdb.set_trace()
+    df = pd.DataFrame()
+    all_cells = {}
+    i = 0
+    for sub in result_dir:
+        for model in result_dir[sub]:
+            for cell in result_dir[sub][model]:
+                df.at[i, 'cell'] = cell
+                df.at[i, 'average_corr'] = np.mean(result_dir[sub][model][cell])
+                df.at[i, 'model'] = model
+                df.at[i, 'subject'] = sub
+                i = i + 1
+        
+    for model in result_dir[sub]:
+        all_cells[model] = df[df['model'] == model]
     
-    # Aggregate across subjects for each model.
-    for subject, models in result_dir.items():
-        for model, cells in models.items():
-            if model not in top_cells:
-                top_cells[model] = []
-            for cell, values in cells.items():
-                avg_val = np.mean(values)
-                top_cells[model].append({
-                    'subject': subject,
-                    'cell': cell,
-                    'average': avg_val,
-                    'values': values
-                })
-    
-    # Now, for each model, sort by average (descending) and keep only the top 10% performing cells.
-    final_top_cells = {}
-    for model, entries in top_cells.items():
-        sorted_entries = sorted(entries, key=lambda x: x['average'], reverse=True)
-        total_cells = len(sorted_entries)
-        # Calculate the number of cells to keep (at least one).
-        top_n = max(1, int(total_cells * 0.1))
-        final_top_cells[model] = sorted_entries[:top_n]
-        for entry in final_top_cells[model]:
-            print(f"Model: {model}, Subject: {entry['subject']}, Cell: {entry['cell']}, Average: {entry['average']}")
-    
-    # final_top_cells 
-    # Now top_cells_by_model holds the top 10% cells for each model.
-    return final_top_cells
+    top_ten = {}
+    for model in all_cells:
+        top_ten[model] = all_cells[model].sort_values(by=['average_corr'], ascending=False)[0:10]
 
+    return top_ten
+      
 
+    
+
+def store_best_cells(best_cells, all_data):
+    result_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/best_cells"
+    # import pdb; pdb.set_trace()
+    for model in best_cells:
+        # import pdb; pdb.set_trace()
+        for index, row in best_cells[model].iterrows():
+            subject = row['subject']
+            cell_label = row['cell']
+            cell_idx_str = cell_label.split('_', 2)[1]
+            cell_idx = int(cell_idx_str)
+            cells_to_store = []
+            for task in all_data[subject]['neurons']:
+                cells_to_store.append(task[cell_idx])
+            subset_dict = {}
+            subset_dict[cell_label] = cells_to_store.copy()
+            subset_dict['reward_configs'] = all_data[subject]['reward_configs'].copy()
+            subset_dict['locations'] = all_data[subject]['locations'].copy()
+            subset_dict['timings'] = all_data[subject]['timings'].copy()
+            file_name = f"{cell_label}_best_for_{model}"
+            
+            with open(os.path.join(result_folder,file_name), 'wb') as f:
+                pickle.dump(subset_dict, f)
+    
+    
+            
 
            
 def prep_neurons_and_state(data_dict, repeats, only_reward_times, no_bins_per_state, sim_fake_data = False):
