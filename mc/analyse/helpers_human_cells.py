@@ -866,37 +866,77 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
             # first run the old way of modelling.
             # this needs to loop more
             per_rep_prep = {}
-
+            
+            neurons_for_task = data_dict[sub]['neurons'][grid_idx].copy()
+            # fields need to be between 0 and 8, and keep them as integers
+            locations_curr_grid = [int((field_no-1)) for field_no in data_dict[sub]['locations'][grid_idx]]
+            task_config = [int((field_no-1)) for field_no in data_dict[sub]['reward_configs'][grid_idx]]
+             
             for i, reps in enumerate(timings_task):
-                per_rep_prep['timings_repeat'] = [int(r) for r in reps]
-                per_rep_prep['trajectory'] = data_dict[sub]['locations'][grid_idx][per_rep_prep['timings_repeat'][0]:per_rep_prep['timings_repeat'][4]]
-                per_rep_prep['trajectory'] = [int(t-1) for t in per_rep_prep['trajectory']]
-                per_rep_prep['step_number'] = [1,2,3,4] # potentially change later but i don't think I need this
-                models_per_rep = mc.simulation.predictions.set_continous_models_ephys(per_rep_prep,  grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, plot = False, split_clock = True)
-                # then prepare concatenating all of them
+                timings_repeat = [int(r) for r in reps]
+                # and for next repeat
+                if i-2 == len(timings_task):
+                    timings_next_rep = [int(elem) for elem in timings_task[i+1]]
+                else:
+                    timings_next_rep = None
+
+                # oh well maybe instead run the same function to prepare the input
+                per_rep_prep[f"rep_{i}"] = mc.analyse.helpers_human_cells.prep_behaviour_one_repeat(timings_repeat, locations_curr_grid, timings_next_rep, task_config, neurons_for_task)
+                models_per_rep = mc.simulation.predictions.set_continous_models_ephys(per_rep_prep[f"rep_{i}"],  grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, plot = False, split_clock = True, use_orig_timings= True)
+               
+                
+                # per_rep_prep['timings_repeat'] = [int(r) for r in reps]
+                # per_rep_prep['trajectory'] = data_dict[sub]['locations'][grid_idx][per_rep_prep['timings_repeat'][0]:per_rep_prep['timings_repeat'][4]+1]
+                # per_rep_prep['trajectory'] = [int(t-1) for t in per_rep_prep['trajectory']]
+                # per_rep_prep['step_number'] = [1,2,3,4] # potentially change later but i don't think I need this
+                # models_per_rep = mc.simulation.predictions.set_continous_models_ephys(per_rep_prep,  grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, plot = False, split_clock = True)
+                # # then prepare concatenating all of them
                 for model in models_per_rep:
                     if model not in data_prep[sub]:
                         data_prep[sub][model] = {}
                     if grid_idx not in data_prep[sub][model]:
                         data_prep[sub][model][grid_idx] = []
+                        data_prep[sub][model][grid_idx].append(models_per_rep[model])
                     else:
                         data_prep[sub][model][grid_idx].append(models_per_rep[model])
             
-            # import pdb; pdb.set_trace()
+            # STOOOOOOP
+            # for some reason I loose timepoints.
+            # i need to include them somehow in my models!!!
+            # I want a continuous from start to end model....
+            # neurons_for_task.shape[1] needs to be same as data_prep[sub][m][grid_idx].shape[1]
+            #  import pdb; pdb.set_trace()
             for m in data_prep[sub]:
                 if m.endswith('model'):
                     data_prep[sub][m][grid_idx] = np.concatenate(data_prep[sub][m][grid_idx], axis = 1)
+            
+            
+
+            
             
             # now create empty regressors:
             # 4x state regressors
             # 4x 9 current/future reward location regressors
             # 4x 4 current/future button press regressors
             length_curr_grid = data_prep[sub]['neurons'][grid_idx].shape[1] - int(timings_task[0,0])
+            
+            # here, go and test if the dimensions are right. if not, dublicate last column.
+            # import pdb; pdb.set_trace()
+            if data_prep[sub][m][grid_idx].shape[1] < length_curr_grid :
+                x = data_prep[sub][m][grid_idx]
+                while x.shape[1] < length_curr_grid :
+                    last_column = data_prep[sub][m][grid_idx][:, -1].reshape(-1, 1)  # Extract and reshape the last column
+                    x = np.hstack((x, last_column))
+            data_prep[sub][m][grid_idx] = x 
+            # print(f"now dimensions match: lenght is {length_curr_grid} and dims are {data_prep[sub][m][grid_idx].shape}")
+                    
+            
+            
             data_prep[sub]['neurons'][grid_idx]= data_prep[sub]['neurons'][grid_idx][:, int(timings_task[0,0]):]
             data_prep[sub]['locations'][grid_idx] = data_prep[sub]['locations'][grid_idx][int(timings_task[0,0]):]
             data_prep[sub]['buttons'][grid_idx] = data_prep[sub]['buttons'][grid_idx][int(timings_task[0,0]):]
             
-            
+            # import pdb; pdb.set_trace()
             data_prep[sub]['state_reg'].append(np.zeros((no_state, length_curr_grid)))
             data_prep[sub]['complete_musicbox_reg'].append(np.zeros((3*no_state*no_locations, length_curr_grid)))
             data_prep[sub]['reward_musicbox_reg'].append(np.zeros((no_state*no_locations, length_curr_grid)))

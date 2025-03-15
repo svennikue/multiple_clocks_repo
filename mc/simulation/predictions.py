@@ -1411,7 +1411,7 @@ def set_simple_models_cells(data_dict):
 #4.1 ephys models: continuous - clocks - midnight - phase - location
 
 # ok now I need the same thing but for my ephys stuff.
-def set_continous_models_ephys(beh_data_curr_rep_dict,  grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, plot = False, split_clock = False, only_rew = False, only_path = False):
+def set_continous_models_ephys(beh_data_curr_rep_dict,  grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, plot = False, split_clock = False, only_rew = False, only_path = False, use_orig_timings = False):
     # import pdb; pdb.set_trace()
     # first extract from dict
     step_number = beh_data_curr_rep_dict['step_number']
@@ -1478,6 +1478,7 @@ def set_continous_models_ephys(beh_data_curr_rep_dict,  grid_size = 3, no_phase_
     # this time, do it per subpath.
     result_model_dict = {}
     for count_paths, pathlength in enumerate(step_number):
+        # import pdb; pdb.set_trace()
         if count_paths == 0:
             prev_end_state = 0
         else:
@@ -1486,13 +1487,17 @@ def set_continous_models_ephys(beh_data_curr_rep_dict,  grid_size = 3, no_phase_
         # first, fine-tune the timings.
         # DEFINITION NEW STATE = once they leave the reward location.
         reward_found_at = subpath_timings[count_paths+1]
-        if reward_found_at > len(walked_path)+1 or reward_found_at == len(walked_path):
+        if reward_found_at > len(walked_path)+1 or reward_found_at == len(walked_path) or count_paths==3:
             reward_found_at = -1
         # consider this as end of a state.
         start_curr_rew, end_at_curr_rew = mc.simulation.predictions.find_start_end_indices(walked_path, reward_found_at)
-            
+        
+        if use_orig_timings:
+            curr_path = walked_path[subpath_timings[count_paths]:subpath_timings[count_paths+1]]
+            # print(f"curr path is {len(curr_path)} long")
         # first step: divide into subpaths
-        curr_path = walked_path[prev_end_state:end_at_curr_rew]
+        else:
+            curr_path = walked_path[prev_end_state:end_at_curr_rew]
         
         
         # second step: location model.
@@ -1594,7 +1599,12 @@ def set_continous_models_ephys(beh_data_curr_rep_dict,  grid_size = 3, no_phase_
             result_model_dict['stat_model'] = np.concatenate((result_model_dict['stat_model'], state_matrix), axis = 1)
             result_model_dict['phas_stat_model'] = np.concatenate((result_model_dict['phas_stat_model'], phase_state_subpath), axis = 1)
 
-    
+    if result_model_dict['midn_model'].shape[1] != subpath_timings[-1]:
+        #print(f"length matches - lenght is {result_model_dict['midn_model'].shape[1]}"
+        print("careful!!! length of simulation and path doesnt match!!")
+        print(f"its {result_model_dict['midn_model'].shape[1]} vs {subpath_timings[-1]}")
+        # import pdb; pdb.set_trace()
+        
     # sixth. make the CLOCK MODEL by filling the midnight model with progress neurons.
     # 6.1 I am going to fuse the midnight and the phas_stat model. Thus they need to be equally 'strong' > normalise!
     norm_midn = (result_model_dict['midn_model'].copy()-np.min(result_model_dict['midn_model']))/(np.max(result_model_dict['midn_model'])-np.min(result_model_dict['midn_model']))

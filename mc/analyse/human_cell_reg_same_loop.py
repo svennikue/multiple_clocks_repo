@@ -103,11 +103,11 @@ else:
         # fires when currently at location, when next reward, next next, and prev. reward location
     data_and_regressors = mc.analyse.helpers_human_cells.prep_regressors_for_neurons(data, models_I_want=models_I_want, exclude_x_repeats=exclude_repeats, randomised_reward_locations=randomised_reward_locations)
     
-    if save_results == True:
-        # save the all_modelled_data dict such that I don't need to always run it again.
-        with open(os.path.join(group_folder,file_name_all_subj_reg_prep), 'wb') as f:
-            pickle.dump(data_and_regressors, f)
-        print(f"saved the modelled data as {group_folder}/{file_name_all_subj_reg_prep}")
+    # if save_results == True:
+    #     # save the all_modelled_data dict such that I don't need to always run it again.
+    #     with open(os.path.join(group_folder,file_name_all_subj_reg_prep), 'wb') as f:
+    #         pickle.dump(data_and_regressors, f)
+    #     print(f"saved the modelled data as {group_folder}/{file_name_all_subj_reg_prep}")
           
 
 # del data # freeing up space
@@ -200,9 +200,8 @@ for sub in data_and_regressors:
                 
                 # depending on the permutations, change the train and test dataset.
                 for entry in single_sub_dict:
-                    import pdb; pdb.set_trace()
                     # only the regressors I created.
-                    if entry.endswith('reg'):
+                    if entry.endswith('reg') or entry.endswith('model'):
                         result_dict[curr_cell][entry] = []
                         
                         # then choose which tasks to take and go and select training regressors
