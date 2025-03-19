@@ -853,9 +853,9 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
             else:  
                 timings_task = data_dict[sub]['timings'][grid_idx]-1
                 
-            if (sub == 'sub-15' and grid_idx == 23) or (sub == 'sub-43' and grid_idx == 3) or (sub == 'sub-02' and grid_idx == 18):
+            if (sub == 'sub-15' and grid_idx == 23) or (sub == 'sub-43' and grid_idx == 3) :
                 continue
-            if (sub == 'sub-25' and grid_idx == 9) or (sub == 'sub-52' and grid_idx == 6) or (sub == 'sub-44' and grid_idx == 3) or (sub == 'sub-28' and grid_idx == 16):
+            if (sub == 'sub-25' and grid_idx == 9) or (sub == 'sub-52' and grid_idx == 6) or (sub == 'sub-44' and grid_idx == 3) or (sub == 'sub-28' and grid_idx == 16) or (sub == 'sub-02' and grid_idx == 18):
                 # cut the last row of the timings
                 timings_task = timings_task[:-1, :]
             
@@ -921,14 +921,17 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
             length_curr_grid = data_prep[sub]['neurons'][grid_idx].shape[1] - int(timings_task[0,0])
             
             # here, go and test if the dimensions are right. if not, dublicate last column.
-            # import pdb; pdb.set_trace()
-            if data_prep[sub][m][grid_idx].shape[1] < length_curr_grid :
-                x = data_prep[sub][m][grid_idx]
-                while x.shape[1] < length_curr_grid :
-                    last_column = data_prep[sub][m][grid_idx][:, -1].reshape(-1, 1)  # Extract and reshape the last column
-                    x = np.hstack((x, last_column))
-            data_prep[sub][m][grid_idx] = x 
-            # print(f"now dimensions match: lenght is {length_curr_grid} and dims are {data_prep[sub][m][grid_idx].shape}")
+            
+            for m in data_prep[sub]:
+                if m.endswith('model'):
+                    if data_prep[sub][m][grid_idx].shape[1] < length_curr_grid :
+                        x = data_prep[sub][m][grid_idx]
+                        while x.shape[1] < length_curr_grid :
+                            last_column = data_prep[sub][m][grid_idx][:, -1].reshape(-1, 1)  # Extract and reshape the last column
+                            x = np.hstack((x, last_column))
+                    data_prep[sub][m][grid_idx] = x 
+            
+            print(f"now dimensions match: lenght is {length_curr_grid} and dims are {data_prep[sub][m][grid_idx].shape}")
                     
             
             
@@ -952,7 +955,7 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
                     data_prep[sub][f"musicbox_{model}_rew_reg"].append(np.zeros(((no_state-less_rows)*no_locations, length_curr_grid)))
                     data_prep[sub][f"musicbox_{model}_complete_reg"].append(np.zeros(((no_state-less_rows)*no_locations, length_curr_grid)))
             
-
+            # import pdb; pdb.set_trace()
             data_prep[sub]['buttonbox_reg'].append(np.zeros((no_state*no_buttons, length_curr_grid)))
             # the following ones should take the timings as input, and fill in the 
             # empty arrays of the following regressors, according to the timings
@@ -988,7 +991,7 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
                         data_prep[sub][f"musicbox_{model}_rew_reg"][grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_prep[sub]['locations'][grid_idx], data_prep[sub][f"musicbox_{model}_rew_reg"][grid_idx], timings_task, grid_config, setting = model)
                         data_prep[sub][f"musicbox_{model}_complete_reg"][grid_idx] = mc.simulation.predictions.musicbox_cells_complete(data_prep[sub]['locations'][grid_idx], data_prep[sub]['complete_musicbox_reg'][grid_idx], timings_task, grid_config, setting = model)
             
-            # import pdb; pdb.set_trace()
+    
     return data_prep
 
 
@@ -1012,7 +1015,7 @@ def identify_max_cells_for_model(result_dir):
     top_ten = {}
     for model in all_cells:
         top_ten[model] = all_cells[model].sort_values(by=['average_corr'], ascending=False)[0:10]
-
+    # import pdb; pdb.set_trace()
     return top_ten
       
 

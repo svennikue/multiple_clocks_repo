@@ -25,6 +25,7 @@ import scipy.stats as st
 from sklearn.linear_model import ElasticNet
 import copy
 
+
 # DONE. firstly take the mean across held-out tasks! 
 # then correct the randomised version: create musicbox but with randomised reward locations per subject
 # then do that loads of times, create a permutation distribution of means and test vs actual true mean valiue
@@ -103,11 +104,11 @@ else:
         # fires when currently at location, when next reward, next next, and prev. reward location
     data_and_regressors = mc.analyse.helpers_human_cells.prep_regressors_for_neurons(data, models_I_want=models_I_want, exclude_x_repeats=exclude_repeats, randomised_reward_locations=randomised_reward_locations)
     
-    # if save_results == True:
-    #     # save the all_modelled_data dict such that I don't need to always run it again.
-    #     with open(os.path.join(group_folder,file_name_all_subj_reg_prep), 'wb') as f:
-    #         pickle.dump(data_and_regressors, f)
-    #     print(f"saved the modelled data as {group_folder}/{file_name_all_subj_reg_prep}")
+    if save_results == True:
+        # save the all_modelled_data dict such that I don't need to always run it again.
+        with open(os.path.join(group_folder,file_name_all_subj_reg_prep), 'wb') as f:
+            pickle.dump(data_and_regressors, f)
+        print(f"saved the modelled data as {group_folder}/{file_name_all_subj_reg_prep}")
           
 
 # del data # freeing up space
@@ -125,6 +126,10 @@ for sub in data_and_regressors:
     corr_dict_binned[sub] = {}
     
     single_sub_dict = copy.deepcopy(data_and_regressors[sub])
+    if sub == 'sub-02':
+        single_sub_dict['timings'] = single_sub_dict['timings'][:-1]
+        single_sub_dict['reward_configs'] = np.delete(single_sub_dict['reward_configs'], 18, axis = 0)
+    
     if sub == 'sub-15':
         single_sub_dict['reward_configs'] = np.delete(single_sub_dict['reward_configs'], 23, axis = 0)
 
@@ -179,7 +184,7 @@ for sub in data_and_regressors:
                                                                     return_counts=True)
         
             for model in single_sub_dict:
-                if model.endswith('reg'):
+                if model.endswith('reg') or model.endswith('model'):
                     corr_dict[sub][model][curr_cell] = np.zeros(len(unique_grids))
                     corr_dict_binned[sub][model][curr_cell] = np.zeros(len(unique_grids))
                     
