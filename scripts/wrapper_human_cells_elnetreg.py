@@ -141,7 +141,7 @@ def run_elnetreg_cellwise(data, curr_cell):
 def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward_locations, save_regs):
     data, group_dir, subj_reg_file = get_data(sub, models_I_want=models_I_want, exclude_x_repeats=exclude_x_repeats, randomised_reward_locations=randomised_reward_locations)
     simulated_regs = mc.analyse.helpers_human_cells.prep_regressors_for_neurons(data, models_I_want=models_I_want, exclude_x_repeats=exclude_x_repeats, randomised_reward_locations=randomised_reward_locations)
-    
+    # import pdb; pdb.set_trace() 
     group_dir_coefs = f"{group_dir}/coefs"
     group_dir_corrs = f"{group_dir}/corrs"
     if not os.path.isdir(group_dir_coefs):
@@ -187,7 +187,7 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
         results[curr_cell] = corr_dict
         results_binned[curr_cell] = corr_dict_binned
     
-    
+    import pdb; pdb.set_trace() 
     # parallel = Parallel(n_jobs=-1, return_as="generator")
     # parallel_results = parallel(delayed(run_elnetreg_cellwise)(single_sub_dict, c) for c in cells)
     
@@ -216,8 +216,21 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
 
     
     
-    
+# if running from command line, use this one!   
 if __name__ == "__main__":
     fire.Fire(compute_one_subject)
     # call this script like
     # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'only2and3future','onlynowandnext']' --exclude_x_repeats='[1,2]' --randomised_reward_locations=False --save_regs=True
+
+
+# if __name__ == "__main__":
+#     # For debugging, bypass Fire and call compute_one_subject directly.
+#     compute_one_subject(
+#         sub=5,
+#         models_I_want=['withoutnow', 'only2and3future', 'onlynowandnext'],
+#         exclude_x_repeats=[1, 2],
+#         randomised_reward_locations=False,
+#         save_regs=True
+#     )
+
+
