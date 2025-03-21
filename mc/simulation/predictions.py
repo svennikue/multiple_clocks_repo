@@ -1457,7 +1457,12 @@ def set_continous_models_ephys(beh_data_curr_rep_dict,  grid_size = 3, no_phase_
         # plt.figure(); 
         # for f in neuron_phase_functions:
         #     plt.plot(np.linspace(0,1,1000), f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)/np.max(f.pdf(np.linspace(0,1,1000)*2*np.pi - np.pi)))
-                   
+    
+    neuron_state_functions = []
+    means_at_state = np.linspace(0,(len(step_number)-2), (len(step_number)-1))
+    for div in means_at_state:
+        neuron_state_functions.append(norm(loc = div, scale = 1/len(step_number)-1))
+               
     # # make the state continuum
     # neuron_state_functions = []
     # #if wrap_around == 0:
@@ -1514,8 +1519,15 @@ def set_continous_models_ephys(beh_data_curr_rep_dict,  grid_size = 3, no_phase_
                 loc_matrix[row, timepoint] = neuron_loc_functions[row].pdf(location) # location has to be a coord
                 
         # third: create the state matrix.
+        # state_matrix = np.zeros([len(step_number), len(curr_path)])
+        # state_matrix[count_paths] = 1
+        helper_state_matrix = np.zeros([len(step_number), len(curr_path)])
+        helper_state_matrix[count_paths] = 1
+        
         state_matrix = np.zeros([len(step_number), len(curr_path)])
-        state_matrix[count_paths] = 1
+        if count_paths > 0:
+            state_matrix[count_paths-1] = 1
+        
         # state_matrix = np.empty([len(neuron_state_functions), len(curr_path)])
         # state_matrix[:] = np.nan
         # import pdb; pdb.set_trace()
@@ -1537,7 +1549,7 @@ def set_continous_models_ephys(beh_data_curr_rep_dict,  grid_size = 3, no_phase_
 
         # fifth step: prepare the clocks model 
         # phase state neurons - these will be used to fill the musicbox with neurons that track progress.
-        phase_state_subpath = np.repeat(state_matrix, repeats = len(phase_matrix_subpath), axis = 0)
+        phase_state_subpath = np.repeat(helper_state_matrix, repeats = len(phase_matrix_subpath), axis = 0)
         for phase in range(0, len(phase_state_subpath), len(phase_matrix_subpath)):
             phase_state_subpath[phase: phase+len(phase_matrix_subpath)] = phase_matrix_subpath * phase_state_subpath[phase: phase+len(phase_matrix_subpath)]
             
@@ -1598,7 +1610,9 @@ def set_continous_models_ephys(beh_data_curr_rep_dict,  grid_size = 3, no_phase_
             result_model_dict['loc_model'] = np.concatenate((result_model_dict['loc_model'], loc_matrix), axis = 1)
             result_model_dict['stat_model'] = np.concatenate((result_model_dict['stat_model'], state_matrix), axis = 1)
             result_model_dict['phas_stat_model'] = np.concatenate((result_model_dict['phas_stat_model'], phase_state_subpath), axis = 1)
-
+    
+    #  pdb; pdb.set_trace()
+    
     if result_model_dict['midn_model'].shape[1] != subpath_timings[-1]:
         #print(f"length matches - lenght is {result_model_dict['midn_model'].shape[1]}"
         print("careful!!! length of simulation and path doesnt match!!")
@@ -3059,10 +3073,14 @@ def state_cells(empty_reg, grid_t_all, reward_locs):
         if np.isnan(grid_times).any():
             continue
         else:
-            state_regressors[0, int(grid_times[0]):int(grid_times[1])] = 1
-            state_regressors[1, int(grid_times[1]):int(grid_times[2])] = 1
-            state_regressors[2, int(grid_times[2]):int(grid_times[3])] = 1
-            state_regressors[3, int(grid_times[3]):int(grid_times[4])] = 1
+
+            state_regressors[0, int(grid_times[1]):int(grid_times[2])] = 1
+            state_regressors[1, int(grid_times[2]):int(grid_times[3])] = 1
+            state_regressors[2, int(grid_times[3]):int(grid_times[4])] = 1
+            # state_regressors[0, int(grid_times[0]):int(grid_times[1])] = 1
+            # state_regressors[1, int(grid_times[1]):int(grid_times[2])] = 1
+            # state_regressors[2, int(grid_times[2]):int(grid_times[3])] = 1
+            # state_regressors[3, int(grid_times[3]):int(grid_times[4])] = 1
     return state_regressors
 
 

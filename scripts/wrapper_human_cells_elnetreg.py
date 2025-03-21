@@ -52,14 +52,16 @@ def get_data(sub, models_I_want=False, exclude_x_repeats=False, randomised_rewar
  
 def run_elnetreg_cellwise(data, curr_cell):
     # parameters that seem to work, can be set flexibly
-    alpha=0.001 ##0.01 used in El-gaby paper
-    l1_ratio= 0.01
+    alpha=0.0001 ##0.01 used in El-gaby paper
+    # l1_ratio= 0.01
     
     
     cell_idx = int(curr_cell.split('_')[1])
     corr_dict, corr_dict_binned, coefs_per_model = {}, {}, {}
+    model_string = []
     for model in data:
         if model.endswith('reg') or model.endswith('model'):
+            model_string.append(model)
             corr_dict[model], corr_dict_binned[model] = {}, {}
             
     unique_grids, idx_unique_grid, idx_same_grids, counts = np.unique(data['reward_configs'], axis=0,
@@ -67,11 +69,11 @@ def run_elnetreg_cellwise(data, curr_cell):
                                                             return_inverse=True,
                                                             return_counts=True)
             
-    for model in data:
-            if model.endswith('reg') or model.endswith('model'):
-                corr_dict[model][curr_cell] = np.zeros(len(unique_grids))
-                corr_dict_binned[model][curr_cell] = np.zeros(len(unique_grids))
-                
+    for model in model_string:
+        corr_dict[model][curr_cell] = np.zeros(len(unique_grids))
+        corr_dict_binned[model][curr_cell] = np.zeros(len(unique_grids))
+        coefs_per_model[model] = []
+        
     for task_idx, left_out_grid_idx in enumerate(idx_unique_grid): 
         test_grid_idx = np.where(idx_same_grids == idx_same_grids[left_out_grid_idx])[0]
         if not test_grid_idx.shape == (1,):
@@ -86,54 +88,63 @@ def run_elnetreg_cellwise(data, curr_cell):
         all_neurons_training_tasks = itemgetter(*training_grid_idx)(data['neurons'])
         curr_neuron_training_tasks = [all_neurons[cell_idx] for all_neurons in all_neurons_training_tasks]
         
+        # for binning later on, store the state regressor
+        state_neurons_test_grids = itemgetter(*test_grid_idx)(data['state_reg'])
+        if not test_grid_idx.shape == (1,):
+            state_model_curr_testgrid = np.transpose(np.concatenate(state_neurons_test_grids, axis = 1))
+        else:
+            state_model_curr_testgrid = np.transpose(state_neurons_test_grids)
+            
+        
         # depending on the permutations, change the train and test dataset.
-        for entry in data:
-            # only the regressors I created.
-            if entry.endswith('reg') or entry.endswith('model'):
-                coefs_per_model[entry] = []
+        for entry in model_string:
+
+            # then choose which tasks to take and go and select training regressors
+            simulated_neurons_training_tasks = itemgetter(*training_grid_idx)(data[entry])
+            # and test regressors
+            simulated_neurons_test_grids = itemgetter(*test_grid_idx)(data[entry])
+            if not test_grid_idx.shape == (1,):
+                simulated_neurons_test_grids_flat = np.transpose(np.concatenate(simulated_neurons_test_grids, axis = 1))
+            else:
+                simulated_neurons_test_grids_flat = np.transpose(simulated_neurons_test_grids)
                 
-                # then choose which tasks to take and go and select training regressors
-                simulated_neurons_training_tasks = itemgetter(*training_grid_idx)(data[entry])
-                # and test regressors
-                simulated_neurons_test_grids = itemgetter(*test_grid_idx)(data[entry])
-                if not test_grid_idx.shape == (1,):
-                    simulated_neurons_test_grids_flat = np.transpose(np.concatenate(simulated_neurons_test_grids, axis = 1))
-                else:
-                    simulated_neurons_test_grids_flat = np.transpose(simulated_neurons_test_grids)
-                    
-                # for binning later on, store the state regressor
-                if entry == "state_reg":
-                    state_model_curr_testgrid = simulated_neurons_test_grids_flat.copy()
             
+            # if entry == "state_reg":
+            #     state_model_curr_testgrid = simulated_neurons_test_grids_flat.copy()
+        
+        
+            X = np.transpose(np.concatenate(simulated_neurons_training_tasks, axis = 1))
             
-                X = np.transpose(np.concatenate(simulated_neurons_training_tasks, axis = 1))
-                y = np.concatenate(curr_neuron_training_tasks)
-                alpha=0.01
-                reg = ElasticNet(alpha=alpha, l1_ratio = l1_ratio, positive=True).fit(X, y)            
-                coeffs_flat=reg.coef_
-                
-                # save per neuron, for all models, across perms.
-                # rewrite!!
-                coefs_per_model[entry].append(coeffs_flat)
-                # next, create the predicted activity neuron.
-                predicted_activity_curr_neuron = np.sum((coefs_per_model[entry]*simulated_neurons_test_grids_flat), axis = 1)
-                #check with mohamady why this step - in particular why include the actual neural activity??
-                # predicted_activity_curr_neuron_scaled = predicted_activity_curr_neuron*(
-                #     np.mean(curr_neuron_heldouttasks_flat)/np.mean(predicted_activity_curr_neuron))
-                
-                # before doing this, first bin per state.
-                predicted_activity_curr_neuron_binned = mc.analyse.helpers_human_cells.neurons_to_state_bins(predicted_activity_curr_neuron, state_model_curr_testgrid)
-                curr_neuron_heldouttasks_flat_binned = mc.analyse.helpers_human_cells.neurons_to_state_bins(curr_neuron_heldouttasks_flat, state_model_curr_testgrid)
-                
-                Predicted_Actual_correlation_binned=st.pearsonr(curr_neuron_heldouttasks_flat_binned,predicted_activity_curr_neuron_binned)[0]
-                
-                Predicted_Actual_correlation=st.pearsonr(curr_neuron_heldouttasks_flat,predicted_activity_curr_neuron)[0]
-                # if np.isnan(Predicted_Actual_correlation):
-                #     import pdb; pdb.set_trace()
-                # most likely nan if the predicted activity is just 0 bc of low firing rate
-                corr_dict[entry][curr_cell][task_idx] = Predicted_Actual_correlation
-                corr_dict_binned[entry][curr_cell][task_idx] = Predicted_Actual_correlation_binned
-    # return corr_dict, corr_dict_binned            
+            if entry == 'stat_model':
+                X = X[:, 0:3].copy()
+                simulated_neurons_test_grids_flat = simulated_neurons_test_grids_flat[:, 0:3].copy()
+            
+            y = np.concatenate(curr_neuron_training_tasks)
+            # alpha=0.01
+            # reg = ElasticNet(alpha=alpha, l1_ratio = l1_ratio, positive=True).fit(X, y)            
+            reg = ElasticNet(alpha=alpha, positive=True).fit(X, y)  
+            coeffs_flat=reg.coef_
+            
+            # save per neuron, for all models, across perms.
+            # rewrite!!
+            coefs_per_model[entry].append(coeffs_flat)
+            # next, create the predicted activity neuron.
+            predicted_activity_curr_neuron = np.sum((coeffs_flat*simulated_neurons_test_grids_flat), axis = 1)
+
+            # before doing this, first bin per state.
+            predicted_activity_curr_neuron_binned = mc.analyse.helpers_human_cells.neurons_to_state_bins(predicted_activity_curr_neuron, state_model_curr_testgrid)
+            curr_neuron_heldouttasks_flat_binned = mc.analyse.helpers_human_cells.neurons_to_state_bins(curr_neuron_heldouttasks_flat, state_model_curr_testgrid)
+            
+            Predicted_Actual_correlation_binned=st.pearsonr(curr_neuron_heldouttasks_flat_binned,predicted_activity_curr_neuron_binned)[0]
+            
+            Predicted_Actual_correlation=st.pearsonr(curr_neuron_heldouttasks_flat,predicted_activity_curr_neuron)[0]
+            # if np.isnan(Predicted_Actual_correlation):
+            #     import pdb; pdb.set_trace()
+            # most likely nan if the predicted activity is just 0 bc of low firing rate
+            corr_dict[entry][curr_cell][task_idx] = Predicted_Actual_correlation
+            corr_dict_binned[entry][curr_cell][task_idx] = Predicted_Actual_correlation_binned
+    # return corr_dict, corr_dict_binned 
+    # import pdb; pdb.set_trace()           
     return corr_dict, corr_dict_binned, curr_cell
 
     
@@ -177,6 +188,7 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
         # they should be pretty much the same, at least the state ones.
     print(f"starting parallel regression and correlation for all cells and models for subject {sub}")
     
+    corr_test, corr_test_binned, cell = run_elnetreg_cellwise(single_sub_dict, cells[0])
     
     parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(single_sub_dict, c) for c in cells)
     
@@ -187,7 +199,7 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
         results[curr_cell] = corr_dict
         results_binned[curr_cell] = corr_dict_binned
     
-    import pdb; pdb.set_trace() 
+    
     # parallel = Parallel(n_jobs=-1, return_as="generator")
     # parallel_results = parallel(delayed(run_elnetreg_cellwise)(single_sub_dict, c) for c in cells)
     
