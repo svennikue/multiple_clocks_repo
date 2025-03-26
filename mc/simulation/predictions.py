@@ -3094,8 +3094,10 @@ def test_timings_rew(subject, locations, grid_t_all, reward_locs, number_of_grid
                 import pdb; pdb.set_trace()
     print(f"all timings matched with finding correct rewarded location for subject {subject} and grid {reward_locs}!")
 
+
+
 def music_box_simple_cells(location, empty_reg, grid_t_all, reward_locs, setting = None): 
-    # setting can be 'withoutnow, only2and3future','onlynowandnext'
+    # setting can be ['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']
     # import pdb; pdb.set_trace()
     grid_t_all = grid_t_all-grid_t_all[0,0]
     all_reward_locs = np.tile(reward_locs, 2)
@@ -3120,14 +3122,14 @@ def music_box_simple_cells(location, empty_reg, grid_t_all, reward_locs, setting
             # current
             start_state = int(rep_times[state])
             end_state = int(rep_times[state+1])
-            if setting not in ['withoutnow', 'only2and3future']:
+            if setting not in ['withoutnow', 'only2and3future', 'onlynextand2future']:
                 musicbox_regressors[curr_rew_loc, start_state:end_state] = 1
             
                 # plus 1
                 end_next_state = int(rep_and_next_times[state+2])
                 musicbox_regressors[next_rew_loc+9, start_state:end_state] = 1
     
-                if setting not in ['onlynowandnext']:
+                if setting not in ['onlynowandnext', 'onlynowand3future']:
                     # plus 2
                     end_secnext_state = int(rep_and_next_times[state+3])
                     musicbox_regressors[second_next_rew_loc+2*9, start_state:end_state] = 1
@@ -3136,20 +3138,20 @@ def music_box_simple_cells(location, empty_reg, grid_t_all, reward_locs, setting
                     end_thirnext_state = int(rep_and_next_times[state+4])
                     musicbox_regressors[third_next_rew_loc+3*9, start_state:end_state] = 1
             
-            elif setting == 'withoutnow':
+            elif setting in ['withoutnow', 'onlynextand2future']:
                 #import pdb; pdb.set_trace()
                 # plus 1
                 end_next_state = int(rep_and_next_times[state+2])
-                
                 musicbox_regressors[next_rew_loc, start_state:end_state] = 1
     
                 # plus 2
                 end_secnext_state = int(rep_and_next_times[state+3])
                 musicbox_regressors[second_next_rew_loc+9, start_state:end_state] = 1
-    
-                # plus 3
-                end_thirnext_state = int(rep_and_next_times[state+4])
-                musicbox_regressors[third_next_rew_loc+2*9, start_state:end_state] = 1
+                
+                if setting == 'withoutnow':
+                    # plus 3
+                    end_thirnext_state = int(rep_and_next_times[state+4])
+                    musicbox_regressors[third_next_rew_loc+2*9, start_state:end_state] = 1
             
             elif setting == 'only2and3future':
                 #import pdb; pdb.set_trace()
@@ -3160,7 +3162,14 @@ def music_box_simple_cells(location, empty_reg, grid_t_all, reward_locs, setting
                 # plus 3
                 end_thirnext_state = int(rep_and_next_times[state+4])
                 musicbox_regressors[third_next_rew_loc+9, start_state:end_state] = 1
-              
+             
+            elif setting == 'onlynowand3future':  
+                # plus 3
+                end_thirnext_state = int(rep_and_next_times[state+4])
+                musicbox_regressors[third_next_rew_loc+9, start_state:end_state] = 1
+
+            
+                
         
     # plt.figure()
     # plt.imshow(musicbox_regressors, aspect = 'auto')
@@ -3442,13 +3451,21 @@ def musicbox_cells_complete(location, empty_reg, grid_t_all, reward_locs, settin
     # import pdb; pdb.set_trace()
     # figure out if the indexing works correclty!! 8 vs 9 - starting at 0 vs at 1
     # depending on which setting I want, cut the musicbox_complete matrix.
-    # ['withoutnow', 'only2and3future','onlynowandnext']
+    # ['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']
     if setting in ['withoutnow']:
         musicbox_complete = musicbox_complete[9:, :]
     elif setting in ['only2and3future']:
         musicbox_complete = musicbox_complete[18:, :]
     elif setting in ['onlynowandnext']:
         musicbox_complete = musicbox_complete[0:18, :]
+    elif setting in ['onlynowand3future', 'onlynextand2future']:
+        musicbox_pt_one = musicbox_complete[0:9, :]
+        if setting == 'onlynowand3future':
+            musicbox_pt_two = musicbox_complete[27:, :]
+        elif setting == 'onlynextand2future':
+            musicbox_pt_two = musicbox_complete[18:27, :]
+        musicbox_complete = np.concatenate((musicbox_pt_one, musicbox_pt_two), axis=0)
+
 
     # import pdb; pdb.set_trace()
     return musicbox_complete 

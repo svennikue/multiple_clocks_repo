@@ -991,7 +991,7 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
                 for model in models_I_want:
                     if model == 'withoutnow':
                         less_rows = 1
-                    if model in ['only2and3future', 'onlynowandnext']:
+                    if model in ['only2and3future', 'onlynowandnext', 'onlynowand3future', 'onlynextand2future']:
                         less_rows = 2
                     
                     data_prep[sub][f"musicbox_{model}_rew_reg"].append(np.zeros(((no_state-less_rows)*no_locations, length_curr_grid)))
@@ -1048,7 +1048,13 @@ def identify_max_cells_for_model(result_dir):
                 df.at[i, 'cell'] = cell
                 df.at[i, 'average_corr'] = np.mean(result_dir[sub][model][cell])
                 df.at[i, 'model'] = model
-                df.at[i, 'subject'] = sub
+                if len(sub) == 5:
+                    prefix, num_str = sub.split('-')
+                    # Convert the number to an integer, then format it as a two-digit string.
+                    formatted_num = f"{int(num_str):02}"
+                    df.at[i, 'subject'] = f"{prefix}-{formatted_num}"
+                else:
+                    df.at[i, 'subject'] = sub
                 i = i + 1
         
     for model in result_dir[sub]:
@@ -1058,12 +1064,12 @@ def identify_max_cells_for_model(result_dir):
     for model in all_cells:
         top_ten[model] = all_cells[model].sort_values(by=['average_corr'], ascending=False)[0:10]
     # import pdb; pdb.set_trace()
-    return top_ten
+    return top_ten, all_cells
       
 
     
 
-def store_best_cells(best_cells, all_data):
+def store_best_cells(best_cells, all_data, name_extension_string = None):
     result_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/best_cells"
     # import pdb; pdb.set_trace()
     for model in best_cells:
@@ -1082,7 +1088,8 @@ def store_best_cells(best_cells, all_data):
             subset_dict['locations'] = all_data[subject]['locations'].copy()
             subset_dict['timings'] = all_data[subject]['timings'].copy()
             file_name = f"{cell_label}_best_for_{model}"
-            
+            if name_extension_string:
+                file_name = f"{cell_label}_best_for_{model}_{name_extension_string}"
             with open(os.path.join(result_folder,file_name), 'wb') as f:
                 pickle.dump(subset_dict, f)
     

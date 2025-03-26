@@ -144,7 +144,7 @@ def run_elnetreg_cellwise(data, curr_cell):
             corr_dict[entry][curr_cell][task_idx] = Predicted_Actual_correlation
             corr_dict_binned[entry][curr_cell][task_idx] = Predicted_Actual_correlation_binned
     # return corr_dict, corr_dict_binned 
-    # import pdb; pdb.set_trace()           
+    import pdb; pdb.set_trace()           
     return corr_dict, corr_dict_binned, curr_cell
 
     
@@ -190,7 +190,9 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
     
     corr_test, corr_test_binned, cell = run_elnetreg_cellwise(single_sub_dict, cells[0])
     
+    import pdb; pdb.set_trace() 
     parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(single_sub_dict, c) for c in cells)
+    
     
     results = {}
     results_binned = {}
@@ -198,7 +200,6 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
     for corr_dict, corr_dict_binned, curr_cell in parallel_results:
         results[curr_cell] = corr_dict
         results_binned[curr_cell] = corr_dict_binned
-    
     
     # parallel = Parallel(n_jobs=-1, return_as="generator")
     # parallel_results = parallel(delayed(run_elnetreg_cellwise)(single_sub_dict, c) for c in cells)
@@ -228,21 +229,21 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
 
     
     
-# if running from command line, use this one!   
-if __name__ == "__main__":
-    fire.Fire(compute_one_subject)
-    # call this script like
-    # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'only2and3future','onlynowandnext']' --exclude_x_repeats='[1,2]' --randomised_reward_locations=False --save_regs=True
-
-
+# # if running from command line, use this one!   
 # if __name__ == "__main__":
-#     # For debugging, bypass Fire and call compute_one_subject directly.
-#     compute_one_subject(
-#         sub=5,
-#         models_I_want=['withoutnow', 'only2and3future', 'onlynowandnext'],
-#         exclude_x_repeats=[1, 2],
-#         randomised_reward_locations=False,
-#         save_regs=True
-#     )
+#     fire.Fire(compute_one_subject)
+#     # call this script like
+#     # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2]' --randomised_reward_locations=False --save_regs=True
+
+# ['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']
+if __name__ == "__main__":
+    # For debugging, bypass Fire and call compute_one_subject directly.
+    compute_one_subject(
+        sub=3,
+        models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
+        exclude_x_repeats=[1],
+        randomised_reward_locations=False,
+        save_regs=True
+    )
 
 

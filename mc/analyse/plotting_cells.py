@@ -20,7 +20,7 @@ def prep_result_for_plotting_by_rois(results):
     # This dictionary will be structured as:
     # collapsed_results[model][ROI] = list of correlation values (to be converted to an array later)
     collapsed_results = {}
-    
+    # import pdb; pdb.set_trace()
     # Assume 'results' is your nested dictionary and collapse_PFC is a Boolean flag.
     for subject, models in results.items():
         for model, cells in models.items():
@@ -182,6 +182,7 @@ def plotting_corr_perm_histogram_by_ROIs(collapsed_results, title_string_add):
     ROI_labels = ['hippocampal', 'ACC','PCC','OFC', 'entorhinal', 'amygdala', 'mixed']
     bins=50
     for model in collapsed_results:
+        # import pdb; pdb.set_trace()
         roi_dict = collapsed_results[model]
         # Determine which ROIs exist for this model (and preserve your ordering)
         rois = [roi for roi in ROI_labels if roi in roi_dict]
