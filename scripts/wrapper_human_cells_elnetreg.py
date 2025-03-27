@@ -49,7 +49,63 @@ def get_data(sub, models_I_want=False, exclude_x_repeats=False, randomised_rewar
     
     return data, group_dir, file_name
     
- 
+
+def get_rid_of_low_firing_cells(data, hz_exclusion_threshold = 0.1, sd_exclusion_threshold = 1.5):
+    
+    neuron_dict = {}
+    for sub in data:
+        for task in data[sub]['neurons']:
+            for i, neuron in enumerate(task):
+                curr_cell = f"{sub}_{data[sub]['cell_labels'][i]}_{i}"
+                if curr_cell not in neuron_dict:
+                    neuron_dict[curr_cell] = []            
+                avg_rate_hz = np.sum(neuron) / (len(neuron) * 0.025)
+                neuron_dict[curr_cell].append(avg_rate_hz)
+       
+    excl_dict = {}
+    neurons_to_exclude = []
+    neurons_to_exclude_str = []
+    for neuron in neuron_dict:
+        excl_dict[f"avg_{neuron}"] = np.mean(neuron_dict[neuron])
+        excl_dict[f"dev_{neuron}"] = np.std(neuron_dict[neuron])/np.mean(neuron_dict[neuron])
+        neuron_index = neuron.split('_')[-1]
+        if excl_dict[f"avg_{neuron}"] < hz_exclusion_threshold:
+            neurons_to_exclude.append(int(neuron_index))
+            neurons_to_exclude_str.append(neuron)
+        elif excl_dict[f"dev_{neuron}"] > sd_exclusion_threshold:
+            neurons_to_exclude.append(int(neuron_index))
+            neurons_to_exclude_str.append(neuron)
+
+    remaining_neurons = {}
+    stuff_to_copy = ['reward_configs', 'timings', 'locations', 'buttons']
+    to_clean = ['cell_labels', 'neurons']
+    
+    for sub in data:
+        if sub not in remaining_neurons:
+            remaining_neurons[sub] = {}
+            for m in data[sub]:
+                if m in stuff_to_copy:
+                    remaining_neurons[sub][m] = data[sub][m]
+                elif m in to_clean:
+                    # # import pdb; pdb.set_trace() 
+                    # if m not in remaining_neurons[sub]:
+                    #     remaining_neurons[sub][m] = []
+                    if m == 'neurons':
+                        if m not in remaining_neurons[sub]:
+                            remaining_neurons[sub][m] = []
+                        for el in data[sub][m]:
+                            cleaned = np.delete(el, neurons_to_exclude, axis=0)
+                            remaining_neurons[sub][m].append(cleaned)
+                    elif m == 'cell_labels':
+                        remaining_neurons[sub][m] = [x for i, x in enumerate(data[sub][m]) if i not in neurons_to_exclude]
+
+
+    print(f"exlcuding neurons {neurons_to_exclude_str} because average spike rate lower than {hz_exclusion_threshold} or variability bigger than std/mean = {sd_exclusion_threshold}")
+    # import pdb; pdb.set_trace() 
+    return remaining_neurons
+    
+
+
 def run_elnetreg_cellwise(data, curr_cell):
     # parameters that seem to work, can be set flexibly
     alpha=0.0001 ##0.01 used in El-gaby paper
@@ -144,13 +200,16 @@ def run_elnetreg_cellwise(data, curr_cell):
             corr_dict[entry][curr_cell][task_idx] = Predicted_Actual_correlation
             corr_dict_binned[entry][curr_cell][task_idx] = Predicted_Actual_correlation_binned
     # return corr_dict, corr_dict_binned 
-    import pdb; pdb.set_trace()           
+    # import pdb; pdb.set_trace()           
     return corr_dict, corr_dict_binned, curr_cell
 
     
  
 def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward_locations, save_regs):
     data, group_dir, subj_reg_file = get_data(sub, models_I_want=models_I_want, exclude_x_repeats=exclude_x_repeats, randomised_reward_locations=randomised_reward_locations)
+    
+    clean_data = get_rid_of_low_firing_cells(data)
+    
     simulated_regs = mc.analyse.helpers_human_cells.prep_regressors_for_neurons(data, models_I_want=models_I_want, exclude_x_repeats=exclude_x_repeats, randomised_reward_locations=randomised_reward_locations)
     # import pdb; pdb.set_trace() 
     group_dir_coefs = f"{group_dir}/coefs"
@@ -188,9 +247,10 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
         # they should be pretty much the same, at least the state ones.
     print(f"starting parallel regression and correlation for all cells and models for subject {sub}")
     
-    corr_test, corr_test_binned, cell = run_elnetreg_cellwise(single_sub_dict, cells[0])
+    #corr_test, corr_test_binned, cell = run_elnetreg_cellwise(single_sub_dict, cells[0])
     
-    import pdb; pdb.set_trace() 
+    #import pdb; pdb.set_trace() 
+    
     parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(single_sub_dict, c) for c in cells)
     
     
@@ -229,21 +289,27 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
 
     
     
-# # if running from command line, use this one!   
-# if __name__ == "__main__":
-#     fire.Fire(compute_one_subject)
-#     # call this script like
-#     # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2]' --randomised_reward_locations=False --save_regs=True
-
-# ['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']
+# if running from command line, use this one!   
 if __name__ == "__main__":
-    # For debugging, bypass Fire and call compute_one_subject directly.
-    compute_one_subject(
-        sub=3,
-        models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
-        exclude_x_repeats=[1],
-        randomised_reward_locations=False,
-        save_regs=True
-    )
+    fire.Fire(compute_one_subject)
+    # call this script like
+    # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
+
+# # ['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']
+# if __name__ == "__main__":
+#     # For debugging, bypass Fire and call compute_one_subject directly.
+#     compute_one_subject(
+#         sub=3,
+#         #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
+#         models_I_want=['only','onlynowand3future', 'onlynextand2future'],
+#         exclude_x_repeats=[1,2,3],
+#         randomised_reward_locations=False,
+#         save_regs=True
+#     )
+
+
+# these are hard-coded right now, so include them in the 'only' + models list 'state_reg', 'complete_musicbox_reg', 'reward_musicbox_reg', 'location_reg'
+
+
 
 

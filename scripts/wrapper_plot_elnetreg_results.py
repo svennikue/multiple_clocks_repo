@@ -111,6 +111,32 @@ def plot_all(model_name_string, define_somehow_what_to_plot=None):
     mc.analyse.helpers_human_cells.store_best_cells(top_ten_cells_binned, og_data, name_extension_string='binned')
     mc.analyse.helpers_human_cells.store_best_cells(top_ten_cells_raw, og_data, name_extension_string='raw')
     import pdb; pdb.set_trace()
+    
+    
+    
+    # import numpy as np
+    # import matplotlib.pyplot as plt
+    # for sub in all_data:
+    #     for task in all_data[sub]['neurons']:
+    #         for i, neuron in enumerate(task):
+    #             curr_cell = f"{sub}_{all_data[sub]['cell_labels'][i]}_{i}"
+    #             if curr_cell not in neuron_dict:
+    #                 neuron_dict[curr_cell] = []   
+                    
+    #             avg_rate_hz = np.sum(neuron) / (len(neuron) * 0.025)
+    #             neuron_dict[curr_cell].append(avg_rate_hz)
+                
+    # # Compute the average for each dictionary entry
+    # averages = [np.mean(values) for values in neuron_dict.values()]
+
+    # # Plot the resulting 600 data points as a histogram
+    # plt.figure(figsize=(10, 6))
+    # plt.hist(averages, bins=300, edgecolor='black')
+    # plt.xlabel('Average Firing rate')
+    # plt.ylabel('Frequency')
+    # plt.title('Histogram of Average Values')
+    # plt.show()
+
 
     
     
