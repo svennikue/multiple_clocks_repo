@@ -17,7 +17,6 @@ import statsmodels.api as sm
 from nilearn.image import load_img
 import os
 import nibabel as nib
-import statsmodels.api as sm
 import rsatoolbox.data as rsd
 from rsatoolbox.rdm.calc import _build_rdms
 from rsatoolbox.rdm import RDMs
@@ -85,6 +84,90 @@ def determine_index_by_reg_version(reg_v, step_no):
         indx_no = [indx_no[4]]
     return indx_no
     
+
+def load_and_prep_behaviour_df(path_to_file):
+    df = pd.read_csv(path_to_file)
+    # the first row is empty so delete to get indices right
+    df = df.iloc[1:].reset_index(drop=True)
+    # fill gapss
+    df['round_no'] = df['round_no'].fillna(method='ffill')
+    df['task_config'] = df['task_config'].fillna(method='ffill')
+    df['repeat'] = df['repeat'].fillna(method='ffill')
+    # so that I cann differenatiate task config and direction
+    df['config_type'] = df['task_config'] + '_' + df['type']
+    # add columns whith field numbers 
+    for index, row in df.iterrows():
+        # current locations
+        df.at[index, 'curr_loc_y_coord'] = mc.analyse.analyse_MRI_behav.transform_coord(df.at[index,'curr_loc_y'], is_y=True, is_x = False)
+        df.at[index, 'curr_loc_x_coord'] = mc.analyse.analyse_MRI_behav.transform_coord(df.at[index,'curr_loc_x'], is_x=True, is_y = False)
+        df.at[index, 'curr_rew_y_coord'] = mc.analyse.analyse_MRI_behav.transform_coord(df.at[index,'curr_rew_y'], is_y=True, is_x = False)
+        df.at[index, 'curr_rew_x_coord'] = mc.analyse.analyse_MRI_behav.transform_coord(df.at[index,'curr_rew_x'], is_x=True, is_y = False)
+        # and prepare the regressors: config type, state and reward/walking specific.
+        if not pd.isna(row['state']):
+            if not np.isnan(row['rew_loc_x']):
+                df.at[index, 'time_bin_type'] =  df.at[index, 'config_type'] + '_' + df.at[index, 'state'] + '_reward'
+            elif np.isnan(row['rew_loc_x']):
+                df.at[index, 'time_bin_type'] = df.at[index, 'config_type'] + '_' + df.at[index, 'state'] + '_path'
+    return df
+
+
+
+def collect_behaviour_for_simulation(df):
+    configs = df['config_type'].dropna().unique()
+    behavioural_vars = ['walked_path', 'timings', 'rew_list', 'rew_timing', 'rew_index', 'subpath_after_steps', 'steps_subpath_alltasks', 'rew_index', 'subpath_after_steps']
+    behaviour = {}
+    for var in behavioural_vars:
+        behaviour[var] = {}
+        for config in configs:
+            behaviour[var][config] = []
+
+    for index, row in df.iterrows():
+        task_config = row['config_type']
+        
+        # in case a new task has just started
+        if not np.isnan(row['next_task']): 
+            # first check if this is the first task of several repeats.
+            if (index == 0) or (row['config_type'] != df.at[index -1, 'config_type']):
+                behaviour['timings'][task_config].append(row['next_task'])
+            else: # if it isnt, then take the reward start time from last rew D as start field.
+                behaviour['timings'][task_config].append(df.at[index -1, 't_step_press_global'])
+            behaviour['walked_path'][task_config].append([row['curr_loc_x_coord'], row['curr_loc_y_coord']])
+        
+        # if this is just a normal walking field
+        elif not np.isnan(row['t_step_press_global']): # always except if this is reward D 
+            # if its reward D, then it will be covered by the first if: if not np.isnan(row['next_task']): 
+            behaviour['timings'][task_config].append(df.at[index - 1, 't_step_press_global'])  # Extract value from index-1
+            behaviour['walked_path'][task_config].append([row['curr_loc_x_coord'], row['curr_loc_y_coord']])
+       
+        # next check if its a reward field
+        if not np.isnan(row['rew_loc_x']): # if this is a reward field.
+            # check if this is either at reward D(thus complete) or ignore interrupted trials
+            # ignore these as they are not complete.
+            if (index+2 < len(df)) or (row['state'] == 'D'):
+                behaviour['rew_timing'][task_config].append(row['t_reward_start'])
+                behaviour['rew_list'][task_config].append([row['curr_rew_x_coord'], row['curr_rew_y_coord']])
+                behaviour['subpath_after_steps'][task_config].append(int(index-row['repeat']))  
+                if row['state'] == 'D':
+                    behaviour['rew_index'][task_config].append(len(behaviour['walked_path'][task_config])) #bc step has not been added yet
+                    # if this is the last run of a task
+                    if (index+2 < len(df)):
+                        # first check if there are more tasks coming after, otherwise error
+                        if (row['config_type'] != df.at[index +1, 'config_type']):
+                            behaviour['walked_path'][task_config].append([row['curr_loc_x_coord'], row['curr_loc_y_coord']])
+                            behaviour['timings'][task_config].append(df.at[index -1, 't_reward_start'])
+                    else:
+                        # however also add these fields if this is the very last reward!
+                        if row['repeat'] == 4:
+                            behaviour['walked_path'][task_config].append([row['curr_loc_x_coord'], row['curr_loc_y_coord']])
+                            behaviour['timings'][task_config].append(df.at[index -1, 't_step_press_global'])
+                            
+                else:
+                    behaviour['rew_index'][task_config].append(len(behaviour['walked_path'][task_config])-1) 
+            else:
+                continue
+                           
+    return behaviour
+
 
 
 def get_conditions_list(RDM_dir):
@@ -565,7 +648,10 @@ def select_models_I_want(RDM_version):
     elif RDM_version in ['03-tasklag']:
         models_I_want = ['location', 'phase', 'state', 'curr_rings_split_clock', 'one_fut_rings_split_clock', 'two_fut_rings_split_clock', 'three_fut_rings_split_clock', 'midnight_only-rew', 'clocks_only-rew', 'curr_rings_split_clock_sin', 'one_fut_rings_split_clock_sin', 'two_fut_rings_split_clock_sin', 'three_fut_rings_split_clock_sin', 'clocks_only-rew_sin']
     elif RDM_version in ['03-1', '03-2']:  # modelling only rewards, splitting clocks later in a different way - after the regression.
-        models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs']
+        #models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs']
+        # CHANGE THIS BACK IF I DONT WANT EASY MODELS ANYMORE!
+        models_I_want = ['location', 'curr_rew', 'next_rew', 'second_next_rew', 'third_next_rew', 'state', 'clocks']
+        #
     elif RDM_version in ['03-1-act']:
         models_I_want = ['location', 'phase', 'phase_state', 'state', 'task_prog', 'clocks_only-rew', 'midnight_only-rew', 'one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs','buttonsXphase_only-rew', 'action-box_only-rew', 'buttons', 'one_future_step2rew', 'two_future_step2rew', 'three_future_step2rew', 'curr-and-future-steps2rew']
 

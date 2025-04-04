@@ -228,7 +228,7 @@ def plotting_corr_perm_histogram_by_ROIs(collapsed_results, title_string_add):
             ax.axvline(0, color='black', linestyle='dashed', linewidth=2)
             
             # Set subplot title and labels
-            ax.set_title(f"{model}\n {roi} \n for {len(corrs_allneurons[~nan_filter])} neurons", fontsize=12)
+            ax.set_title(f"{model}\n {roi} \n for {len(corrs_allneurons[~nan_filter])} neurons \n {title_string_add}", fontsize=12)
             ax.set_xlabel("Correlation coefficient", fontsize=14)
             ax.tick_params(axis='both', labelsize=12, width=2, length=6)
             

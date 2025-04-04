@@ -76,8 +76,9 @@ else:
     subj_no = '01'
 
 # subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36) if i not in (21, 29)]  
-# subjects = [f"sub-{subj_no}"]
-subjects = subs_list = [f'sub-{i:02}' for i in range(1, 11) if i not in (21, 29)]
+subjects = [f"sub-{subj_no}"]
+# 21 was the dude who fell asleep; 29 the tumor. 10 was extremely slow/bad at task
+# subjects = subs_list = [f'sub-{i:02}' for i in range(1, 11) if i not in (21, 29)]
     
 if version == '05':
     split_buttons = True
@@ -124,6 +125,7 @@ for sub in subjects:
         if not os.path.exists(EV_folder):
             os.makedirs(EV_folder)
         
+        import pdb; pdb.set_trace()
         # load behavioural file
         df = pd.read_csv(data_dir_beh + f"{file}.csv")
         df_all = pd.read_csv(data_dir_beh+file_all)
@@ -150,7 +152,7 @@ for sub in subjects:
         end_task = end_task.reset_index(drop=True)
         
         
-        # in case there are started tasks that have not been ended:
+        # in case there are started tasks that have not been conpleted:
         # delete the last row of new_task to make it equally long
         while len(new_task) > len(end_task):
             drop_last_row_index = new_task.index[-1]
@@ -495,6 +497,9 @@ for sub in subjects:
             with open(f"{EV_folder}my_EV_dict", 'wb') as f:
                 pickle.dump(taskEV_dic, f)
      
+        
+     
+        
         # then, lastly, adjust the .fsf file I will use for the regression.
         if version in ['01', f"01-TR{version_TR}" , '02','02-e', '02-l', '03', '03-e', '03-l', '03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5', '03-2', '03-3', '03-4', '04', '05', '03-99', '03-999', '03-9999', '06', '06-rep1', '07']: 
             print('start loop 2')

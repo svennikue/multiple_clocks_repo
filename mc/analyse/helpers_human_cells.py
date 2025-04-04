@@ -521,6 +521,30 @@ def models_concat_and_avg_across_subj(data, specific_model = False, dont_average
     return models_task_concat, order_of_tasks
 
 
+def neurons_to_bins_multimodel(time_course, model_dict):
+    for i, m in enumerate(model_dict):
+        model_idx = np.transpose(model_dict[m])
+        for idx, neuron in enumerate(model_idx):
+            model_idx[idx] = neuron*(idx+1)
+        if i == 0:
+            model_bins = np.sum(model_idx, axis = 0)
+        else:
+            # import pdb; pdb.set_trace()
+            model_bins = model_bins + np.sum(model_idx, axis = 0)
+        
+    # Identify change points (boundaries) in the index array
+    change_points = np.where(np.diff(model_bins) != 0)[0] + 1  # Find where index changes
+    bins = np.split(time_course, change_points)  # Split the neural array at change points
+        
+    # Compute the average for each segment
+    timecourse_binned = np.array([segment.mean(axis = 0) for segment in bins])
+        
+    # import pdb; pdb.set_trace()
+    return timecourse_binned
+
+    
+    
+
 def neurons_to_state_bins(time_course, state_model):
     state_model_idx = np.transpose(state_model)
     for idx, state in enumerate(state_model_idx):
@@ -532,7 +556,7 @@ def neurons_to_state_bins(time_course, state_model):
     state_bins = np.split(time_course, state_change_points)  # Split the neural array at change points
     
     # Compute the average for each segment
-    timecourse_binned = np.array([segment.mean() for segment in state_bins])
+    timecourse_binned = np.array([segment.mean(axis = 0) for segment in state_bins])
         
 
     # import pdb; pdb.set_trace()
@@ -871,14 +895,14 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
             
             # first run the old way of modelling.
             # this needs to loop more
-            per_rep_prep = {}
             
             neurons_for_task = data_dict[sub]['neurons'][grid_idx].copy()
             # fields need to be between 0 and 8, and keep them as integers
             locations_curr_grid = [int((field_no-1)) for field_no in data_dict[sub]['locations'][grid_idx]]
             task_config = [int((field_no-1)) for field_no in data_dict[sub]['reward_configs'][grid_idx]]
              
-            models_per_rep_dict = {}
+            models_per_rep_dict, per_rep_prep = {}, {}
+            regression_across_repeats = []
             for i, reps in enumerate(timings_task):
                 timings_repeat = [int(r) for r in reps]
                 # and for next repeat
@@ -889,6 +913,7 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
 
                 # oh well maybe instead run the same function to prepare the input
                 per_rep_prep[f"rep_{i}"] = mc.analyse.helpers_human_cells.prep_behaviour_one_repeat(timings_repeat, locations_curr_grid, timings_next_rep, task_config, neurons_for_task)
+                regression_across_repeats.append(mc.simulation.predictions.create_x_regressors_per_state(per_rep_prep[f"rep_{i}"], only_for_rewards=False))
                 if models_I_want[0] != 'only':
                     models_per_rep = mc.simulation.predictions.set_continous_models_ephys(per_rep_prep[f"rep_{i}"],  grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, plot = False, split_clock = True, use_orig_timings= True)
                     # then prepare concatenating all of them
@@ -904,8 +929,46 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
                 if m in data_prep[sub]:
                     data_prep[sub][m].append(np.concatenate(models_per_rep_dict[m], axis = 1))
             
+            regression_across_repeats_concat = np.concatenate(regression_across_repeats, axis = 1)
             
             length_curr_grid = data_prep[sub]['neurons'][grid_idx].shape[1] - int(timings_task[0,0])
+            # now, the way I am cutting the neurons is a bit different. I am doing
+            # the timings always start with a (matlab) 1. I suspect this should be a python 0.
+            # also, sometimes it doesn't start with 1- what happens there???
+            # double check my matlab file!!!
+            
+            timings_all_grids = [];
+            timing_diff = []
+            for i, grid_t in enumerate(data_dict[sub]['timings']):
+                timings_all_grids.append(grid_t[-1,-1]-grid_t[0,0])
+                timing_diff.append(data_dict[sub]['neurons'][i].shape[1] - timings_all_grids[i])
+            for grid_t in data_dict[sub]['timings']:
+                print(grid_t[0,0])
+                
+            print(regression_across_repeats_concat.shape[1])
+            print(length_curr_grid)
+            
+            print(f"difference between neuron lenghts and timings file is {timing_diff}")
+            import pdb; pdb.set_trace()
+            # I think I am adding one timepoint at the verys tart, and one at the very end.
+            # i am not sure where this is going wrong.....
+            # whyyyyyyyy :(
+            # subpath_locs = [locations_curr_grid[timings_repeat[0]:timings_repeat[1]], 
+            #                 locations_curr_grid[timings_repeat[1]:timings_repeat[2]], 
+            #                 locations_curr_grid[timings_repeat[2]:timings_repeat[3]], 
+            #                 locations_curr_grid[timings_repeat[3]:timings_repeat[4]]]
+            
+            # for a couple of subjects it goes like this
+            # 1.0
+            # 1.0
+            # 1.0
+            # 1.0
+            # 1.0
+            # 1.0
+            # 1.0
+            # 7139
+            # 7141
+            # difference between neuron lenghts and timings file is [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 1.0]
             
             # here, go and test if the dimensions are right. if not, dublicate last column.
             for m in data_prep[sub]:
@@ -926,8 +989,8 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
             
             
             
-            data_prep[sub]['state_reg'].append(np.zeros((no_state-1, length_curr_grid)))
-            #data_prep[sub]['state_reg'].append(np.zeros((no_state, length_curr_grid)))
+            #data_prep[sub]['state_reg'].append(np.zeros((no_state-1, length_curr_grid)))
+            data_prep[sub]['state_reg'].append(np.zeros((no_state, length_curr_grid)))
             data_prep[sub]['complete_musicbox_reg'].append(np.zeros((no_state*no_locations, length_curr_grid)))
             # data_prep[sub]['complete_musicbox_reg'].append(np.zeros((3*no_state*no_locations, length_curr_grid)))
             data_prep[sub]['reward_musicbox_reg'].append(np.zeros((no_state*no_locations, length_curr_grid)))
@@ -988,7 +1051,25 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
                             data_prep[sub][f"musicbox_{model}_rew_reg"][grid_idx+adjust_grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_prep[sub]['locations'][grid_idx], data_prep[sub][f"musicbox_{model}_rew_reg"][grid_idx+adjust_grid_idx], timings_task, grid_config, setting = model)
                             data_prep[sub][f"musicbox_{model}_complete_reg"][grid_idx+adjust_grid_idx] = mc.simulation.predictions.musicbox_cells_complete(data_prep[sub]['locations'][grid_idx], data_prep[sub]['complete_musicbox_reg'][grid_idx+adjust_grid_idx], timings_task, grid_config, setting = model)
                        
-    # import pdb; pdb.set_trace()
+            import pdb; pdb.set_trace()
+            # on this level, I could average across repeats. I could do this with the regression i am also using for the RSA
+            # SOMEHWERE I AM ADDING TOO MANY TIMEPOINTS/DEPENDING ON WHICH WAY I GO< TEHRE ARE 2 TPs MORE
+            data_prep_tmp = copy.deepcopy(data_prep)
+            for m in data_prep[sub]:
+                if m.endswith('reg') or m.endswith('model') or m.endswith('neurons'):
+                    # this needs to be concatenated and all
+                    data_prep[sub][m][grid_idx+adjust_grid_idx] = mc.simulation.predictions.transform_data_to_betas(data_prep_tmp[sub][m][grid_idx+adjust_grid_idx], regression_across_repeats_concat)     
+
+            # regression_across_repeats[f"rep_{repeat}"] = mc.simulation.predictions.create_x_regressors_per_state(prep_repeat_dict[f"rep_{repeat}"], only_for_rewards=True)
+            # this requires this behavioural dictionary -> should be able to
+            # create_x_regressors_per_state(beh_data_curr_rep_dict, no_regs_per_state=3, only_for_rewards = False):
+                # # import pdb; pdb.set_trace()
+                # step_no = beh_data_curr_rep_dict['step_number']
+                # subpath_timings = beh_data_curr_rep_dict['timings_repeat']
+                # walked_path = beh_data_curr_rep_dict['trajectory']
+                # n_states = len(step_no)
+            
+            
     return data_prep
 
 
@@ -1292,8 +1373,14 @@ def prep_behaviour_one_repeat(timings_repeat, locations_curr_grid, timings_next_
     # this simply cuts longer chunks so that I can later select those longer chunks
     # in my regression and simulation.
     start_at_rew, end_at_rew = mc.simulation.predictions.find_start_end_indices(locations_curr_grid, timings_repeat[-1])
-    prep_dict['trajectory'] = locations_curr_grid[timings_repeat[0]:end_at_rew]
-    prep_dict['neuron_rep'] = neurons[:, timings_repeat[0]:end_at_rew] 
+    # prep_dict['trajectory'] = locations_curr_grid[timings_repeat[0]:end_at_rew]
+    # prep_dict['neuron_rep'] = neurons[:, timings_repeat[0]:end_at_rew] 
+    # try not doing this, as it may use parts of the data twice and fucks up timings
+    
+    prep_dict['trajectory'] = locations_curr_grid[timings_repeat[0]:timings_repeat[-1]]
+    prep_dict['neuron_rep'] = neurons[:, timings_repeat[0]:timings_repeat[-1]] 
+    
+    
     if timings_next_repeat:
         subpath_locs = [locations_curr_grid[timings_repeat[0]:timings_repeat[1]], 
                         locations_curr_grid[timings_repeat[1]:timings_repeat[2]], 

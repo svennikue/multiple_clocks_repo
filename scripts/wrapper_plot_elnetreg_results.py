@@ -87,10 +87,10 @@ def plot_all(model_name_string, define_somehow_what_to_plot=None):
     results_corr_by_roi = mc.analyse.plotting_cells.prep_result_for_plotting_by_rois(results['raw']) 
     
     
-    title_addition = "roi neurons binned"
+    title_addition = "roi neurons binned after fit"
     mc.analyse.plotting_cells.plotting_corr_perm_histogram_by_ROIs(results_corr_by_roi_binned,title_addition)
     
-    title_addition = "roi neurons raw correlation"
+    title_addition = "raw correlation, only pos fit"
     mc.analyse.plotting_cells.plotting_corr_perm_histogram_by_ROIs(results_corr_by_roi,title_addition)
     
     
@@ -152,8 +152,7 @@ def plot_all(model_name_string, define_somehow_what_to_plot=None):
 if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     plot_all(
-        model_name_string='w_partial_musicboxes_excl_rep1-2'
+        model_name_string='w_partial_musicboxes_excl_rep1-3_excl_rep1-3_pre_corr_binned-None_only_pos'
     )
-
 
 

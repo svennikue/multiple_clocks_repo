@@ -18,6 +18,7 @@ end
 deriv_dir = sprintf("%s/derivatives/", source_dir);
 
 subject_list = 1:length(abcd_data.abcd_data);
+subject_list = 1:4;
 
 % script to extract all cells and save them as csv
 % Restructure them as well to analyse them analoguesly to the mouse data:

@@ -221,7 +221,7 @@ def find_start_end_indices(locations, index):
     
 
 def create_x_regressors_per_state(beh_data_curr_rep_dict, no_regs_per_state=3, only_for_rewards = False):
-    # import pdb; pdb.set_trace()
+    # 
     step_no = beh_data_curr_rep_dict['step_number']
     subpath_timings = beh_data_curr_rep_dict['timings_repeat']
     walked_path = beh_data_curr_rep_dict['trajectory']
@@ -259,7 +259,10 @@ def create_x_regressors_per_state(beh_data_curr_rep_dict, no_regs_per_state=3, o
                 else:
                     regressors[nth_part+(count_paths*no_regs_per_state), cols_to_fill_previous + time_per_state_in_nth_part_cum[nth_part-1]: cols_to_fill_previous + time_per_state_in_nth_part_cum[nth_part]] = 1
             cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
-    
+
+
+    # import pdb; pdb.set_trace()
+
     return regressors
 
 
@@ -304,6 +307,37 @@ def create_regressors_flexi(walked_path, subpath_timings, step_no, no_regs_per_s
     return regressors
 
 
+def define_start_and_end_of_repeat_regressors(version, example_model, repeat_idx):
+    version_spec_start = 0
+    version_spec_end = example_model.shape[1] 
+    
+    if version in ['03-e', '03-4-e', '03-rep1', '03-4-rep1']:
+        if version in ['03-e', '03-4-e']:
+            version_spec_end = repeat_idx[2]
+        else:
+            version_spec_end = repeat_idx[1]
+    # NOTE: I DONT THINK THIS WAS CORRECT BEFORE FOR LATE REP/REP 5
+    # DOUBLE CHECK MY RESULTS HERE!!!   
+    if version in ['03-l', '03-4-l', '03-rep5', '03-4-rep5']:
+        if version in ['03-l', '03-4-l']:
+            version_spec_start = repeat_idx[2]
+        else:
+            version_spec_start = repeat_idx[4]
+
+    if version in ['03-rep2', '03-4-rep2']:
+        version_spec_start = repeat_idx[1]
+        version_spec_end = repeat_idx[2]
+
+    if version in ['03-rep3', '03-4-rep3']:
+        version_spec_start = repeat_idx[2]
+        version_spec_end = repeat_idx[3]
+
+    if version in ['03-rep4', '03-4-rep4']:
+        version_spec_start = repeat_idx[3]
+        version_spec_end = repeat_idx[4]
+    
+    return version_spec_start, version_spec_end
+    
 
 
 def create_regressors_per_state_phase_ephys(walked_path, subpath_timings, step_no, grid_size = 3, phases=3, plotting = False, field_no_given = None, ax = None):
@@ -2121,7 +2155,7 @@ def set_location_ephys(walked_path, reward_fields, grid_size = 3, plotting = Fal
 ############# fMRI MODELS ###################
 ##############################################
 def create_model_RDMs_fmri_simple(walked_path, timings_per_step, step_number, rewards, temporal_resolution = 10):
-    #import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     # this is ONLY for the following settings:
     # rewards only, state, split clock, no phase-tuning, locations
 
@@ -2131,7 +2165,10 @@ def create_model_RDMs_fmri_simple(walked_path, timings_per_step, step_number, re
     
     
     rewards_twice = rewards * 2
-    cumsumsteps = np.insert(np.cumsum(step_number),0,-1)
+    
+    # this has to be 0 not -1 because I want to ignore the first location
+    # (this is the previous reward D and shouldnt count again)
+    cumsumsteps = np.insert(np.cumsum(step_number),0,0)
     
     # build all possible coord combinations 
     all_coords = [list(p) for p in product(range(grid_size), range(grid_size))] 
@@ -2147,7 +2184,6 @@ def create_model_RDMs_fmri_simple(walked_path, timings_per_step, step_number, re
         prev_end_state = cumsumsteps[count_paths]+1
         end_at_curr_rew = cumsumsteps[count_paths+1]
         
-        # THINK ABOUT HOW TO DO THE SLICING AND INDEXING CORRECTLY!!!
         # to test if the paths matches the current reward configuration
         if walked_path[end_at_curr_rew] != rewards[count_paths]:
             print('careful! reward does not match last field of walked path')
@@ -2157,9 +2193,7 @@ def create_model_RDMs_fmri_simple(walked_path, timings_per_step, step_number, re
         curr_path = walked_path[prev_end_state:end_at_curr_rew+1] 
         if count_paths == 3:
             curr_path = walked_path[prev_end_state:]
-        # THINK ABOUT HOW TO DO THE SLICING AND INDEXING CORRECTLY!!!
-        
-        #import pdb; pdb.set_trace()
+
         # second step: prepare models based on locations.
         location_based_matrices = ['location', 'curr_rew', 'next_rew', 'second_next_rew', 'third_next_rew']
         for loc_model in location_based_matrices:
@@ -2194,8 +2228,16 @@ def create_model_RDMs_fmri_simple(walked_path, timings_per_step, step_number, re
         for i, c in enumerate(clocks_string):
             model_dict['clocks'][4*row+i] = model_dict[c][row]
             
-    
-    return model_dict
+    # build in the temporal resolution i want
+    model_dict_res = {}
+    for m in model_dict:
+        model_dict_res[m] = np.zeros((model_dict[m].shape[0],model_dict[m].shape[1]*temporal_resolution))
+        for i, r in enumerate(model_dict[m]):
+            model_dict_res[m][i] = np.repeat(r, repeats = temporal_resolution)
+            
+
+    # import pdb; pdb.set_trace()
+    return model_dict_res
 
 
 # to create the model RDMs.
@@ -3074,13 +3116,13 @@ def state_cells(empty_reg, grid_t_all, reward_locs):
             continue
         else:
 
-            state_regressors[0, int(grid_times[1]):int(grid_times[2])] = 1
-            state_regressors[1, int(grid_times[2]):int(grid_times[3])] = 1
-            state_regressors[2, int(grid_times[3]):int(grid_times[4])] = 1
-            # state_regressors[0, int(grid_times[0]):int(grid_times[1])] = 1
-            # state_regressors[1, int(grid_times[1]):int(grid_times[2])] = 1
-            # state_regressors[2, int(grid_times[2]):int(grid_times[3])] = 1
-            # state_regressors[3, int(grid_times[3]):int(grid_times[4])] = 1
+            # state_regressors[0, int(grid_times[1]):int(grid_times[2])] = 1
+            # state_regressors[1, int(grid_times[2]):int(grid_times[3])] = 1
+            # state_regressors[2, int(grid_times[3]):int(grid_times[4])] = 1
+            state_regressors[0, int(grid_times[0]):int(grid_times[1])] = 1
+            state_regressors[1, int(grid_times[1]):int(grid_times[2])] = 1
+            state_regressors[2, int(grid_times[2]):int(grid_times[3])] = 1
+            state_regressors[3, int(grid_times[3]):int(grid_times[4])] = 1
     return state_regressors
 
 

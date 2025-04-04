@@ -78,6 +78,7 @@ import matplotlib.pyplot as plt
 import pickle
 import sys
 import pandas as pd
+import copy
 
 # import pdb; pdb.set_trace()
 
@@ -100,8 +101,8 @@ subjects = [f"sub-{subj_no}"]
 temporal_resolution = 10
 
 task_halves = ['1', '2']
-fmriplotting = True # incorrect for 01 false for 03-im!
-fmri_save = False
+fmriplotting = False # incorrect for 01 false for 03-im!
+fmri_save = True
 
   
 models_I_want = mc.analyse.analyse_MRI_behav.select_models_I_want(RDM_version)
@@ -112,9 +113,7 @@ if 'state_masked' in models_I_want:
         
 for sub in subjects:
     # initialize some dictionaries
-    models_between_task_halves = {}
-    sorted_models_split = {}
-    configs_dict = {}
+    models_between_task_halves, sorted_models_split, configs_dict = {}, {}, {}
     reg_list = []
     for task_half in task_halves:
         data_dir_beh = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/pilot/{sub}/beh/"
@@ -158,7 +157,7 @@ for sub in subjects:
         #
         #
         #
-        
+        # import pdb; pdb.set_trace()
         # so now, account for the temporal resolution that you want:
         for reg in regressors:
             regressors[reg] = np.repeat(regressors[reg], repeats = temporal_resolution)
@@ -257,16 +256,14 @@ for sub in subjects:
                         model_from_action = mc.simulation.predictions.create_action_model_RDMs_fmri(curr_keys, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, only_rew = True, only_path= False, split_future_actions = False)    
                         result_model_dict = {**models_from_03_1, **model_from_action}
                     elif RDM_version in ['03-1', '03-2', '03-3']:# modelling only clocks + splitting clocks later in different way.
-                        # 
-                        #
                         # USING A SIMPLER MODEL NOW
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri_simple(curr_trajectory, curr_timings, curr_stepnumber, rew_list[config])
                         #
-                        #
-                        
-                        #
-                        
-                        # result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
+                        # This used to be the function. 
+                        # Note: change to result_model_dict if you want to use it again
+                        # also change select_models_I_want function back!
+                        # result_model_dict_old = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = True, only_path= False, split_clock = False)    
+                            
                     elif RDM_version in ['04', '04-5-A', '04-A']: # modelling only paths + splitting clocks [new]
                         result_model_dict = mc.simulation.predictions.create_model_RDMs_fmri(curr_trajectory, curr_timings, curr_stepnumber, temporal_resolution = temporal_resolution, plot=False, only_rew = False, only_path = True, split_clock=True)
                     elif RDM_version in ['05']:
@@ -275,9 +272,6 @@ for sub in subjects:
                         # then put both together:
                         result_model_dict = {**models_from_03_1, **model_from_04}
                     
-
-                    
-                    # import pdb; pdb.set_trace()
                     # now for all models that are creating or not creating the splits models with my default function, this checking should work.
                     if RDM_version not in ['03-1','03-1-act', '03-2', '03-3', '03-5', '03-5-A','04-5', '04-5-A', '05', '03-tasklag']:
                         # test if this function gives the same as the models you want, otherwise break!
@@ -290,56 +284,40 @@ for sub in subjects:
                     # models need to be concatenated for each run and task
                     if no_run == 0 or (regression_version in ['03-l', '03-4-l'] and no_run == 2) or (regression_version in ['03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5', '03-4-rep1', '03-4-rep2', '03-4-rep3', '03-4-rep4', '03-4-rep5']):
                         for model in result_model_dict:
-                            repeats_model_dict[model] = result_model_dict[model].copy()
+                            repeats_model_dict[model] = copy.deepcopy(result_model_dict[model])
+
                     else:
                         for model in result_model_dict:
                             repeats_model_dict[model] = np.concatenate((repeats_model_dict[model], result_model_dict[model]), 1)
                 
-                import pdb; pdb.set_trace()   
+  
                 # NEXT STEP: prepare the regression- select the correct regressors, filter keys starting with 'A1_backw'
                 regressors_curr_task = {key: value for key, value in regressors.items() if key.startswith(config)}
 
                 # identify at which index the next task starts.
-                index_next_repeat = []
                 subpath_to_find_indices = next(key for key in regressors_curr_task if key.startswith(f"{config}_A_path"))
-                for i in range(len(regressors_curr_task[subpath_to_find_indices])):
-                    if regressors_curr_task[subpath_to_find_indices][i] == 1 and (i == 0 or regressors_curr_task[subpath_to_find_indices][i-1] == 0):
-                        index_next_repeat.append(i)
-                
-                if regression_version in ['03-e', '03-4-e', '03-rep1', '03-4-rep1']:
-                    regressors_curr_task = {regressor: regressors_curr_task[regressor][0:len(repeats_model_dict[model][2])] for regressor in regressors_curr_task}
+                new_task_starts = np.diff(regressors_curr_task[subpath_to_find_indices], prepend=0)
+                index_next_repeat = list(np.where(new_task_starts == 1)[0])
 
-                if regression_version in ['03-l', '03-4-l', '03-rep5', '03-4-rep5']:
-                    regressors_curr_task = {regressor: regressors_curr_task[regressor][(-1*len(repeats_model_dict[model][2])):] for regressor in regressors_curr_task}
-                
-                if regression_version in ['03-rep2', '03-4-rep2']:
-                    regressors_curr_task = {regressor: regressors_curr_task[regressor][index_next_repeat[1]:index_next_repeat[2]] for regressor in regressors_curr_task}
-
-                if regression_version in ['03-rep3', '03-4-rep3']:
-                    regressors_curr_task = {regressor: regressors_curr_task[regressor][index_next_repeat[2]:index_next_repeat[3]] for regressor in regressors_curr_task}
-
-                if regression_version in ['03-rep4', '03-4-rep4']:
-                    regressors_curr_task = {regressor: regressors_curr_task[regressor][index_next_repeat[3]:index_next_repeat[4]] for regressor in regressors_curr_task}
-                
-
-
-
+                # cut the regressors depending on which repeats to include
+                version_spec_start, version_spec_end = mc.simulation.predictions.define_start_and_end_of_repeat_regressors(regression_version, repeats_model_dict[model], index_next_repeat)
+                regressors_curr_task = {regressor: regressors_curr_task[regressor][version_spec_start:version_spec_end] for regressor in regressors_curr_task}
                 print(f"now looking at regressor for task {config}")
+                
                 
                 # check that all regressors have the same length in case the task wasn't completed.
                 if len(subpath_after_steps[config]) < 20:
                     # if I cut the task short, then also cut the regressors short.
                     for reg_type, regressor_list in regressors_curr_task.items():
-                    # Truncate the list if its length is greater than the maximum length
+                    # Truncate the list where the task stopped
                         regressors_curr_task[reg_type] = regressor_list[:(np.shape(repeats_model_dict[list(repeats_model_dict)[0]])[1])]
                 
-                # Ensure all lists have the same length
+                # Ensure all regressors of one task have the same length
                 list_lengths = set(len(value) for value in regressors_curr_task.values())
                 if len(list_lengths) != 1:
                     raise ValueError("All lists must have the same length.")
                 
                 # if not all regressors shall be included, filter them according to the regression setting
-                import pdb; pdb.set_trace() 
                 if regression_version in ['02', '02-4']:
                     if RDM_version == '02-A':
                         regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if '_A_' not in key}
@@ -369,13 +347,8 @@ for sub in subjects:
                 if regression_version in ['07','07-4']:
                     regressors_curr_task = {key: value for key, value in regressors_curr_task.items()}
                     
-                    
-                    
-                # import pdb; pdb.set_trace() 
-                    # regressors_curr_task = {key: value for key, value in regressors_curr_task.items() if key.endswith('reward')}
-                    # x = {key: value for key, value in regressors_curr_task.items() if key.endswith('reward')}
-                    
-                # sort alphabetically.
+                
+                # sort alphabetically to be sure.
                 sorted_regnames_curr_task = sorted(regressors_curr_task.keys())
                 # Create a list of lists sorted by keys
                 sorted_regs = [regressors_curr_task[key] for key in sorted_regnames_curr_task]
@@ -390,13 +363,11 @@ for sub in subjects:
                     elif model not in ['one_future_rew_loc' ,'two_future_rew_loc', 'three_future_rew_loc', 'curr-and-future-rew-locs', 'state_masked', 'one_future_step2rew', 'two_future_step2rew', 'three_future_step2rew', 'curr-and-future-steps2rew']:
                         all_models_dict[model][config] = mc.simulation.predictions.transform_data_to_betas(repeats_model_dict[model], regressors_matrix)
     
-                # import pdb; pdb.set_trace()
-                # once the regression took place, the location model is the same as the midnight model.
-                # thus, it will also be the same as predicting future rewards, if we rotate it accordingly!
-                # temporally not do this
-                
-                if RDM_version in ['03-1','03-1-act', '03-2', '03-3', '05']:
-                    # now do the rotating thing. 
+                # and for the additional models, if there are any depending on the RDM version.
+                #if RDM_version in ['03-1','03-1-act', '03-2', '03-3', '05']:
+                    # 03-1 now has a different way to encode this so don't enter the loop
+                if RDM_version in ['03-1-act', '03-2', '03-3', '05']:
+                    # one way of creating future reward predictions: rotate the current rewards.
                     all_models_dict['one_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -1, axis = 1) 
                     all_models_dict['two_future_rew_loc'][config] = np.roll(all_models_dict['location'][config], -2, axis = 1) 
                     if RDM_version in ['03-1', '03-1-act', '03-2', '05']:
@@ -404,26 +375,22 @@ for sub in subjects:
                     # try if curr-and-future-rew-locs is the same as rew clocks
                     all_models_dict['curr-and-future-rew-locs'][config] = np.concatenate((all_models_dict['location'][config], all_models_dict['one_future_rew_loc'][config], all_models_dict['two_future_rew_loc'][config], all_models_dict['three_future_rew_loc'][config]), 0)
                     
-                    # do the same for the buttons!
+                    # one way of creating future button predictions: rotate the current button presses.
                     if RDM_version in ['03-1-act']:
                         all_models_dict['one_future_step2rew'][config] = np.roll(all_models_dict['buttons'][config], -1, axis = 1) 
                         all_models_dict['two_future_step2rew'][config] = np.roll(all_models_dict['buttons'][config], -2, axis = 1) 
                         all_models_dict['three_future_step2rew'][config] = np.roll(all_models_dict['buttons'][config], -3, axis = 1) 
                         # try if curr-and-future-steps-to-reward is the same as action box
                         all_models_dict['curr-and-future-steps2rew'][config] = np.concatenate((all_models_dict['buttons'][config], all_models_dict['one_future_step2rew'][config], all_models_dict['two_future_step2rew'][config], all_models_dict['three_future_step2rew'][config]), 0)
-                  
-                import pdb; pdb.set_trace()
-                    
-                    
+
+        # END OF LOOP GOING THROUGH ALL CONFIGURATIONS.
         # then, lastly, safe the all_models_dict in the respective task_half.
-        models_between_task_halves[task_half] = all_models_dict
+        models_between_task_halves[task_half] = copy.deepcopy(all_models_dict)
         print(f"task half {task_half}")
         configs_dict[task_half] = rew_list
-        import pdb; pdb.set_trace()
+    # END OF LOOP GOING THROUGH BOTH TASK HALVES.
 
 
-
-    # out of the between-halves loop.
     sorted_keys_dict = mc.analyse.extract_and_clean.order_task_according_to_rewards(configs_dict)   
     
     if RDM_version == '01': # I have to work on this one further for the replay analysis (temporal + spatial)
@@ -434,7 +401,6 @@ for sub in subjects:
    
     elif not RDM_version == '01':
         # first, sort the models into two equivalent halves, just in case this went wrong before.
-        # DOUBLE CHECK IF THIS SORTING ACTUALLY WORKS!!!!
         models_sorted_into_splits = {task_half: {model: {config: "" for config in sorted_keys_dict[task_half]} for model in models_I_want} for task_half in task_halves}
         test = {task_half: {model: "" for model in models_I_want} for task_half in task_halves}
         
@@ -450,7 +416,6 @@ for sub in subjects:
         for split in models_sorted_into_splits:
             for model in models_sorted_into_splits[split]:
                 test[split][model] = np.concatenate([models_sorted_into_splits[split][model][task] for task in sorted_keys_dict[split]], 1)
-
                 models_sorted_into_splits[split][model] = np.concatenate([models_sorted_into_splits[split][model][task] for task in sorted_keys_dict[split]], 1)
                 
         
@@ -461,7 +426,9 @@ for sub in subjects:
     # (of size 2*nCond X 2*nCond), where the (non-symmetric) nCond X nCond bottom left square (or top right, 
     # doesn't matter because it's symmetric) (i.e. a quarter of the original matrix) has all the correlations 
     # across THs. 
-    
+
+    # note: this is not what I actually use for the RSA. 
+    # I am using the concatenated models_sorted_into_splits TH1, then TH2 for the model RDMs.
     
     RSM_dict_betw_TH = {}
     for model in models_sorted_into_splits[split]:
@@ -479,9 +446,7 @@ for sub in subjects:
             # import pdb; pdb.set_trace()
             #RSM_dict_betw_TH['state_masked'] = RSM_dict_betw_TH[model]* RSM_dict_betw_TH_mask
             
-
-
-    # import pdb; pdb.set_trace()
+            
     corrected_RSM_dict = {}
     for model in RSM_dict_betw_TH:
         # import pdb; pdb.set_trace()
@@ -529,8 +494,7 @@ for sub in subjects:
                 np.save(os.path.join(RDM_dir, f"RSM_{RDM}_{sub}_fmri_across_halves"), RSM_dict_betw_TH[RDM])
         # also save the regression files
         for model in models_sorted_into_splits['1']:
-            np.save(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves"), np.concatenate((models_sorted_into_splits['1'][model], models_sorted_into_splits['2'][model]),1))
-        
+            np.save(os.path.join(RDM_dir, f"data_{model}_{sub}_fmri_both_halves"), np.concatenate((models_sorted_into_splits['1'][model], models_sorted_into_splits['2'][model]),1))
         # and lastly, save the order in which I put the RDMs.
         
         with open(f"{RDM_dir}/sorted_keys-model_RDMs.pkl", 'wb') as file:

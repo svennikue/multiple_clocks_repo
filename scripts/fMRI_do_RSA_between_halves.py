@@ -44,6 +44,12 @@ GLM ('regression') settings (creating the 'bins'):
     03-999 - 40 regressors; no button press; created a random but sorted sample of onsets that I am using -> still somewhat sorted by time, still [using a stick function]
     03-9999 - 40 regressors; no button press; shift all regressors 6 seconds earlier
     04 - 40 regressors; for every task, only the paths are modelled
+    
+                # once the regression took place, the location model is the same as the midnight model.
+                # thus, it will also be the same as predicting future rewards, if we rotate it accordingly!
+                # temporally not do this
+                
+    
     04-4 - 24 regressors; for the tasks where every reward is at a different location (A,C,E)
     05 - locations + button presses 
     06 - averaging across the entire task [for introduction analysis]
@@ -302,7 +308,7 @@ for sub in subjects:
         if model in ['state_masked']:
             data_dirs[model]= np.load(os.path.join(RDM_dir, f"datastate_{sub}_fmri_both_halves.npy")) 
         else:    
-            data_dirs[model]= np.load(os.path.join(RDM_dir, f"data{model}_{sub}_fmri_both_halves.npy")) 
+            data_dirs[model]= np.load(os.path.join(RDM_dir, f"data_{model}_{sub}_fmri_both_halves.npy")) 
     
         # add keys for the 2 weighted models
         if neuron_weighting == True and model in ['clocks_only-rew', 'clocks', 'clocks_no-rew']:
