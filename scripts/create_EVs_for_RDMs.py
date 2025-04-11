@@ -125,7 +125,7 @@ for sub in subjects:
         if not os.path.exists(EV_folder):
             os.makedirs(EV_folder)
         
-        import pdb; pdb.set_trace()
+
         # load behavioural file
         df = pd.read_csv(data_dir_beh + f"{file}.csv")
         df_all = pd.read_csv(data_dir_beh+file_all)
@@ -318,6 +318,7 @@ for sub in subjects:
         if version in ['02','02-e', '02-l', '03', '03-e', '03-l', '03-rep1', '03-rep2', '03-rep3', '03-rep4', '03-rep5', '03-2', '03-3', '03-4','03-99','03-999','03-9999', '04', '07']: 
             # identify where the next task begins by iterating through the DataFrame 
             # and collecting the indices where the column is not empty
+            # import pdb; pdb.set_trace()
             index_next_task = []
             for index, row in df.iterrows():
                 if not pd.isna(row['start_ABCD_screen']):

@@ -222,9 +222,7 @@ def read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM
     if regression_version in ['03-4-rep5']:
         regression_version = '03-rep5'
        
-        
-    # import pdb; pdb.set_trace()   
-    
+
     pe_path_01 = f"{data_dir}/func/glm_{regression_version}_pt01.feat/stats"
     reading_in_EVs_dict_01 = {}   
     with open(f"{data_dir}/func/EVs_{regression_version}_pt01/task-to-EV.txt", 'r') as file:
@@ -241,16 +239,21 @@ def read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM
             name = name_ev.replace('ev_', '')
             reading_in_EVs_dict_02[f"{name}_EV_{int(index)+1}"] = os.path.join(pe_path_02, f"pe{int(index)+1}.nii.gz")
     
-    sorted_RDM_conds = []        
+    
+        
+    print(sort_as)
+    
+    sorted_RDM_conds = []
     if sort_as == 'dict-two-halves':
         sorted_RDM_conds = {}
         data_RDM_file = {}
         data_RDM_file_1d = {}
         reading_in_EVs_dict = {}
         image_paths = {}
-
-        
-        # I need to do this slightly differently. I want to be super careful that I create 2 'identical' splits of data.
+        # I want to be super careful that I create 2 *identical* splits of data.
+        # A1 forwards = A2 backwards
+        # A2 backwards = A1 forwards
+        # etc.
         # thus, check which folder has the respective task.
         for split in sorted_keys:
             if RDM_version == '01':
@@ -262,7 +265,7 @@ def read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM
                     for line in file:
                         index, name = line.strip().split(' ', 1)
                         reading_in_EVs_dict[f"{name}_EV_{index}"] = os.path.join(pe_path, f"pe{int(index)+1}.nii.gz")
-            else:           
+            else:  
                 i = -1
                 image_paths[split] = [None] * no_RDM_conditions # Initialize a list for each half of the dictionary
                 data_RDM_file[split] = [None] * no_RDM_conditions  # Initialize a list for each half of the dictionary
@@ -292,7 +295,7 @@ def read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM
                 sorted_RDM_conds[split] = data_RDM_file[split].reshape([data_RDM_file[split].shape[0], -1])
                 sorted_RDM_conds[split] = np.nan_to_num(sorted_RDM_conds[split]) # now this is 80timepoints x 746.496 voxels
                 
-                if RDM_version == f"{RDM_version}_999": # scramble voxels randomly
+                if RDM_version == f"{RDM_version}_999": # shuffle voxels randomly
                     data_RDM_file_1d[split] = sorted_RDM_conds[split].flatten()
                     np.random.shuffle(data_RDM_file_1d[split]) #shuffle all voxels randomly
                     sorted_RDM_conds[split] = data_RDM_file_1d[split].reshape(sorted_RDM_conds[split].shape) # and reshape
@@ -314,7 +317,7 @@ def read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM
 
             print(f"This is the order now: {image_paths}")  
 
-    print(sort_as)
+
     if sort_as == 'concat_list':
         ref_img_data = ref_img.get_fdata()
         fmri_img_list_first_half = np.empty((ref_img_data.shape[0], ref_img_data.shape[1], ref_img_data.shape[2], no_RDM_conditions*2))
@@ -360,10 +363,7 @@ def read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM
                             # else:
                             #     next_EV = nib.load(reading_in_EVs_dict_02[EV_02])
                             #     fmri_img = nl.image.concat_imgs([fmri_img, next_EV])
-                            
-            
-            
-            
+
         fmri_img_pt1 = nib.Nifti1Image(fmri_img_list_first_half, affine=ref_img.affine, header=ref_img.header)               
         fmri_img_pt2 = nib.Nifti1Image(fmri_img_list_sec_half, affine=ref_img.affine, header=ref_img.header)               
         
@@ -671,6 +671,21 @@ def select_models_I_want(RDM_version):
         models_I_want = []
     return(models_I_want)
 
+def determine_number_of_conditions(GLM_version, RDM_version = None):
+    if GLM_version == '01':
+        no_RDM_conditions = 20 # including all instruction periods
+    elif GLM_version in ['02', '02-e', '02-l']:
+        no_RDM_conditions = 80 # including all paths and rewards
+    elif GLM_version in ['03', '04','03-99', '03-999', '03-9999', '03-l', '03-e']:
+        no_RDM_conditions = 40 # only including rewards or only paths
+    elif GLM_version == '03-3': #excluding reward A
+        no_RDM_conditions = 30
+    elif GLM_version in ['03-4', '04-4', '03-4-e', '03-4-l', '03-4-rep1', '03-4-rep2' , '03-4-rep3' , '03-4-rep4' ,'03-4-rep5' ]: # only including tasks without double reward locs: A,C,D  and only rewards
+        no_RDM_conditions = 24    
+    if GLM_version in ['03-4', '04-4'] and RDM_version in ['03-5-A', '02-A', '03-A', '04-A', '04-5-A']: # only TASK A,C,D, only rewards B-C-D
+        no_RDM_conditions = 18
+    return no_RDM_conditions
+
 
 
 def move_files_to_subfolder(folder_path):
@@ -919,7 +934,7 @@ def save_RSA_result_binary(result_file, data_RDM_file, file_path, file_name, mas
 
   
     
-def save_data_RDM_as_nifti(data_RDM_file, file_path, file_name, ref_image_for_affine_path):
+def save_data_RDM_as_nifti(data_RDM_file, file_path, file_name, ref_image_for_affine_path, centers_for_voxel_index):
     ref_img = load_img(ref_image_for_affine_path)
     x, y, z = ref_img.shape
     affine_matrix = ref_img.affine
@@ -927,11 +942,13 @@ def save_data_RDM_as_nifti(data_RDM_file, file_path, file_name, ref_image_for_af
     if not os.path.exists(file_path):
         os.makedirs(file_path)
     
-    brain_4d = np.zeros([x,y,z,len(data_RDM_file[0].dissimilarities[0])])
+    brain_4d = np.zeros([x,y,z,len(data_RDM_file[0])])
     # import pdb; pdb.set_trace() 
-    for i in range(0,len(data_RDM_file[0].dissimilarities[0])):
+    # NOT SURE IF THIS IS CORRECT!!!!
+    for i in range(0,len(data_RDM_file[0])):
         curr_slice = np.zeros([x*y*z])
-        curr_slice[list(data_RDM_file.rdm_descriptors['voxel_index'])] = [vox.dissimilarities[0][i] for vox in data_RDM_file]
+        curr_slice[list(centers_for_voxel_index)] = [vox[i] for vox in data_RDM_file]
+        # curr_slice[list(data_RDM_file.rdm_descriptors['voxel_index'])] = [vox.dissimilarities[0][i] for vox in data_RDM_file]
         brain_4d[:,:,:,i] = curr_slice.reshape([x,y,z])
     
     brain_4d_nifti = nib.Nifti1Image(brain_4d, affine=affine_matrix)
@@ -1041,18 +1058,32 @@ def prepare_model_data(model_data, number_conditions, RDM_version):
     else:
         nCond = model_data.shape[0]/2
     nVox = model_data.shape[1]
+    
     sessions = np.concatenate((np.zeros(int(np.shape(model_data)[0]/2)), np.ones(int(np.shape(model_data)[0]/2))))
     des = {'subj': 1}
     if RDM_version in ['01', '01-1']:
         conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(nCond)])),(1)).transpose(),number_conditions)
     else: 
         conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(nCond)])), (1,2)).transpose(),number_conditions*2)
+
     obs_des = {'conds': conds, 'sessions': sessions}
     chn_des = {'voxels': np.array(['voxel_' + str(x) for x in np.arange(nVox)])}
     RSA_tb_model_data_object = rsd.Dataset(measurements=model_data,
                        descriptors=des,
                        obs_descriptors=obs_des,
                        channel_descriptors=chn_des)
+
+
+                    # obs_des = {'events': events, 'sessions': cv_descr}
+                    # ds = Dataset(data_2d[:, center_neighbors],
+                    #              descriptors={'center': center},
+                    #              obs_descriptors=obs_des,
+                    #              channel_descriptors={'voxels': center_neighbors})
+
+
+    # import pdb; pdb.set_trace()
+    
+    # DOUBLE CHECK WHY THE CONDITIONS HERE ARE 48 AND NOT 24!!!!
     return RSA_tb_model_data_object
 
 

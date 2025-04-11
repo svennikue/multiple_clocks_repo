@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Tue Oct 31 15:25:52 2023
+Created on Fri 11th of April 2025
+
+Second Attempt: running the RSA [mainly] wihtout RSA toolbox.
+
+
+
+
 
 create fMRI data RDMs
 
@@ -58,7 +64,7 @@ GLM ('regression') settings (creating the 'bins'):
     07-4 - entire path and reward period, collapsed (= 03 + 04); only for the tasks where every reward is at a different location (A,C,E)
 
     
-@author: Svenja Küchenhoff, 2024
+@author: Svenja Küchenhoff, 2025
 """
 
 # UNDER CONSTRUCTION
@@ -114,19 +120,6 @@ models_I_want = mc.analyse.analyse_MRI_behav.select_models_I_want(RDM_version)
 # based on GLM, how many regressors/RDM conditions will there be?
 no_RDM_conditions = mc.analyse.analyse_MRI_behav.determine_number_of_conditions(regression_version, RDM_version)
 
-
-# if regression_version == '01':
-#     no_RDM_conditions = 20 # including all instruction periods
-# elif regression_version in ['02', '02-e', '02-l']:
-#     no_RDM_conditions = 80 # including all paths and rewards
-# elif regression_version in ['03', '04','03-99', '03-999', '03-9999', '03-l', '03-e']:
-#     no_RDM_conditions = 40 # only including rewards or only paths
-# elif regression_version == '03-3': #excluding reward A
-#     no_RDM_conditions = 30
-# elif regression_version in ['03-4', '04-4', '03-4-e', '03-4-l', '03-4-rep1', '03-4-rep2' , '03-4-rep3' , '03-4-rep4' ,'03-4-rep5' ]: # only including tasks without double reward locs: A,C,D  and only rewards
-#     no_RDM_conditions = 24    
-# if regression_version in ['03-4', '04-4'] and RDM_version in ['03-5-A', '02-A', '03-A', '04-A', '04-5-A']: # only TASK A,C,D, only rewards B-C-D
-#     no_RDM_conditions = 18
 
 for sub in subjects:
     data_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}"
@@ -198,39 +191,28 @@ for sub in subjects:
     condition_names= mc.analyse.analyse_MRI_behav.get_conditions_list(RDM_dir)
 
 
-    if RDM_version in ['01', '01-1']:
-        data_conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(no_RDM_conditions)])), (1)).transpose(),no_RDM_conditions)  
-        data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='correlation')
-    else:
-        # for all other cases, cross correlated between task-halves.
-        
-        # treats TH1 and TH2 as identical conditions
-        data_conds = np.reshape(np.tile((np.array(['cond_%02d' % x for x in np.arange(no_RDM_conditions)])), (1,2)).transpose(),2*no_RDM_conditions)  
-
-        # this is the something I changed a while ago: new data_conds string - 
-        # it treats TH1 and TH2 as none-identical conditions 16.09.24
-        # this is linked to the commented part below- I was trying to 
-        # do the whole between task-half correlation in a different way. 08.04.2025
-        # data_conds_one = (np.array(['cond_%02d_TH_one' % x for x in np.arange(no_RDM_conditions)]))
-        # data_conds_two = (np.array(['cond_%02d_TH_two' % x for x in np.arange(no_RDM_conditions)]))
-        # data_conds = np.concatenate((data_conds_one, data_conds_two))
-        
-        # defining both task halves/ runs: 0 is first half, the second one is 1s
-        sessions = np.concatenate((np.zeros(no_RDM_conditions), np.ones(no_RDM_conditions)))
-        
-        if not os.path.exists(f"{data_rdm_dir}/data_RDM-pklblabla"):
-            # data_conds will here be checked for unique entries, i.e. 
-            # determines how big the final RDM will be (n unique entries)
-            # data_RDM_file_2d will be concatenated in the order it is entered.
-            data_RDM = get_searchlight_RDMs(data_RDM_file_2d, centers, neighbors, data_conds, method='crosscorr', cv_descr=sessions)
-            # save  so that I don't need to recompute - or don't save bc it's massive
-            data_RDM.save(f"{data_rdm_dir}/data_RDM-pkl", 'pkl')
-            # potentially build in a progress function for this one! takes ages..
-            mc.analyse.analyse_MRI_behav.save_data_RDM_as_nifti(data_RDM, data_rdm_dir, "data_RDM.nii.gz", ref_img)
+    if not os.path.exists(f"{data_rdm_dir}/data_RDM-pklblabla"):
+        if RDM_version in ['01', '01-1']:
+            import pdb; pdb.set_trace()
+            # this will need to be something like 
+            # data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_RDM_file_2d, centers, neighbors, method = 'corr')
+            # which is a correlation option that does not exist yet. Write it!!
+            # mc.analyse.analyse_MRI_behav.save_data_RDM_as_nifti(data_RDMs, data_rdm_dir, "data_RDM.nii.gz", ref_img)
         else:
-            with open(f"{data_rdm_dir}/data_RDM-pkl", 'rb') as file:
-                data_RDM_dir = pickle.load(file)
-                data_RDM = rsatoolbox.rdm.rdms.rdms_from_dict(data_RDM_dir)
+            data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_RDM_file_2d, centers, neighbors, method = 'crosscorr')
+            mc.analyse.analyse_MRI_behav.save_data_RDM_as_nifti(data_RDMs, data_rdm_dir, "data_RDM.nii.gz", ref_img, centers)
+            # save  so that I don't need to recompute - or don't save bc it's massive
+            
+            # CONTINUE HERE!!!
+            # i'm currently not sure if it saves it correctly...
+            # also double check if i even need this????
+            # then continue with the model rdms!!! 
+            # the rest should be easy from here :)
+            import pdb; pdb.set_trace()
+    else:
+        with open(f"{data_rdm_dir}/data_RDM-pkl", 'rb') as file:
+            data_RDM_dir = pickle.load(file)
+            data_RDM = rsatoolbox.rdm.rdms.rdms_from_dict(data_RDM_dir)
     
         # 08.04.25 commenting this out because I am not sure why I wanted to try it like this.
         # is there something else about RSAtoolbox I missed?
