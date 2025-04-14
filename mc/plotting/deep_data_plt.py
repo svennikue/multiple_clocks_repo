@@ -88,7 +88,7 @@ def plot_data_RDMconds_per_searchlight(data_RDM_2d, centers, neighbors, voxel_co
 
 
 # plot the data RDM of a certain voxel location
-def plot_dataRDM_by_voxel_coords(data_RDM_object, voxel_coord, ref_image, cond_names_dict):
+def plot_dataRDM_by_voxel_coords(data_RDM_object, voxel_coord, ref_image, cond_names_dict, centers = None, no_rsa_toolbox=False):
     # import pdb; pdb.set_trace()
     
     # Calculate the linear index in the flattened array
@@ -97,17 +97,30 @@ def plot_dataRDM_by_voxel_coords(data_RDM_object, voxel_coord, ref_image, cond_n
     # Calculate the linear index in the flattened array
     linear_index = np.ravel_multi_index(voxel_coord, ref_image.shape)
     #linear_index = voxel_coord[0] * (y * z) + voxel_coord[1] * z + voxel_coord[2]
-    RDM_index = np.where(data_RDM_object.rdm_descriptors['voxel_index']==linear_index)[0][0]
+    if no_rsa_toolbox == False:
+        RDM_index = np.where(data_RDM_object.rdm_descriptors['voxel_index']==linear_index)[0][0]
+        fig, ax, ret_vla = rsatoolbox.vis.show_rdm(data_RDM_object[RDM_index])
+        dims = int(( 1 + math.sqrt(1 + 8* data_RDM_object[RDM_index].dissimilarities.shape[1])) /2)
+        triu_indices = np.triu_indices(dims, 1)
+    elif no_rsa_toolbox == True:
+        RDM_index = np.where(centers == linear_index)[0][0]
+        # one less if this is including the diagonal
+        dims = int(( + math.sqrt(1 + 8* data_RDM_object.shape[1])) /2)
+        triu_indices = np.triu_indices(dims, 0)
+    
+    
     # Extract the data point from the 1-dimensional array using the calculated index
-    fig, ax, ret_vla = rsatoolbox.vis.show_rdm(data_RDM_object[RDM_index])
     print(f"The RDM index for voxel coordinates ({voxel_coord[0]}, {voxel_coord[1]}, {voxel_coord[2]}) is: {RDM_index}")
     
     # or, using matplotlib:
-    dims = int(( 1 + math.sqrt(1 + 8* data_RDM_object[RDM_index].dissimilarities.shape[1])) /2)
+    
     RDM = np.zeros((dims, dims))
-    triu_indices = np.triu_indices(dims, 1)
-    RDM[triu_indices] = data_RDM_object[RDM_index].dissimilarities
-      
+    
+    if no_rsa_toolbox == False:
+        RDM[triu_indices] = data_RDM_object[RDM_index].dissimilarities
+    if no_rsa_toolbox == True:
+        RDM[triu_indices] = data_RDM_object[RDM_index]
+            
     mc.plotting.deep_data_plt.RDM_plotting(RDM, titelstring = "1 - Pearson's r", condition_name_string = cond_names_dict['1'])
 
 

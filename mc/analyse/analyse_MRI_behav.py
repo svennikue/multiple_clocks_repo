@@ -934,7 +934,8 @@ def save_RSA_result_binary(result_file, data_RDM_file, file_path, file_name, mas
 
   
     
-def save_data_RDM_as_nifti(data_RDM_file, file_path, file_name, ref_image_for_affine_path, centers_for_voxel_index):
+def save_data_RDM_as_nifti(data_RDM_file, file_path, file_name, ref_image_for_affine_path, centers_for_voxel_index, rdm_toolbox = False):
+    # import pdb; pdb.set_trace() 
     ref_img = load_img(ref_image_for_affine_path)
     x, y, z = ref_img.shape
     affine_matrix = ref_img.affine
@@ -943,18 +944,20 @@ def save_data_RDM_as_nifti(data_RDM_file, file_path, file_name, ref_image_for_af
         os.makedirs(file_path)
     
     brain_4d = np.zeros([x,y,z,len(data_RDM_file[0])])
-    # import pdb; pdb.set_trace() 
-    # NOT SURE IF THIS IS CORRECT!!!!
+
     for i in range(0,len(data_RDM_file[0])):
         curr_slice = np.zeros([x*y*z])
-        curr_slice[list(centers_for_voxel_index)] = [vox[i] for vox in data_RDM_file]
-        # curr_slice[list(data_RDM_file.rdm_descriptors['voxel_index'])] = [vox.dissimilarities[0][i] for vox in data_RDM_file]
+        if rdm_toolbox == False:
+            curr_slice[list(centers_for_voxel_index)] = [vox[i] for vox in data_RDM_file]
+        elif rdm_toolbox == True:
+            curr_slice[list(data_RDM_file.rdm_descriptors['voxel_index'])] = [vox.dissimilarities[0][i] for vox in data_RDM_file]
         brain_4d[:,:,:,i] = curr_slice.reshape([x,y,z])
     
     brain_4d_nifti = nib.Nifti1Image(brain_4d, affine=affine_matrix)
     brain_4d_file = f"{file_path}/{file_name}"
     nib.save(brain_4d_nifti, brain_4d_file)
     
+    np.save(f"{file_path}/data_RDM", data_RDM_file)
     
     
     

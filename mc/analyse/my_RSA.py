@@ -14,7 +14,7 @@ import mc
 import numpy as np
 from tqdm import tqdm
 from matplotlib import pyplot as plt
-
+import statsmodels.api as sm
 
 def get_RDM_per_searchlight(fmri_data, centers, neighbors, method = 'crosscorr'):
     # import pdb; pdb.set_trace()
@@ -57,6 +57,10 @@ def get_RDM_per_searchlight(fmri_data, centers, neighbors, method = 'crosscorr')
         
 def compute_crosscorr(data_chunk):  
     RDM = []
+    # import pdb; pdb.set_trace()
+    if not isinstance(data_chunk, (list, tuple)):
+        data_chunk = [data_chunk]
+    
     for data in data_chunk:
         # centers the data around zero by subtracting the mean of each row
         data_demeaned = data - data.mean(axis=1, keepdims=True)
@@ -76,3 +80,32 @@ def compute_crosscorr(data_chunk):
         n = rdm.shape[1]
         RDM.append(rdm[np.triu_indices(n, k=0)]) 
     return RDM
+
+
+def evaluate_model(model_rdm, data_rdm):
+    # import pdb; pdb.set_trace()
+
+    #X = sm.add_constant(model_rdm.transpose());
+    X = sm.add_constant(model_rdm);
+    # first, normalize the regressors (but not the intercept, bc std = 0 -> division by 0!)
+    for i in range(1, X.shape[1]):
+        X[:,i] = (X[:,i] - np.nanmean(X[:,i]))/ np.nanstd(X[:,i])
+    
+    # to check if a GLM is ill-conditioned
+    # To check that you can check the “condition number” of the design matrix - 
+    # the ration between the maximum singular value (similar to eigenvalue) and the minimum singular value.. 
+    # If that ratio is close to 1, you’re good. If it’s very large (e.g. >1000), it means the matrix is ill-conditioned - 
+    # one of your regressors is close to being a linear combination of the other two.
+    # mc.analyse.analyse_MRI_behav.check_GLM_regressors(X)
+    # import pdb; pdb.set_trace()
+    
+    Y = data_rdm;
+    
+    # to filter out potential nans in the model part
+    nan_filter = np.isnan(X).any(axis=1)
+    filtered_X = X[~nan_filter]
+    filtered_Y = Y[~nan_filter]
+    
+    est = sm.OLS(filtered_Y, filtered_X).fit()
+    # import pdb; pdb.set_trace()
+    return est.tvalues[1:], est.params[1:], est.pvalues[1:]

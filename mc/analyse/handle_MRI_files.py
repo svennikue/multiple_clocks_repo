@@ -15,6 +15,42 @@ from nilearn.image import load_img
 
 
 
+def save_my_RSA_results(result_file, centers, file_path, file_name, mask, number_regr, ref_image_for_affine_path):
+    x, y, z = mask.shape
+    ref_img = load_img(ref_image_for_affine_path)
+    affine_matrix = ref_img.affine
+    
+    if not os.path.exists(file_path):
+        os.makedirs(file_path)
+        
+    # results are est.tvalues[1:], est.params[1:], est.pvalues[1:]
+    
+    t_result_brain = np.zeros([x*y*z])
+    t_result_brain[centers] = [vox[0][number_regr] for vox in result_file]
+    t_result_brain = t_result_brain.reshape([x,y,z])
+    
+    t_result_brain_nifti = nib.Nifti1Image(t_result_brain, affine=affine_matrix)
+    t_result_brain_file = f"{file_path}/{file_name}_t_val.nii.gz"
+    nib.save(t_result_brain_nifti, t_result_brain_file)
+    
+    b_result_brain = np.zeros([x*y*z])
+    b_result_brain[centers] = [vox[1][number_regr] for vox in result_file]
+    b_result_brain = b_result_brain.reshape([x,y,z])
+    
+    b_result_brain_nifti = nib.Nifti1Image(b_result_brain, affine=affine_matrix)
+    b_result_brain_file = f"{file_path}/{file_name}_beta.nii.gz"
+    nib.save(b_result_brain_nifti, b_result_brain_file)
+    
+    p_result_brain = np.zeros([x*y*z])
+    p_result_brain[centers] = [1 - vox[2][number_regr] for vox in result_file]
+    p_result_brain = p_result_brain.reshape([x,y,z])
+    
+    p_result_brain_nifti = nib.Nifti1Image(p_result_brain, affine=affine_matrix)
+    p_result_brain_file = f"{file_path}/{file_name}_p_val.nii.gz"
+    nib.save(p_result_brain_nifti, p_result_brain_file)
+    
+    
+
 def save_my_data_RDM_as_nifti(data_RDM_file, file_path, file_name, ref_image_for_affine_path):
     ref_img = load_img(ref_image_for_affine_path)
     x, y, z = ref_img.shape
@@ -34,74 +70,85 @@ def save_my_data_RDM_as_nifti(data_RDM_file, file_path, file_name, ref_image_for
     nib.save(brain_4d_nifti, brain_4d_file)
 
 
-def smooth_RDMs(data_RDM_file, ref_img, path_to_save, fwhm):
+
+def save_data_RDM_as_nifti(data_RDM_file, file_path, file_name, ref_image_for_affine_path, centers_for_voxel_index, rdm_toolbox = False):
+    # import pdb; pdb.set_trace() 
+    ref_img = load_img(ref_image_for_affine_path)
+    x, y, z = ref_img.shape
+    affine_matrix = ref_img.affine
+    
+    if not os.path.exists(file_path):
+        os.makedirs(file_path)
+    
+    brain_4d = np.zeros([x,y,z,len(data_RDM_file[0])])
+
+    for i in range(0,len(data_RDM_file[0])):
+        curr_slice = np.zeros([x*y*z])
+        if rdm_toolbox == False:
+            curr_slice[list(centers_for_voxel_index)] = [vox[i] for vox in data_RDM_file]
+        elif rdm_toolbox == True:
+            curr_slice[list(data_RDM_file.rdm_descriptors['voxel_index'])] = [vox.dissimilarities[0][i] for vox in data_RDM_file]
+        brain_4d[:,:,:,i] = curr_slice.reshape([x,y,z])
+    
+    brain_4d_nifti = nib.Nifti1Image(brain_4d, affine=affine_matrix)
+    brain_4d_file = f"{file_path}/{file_name}"
+    nib.save(brain_4d_nifti, brain_4d_file)
+    
+    np.save(f"{file_path}/data_RDM", data_RDM_file)
+    
+
+
+def smooth_RDMs(data_RDM_file, ref_img, fwhm, use_rsa_toolbox = True, path_to_save=None, centers = None):
+    # note: include centers if not using RSA_toolbox!
     # import pdb; pdb.set_trace() 
     x, y, z = ref_img.shape
     affine_matrix = ref_img.affine
     header = ref_img.header
     
-    voxel_indices = np.array(data_RDM_file.rdm_descriptors['voxel_index'])
+    if use_rsa_toolbox == False:
+        voxel_indices = centers
+        diss_matrix = data_RDM_file
+        
+    elif use_rsa_toolbox == True:
+        voxel_indices = np.array(data_RDM_file.rdm_descriptors['voxel_index'])
+        # Each row corresponds to a voxel and columns to conditions.
+        diss_matrix = np.array([vox.dissimilarities[0] for vox in data_RDM_file])
     
-    # Each row corresponds to a voxel and columns to conditions.
-    diss_matrix = np.array([vox.dissimilarities[0] for vox in data_RDM_file])
     num_conditions = diss_matrix.shape[1]
     
     # Pre-allocate a flat array for the entire brain.
     brain_flat = np.zeros((x * y * z, num_conditions))
     brain_flat[voxel_indices, :] = diss_matrix  # set dissimilarities for the selected voxel indices
-    
     brain_4d = brain_flat.reshape((x, y, z, num_conditions))
     nifti_RDM = nib.Nifti1Image(brain_4d, affine_matrix, header)
     
     # smooth the RDMs
     smoothed_RDM = nilearn.image.smooth_img(nifti_RDM, fwhm=fwhm)
-    # save it now that you're here
-    nib.save(smoothed_RDM, path_to_save)
-    
+    if path_to_save:
+        # save it now that you're here
+        nib.save(smoothed_RDM, path_to_save)
+        
     # then perpare the RSA object again
     smoothed_RDM_file = data_RDM_file.copy()
-    
     # Get the smoothed data as a numpy array and reshape it to 2D for fast indexing.
     smoothed_RDM_4d = smoothed_RDM.get_fdata() 
     smoothed_flat = smoothed_RDM_4d.reshape(-1, num_conditions)
-    
     # Extract the dissimilarities from the smoothed data using the voxel indices.
     dissimilarities_array = smoothed_flat[voxel_indices, :]
     
-    # Update the RSA object with the new dissimilarities.
-    smoothed_RDM_file.dissimilarities = dissimilarities_array
-    
+            
+    if use_rsa_toolbox == True:
+        # Update the RSA object with the new dissimilarities.
+        smoothed_RDM_file.dissimilarities = dissimilarities_array
+    elif use_rsa_toolbox == False:
+        smoothed_RDM_file = dissimilarities_array
+        if path_to_save:
+            path_to_save = os.path.splitext(os.path.splitext(path_to_save)[0])[0]
+            np.save(path_to_save, smoothed_RDM_file)
 
-    # # import pdb; pdb.set_trace() 
-    # # THIS TAKES AGES!!
-    # brain_4d = np.zeros([x,y,z,len(data_RDM_file[0].dissimilarities[0])])
-    # for i in range(0,len(data_RDM_file[0].dissimilarities[0])):
-    #     curr_slice = np.zeros([x*y*z])
-    #     curr_slice[list(data_RDM_file.rdm_descriptors['voxel_index'])] = [vox.dissimilarities[0][i] for vox in data_RDM_file]
-    #     brain_4d[:,:,:,i] = curr_slice.reshape([x,y,z])
-    
-    
-    # voxel_indices = list(data_RDM_file.rdm_descriptors['voxel_index'])
-    
-    # num_conditions = smoothed_RDM_4d.shape[-1]
-    # num_voxels = len(voxel_indices)
-    
-    # dissimilarities_array = np.zeros((num_voxels, num_conditions))
-    
-    # # Iterate over each condition (the last dimension in the 4D array)
-    # for i in range(num_conditions):
-    #     # Flatten the current 3D slice to a 1D array
-    #     curr_slice = smoothed_RDM_4d[:,:,:,i].flatten()
-    #     # Extract the dissimilarities corresponding to the voxel indices
-    #     dissimilarities = curr_slice[voxel_indices]
-    #     # Store the dissimilarities in the numpy array
-    #     dissimilarities_array[:, i] = dissimilarities
-    
     return smoothed_RDM_file
 
-    
-    
-    
+
 
 def apply_mask(niftis, mask):
     masked_niftis = {}
