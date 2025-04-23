@@ -379,7 +379,7 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
 if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     compute_one_subject(
-        sub=4,
+        sub=58,
         #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
         models_I_want=['only','onlynowand3future', 'onlynextand2future'],
         exclude_x_repeats=[1,2,3],

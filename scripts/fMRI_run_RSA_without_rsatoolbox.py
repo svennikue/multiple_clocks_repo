@@ -33,7 +33,7 @@ RDM_version = '03-1' #'02-act'
 smoothing = True
 fwhm = 5
 load_old = False
-visualise_RDMs = False
+visualise_RDMs = True
 
 
 # import pdb; pdb.set_trace() 
@@ -174,13 +174,15 @@ for sub in subjects:
     
     for model in data_dirs:
         print(model)
+        import pdb; pdb.set_trace() 
         if RDM_version in ['01', '01-1']:
             import pdb; pdb.set_trace()
             # I NEED TO WRITE A FUNCTION FOR THIS, one that isn't corss_corr.
             # model_RDM_dir[model] = rsr.calc_rdm(model_data, method='correlation', descriptor='conds')
         else:
             model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr([np.transpose(data_dirs[model])])
-            
+        
+        
         #
         # STEP 4: evaluate the model fit between model and data RDMs.
         #

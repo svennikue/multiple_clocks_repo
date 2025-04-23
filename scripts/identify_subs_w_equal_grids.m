@@ -6,9 +6,9 @@ clear all
 source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
 if ~exist(source_dir, 'dir')
     source_dir = '/ceph/behrens/svenja/human_ABCD_ephys'
-    abcd_data = load(sprintf("%s/beh_cells/abcd_data_FIXED_19-Feb-2025.mat", source_dir));
+    abcd_data = load(sprintf("%s/beh_cells/abcd_data_17-Apr-2025.mat", source_dir));
 else
-    abcd_data = load(sprintf("%s/abcd_data_FIXED_19-Feb-2025.mat", source_dir));
+    abcd_data = load(sprintf("%s/abcd_data_17-Apr-2025.mat", source_dir));
 end
 
 deriv_dir = sprintf("%s/derivatives/", source_dir);

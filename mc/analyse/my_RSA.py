@@ -77,6 +77,7 @@ def compute_crosscorr(data_chunk):
         
         # lastly, only store the part of the RDM I am actually interested in 
         # i.e. the lower triangle, including the diagonal.
+        import pdb; pdb.set_trace()
         n = rdm.shape[1]
         RDM.append(rdm[np.triu_indices(n, k=0)]) 
     return RDM

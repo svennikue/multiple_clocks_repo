@@ -221,7 +221,7 @@ def find_start_end_indices(locations, index):
     
 
 def create_x_regressors_per_state(beh_data_curr_rep_dict, no_regs_per_state=3, only_for_rewards = False):
-    # 
+    # import pdb; pdb.set_trace()
     step_no = beh_data_curr_rep_dict['step_number']
     subpath_timings = beh_data_curr_rep_dict['timings_repeat']
     walked_path = beh_data_curr_rep_dict['trajectory']
@@ -243,12 +243,16 @@ def create_x_regressors_per_state(beh_data_curr_rep_dict, no_regs_per_state=3, o
         # import pdb; pdb.set_trace()
         # THIS IS WHERE THE ERROR COMES FROM
         # CHANGE HOW I DEAL WITH THE LAST REWARD!!!
+        
     else:
         regressors = np.zeros([n_states*no_regs_per_state, len(walked_path)])
         cols_to_fill_previous = 0
         for count_paths, (pathlength) in enumerate(step_no):
             # identify subpaths
-            curr_path = walked_path[subpath_timings[count_paths]:subpath_timings[count_paths+1]]
+            if count_paths == 3:
+                curr_path = walked_path[subpath_timings[count_paths]:]
+            else:
+                curr_path = walked_path[subpath_timings[count_paths]:subpath_timings[count_paths+1]]
             cols_to_fill = len(curr_path)
             # create a string that tells me how many columns are one nth of a state
             time_per_state_in_nth_part = ([cols_to_fill // no_regs_per_state + (1 if x < cols_to_fill % no_regs_per_state else 0) for x in range (no_regs_per_state)])
@@ -259,9 +263,6 @@ def create_x_regressors_per_state(beh_data_curr_rep_dict, no_regs_per_state=3, o
                 else:
                     regressors[nth_part+(count_paths*no_regs_per_state), cols_to_fill_previous + time_per_state_in_nth_part_cum[nth_part-1]: cols_to_fill_previous + time_per_state_in_nth_part_cum[nth_part]] = 1
             cols_to_fill_previous = cols_to_fill_previous + cols_to_fill
-
-
-    # import pdb; pdb.set_trace()
 
     return regressors
 
@@ -3165,8 +3166,8 @@ def music_box_simple_cells(location, empty_reg, grid_t_all, reward_locs, setting
             start_state = int(rep_times[state])
             end_state = int(rep_times[state+1])
             if setting not in ['withoutnow', 'only2and3future', 'onlynextand2future']:
+                # current reward
                 musicbox_regressors[curr_rew_loc, start_state:end_state] = 1
-            
                 # plus 1
                 end_next_state = int(rep_and_next_times[state+2])
                 musicbox_regressors[next_rew_loc+9, start_state:end_state] = 1
@@ -3210,9 +3211,7 @@ def music_box_simple_cells(location, empty_reg, grid_t_all, reward_locs, setting
                 end_thirnext_state = int(rep_and_next_times[state+4])
                 musicbox_regressors[third_next_rew_loc+9, start_state:end_state] = 1
 
-            
-                
-        
+
     # plt.figure()
     # plt.imshow(musicbox_regressors, aspect = 'auto')
     # plt.axhline(8.5, color='white', linewidth=1)
