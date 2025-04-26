@@ -539,6 +539,9 @@ def extract_behaviour(file):
                 df.at[index, 'time_bin_type'] = df.at[index, 'config_type'] + '_' + df.at[index, 'state'] + '_path'
     
      
+    
+    
+    
     # create a dictionnary with all future regressors, to make sure the names are not messed up.
     time_bin_types = df['time_bin_type'].dropna().unique()
     regressors = {}

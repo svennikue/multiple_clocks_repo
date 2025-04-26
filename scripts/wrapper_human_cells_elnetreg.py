@@ -185,7 +185,7 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, bin_pre_corr = Non
                 if fit_binned:
                     curr_neuron_heldouttasks_flat = mc.analyse.helpers_human_cells.neurons_to_state_bins(curr_neuron_heldouttasks_flat, binning_curr_testgrid)
                 
-            
+        # import pdb; pdb.set_trace()    
         # depending on the permutations, change the train and test dataset.
         for entry in model_string:
             # then choose which tasks to take and go and select training regressors
@@ -259,7 +259,7 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, bin_pre_corr = Non
 
     
  
-def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward_locations, save_regs, fit_binned = None, bin_pre_corr = None):
+def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward_locations, save_regs, fit_binned = None, bin_pre_corr = None, avg_across_runs = False):
     
     data, group_dir, subj_reg_file = get_data(sub, models_I_want=models_I_want, exclude_x_repeats=exclude_x_repeats, randomised_reward_locations=randomised_reward_locations)
     
@@ -282,7 +282,7 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
 
     
     
-    simulated_regs = mc.analyse.helpers_human_cells.prep_regressors_for_neurons(clean_data, models_I_want=models_I_want, exclude_x_repeats=exclude_x_repeats, randomised_reward_locations=randomised_reward_locations)
+    simulated_regs = mc.analyse.helpers_human_cells.prep_regressors_for_neurons(clean_data, models_I_want=models_I_want, exclude_x_repeats=exclude_x_repeats, randomised_reward_locations=randomised_reward_locations, avg_across_runs=avg_across_runs)
     # import pdb; pdb.set_trace() 
     group_dir_coefs = f"{group_dir}/coefs"
     group_dir_corrs = f"{group_dir}/corrs"
@@ -350,6 +350,8 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
         result_file_name = f"sub-{sub}_corrs_random_rew_order"
     if exclude_x_repeats:
         result_file_name = f"{result_file_name}_excl_rep{exclude_x_repeats[0]}-{exclude_x_repeats[-1]}"
+    if avg_across_runs == True:
+        result_file_name = f"{result_file_name}_excl_rep{exclude_x_repeats[0]}-{exclude_x_repeats[-1]}_avg_in_12_bins_across_runs"
     if fit_binned:
         result_file_name = f"{result_file_name}_excl_rep{exclude_x_repeats[0]}-{exclude_x_repeats[-1]}_fit-{fit_binned}_only_pos"
     if bin_pre_corr:
@@ -363,7 +365,7 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
     
     with open(os.path.join(group_dir_corrs,f"{result_file_name}_binned"), 'wb') as f:
         pickle.dump(results_binned, f)
-        
+    import pdb; pdb.set_trace()    
     print(f"saved the modelled data as {group_dir_corrs}/{result_file_name}")
 
     
@@ -379,14 +381,15 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
 if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     compute_one_subject(
-        sub=58,
+        sub=59,
         #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
         models_I_want=['only','onlynowand3future', 'onlynextand2future'],
         exclude_x_repeats=[1,2,3],
         randomised_reward_locations=False,
         save_regs=True,
         #fit_binned='by_state_loc_change' # 'by_loc_change', 'by_state', 'by_state_loc_change'
-        bin_pre_corr='by_state_loc_change'
+        bin_pre_corr='by_state_loc_change',
+        avg_across_runs=True
     )
 
 

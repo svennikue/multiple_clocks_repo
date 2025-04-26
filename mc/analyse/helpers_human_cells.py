@@ -832,15 +832,29 @@ def label_unique_grids(data_dict, unique = True, dont_average_tasks = False):
     return data_dict
 
 
-def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repeats = None, randomised_reward_locations = False):
+def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repeats = None, randomised_reward_locations = False, avg_across_runs = False):
     # settings
-    # import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
     
     no_state = 4
     no_locations = 9
     no_buttons = 4
     
+    
+    # clean the attempt 
+    for s in data_dict:
+        if s == 'sub-59':
+            data_prep_tmp = copy.deepcopy(data_dict)
+            for entry in ['buttons', 'locations', 'neurons', 'timings']:
+                data_dict[s][entry] = [x for i, x in enumerate(data_prep_tmp[s][entry]) if i != 21]
+            # data_dict[s]['buttons'] = [x for i, x in enumerate(data_prep_tmp[s]['buttons']) if i != 21]
+            # data_dict[s]['locations'] = [x for i, x in enumerate(data_prep_tmp[s]['locations']) if i != 21]
+            # data_dict[s]['neurons'] = [x for i, x in enumerate(data_prep_tmp[s]['neurons']) if i != 21]
+            # data_dict[s]['timings'] = [x for i, x in enumerate(data_prep_tmp[s]['timings']) if i != 21]
+            data_dict[s]['reward_configs'] =  np.delete(data_prep_tmp[s]['reward_configs'], 21, axis = 0)
+        
     data_prep = copy.deepcopy(data_dict)
+    
     for sub in data_dict:
         print(f"now starting to process data from subject {sub}")
         data_prep[sub]['state_reg'], data_prep[sub]['complete_musicbox_reg'], data_prep[sub]['reward_musicbox_reg'], data_prep[sub]['buttonbox_reg'], data_prep[sub]['location_reg'] = [],[],[],[],[]
@@ -884,7 +898,7 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
             else:  
                 timings_task = data_dict[sub]['timings'][grid_idx]
                 
-            if (sub == 'sub-15' and grid_idx == 23) or (sub == 'sub-43' and grid_idx == 3) :
+            if (sub == 'sub-15' and grid_idx == 23) or (sub == 'sub-43' and grid_idx == 3):
                 continue
             if (sub == 'sub-25' and grid_idx == 9) or (sub == 'sub-52' and grid_idx == 6) or (sub == 'sub-44' and grid_idx == 3) or (sub == 'sub-28' and grid_idx == 16) or (sub == 'sub-02' and grid_idx == 18):
                 # cut the last row of the timings
@@ -910,7 +924,6 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
                 if i+1 == len(timings_task):
                     # if this is the last repeat, cut the file differently
                     timings_next_rep = None
-                    print(f"this is the last repeat, i is {i} and I have n = {len(timings_task)} timings.")
                 else:
                     timings_next_rep = [int(elem) for elem in timings_task[i+1]]
                     
@@ -932,80 +945,7 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
                     data_prep[sub][m].append(np.concatenate(models_per_rep_dict[m], axis = 1))
             
             regression_across_repeats_concat = np.concatenate(regression_across_repeats, axis = 1)
-            
-            
-            
-            # ok right. now be careful here.
-            # # the length of the neuron files is not the same as the timings file.
-            # # the timings just tell me in WHICH BIN within the neuron file
-            # # they started moving/found a reward.
-            # # this means that the neurons will always be longer, or equally long
-            # # to the timings.
-            # # what I should compare, on the other hand, is the length of 
-            # # regression_across_repeats_concat and the timings - is this now correct???
-            # # I think it might be one too logn actually....
-            # # figure out which timings are the actual crucial ones to check!
-            # # I don't think lenght_curr_grid is useful at all like this.
-            
-            # # now, the way I am cutting the neurons is a bit different. I am doing
-            # # the timings always start with a (matlab) 1. I suspect this should be a python 0.
-            # # also, sometimes it doesn't start with 1- what happens there???
-            # # double check my matlab file!!!
-            
-            
-            # length_curr_grid = data_prep[sub]['neurons'][grid_idx].shape[1] - int(timings_task[0,0])
-            # length_curr_grid = int(timings_task[-1,-1] - timings_task[0,0])
-            # timings_all_grids = [];
-            # timing_diff = []
-            
-            
-            # for i, grid_t in enumerate(data_dict[sub]['timings']):
-            #     timings_all_grids.append(grid_t[-1,-1]-grid_t[0,0])
-            #     timing_diff.append(data_dict[sub]['neurons'][i].shape[1] - timings_all_grids[i])
-            # for grid_t in data_dict[sub]['timings']:
-            #     print(grid_t[0,0])
-                
-            # print(regression_across_repeats_concat.shape[1])
-            # print(length_curr_grid)
-            
-            # print(f"difference between neuron lenghts and timings file is {timing_diff}")
-            # import pdb; pdb.set_trace()
-            # # I think I am adding one timepoint at the verys tart, and one at the very end.
-            # # i am not sure where this is going wrong.....
-            
-            
-            # # NOTE
-            # # timings refer to the respective bin I need to look at.
-            # # I DONT NEED TO SUBTRACT 1.
-            # # I am now storing all in py indexing. (20.04.2025)
-            # # double check what's going on here :)
-            # # first column is when they end the previous grid,
-            # # the others are from 'state change times'
-            # # 
-            # # whyyyyyyyy :(
-            # # subpath_locs = [locations_curr_grid[timings_repeat[0]:timings_repeat[1]], 
-            # #                 locations_curr_grid[timings_repeat[1]:timings_repeat[2]], 
-            # #                 locations_curr_grid[timings_repeat[2]:timings_repeat[3]], 
-            # #                 locations_curr_grid[timings_repeat[3]:timings_repeat[4]]]
-            
-            # # for a couple of subjects it goes like this
-            # # 1.0
-            # # 1.0
-            # # 1.0
-            # # 1.0
-            # # 1.0
-            # # 1.0
-            # # 1.0
-            # # 7139
-            # # 7141
-            # # difference between neuron lenghts and timings file is [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 1.0]
-            
-        
-            # this version just cuts the first timings.
-            # data_prep[sub]['neurons'][grid_idx]= data_prep[sub]['neurons'][grid_idx][:, int(timings_task[0,0]):]
-            # data_prep[sub]['locations'][grid_idx] = data_prep[sub]['locations'][grid_idx][int(timings_task[0,0]):]
-            # data_prep[sub]['buttons'][grid_idx] = data_prep[sub]['buttons'][grid_idx][int(timings_task[0,0]):]
-            
+
             # this version cuts everything between starting the trial, and finding the very last reward.
             data_prep[sub]['neurons'][grid_idx]= data_prep[sub]['neurons'][grid_idx][:, int(timings_task[0,0]):int(timings_task[-1,-1]+1)]
             data_prep[sub]['locations'][grid_idx] = data_prep[sub]['locations'][grid_idx][int(timings_task[0,0]):int(timings_task[-1,-1]+1)]
@@ -1101,11 +1041,12 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
             #             differences[i,j] = row[j+1]-elem      
                         
             # on this level, there is the option to average across repeats
-            data_prep_tmp = copy.deepcopy(data_prep)
-            for m in data_prep[sub]:
-                if m.endswith('reg') or m.endswith('model') or m.endswith('neurons'):
-                    # this needs to be concatenated and all
-                    data_prep[sub][m][grid_idx+adjust_grid_idx] = mc.simulation.predictions.transform_data_to_betas(data_prep_tmp[sub][m][grid_idx+adjust_grid_idx], regression_across_repeats_concat)
+            if avg_across_runs == True:
+                data_prep_tmp = copy.deepcopy(data_prep)
+                for m in data_prep[sub]:
+                    if m.endswith('reg') or m.endswith('model') or m.endswith('neurons'):
+                        # this needs to be concatenated and all
+                        data_prep[sub][m][grid_idx+adjust_grid_idx] = mc.simulation.predictions.transform_data_to_betas(data_prep_tmp[sub][m][grid_idx+adjust_grid_idx], regression_across_repeats_concat)
 
     return data_prep
 

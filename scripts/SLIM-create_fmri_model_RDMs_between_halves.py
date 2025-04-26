@@ -57,7 +57,7 @@ for sub in subjects:
         
         # crucial step 1: get the behavioural data I need from the subject files.
         configs, rew_list, rew_index, walked_path, steps_subpath_alltasks_empty, subpath_after_steps, timings, regressors, keys_executed, keys_not_executed, timings_keys_not_executed = mc.analyse.analyse_MRI_behav.extract_behaviour(file)
-        
+        import pdb; pdb.set_trace()
         for reg in regressors:
             regressors[reg] = np.repeat(regressors[reg], repeats = temporal_resolution)
         

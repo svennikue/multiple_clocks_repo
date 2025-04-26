@@ -3135,7 +3135,7 @@ def test_timings_rew(subject, locations, grid_t_all, reward_locs, number_of_grid
             elif reward_locs[state] != locations[int(grid_times[state+1])]:
                 print(f"careful! timings don't match for {subject}, grid {number_of_grid}; location at state {state+1} and step {grid_times[state+1]} is {locations[int(grid_times[state+1])]}, and should be one of {reward_locs}!")
                 import pdb; pdb.set_trace()
-    print(f"all timings matched with finding correct rewarded location for subject {subject} and grid {reward_locs}!")
+    # print(f"all timings matched with finding correct rewarded location for subject {subject} and grid {reward_locs}!")
 
 
 
