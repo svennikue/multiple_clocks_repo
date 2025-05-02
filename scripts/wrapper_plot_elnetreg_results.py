@@ -83,19 +83,26 @@ def load_data(subs):
 def plot_all(model_name_string, define_somehow_what_to_plot=None):
     results, subjects = load_result_dirs(model_name_string)
     
-    results_corr_by_roi_binned = mc.analyse.plotting_cells.prep_result_for_plotting_by_rois(results['binned'])
-    results_corr_by_roi = mc.analyse.plotting_cells.prep_result_for_plotting_by_rois(results['raw']) 
+    # results_corr_by_roi = mc.analyse.plotting_cells.prep_result_for_plotting_by_rois(results['raw']) 
+    # results_corr_by_roi_binned = mc.analyse.plotting_cells.prep_result_for_plotting_by_rois(results['binned'])
+    
+    # title_addition = "roi neurons binned after fit"
+    # mc.analyse.plotting_cells.plotting_corr_perm_histogram_by_ROIs(results_corr_by_roi_binned,title_addition)
+    
+    # title_addition = "raw correlation, only pos fit"
+    # mc.analyse.plotting_cells.plotting_corr_perm_histogram_by_ROIs(results_corr_by_roi,title_addition)
     
     
-    title_addition = "roi neurons binned after fit"
-    mc.analyse.plotting_cells.plotting_corr_perm_histogram_by_ROIs(results_corr_by_roi_binned,title_addition)
-    
+    results_corr_by_roi_df = mc.analyse.plotting_cells.prep_result_df_for_plotting_by_rois(results['raw'])
     title_addition = "raw correlation, only pos fit"
-    mc.analyse.plotting_cells.plotting_corr_perm_histogram_by_ROIs(results_corr_by_roi,title_addition)
+    mc.analyse.plotting_cells.plotting_df_based_corr_perm_histogram_by_ROIs(results_corr_by_roi_df,title_addition)
+    
     
     
     top_ten_cells_binned, predicted_cells_binned = mc.analyse.helpers_human_cells.identify_max_cells_for_model(results['binned'])
     top_ten_cells_raw, predicted_cells_raw = mc.analyse.helpers_human_cells.identify_max_cells_for_model(results['raw'])
+    
+    import pdb; pdb.set_trace()
     
     og_data = load_data(subjects)
     
@@ -110,7 +117,7 @@ def plot_all(model_name_string, define_somehow_what_to_plot=None):
                 # subset_dict['timings'] = all_data[subject]['timings'].copy()
     mc.analyse.helpers_human_cells.store_best_cells(top_ten_cells_binned, og_data, name_extension_string='binned')
     mc.analyse.helpers_human_cells.store_best_cells(top_ten_cells_raw, og_data, name_extension_string='raw')
-    import pdb; pdb.set_trace()
+    
     
     
     
@@ -152,7 +159,8 @@ def plot_all(model_name_string, define_somehow_what_to_plot=None):
 if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     plot_all(
-        model_name_string='w_partial_musicboxes_excl_rep1-3_excl_rep1-3_pre_corr_binned-None_only_pos'
+        model_name_string='w_partial_musicboxes_excl_rep1-2_avg_in_12_bins_across_runs'
     )
-
+    
+# w_partial_musicboxes_excl_rep1-3_excl_rep1-3_pre_corr_binned-None_only_pos
 

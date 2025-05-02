@@ -9,13 +9,140 @@ Created on Tue Mar  4 11:41:55 2025
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.stats as st
+import pandas as pd
 
 
-def prep_result_for_plotting_by_rois(results):
-    
+
+def prep_result_df_for_plotting_by_rois(results):
     # Define your ROI labels
     ROI_labels = ['ACC', 'OFC', 'PCC','hippocampal', 'PFC', 'entorhinal', 'amygdala', 'mixed']
     
+    # new strategy: use pandas dataframe.
+    df = pd.DataFrame()
+    i = 0
+    for sub in results:
+        for model in results[sub]:
+            for cell_label in results[sub][model]:
+                if 'ACC' in cell_label:
+                    roi = 'ACC'
+                elif 'PCC' in cell_label:
+                    roi = 'PCC'
+                elif 'OFC' in cell_label:
+                    roi = 'OFC'
+                elif 'HC' in cell_label:
+                    roi = 'hippocampal'
+                elif 'EC' in cell_label:
+                    roi = 'entorhinal'
+                elif 'AMYG' in cell_label:
+                    roi = 'amygdala'
+                else:
+                    roi = 'mixed'
+                df.at[i, 'roi'] = roi
+                df.at[i, 'cell'] = cell_label
+                df.at[i, 'average_corr'] = np.mean(results[sub][model][cell_label])
+                df.at[i, 'model'] = model
+                i = i + 1
+                
+                
+    return df
+
+
+def plotting_df_based_corr_perm_histogram_by_ROIs(df_results, title_string_add):
+    import pdb; pdb.set_trace()
+    # rewrite for df!
+    # just filter by roi + model columns :)
+    
+    
+    # ROI_labels = ['hippocampal', 'ACC','PCC','OFC', 'entorhinal', 'amygdala', 'mixed']
+    bins=50
+
+    models = df_results['model'].unique().tolist()
+    
+    for model in models:
+        filtered_df = df_results[df_results['model'] == model]
+        rois = filtered_df['roi'].unique().tolist()
+        n_roi = len(rois)
+        # Create subplots: one row, n_roi columns
+        fig, axes = plt.subplots(1, n_roi, figsize=(n_roi*5, 5), sharey=True)
+        # In case there is only one ROI, wrap axes in a list for consistency.
+        if n_roi == 1:
+            axes = [axes]
+        
+        for ax, roi in zip(axes, rois):
+            corrs_allneurons = filtered_df[filtered_df['roi'] == roi]['average_corr']
+            
+            # corrs_allneurons = roi_dict[roi]
+            nan_filter = np.isnan(corrs_allneurons)
+            # Remove any NaN values
+            valid_corrs = corrs_allneurons[~np.isnan(corrs_allneurons)]
+            mean_sample = np.mean(corrs_allneurons[~nan_filter])
+            # Perform a two-tailed one-sample t-test
+            ttest_result = st.ttest_1samp(corrs_allneurons[~nan_filter], 0)
+            t_stat = ttest_result.statistic
+            p_two = ttest_result.pvalue
+            
+            # Convert to a one-tailed p-value for H1: mean > 0.
+            # If t_stat is positive, one-tailed p-value is half the two-tailed value.
+            # Otherwise, if t_stat is negative, the one-tailed p-value is 1 - (p_two / 2).
+            if t_stat > 0:
+                p_value = p_two / 2
+            else:
+                p_value = 1 - (p_two / 2)
+                
+            # Determine significance level based on p-value
+            if p_value < 0.001:
+                significance = '***'
+            elif p_value < 0.01:
+                significance = '**'
+            elif p_value < 0.05:
+                significance = '*'
+            else:
+                significance = 'n.s.'
+            
+            # Plot the histogram
+            ax.hist(corrs_allneurons, bins=bins, color='skyblue', edgecolor='black')
+            ax.axvline(0, color='black', linestyle='dashed', linewidth=2)
+            
+            # Set subplot title and labels
+            ax.set_title(f"{model}\n {roi} \n for {len(corrs_allneurons[~nan_filter])} neurons \n {title_string_add}", fontsize=12)
+            ax.set_xlabel("Correlation coefficient", fontsize=14)
+            ax.tick_params(axis='both', labelsize=12, width=2, length=6)
+            
+            # Only set y-label on the first subplot (or adjust as desired)
+            ax.set_ylabel("Frequency", fontsize=12)
+            
+            # Annotate with significance and p-value
+            ax.text(0.95, 0.95, f"Significance: {significance}\n(p = {p_value:.3e})\n mean = {mean_sample:.2f}",
+                    transform=ax.transAxes, fontsize=12,
+                    verticalalignment='top', horizontalalignment='right',
+                    bbox=dict(facecolor='white', edgecolor='black', boxstyle='round'))
+        
+        plt.tight_layout()
+        plt.show()
+        
+        # # Optionally print additional information per model:
+        # print(f"Model: {model}")
+        # for roi in rois:
+        #     print(f"  ROI {roi}: {len(roi_dict[roi])} neurons")
+
+
+
+
+
+
+
+
+
+
+def prep_result_for_plotting_by_rois(results):
+    import pdb; pdb.set_trace()
+    # CAREFUL!!!!
+    # THERE IS SOMETHIGN WRONG HERE!!!
+    # I DONT GET THE CORRECT RESULTS
+    # DONT USE
+    
+    # Define your ROI labels
+    ROI_labels = ['ACC', 'OFC', 'PCC','hippocampal', 'PFC', 'entorhinal', 'amygdala', 'mixed']
     # Initialize a dictionary for the collapsed results.
     # This dictionary will be structured as:
     # collapsed_results[model][ROI] = list of correlation values (to be converted to an array later)

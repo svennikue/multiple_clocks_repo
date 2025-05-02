@@ -43,7 +43,7 @@ regression_version = '03' #for every tasks, only the rewards are modelled [using
 RDM_version = '03-1' # modelling only reward rings + split ‘clocks model’ = just rotating the reward location around
 models_I_want = mc.analyse.analyse_MRI_behav.select_models_I_want(RDM_version)  
 repeats = [1, 10] # first and last repeat
-file_name_all_modelled = f"all_modelled_data_{models}_dict_firstrep{repeats[0]}_lastrep{repeats[1]}"
+file_name_all_modelled = f"all_modelled_data_{models[0]}_dict_firstrep{repeats[0]}_lastrep{repeats[1]}"
 
     
 if not os.path.isdir(group_folder):

@@ -320,8 +320,8 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
     
     print(f"starting parallel regression and correlation for all cells and models for subject {sub}")
     
-    corr_test, corr_test_binned, cell = run_elnetreg_cellwise(single_sub_dict, cells[0], fit_binned=fit_binned, bin_pre_corr=bin_pre_corr)   
-    import pdb; pdb.set_trace() 
+    #corr_test, corr_test_binned, cell = run_elnetreg_cellwise(single_sub_dict, cells[0], fit_binned=fit_binned, bin_pre_corr=bin_pre_corr)   
+    #import pdb; pdb.set_trace() 
     
     parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(single_sub_dict, c, fit_binned=fit_binned, bin_pre_corr=bin_pre_corr) for c in cells)
     
@@ -349,13 +349,15 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
     if randomised_reward_locations == True:
         result_file_name = f"sub-{sub}_corrs_random_rew_order"
     if exclude_x_repeats:
-        result_file_name = f"{result_file_name}_excl_rep{exclude_x_repeats[0]}-{exclude_x_repeats[-1]}"
-    if avg_across_runs == True:
-        result_file_name = f"{result_file_name}_excl_rep{exclude_x_repeats[0]}-{exclude_x_repeats[-1]}_avg_in_12_bins_across_runs"
-    if fit_binned:
-        result_file_name = f"{result_file_name}_excl_rep{exclude_x_repeats[0]}-{exclude_x_repeats[-1]}_fit-{fit_binned}_only_pos"
-    if bin_pre_corr:
-        result_file_name = f"{result_file_name}_excl_rep{exclude_x_repeats[0]}-{exclude_x_repeats[-1]}_pre_corr_binned-{fit_binned}_only_pos"
+        if bin_pre_corr:
+            result_file_name = f"{result_file_name}_excl_rep{exclude_x_repeats[0]}-{exclude_x_repeats[-1]}_pre_corr_binned"
+        elif avg_across_runs == True:
+            result_file_name = f"{result_file_name}_excl_rep{exclude_x_repeats[0]}-{exclude_x_repeats[-1]}_avg_in_12_bins_across_runs"
+        elif fit_binned:
+            result_file_name = f"{result_file_name}_excl_rep{exclude_x_repeats[0]}-{exclude_x_repeats[-1]}_fit-{fit_binned}_only_pos"
+        else:
+            result_file_name = f"{result_file_name}_excl_rep{exclude_x_repeats[0]}-{exclude_x_repeats[-1]}"
+
 
     # CHANGE TO ADDTION INSTEAD OF 
     
@@ -365,32 +367,34 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
     
     with open(os.path.join(group_dir_corrs,f"{result_file_name}_binned"), 'wb') as f:
         pickle.dump(results_binned, f)
-    import pdb; pdb.set_trace()    
+    # import pdb; pdb.set_trace()    
     print(f"saved the modelled data as {group_dir_corrs}/{result_file_name}")
 
     
     
-# # if running from command line, use this one!   
-# if __name__ == "__main__":
-#     #print(f"starting regression for subject {sub}")
-#     fire.Fire(compute_one_subject)
-#     # call this script like
-#     # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
-
-['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']
+# if running from command line, use this one!   
 if __name__ == "__main__":
-    # For debugging, bypass Fire and call compute_one_subject directly.
-    compute_one_subject(
-        sub=59,
-        #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
-        models_I_want=['only','onlynowand3future', 'onlynextand2future'],
-        exclude_x_repeats=[1,2,3],
-        randomised_reward_locations=False,
-        save_regs=True,
-        #fit_binned='by_state_loc_change' # 'by_loc_change', 'by_state', 'by_state_loc_change'
-        bin_pre_corr='by_state_loc_change',
-        avg_across_runs=True
-    )
+    #print(f"starting regression for subject {sub}")
+    fire.Fire(compute_one_subject)
+#    call this script like
+#    python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
+
+# ['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']
+# ['only','onlynowand3future', 'onlynextand2future']
+
+# if __name__ == "__main__":
+#     # For debugging, bypass Fire and call compute_one_subject directly.
+#     compute_one_subject(
+#         sub=59,
+#         #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
+#         models_I_want=['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future'],
+#         exclude_x_repeats=[1,2],
+#         randomised_reward_locations=False,
+#         save_regs=True,
+#         #fit_binned='by_state_loc_change' # 'by_loc_change', 'by_state', 'by_state_loc_change'
+#         #bin_pre_corr='by_state_loc_change',
+#         avg_across_runs=True
+#     )
 
 
 # these are hard-coded right now, so include them in the 'only' + models list 'state_reg', 'complete_musicbox_reg', 'reward_musicbox_reg', 'location_reg'

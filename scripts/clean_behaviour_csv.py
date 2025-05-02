@@ -41,7 +41,7 @@ def delete_unnecessary_fields(og_df):
     # drop all unused columns for better readability.
     df_clean = og_df.drop(columns=['rep_runs.thisRepN', 'rep_runs.thisTrialN', 'rep_runs.thisN', 'rep_runs.thisIndex',
                            't_step_end_global', 'sand_box.started', 'sand_box.stopped', 'foot.started', 'foot.stopped',
-                           'reward.started', 'reward.stopped',
+                           'reward.started', 'reward.stopped', 'TR_key.keys', 'TR_key.rt', 'TR_key.started',
                            'nav_key_task.stopped', 'break_key.keys', 'break_key.started', 'break_key.stopped', 
                            'progressbar_background.started', 'progressbar_background.stopped', 'progress_bar.started', 
                            'progress_bar.stopped', 'reward_progress.started', 'reward_progress.stopped', 
@@ -55,7 +55,7 @@ def delete_unnecessary_fields(og_df):
     
 
 def add_fields_I_want(df):
-    # fill gapss
+    # fill gaps
     df['round_no'] = df['round_no'].fillna(method='ffill')
     df['task_config'] = df['task_config'].fillna(method='ffill')
     df['repeat'] = df['repeat'].fillna(method='ffill')
@@ -210,19 +210,16 @@ def clean_behaviour_for_sub(sub):
         save_processed_behavioural_csv(df_completed, sub, th)
         
         
-        
 
-   
-    
     
 # # if running from command line, use this one!   
 # if __name__ == "__main__":
 #     #print(f"starting regression for subject {sub}")
 #     fire.Fire(clean_behaviour_for_sub)
-#     # call this script like
-#     # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
+#     # call this script like, replacing 
+#     # python clean_behaviour_csv.py 5
 
-['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']
+
 if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     clean_behaviour_for_sub(

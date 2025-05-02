@@ -12,11 +12,18 @@ for i in {1..59}; do
   
   # Call the Python script with the appropriate arguments
   python wrapper_human_cells_elnetreg.py "$i" \
-    --models_I_want="['only','onlynowand3future','onlynextand2future']" \
-    --exclude_x_repeats="[1,2,3]" \
+    --models_I_want="['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']" \
+    --exclude_x_repeats="[1,2]" \
     --randomised_reward_locations=False \
     --save_regs=True \
-    --bin_pre_corr='by_state_loc_change' \
     --avg_across_runs=True
+
+  #    python wrapper_human_cells_elnetreg.py "$i" \
+  #  --models_I_want="['only','onlynowand3future','onlynextand2future']" \
+  #  --exclude_x_repeats="[1,2,3]" \
+  #  --randomised_reward_locations=False \
+  #  --save_regs=True \
+  #  --bin_pre_corr='by_state_loc_change' \
+  #  --avg_across_runs=True
     
 done

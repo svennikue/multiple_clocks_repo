@@ -952,11 +952,14 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
             data_prep[sub]['buttons'][grid_idx] = data_prep[sub]['buttons'][grid_idx][int(timings_task[0,0]):int(timings_task[-1,-1]+1)]
             length_curr_grid = len(data_prep[sub]['locations'][grid_idx])
             
-            
+            # DEAL WITH THIS
+            #
+            #
+            #
             # here, go and test if the dimensions are right. if not, dublicate last column.
             for m in data_prep[sub]:
                 if m.endswith('model'):
-                    import pdb; pdb.set_trace()
+                    # import pdb; pdb.set_trace()
                     # deal with this!!! 
                     # this isn't a valid way to deal with the dimensions
                     # the length_curr_grid is a useless variable
@@ -967,8 +970,8 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
                             x = np.hstack((x, last_column))                            
                     data_prep[sub][m][grid_idx] = x 
             
-            if len(models_per_rep_dict) > 0:
-                print(f"now dimensions match: length is {length_curr_grid} and dims are {data_prep[sub][m][grid_idx].shape}")
+            # if len(models_per_rep_dict) > 0:
+            #     print(f"now dimensions match: length is {length_curr_grid} and dims are {data_prep[sub][m][grid_idx].shape}")
             
 
             #data_prep[sub]['state_reg'].append(np.zeros((no_state-1, length_curr_grid)))
@@ -1201,11 +1204,60 @@ def prep_neurons_and_state(data_dict, repeats, only_reward_times, no_bins_per_st
     return data_prep           
  
 
+def get_rid_of_low_firing_cells(data_one_sub, hz_exclusion_threshold = 0.1, sd_exclusion_threshold = 1.5):
+     
+    neuron_dict = {}
+    for task in data_one_sub['neurons']:
+        for i, neuron in enumerate(task):
+            curr_cell = f"{data_one_sub['cell_labels'][i]}_{i}"
+            if curr_cell not in neuron_dict:
+                neuron_dict[curr_cell] = []            
+            avg_rate_hz = np.sum(neuron) / (len(neuron) * 0.025)
+            neuron_dict[curr_cell].append(avg_rate_hz)
+       
+    excl_dict = {}
+    neurons_to_exclude = []
+    neurons_to_exclude_str = []
+    for neuron in neuron_dict:
+        excl_dict[f"avg_{neuron}"] = np.mean(neuron_dict[neuron])
+        excl_dict[f"dev_{neuron}"] = np.std(neuron_dict[neuron])/np.mean(neuron_dict[neuron])
+        neuron_index = neuron.split('_')[-1]
+        if excl_dict[f"avg_{neuron}"] < hz_exclusion_threshold:
+            neurons_to_exclude.append(int(neuron_index))
+            neurons_to_exclude_str.append(neuron)
+        elif excl_dict[f"dev_{neuron}"] > sd_exclusion_threshold:
+            neurons_to_exclude.append(int(neuron_index))
+            neurons_to_exclude_str.append(neuron)
 
+    remaining_neurons = {}
+    stuff_to_copy = ['reward_configs', 'timings', 'locations', 'buttons']
+    to_clean = ['cell_labels', 'neurons']
+    
+    
+    for m in data_one_sub:
+        if m in stuff_to_copy:
+            remaining_neurons[m] = data_one_sub[m]
+        elif m in to_clean:
+            # # import pdb; pdb.set_trace() 
+            # if m not in remaining_neurons[sub]:
+            #     remaining_neurons[sub][m] = []
+            if m == 'neurons':
+                if m not in remaining_neurons:
+                    remaining_neurons[m] = []
+                for el in data_one_sub[m]:
+                    cleaned = np.delete(el, neurons_to_exclude, axis=0)
+                    remaining_neurons[m].append(cleaned)
+            elif m == 'cell_labels':
+                remaining_neurons[m] = [x for i, x in enumerate(data_one_sub[m]) if i not in neurons_to_exclude]
+
+    
+    print(f"exlcuding neurons {neurons_to_exclude_str} because average spike rate lower than {hz_exclusion_threshold} or variability bigger than std/mean = {sd_exclusion_threshold}")
+    # import pdb; pdb.set_trace() 
+    return remaining_neurons
 
    
 def prep_and_model_human_cells(data_dict, repeats, model_simple = True):
-    #import pdb; pdb.set_trace()
+    
     task_labels = {'task_A': ([1., 9., 5., 8.]), 'task_B': ([2., 5., 7., 6.]), 'task_C': ([3., 7., 9., 5.]), 'task_D': ([4., 8., 1., 3.]), 'task_E': ([6., 4., 2., 9.]), 'task_F': ([7., 3., 4., 2.]), 'task_G': ([8., 2., 6., 7.]), 'task_H': ([9., 1., 3., 4.])}
     
     # import pdb; pdb.set_trace()
@@ -1216,10 +1268,11 @@ def prep_and_model_human_cells(data_dict, repeats, model_simple = True):
     modelled_data = {}
     for sub in data_dict:
         print(f"now starting to process data from subject {sub}")
-        modelled_data[sub] = {}
-        modelled_data[sub]['cell_labels'] = data_dict[sub]['cell_labels'].copy()
-        modelled_data[sub]['reward_configs'] = data_dict[sub]['reward_configs'].copy()
-
+        
+        # clean up the data per subject
+        # only consider those neurons that are firing enough
+        modelled_data[sub] = mc.analyse.helpers_human_cells.get_rid_of_low_firing_cells(data_dict[sub])
+        
         for grid_idx, grid_config in enumerate(data_dict[sub]['reward_configs']):
             # first identify which task you are currently modelling.
             for task_config_pre_defined in task_labels:
@@ -1232,20 +1285,16 @@ def prep_and_model_human_cells(data_dict, repeats, model_simple = True):
                 # probably aborted the experiment here
                 continue
             # timings task is start A - find A - find B - find C - find D
-            # subtract one because of python's different way of indexing!
-            timings_task = data_dict[sub]['timings'][grid_idx]-1
-            # current neural recordings 
-            neurons_for_task = data_dict[sub]['neurons'][grid_idx].copy()
+            timings_task = data_dict[sub]['timings'][grid_idx]
+            neurons_for_task = modelled_data[sub]['neurons'][grid_idx].copy()
+
             # fields need to be between 0 and 8, and keep them as integers
             locations_curr_grid = [int((field_no-1)) for field_no in data_dict[sub]['locations'][grid_idx]]
             task_config = [int((field_no-1)) for field_no in data_dict[sub]['reward_configs'][grid_idx]]
                 
-            regression_across_repeats = {}
-            models_per_repeat = {}
-            # for repeat in range(1, len(timings_task)):
-            prep_repeat_dict = {}   
+            regression_across_repeats, models_per_repeat, prep_repeat_dict  = {}, {}, {}
+            # for repeat in range(1, len(timings_task)):  
             for repeat in range(repeats[0], repeats[1]):
-                
                 # first check if this repeat wasn't completed
                 # for current repeat
                 if math.isnan(timings_task[repeat][-1]) == True:
@@ -1269,6 +1318,7 @@ def prep_and_model_human_cells(data_dict, repeats, model_simple = True):
                     timings_next_repeat = None
                 # this includes the trajectory, and the according neural recording
                 prep_repeat_dict[f"rep_{repeat}"] = mc.analyse.helpers_human_cells.prep_behaviour_one_repeat(timings_repeat, locations_curr_grid, timings_next_repeat, task_config, neurons_for_task)
+                
                 # then model per repeat/grid/subject
                 if model_simple == True:
                     models_per_repeat[f"rep_{repeat}"] = mc.simulation.predictions.set_simple_models_cells(prep_repeat_dict[f"rep_{repeat}"])

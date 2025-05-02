@@ -1348,7 +1348,7 @@ def set_location_contin(walked_path, step_time, grid_size = 3, fire_radius = 0.2
 # models_per_repeat[f"rep_{repeat}"] = mc.simulation.predictions.set_simple_models_cells(prep_repeat_dict)
 
 def set_simple_models_cells(data_dict):
-    #import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     # simple models are: location model, current reward, next reward, 
     # 2 future reward, 3 future reward,state
 
@@ -1435,7 +1435,7 @@ def set_simple_models_cells(data_dict):
                 model_dict[model] = subpath_dict[model].copy()
             else:
                 model_dict[model] = np.concatenate((model_dict[model], subpath_dict[model]), axis = 1)
-              
+    # import pdb; pdb.set_trace()          
     return model_dict
     
     
