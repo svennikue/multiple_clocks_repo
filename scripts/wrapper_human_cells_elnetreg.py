@@ -111,14 +111,21 @@ def get_rid_of_low_firing_cells(data, hz_exclusion_threshold = 0.25, sd_exclusio
     
 
 
-def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, bin_pre_corr = None):
+def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = None):
     # parameters that seem to work, can be set flexibly
     alpha=0.0001 ##0.01 used in El-gaby paper
     # l1_ratio= 0.01
     
     
     cell_idx = int(curr_cell.split('_')[1])
-    corr_dict, corr_dict_binned, coefs_per_model = {}, {}, {}
+    corr_dict, coefs_per_model = {}, {}
+    if fit_binned:
+        coefs_per_model_binned = {}
+        corr_dict_binned = {}
+    if fit_residuals == True:
+        corr_dict_residuals = {}
+        coefs_per_model_residuals = {}
+        
     model_string = []
     for model in data:
         if model.endswith('reg') or model.endswith('model'):
@@ -134,6 +141,10 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, bin_pre_corr = Non
         corr_dict[model][curr_cell] = np.zeros(len(unique_grids))
         corr_dict_binned[model][curr_cell] = np.zeros(len(unique_grids))
         coefs_per_model[model] = []
+        if fit_binned:
+            coefs_per_model_binned[model] = []
+        if fit_residuals == True:
+            coefs_per_model_residuals[model] = []
         
     for task_idx, left_out_grid_idx in enumerate(idx_unique_grid): 
         
@@ -151,14 +162,13 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, bin_pre_corr = Non
         all_neurons_training_tasks = itemgetter(*training_grid_idx)(data['neurons'])
         curr_neuron_training_tasks = [all_neurons[cell_idx] for all_neurons in all_neurons_training_tasks]
         
-  
-        if fit_binned or bin_pre_corr:
-            if fit_binned == 'by_state' or bin_pre_corr == 'by_state':
+        if fit_binned:
+            if fit_binned == 'by_state':
                 binning_model = 'state_reg'
-            elif fit_binned == 'by_loc_change' or bin_pre_corr == 'by_loc_change':
+            elif fit_binned == 'by_loc_change':
                 binning_model = 'location_reg'
             # multimodel uses slightly different function and indexing works differently
-            if fit_binned == 'by_state_loc_change' or bin_pre_corr == 'by_state_loc_change':
+            if fit_binned == 'by_state_loc_change':
                 binning_model = ['state_reg', 'location_reg']
                 binning_curr_testgrid, binning_curr_training_grids = {}, {}
                 for m in binning_model:
@@ -182,10 +192,11 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, bin_pre_corr = Non
                     binning_curr_testgrid = np.transpose(np.concatenate(binning_neurons_test_grids, axis = 1))
                 else:
                     binning_curr_testgrid = np.transpose(binning_neurons_test_grids)
-                if fit_binned:
-                    curr_neuron_heldouttasks_flat = mc.analyse.helpers_human_cells.neurons_to_state_bins(curr_neuron_heldouttasks_flat, binning_curr_testgrid)
                 
-        import pdb; pdb.set_trace()    
+                curr_neuron_heldouttasks_flat_binned = mc.analyse.helpers_human_cells.neurons_to_state_bins(curr_neuron_heldouttasks_flat, binning_curr_testgrid)
+                
+        # import pdb; pdb.set_trace()   
+        
         # depending on the permutations, change the train and test dataset.
         for entry in model_string:
             # then choose which tasks to take and go and select training regressors
@@ -204,62 +215,52 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, bin_pre_corr = Non
                 simulated_neurons_test_grids_flat = simulated_neurons_test_grids_flat[:, 0:3].copy()
             
             y = np.concatenate(curr_neuron_training_tasks)
-            # import pdb; pdb.set_trace()
+
+            reg = ElasticNet(alpha=alpha, positive=True, max_iter=100000).fit(X, y)  
+            coeffs_flat=reg.coef_
+            coefs_per_model[entry].append(coeffs_flat)
+            # next, create the predicted activity neuron.
+            predicted_activity_curr_neuron = np.sum((coeffs_flat*simulated_neurons_test_grids_flat), axis = 1)
+            Predicted_Actual_correlation=st.pearsonr(curr_neuron_heldouttasks_flat,predicted_activity_curr_neuron)[0]
+            
+            corr_dict[entry][curr_cell][task_idx] = Predicted_Actual_correlation
 
             if fit_binned:
                 if fit_binned == 'by_state_loc_change':
-                    simulated_neurons_test_grids_flat = mc.analyse.helpers_human_cells.neurons_to_bins_multimodel(simulated_neurons_test_grids_flat, binning_curr_testgrid)
+                    simulated_neurons_test_grids_flat_binned = mc.analyse.helpers_human_cells.neurons_to_bins_multimodel(simulated_neurons_test_grids_flat, binning_curr_testgrid)
                     
-                    X = mc.analyse.helpers_human_cells.neurons_to_bins_multimodel(X, binning_curr_training_grids)
-                    y = mc.analyse.helpers_human_cells.neurons_to_bins_multimodel(y, binning_curr_training_grids)
+                    X_binned = mc.analyse.helpers_human_cells.neurons_to_bins_multimodel(X, binning_curr_training_grids)
+                    y_binned = mc.analyse.helpers_human_cells.neurons_to_bins_multimodel(y, binning_curr_training_grids)
                     
                 else:
-                    simulated_neurons_test_grids_flat = mc.analyse.helpers_human_cells.neurons_to_state_bins(simulated_neurons_test_grids_flat, binning_curr_testgrid)
+                    simulated_neurons_test_grids_flat_binned = mc.analyse.helpers_human_cells.neurons_to_state_bins(simulated_neurons_test_grids_flat, binning_curr_testgrid)
 
-                    X = mc.analyse.helpers_human_cells.neurons_to_state_bins(X, binning_curr_training_grids)
-                    y = mc.analyse.helpers_human_cells.neurons_to_state_bins(y, binning_curr_training_grids)
-                    
-         
-            reg = ElasticNet(alpha=alpha, positive=True, max_iter=100000).fit(X, y)  
-            coeffs_flat=reg.coef_
-            
-            # save per neuron, for all models, across perms.
-            # rewrite!!
-            coefs_per_model[entry].append(coeffs_flat)
-            # next, create the predicted activity neuron.
-            # import pdb; pdb.set_trace()
-            predicted_activity_curr_neuron = np.sum((coeffs_flat*simulated_neurons_test_grids_flat), axis = 1)
-               
-            # if not fit_binned == 'by_state':
-            if bin_pre_corr:
-                if bin_pre_corr == 'by_state_loc_change':
-                   predicted_activity_curr_neuron_binned =  mc.analyse.helpers_human_cells.neurons_to_bins_multimodel(predicted_activity_curr_neuron, binning_curr_testgrid)
-                   curr_neuron_heldouttasks_flat_binned = mc.analyse.helpers_human_cells.neurons_to_bins_multimodel(curr_neuron_heldouttasks_flat, binning_curr_testgrid)
-                else:
-                    # before doing this, first bin per state.
-                    predicted_activity_curr_neuron_binned = mc.analyse.helpers_human_cells.neurons_to_state_bins(predicted_activity_curr_neuron, binning_curr_testgrid)
-                    curr_neuron_heldouttasks_flat_binned = mc.analyse.helpers_human_cells.neurons_to_state_bins(curr_neuron_heldouttasks_flat, binning_curr_testgrid)
-                    
+                    X_binned = mc.analyse.helpers_human_cells.neurons_to_state_bins(X, binning_curr_training_grids)
+                    y_binned = mc.analyse.helpers_human_cells.neurons_to_state_bins(y, binning_curr_training_grids)
+                
+                reg_binned = ElasticNet(alpha=alpha, positive=True, max_iter=100000).fit(X_binned, y_binned)  
+                coeffs_flat_binned=reg_binned.coef_
+                coefs_per_model_binned[entry].append(coeffs_flat_binned)
+                # next, create the predicted activity neuron.
+                predicted_activity_curr_neuron_binned = np.sum((coeffs_flat*simulated_neurons_test_grids_flat_binned), axis = 1)
                 Predicted_Actual_correlation_binned=st.pearsonr(curr_neuron_heldouttasks_flat_binned,predicted_activity_curr_neuron_binned)[0]
                 corr_dict_binned[entry][curr_cell][task_idx] = Predicted_Actual_correlation_binned
-                    
-            Predicted_Actual_correlation=st.pearsonr(curr_neuron_heldouttasks_flat,predicted_activity_curr_neuron)[0]
-            # import pdb; pdb.set_trace() 
-            # if np.isnan(Predicted_Actual_correlation):
-            #     import pdb; pdb.set_trace()
-            # most likely nan if the predicted activity is just 0 bc of low firing rate
-            corr_dict[entry][curr_cell][task_idx] = Predicted_Actual_correlation
-            
-    # return corr_dict, corr_dict_binned 
-    # for m in corr_dict:
-    #     print(f"for model {m} mean is {np.mean(corr_dict[m][curr_cell])}")
-        
-    # import pdb; pdb.set_trace()       
-    return corr_dict, corr_dict_binned, curr_cell
+    
+
+    # import pdb; pdb.set_trace()
+    all_results = {}
+    all_results['corr'] = corr_dict
+    if fit_binned:
+        all_results['corr_dict_binned'] = corr_dict_binned
+    if fit_residuals == True:
+        all_results['corr_dict_residuals'] = corr_dict_residuals
+    all_results['curr_cell'] = curr_cell    
+    
+    return all_results
 
     
  
-def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward_locations, save_regs, fit_binned = None, bin_pre_corr = None, avg_across_runs = False):
+def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward_locations, save_regs, fit_binned = None, fit_residuals= False, avg_across_runs = False):
     
     data, group_dir, subj_reg_file = get_data(sub, models_I_want=models_I_want, exclude_x_repeats=exclude_x_repeats, randomised_reward_locations=randomised_reward_locations)
     
@@ -307,83 +308,83 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
 
 
     print(f"starting parallel regression and correlation for all cells and models for subject {sub}")
-    corr_test, corr_test_binned, cell = run_elnetreg_cellwise(single_sub_dict, cells[0], fit_binned=fit_binned, bin_pre_corr=bin_pre_corr)   
-    import pdb; pdb.set_trace() 
     
-    parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(single_sub_dict, c, fit_binned=fit_binned, bin_pre_corr=bin_pre_corr) for c in cells)
+
+
+    # results = run_elnetreg_cellwise(single_sub_dict, cells[0], fit_binned=fit_binned, fit_residuals=fit_residuals)    
+    parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(single_sub_dict, c, fit_binned=fit_binned, fit_residuals=fit_residuals) for c in cells)
     
+    result_dir = {}
+    result_dir['binned'], result_dir['raw'], result_dir['residuals'] = {}, {}, {}
+    for cell_idx in parallel_results:
+        curr_cell = cell_idx['curr_cell']
+        result_dir['raw'][curr_cell] = cell_idx['corr']
+        if fit_binned:
+            result_dir['binned'][curr_cell] = cell_idx['corr_dict_binned']
+        if fit_residuals == True:
+            result_dir['residuals'][curr_cell] = cell_idx['corr_dict_binned']
     
-    results = {}
-    results_binned = {}
-    
-    for corr_dict, corr_dict_binned, curr_cell in parallel_results:
-        results[curr_cell] = corr_dict
-        results_binned[curr_cell] = corr_dict_binned
-    
-    # parallel = Parallel(n_jobs=-1, return_as="generator")
-    # parallel_results = parallel(delayed(run_elnetreg_cellwise)(single_sub_dict, c) for c in cells)
-    
-    # results = {}
-    # results_binned = {}
-    
-    # for corr_dict, corr_dict_binned, curr_cell in parallel_results:
-    #     results[curr_cell] = corr_dict
-    #     results_binned[curr_cell] = corr_dict_binned
-    
+    # import pdb; pdb.set_trace() 
+    # define the basename
     result_file_name  = f"sub-{sub}_corrs"
     if models_I_want:
         result_file_name = f"sub-{sub}_corrs_w_partial_musicboxes"
     if randomised_reward_locations == True:
         result_file_name = f"sub-{sub}_corrs_random_rew_order"
     if exclude_x_repeats:
-        if bin_pre_corr:
-            result_file_name = f"{result_file_name}_excl_rep{exclude_x_repeats[0]}-{exclude_x_repeats[-1]}_pre_corr_binned"
-        elif avg_across_runs == True:
-            result_file_name = f"{result_file_name}_excl_rep{exclude_x_repeats[0]}-{exclude_x_repeats[-1]}_avg_in_12_bins_across_runs"
-        elif fit_binned:
-            result_file_name = f"{result_file_name}_excl_rep{exclude_x_repeats[0]}-{exclude_x_repeats[-1]}_fit-{fit_binned}_only_pos"
+        if avg_across_runs == True:
+            result_file_name = f"{result_file_name}_excl_rep{exclude_x_repeats[0]}-{exclude_x_repeats[-1]}_avg_in_20_bins_across_runs"
         else:
             result_file_name = f"{result_file_name}_excl_rep{exclude_x_repeats[0]}-{exclude_x_repeats[-1]}"
-
-
-    # CHANGE TO ADDTION INSTEAD OF 
     
-    
+    # I need to do some sort of extraction
+    # but basically I want to do 
+    # first, save the basic result
     with open(os.path.join(group_dir_corrs,result_file_name), 'wb') as f:
-        pickle.dump(results, f)
+        pickle.dump(result_dir['raw'], f)
     
-    with open(os.path.join(group_dir_corrs,f"{result_file_name}_binned"), 'wb') as f:
-        pickle.dump(results_binned, f)
-    # import pdb; pdb.set_trace()    
+    # second, if fit_binned
+    if fit_binned:
+        result_file_name = f"{result_file_name}_fit_binned_{fit_binned}"
+        with open(os.path.join(group_dir_corrs,result_file_name), 'wb') as f:
+            pickle.dump(result_dir['binned'], f)
+    
+    # third, in case of fit_residuals
+    if fit_residuals == True:
+        result_file_name = f"{result_file_name}_fit_state_residuals"
+        with open(os.path.join(group_dir_corrs,result_file_name), 'wb') as f:
+            pickle.dump(result_dir['residuals'], f)
+
     print(f"saved the modelled data as {group_dir_corrs}/{result_file_name}")
 
     
     
-# # if running from command line, use this one!   
-# if __name__ == "__main__":
-#     #print(f"starting regression for subject {sub}")
-#     fire.Fire(compute_one_subject)
+# if running from command line, use this one!   
+if __name__ == "__main__":
+    #print(f"starting regression for subject {sub}")
+    fire.Fire(compute_one_subject)
 #    call this script like
 #    python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
 
 # ['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']
 # ['only','onlynowand3future', 'onlynextand2future']
 
-if __name__ == "__main__":
-    # For debugging, bypass Fire and call compute_one_subject directly.
-    compute_one_subject(
-        sub=9,
-        #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
-        models_I_want=['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future'],
-        exclude_x_repeats=[1,2],
-        randomised_reward_locations=False,
-        save_regs=True,
-        fit_binned='by_state', # 'by_loc_change', 'by_state', 'by_state_loc_change'
-        # fit_binned='by_state_loc_change' # 'by_loc_change', 'by_state', 'by_state_loc_change'
-        # introduce a fit residuals options!
-        # bin_pre_corr='by_state',
-        avg_across_runs=True
-    )
+# if __name__ == "__main__":
+#     # For debugging, bypass Fire and call compute_one_subject directly.
+#     compute_one_subject(
+#         sub=9,
+#         #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
+#         models_I_want=['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future'],
+#         exclude_x_repeats=[1,2],
+#         randomised_reward_locations=False,
+#         save_regs=True,
+#         fit_binned='by_state', # 'by_loc_change', 'by_state', 'by_state_loc_change'
+#         fit_residuals=False,
+#         # fit_binned='by_state_loc_change' # 'by_loc_change', 'by_state', 'by_state_loc_change'
+#         # introduce a fit residuals options!
+#         # bin_pre_corr='by_state',
+#         avg_across_runs=True
+#     )
 
 
 # these are hard-coded right now, so include them in the 'only' + models list 'state_reg', 'complete_musicbox_reg', 'reward_musicbox_reg', 'location_reg'

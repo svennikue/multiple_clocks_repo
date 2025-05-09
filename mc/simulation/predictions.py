@@ -220,7 +220,7 @@ def find_start_end_indices(locations, index):
     return start_idx, end_idx
     
 
-def create_x_regressors_per_state(beh_data_curr_rep_dict, no_regs_per_state=3, only_for_rewards = False):
+def create_x_regressors_per_state(beh_data_curr_rep_dict, no_regs_per_state=5, only_for_rewards = False):
     # import pdb; pdb.set_trace()
     step_no = beh_data_curr_rep_dict['step_number']
     subpath_timings = beh_data_curr_rep_dict['timings_repeat']

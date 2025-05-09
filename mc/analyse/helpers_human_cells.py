@@ -858,35 +858,45 @@ def label_unique_grids(data_dict, unique = True, dont_average_tasks = False):
     return data_dict
 
 
-def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repeats = None, randomised_reward_locations = False, avg_across_runs = False):
-    # settings
-    #import pdb; pdb.set_trace()
+def clean_data(data, s):
+    # hard-code problemgrids for each s
+    if s == 'sub-59':
+        problem_grid_idx = 21
+    if s == 'sub-15':
+        problem_grid_idx = 23
+    if s == 'sub-43':
+        problem_grid_idx = 3
     
+    data_prep_tmp = copy.deepcopy(data)
+    for entry in ['buttons', 'locations', 'neurons', 'timings']:
+        data[s][entry] = [x for i, x in enumerate(data_prep_tmp[s][entry]) if i != problem_grid_idx]
+    data[s]['reward_configs'] =  np.delete(data_prep_tmp[s]['reward_configs'], problem_grid_idx, axis = 0)
+    
+    
+    return data
+    
+
+def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repeats = None, randomised_reward_locations = False, avg_across_runs = False):
+    #import pdb; pdb.set_trace()
     no_state = 4
     no_locations = 9
     no_buttons = 4
+    if avg_across_runs==True:
+        bins_per_state = 5
     all_models = ['state_reg','complete_musicbox_reg','reward_musicbox_reg','buttonbox_reg','location_reg','current_reward_reg', 'next_reward_reg', 'second_next_reward_reg', 'previous_reward_reg']
     models_same_length = ['location_reg','current_reward_reg', 'next_reward_reg', 'second_next_reward_reg', 'previous_reward_reg']
     
-    # clean the attempt 
-    for s in data_dict:
-        if s == 'sub-59':
-            data_prep_tmp = copy.deepcopy(data_dict)
-            for entry in ['buttons', 'locations', 'neurons', 'timings']:
-                data_dict[s][entry] = [x for i, x in enumerate(data_prep_tmp[s][entry]) if i != 21]
-            # data_dict[s]['buttons'] = [x for i, x in enumerate(data_prep_tmp[s]['buttons']) if i != 21]
-            # data_dict[s]['locations'] = [x for i, x in enumerate(data_prep_tmp[s]['locations']) if i != 21]
-            # data_dict[s]['neurons'] = [x for i, x in enumerate(data_prep_tmp[s]['neurons']) if i != 21]
-            # data_dict[s]['timings'] = [x for i, x in enumerate(data_prep_tmp[s]['timings']) if i != 21]
-            data_dict[s]['reward_configs'] =  np.delete(data_prep_tmp[s]['reward_configs'], 21, axis = 0)
-        
+    # clean subjects that messed up certain grids 
+    for sub in data_dict:
+        if sub in ['sub-15', 'sub-43', 'sub-59']:
+            data_dict[sub] = clean_data(sub)
+
     data_prep = copy.deepcopy(data_dict)
-    
+
     for sub in data_dict:
         print(f"now starting to process data from subject {sub}")
         for m in all_models:
             data_prep[sub][m]=[]
-        # data_prep[sub]['state_reg'], data_prep[sub]['complete_musicbox_reg'], data_prep[sub]['reward_musicbox_reg'], data_prep[sub]['buttonbox_reg'], data_prep[sub]['location_reg'] = [],[],[],[],[]
 
         if models_I_want:
             if models_I_want[0] == 'only':
@@ -914,38 +924,31 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
                         shuffled_tasks[j] = data_dict[sub]['reward_configs'][i-1]
                     else:
                         shuffled_tasks[j] = data_dict[sub]['reward_configs'][i+1]
-
-                    
+       
             reward_configurations = shuffled_tasks.copy()
             data_prep[sub]['shuffled_tasks'] = shuffled_tasks.copy()
             
             
         for grid_idx, grid_config in enumerate(reward_configurations):
-            
             if exclude_x_repeats:
                 start_from_repeat = np.max(exclude_x_repeats)
                 timings_task = data_dict[sub]['timings'][grid_idx][start_from_repeat:]
             else:  
                 timings_task = data_dict[sub]['timings'][grid_idx]
                 
-            if (sub == 'sub-15' and grid_idx == 23) or (sub == 'sub-43' and grid_idx == 3):
-                continue
             if (sub == 'sub-25' and grid_idx == 9) or (sub == 'sub-52' and grid_idx == 6) or (sub == 'sub-44' and grid_idx == 3) or (sub == 'sub-28' and grid_idx == 16) or (sub == 'sub-02' and grid_idx == 18):
-                # cut the last row of the timings
+                # cut the last row of the timings as they didn't finish it in that repeat
                 timings_task = timings_task[:-1, :]
             
             if randomised_reward_locations == False:
                 # check the match between timings and reward configs
                 mc.simulation.predictions.test_timings_rew(sub, data_dict[sub]['locations'][grid_idx],timings_task, grid_config, grid_idx)
             
-            # first run the old way of modelling.
-            # this needs to loop more
-            # import pdb; pdb.set_trace()
+            # first run the old way of modelling for the complete models (plus controls. Will end with 'model')
             neurons_for_task = data_dict[sub]['neurons'][grid_idx].copy()
             # fields need to be between 0 and 8, and keep them as integers
             locations_curr_grid = [int((field_no-1)) for field_no in data_dict[sub]['locations'][grid_idx]]
             task_config = [int((field_no-1)) for field_no in data_dict[sub]['reward_configs'][grid_idx]]
-             
             models_per_rep_dict, per_rep_prep = {}, {}
             regression_across_repeats = []
             for i, reps in enumerate(timings_task):
@@ -958,8 +961,10 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
                     timings_next_rep = [int(elem) for elem in timings_task[i+1]]
                     
                 per_rep_prep[f"rep_{i}"] = mc.analyse.helpers_human_cells.prep_behaviour_one_repeat(timings_repeat, locations_curr_grid, timings_next_rep, task_config, neurons_for_task)
-                regression_across_repeats.append(mc.simulation.predictions.create_x_regressors_per_state(per_rep_prep[f"rep_{i}"], only_for_rewards=False))
                 
+                if avg_across_runs == True:
+                    # prepare binning regressors if wanted
+                    regression_across_repeats.append(mc.simulation.predictions.create_x_regressors_per_state(per_rep_prep[f"rep_{i}"], no_regs_per_state=bins_per_state, only_for_rewards=False))
                 
                 if models_I_want[0] != 'only':
                     models_per_rep = mc.simulation.predictions.set_continous_models_ephys(per_rep_prep[f"rep_{i}"],  grid_size = 3, no_phase_neurons=3, fire_radius = 0.25, wrap_around = 1, plot = False, split_clock = True, use_orig_timings= True)
@@ -970,44 +975,36 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
                         models_per_rep_dict[model].append(models_per_rep[model])
                         if model not in data_prep[sub]:
                             data_prep[sub][model] = []
-                
-                #
-                #
-                regression_one_rep = mc.simulation.predictions.create_x_regressors_per_state(per_rep_prep[f"rep_{i}"], only_for_rewards=False)
-                # s = f"rep_{i}"
-                
-                # print(f"for rep {i} timing last repeat is {per_rep_prep[s]['timings_repeat'][-1]}")
-                # print(f"for rep {i} trajectory is {len(per_rep_prep[s]['trajectory'])}")
-                # print(f"for rep {i} regression is {len(regression_one_rep.transpose())}")
-                # print(f"for rep {i} model is {len(models_per_rep['stat_model'].transpose())}")
-                # #
-                # #
-                            
+   
             for m in models_per_rep_dict:
                 if m in data_prep[sub]:
                     data_prep[sub][m].append(np.concatenate(models_per_rep_dict[m], axis = 1))
-            
-            regression_across_repeats_concat = np.concatenate(regression_across_repeats, axis = 1)
+                    
+            if avg_across_runs == True:
+                # prepare binning regressors if wanted
+                regression_across_repeats_concat = np.concatenate(regression_across_repeats, axis = 1)
 
             # this version cuts everything between starting the trial, and finding the very last reward.
             data_prep[sub]['neurons'][grid_idx]= data_prep[sub]['neurons'][grid_idx][:, int(timings_task[0,0]):int(timings_task[-1,-1])]
             data_prep[sub]['locations'][grid_idx] = data_prep[sub]['locations'][grid_idx][int(timings_task[0,0]):int(timings_task[-1,-1]+1)]
             data_prep[sub]['buttons'][grid_idx] = data_prep[sub]['buttons'][grid_idx][int(timings_task[0,0]):int(timings_task[-1,-1]+1)]
-            length_curr_grid = len(data_prep[sub]['locations'][grid_idx])
-            
-            # what if I do this instead???
+            # length_curr_grid = len(data_prep[sub]['locations'][grid_idx])
+
+            # this is still linked to the differences in slicing 9th of may 2025
+            # Ideally, i'd cut all timings for regressors, models and regs at the SAME PLACE
+            # and then use the same slices for each.
+            # this is a fix for now, but it's not ideal.
             length_curr_grid = int(timings_task[-1,-1]) - int(timings_task[0,0])
 
-            # DEAL WITH THIS
-            #
-            #
-            #
+
+
             # here, go and test if the dimensions are right. if not, dublicate last column.
+            # this should NOT be needed anymore!!! 9.05.2025 
+            # that's why there is a breakpoint. still good to check...
+            # it dublicates the last column in case I cut one too many- but this
+            # has the power to substantially change the regression later which i want to avoid
             for m in data_prep[sub]:
                 if m.endswith('model'):
-                    # deal with this!!! 
-                    # this isn't a valid way to deal with the dimensions
-                    # the length_curr_grid is a useless variable
                     if data_prep[sub][m][grid_idx].shape[1] < length_curr_grid :
                         import pdb; pdb.set_trace()
                         x = data_prep[sub][m][grid_idx]
@@ -1015,9 +1012,6 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
                             last_column = data_prep[sub][m][grid_idx][:, -1].reshape(-1, 1)  # Extract and reshape the last column
                             x = np.hstack((x, last_column))                            
                         data_prep[sub][m][grid_idx] = x 
-            
-            # if len(models_per_rep_dict) > 0:
-            #     print(f"now dimensions match: length is {length_curr_grid} and dims are {data_prep[sub][m][grid_idx].shape}")
             
 
             #data_prep[sub]['state_reg'].append(np.zeros((no_state-1, length_curr_grid)))
@@ -1064,57 +1058,38 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
                 #     grid_config = shuffled_tasks[grid_idx-1]
                 print(f"shuffled reward config is {grid_config} and actual was {data_dict[sub]['reward_configs'][grid_idx]}")
             
-            # import pdb; pdb.set_trace()
-            adjust_grid_idx = 0 
-            if sub == 'sub-43' and grid_idx > 3:
-                adjust_grid_idx = -1
-                # account for the skipped grid. no added regressor for that grid, so data_prep dict is one shorter
-            data_prep[sub]['state_reg'][grid_idx+adjust_grid_idx] = mc.simulation.predictions.state_cells(data_prep[sub]['state_reg'][grid_idx+adjust_grid_idx],timings_task, grid_config)
-            data_prep[sub]['reward_musicbox_reg'][grid_idx+adjust_grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_prep[sub]['locations'][grid_idx], data_prep[sub]['reward_musicbox_reg'][grid_idx+adjust_grid_idx], timings_task, grid_config)
+
+            data_prep[sub]['state_reg'][grid_idx] = mc.simulation.predictions.state_cells(data_prep[sub]['state_reg'][grid_idx],timings_task, grid_config)
+            data_prep[sub]['location_reg'][grid_idx] = mc.simulation.predictions.locations_cells(data_prep[sub]['locations'][grid_idx], data_prep[sub]['location_reg'][grid_idx])
+            data_prep[sub]['reward_musicbox_reg'][grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_prep[sub]['locations'][grid_idx], data_prep[sub]['reward_musicbox_reg'][grid_idx], timings_task, grid_config)
+            data_prep[sub]['complete_musicbox_reg'][grid_idx] = mc.simulation.predictions.musicbox_cells_complete(data_prep[sub]['locations'][grid_idx], data_prep[sub]['complete_musicbox_reg'][grid_idx], timings_task, grid_config)
             
             # split musicbox
-            data_prep[sub]['current_reward_reg'][grid_idx+adjust_grid_idx] = mc.simulation.predictions.single_reward(data_prep[sub]['locations'][grid_idx], data_prep[sub]['current_reward_reg'][grid_idx+adjust_grid_idx], timings_task, grid_config, setting='current')
-            data_prep[sub]['next_reward_reg'][grid_idx+adjust_grid_idx] = mc.simulation.predictions.single_reward(data_prep[sub]['locations'][grid_idx], data_prep[sub]['next_reward_reg'][grid_idx+adjust_grid_idx], timings_task, grid_config, setting='next')
-            data_prep[sub]['second_next_reward_reg'][grid_idx+adjust_grid_idx] = mc.simulation.predictions.single_reward(data_prep[sub]['locations'][grid_idx], data_prep[sub]['second_next_reward_reg'][grid_idx+adjust_grid_idx], timings_task, grid_config, setting='second_next')
-            data_prep[sub]['previous_reward_reg'][grid_idx+adjust_grid_idx] = mc.simulation.predictions.single_reward(data_prep[sub]['locations'][grid_idx], data_prep[sub]['previous_reward_reg'][grid_idx+adjust_grid_idx], timings_task, grid_config, setting='previous')
+            data_prep[sub]['current_reward_reg'][grid_idx] = mc.simulation.predictions.single_reward(data_prep[sub]['locations'][grid_idx], data_prep[sub]['current_reward_reg'][grid_idx], timings_task, grid_config, setting='current')
+            data_prep[sub]['next_reward_reg'][grid_idx] = mc.simulation.predictions.single_reward(data_prep[sub]['locations'][grid_idx], data_prep[sub]['next_reward_reg'][grid_idx], timings_task, grid_config, setting='next')
+            data_prep[sub]['second_next_reward_reg'][grid_idx] = mc.simulation.predictions.single_reward(data_prep[sub]['locations'][grid_idx], data_prep[sub]['second_next_reward_reg'][grid_idx], timings_task, grid_config, setting='second_next')
+            data_prep[sub]['previous_reward_reg'][grid_idx] = mc.simulation.predictions.single_reward(data_prep[sub]['locations'][grid_idx], data_prep[sub]['previous_reward_reg'][grid_idx], timings_task, grid_config, setting='previous')
             
-            
-            data_prep[sub]['location_reg'][grid_idx+adjust_grid_idx] = mc.simulation.predictions.locations_cells(data_prep[sub]['locations'][grid_idx], data_prep[sub]['location_reg'][grid_idx+adjust_grid_idx])
-            
-            data_prep[sub]['complete_musicbox_reg'][grid_idx+adjust_grid_idx] = mc.simulation.predictions.musicbox_cells_complete(data_prep[sub]['locations'][grid_idx], data_prep[sub]['complete_musicbox_reg'][grid_idx+adjust_grid_idx], timings_task, grid_config)
-            data_prep[sub]['buttonbox_reg'][grid_idx+adjust_grid_idx] = mc.simulation.predictions.button_box_simple_cells(data_prep[sub]['buttons'][grid_idx], data_prep[sub]['buttonbox_reg'][grid_idx+adjust_grid_idx], timings_task)
+            data_prep[sub]['buttonbox_reg'][grid_idx] = mc.simulation.predictions.button_box_simple_cells(data_prep[sub]['buttons'][grid_idx], data_prep[sub]['buttonbox_reg'][grid_idx], timings_task)
             if models_I_want:
                 for model in models_I_want:
                     if models_I_want[0] == 'only':
                         for model in models_I_want[1:]:
-                            data_prep[sub][f"musicbox_{model}_rew_reg"][grid_idx+adjust_grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_prep[sub]['locations'][grid_idx], data_prep[sub][f"musicbox_{model}_rew_reg"][grid_idx+adjust_grid_idx], timings_task, grid_config, setting = model)
-                            data_prep[sub][f"musicbox_{model}_complete_reg"][grid_idx+adjust_grid_idx] = mc.simulation.predictions.musicbox_cells_complete(data_prep[sub]['locations'][grid_idx], data_prep[sub]['complete_musicbox_reg'][grid_idx+adjust_grid_idx], timings_task, grid_config, setting = model)
+                            data_prep[sub][f"musicbox_{model}_rew_reg"][grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_prep[sub]['locations'][grid_idx], data_prep[sub][f"musicbox_{model}_rew_reg"][grid_idx], timings_task, grid_config, setting = model)
+                            data_prep[sub][f"musicbox_{model}_complete_reg"][grid_idx] = mc.simulation.predictions.musicbox_cells_complete(data_prep[sub]['locations'][grid_idx], data_prep[sub]['complete_musicbox_reg'][grid_idx], timings_task, grid_config, setting = model)
                     else:
                         for model in models_I_want:
-                            data_prep[sub][f"musicbox_{model}_rew_reg"][grid_idx+adjust_grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_prep[sub]['locations'][grid_idx], data_prep[sub][f"musicbox_{model}_rew_reg"][grid_idx+adjust_grid_idx], timings_task, grid_config, setting = model)
-                            data_prep[sub][f"musicbox_{model}_complete_reg"][grid_idx+adjust_grid_idx] = mc.simulation.predictions.musicbox_cells_complete(data_prep[sub]['locations'][grid_idx], data_prep[sub]['complete_musicbox_reg'][grid_idx+adjust_grid_idx], timings_task, grid_config, setting = model)
+                            data_prep[sub][f"musicbox_{model}_rew_reg"][grid_idx] = mc.simulation.predictions.music_box_simple_cells(data_prep[sub]['locations'][grid_idx], data_prep[sub][f"musicbox_{model}_rew_reg"][grid_idx], timings_task, grid_config, setting = model)
+                            data_prep[sub][f"musicbox_{model}_complete_reg"][grid_idx] = mc.simulation.predictions.musicbox_cells_complete(data_prep[sub]['locations'][grid_idx], data_prep[sub]['complete_musicbox_reg'][grid_idx], timings_task, grid_config, setting = model)
                        
-            # the difference isn't always bigger in the first one. there are differences between subjects!
-            # differences = np.zeros((timings_task.shape[0],timings_task.shape[1]-1))
-            # for i,row in enumerate(timings_task):
-            #     for j, elem in enumerate(row):
-            #         if j < 4:
-            #             differences[i,j] = row[j+1]-elem      
-                        
+ 
             # on this level, there is the option to average across repeats
             if avg_across_runs == True:
-                # import pdb; pdb.set_trace()
-                # CAREFUL!! 
-                # this for some reason is still not the same length???
-                # check for the state regression.
-                # i think sometime shte last state doesnt match.
-                # how do the timings differ?
-                # goal is that all states are exactly 1 after regression!!!
                 data_prep_tmp = copy.deepcopy(data_prep)
                 for m in data_prep[sub]:
                     if m.endswith('reg') or m.endswith('model') or m.endswith('neurons'):
                         # this needs to be concatenated and all
-                        data_prep[sub][m][grid_idx+adjust_grid_idx] = mc.simulation.predictions.transform_data_to_betas(data_prep_tmp[sub][m][grid_idx+adjust_grid_idx], regression_across_repeats_concat)
+                        data_prep[sub][m][grid_idx] = mc.simulation.predictions.transform_data_to_betas(data_prep_tmp[sub][m][grid_idx], regression_across_repeats_concat)
     # import pdb; pdb.set_trace()
     return data_prep
 

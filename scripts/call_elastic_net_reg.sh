@@ -17,6 +17,7 @@ for i in {1..59}; do
     --randomised_reward_locations=False \
     --save_regs=True \
     --fit_binned='by_state' \
+    --fit_residuals=False \
     --avg_across_runs=True
 
   #    python wrapper_human_cells_elnetreg.py "$i" \
