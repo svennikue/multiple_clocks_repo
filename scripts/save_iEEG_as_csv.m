@@ -53,15 +53,15 @@ bin_size = 0.025; %play around with this! Mohamady has 0.025
 
 for sub = 1:length(subject_list)
     % if sub == 6 || sub == 9 || sub == 27 || sub == 44
-    if sub == 9
-        % 6 because it has every other grid_onset_timestamp transposed and that
-        % annoying
-        % 9 because it the timings start with negative values, so there
-        % must have been something wrong
-        % because 27 has the subj.trial_vars.state_change_times encoded in
-        % a transposed way (?) and that creates problems
-        continue;
-    end
+    % if sub == 9
+    %     % 6 because it has every other grid_onset_timestamp transposed and that
+    %     % annoying
+    %     % 9 because it the timings start with negative values, so there
+    %     % must have been something wrong
+    %     % because 27 has the subj.trial_vars.state_change_times encoded in
+    %     % a transposed way (?) and that creates problems
+    %     continue;
+    % end
     subj = abcd_data.abcd_data(sub);
     all_cells = [];
     region_labels_cells = {};

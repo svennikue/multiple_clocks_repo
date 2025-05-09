@@ -16,6 +16,7 @@ for i in {1..59}; do
     --exclude_x_repeats="[1,2]" \
     --randomised_reward_locations=False \
     --save_regs=True \
+    --fit_binned='by_state' \
     --avg_across_runs=True
 
   #    python wrapper_human_cells_elnetreg.py "$i" \

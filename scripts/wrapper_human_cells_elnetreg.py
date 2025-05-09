@@ -55,7 +55,7 @@ def get_data(sub, models_I_want=False, exclude_x_repeats=False, randomised_rewar
     return data, group_dir, file_name
     
 
-def get_rid_of_low_firing_cells(data, hz_exclusion_threshold = 0.1, sd_exclusion_threshold = 1.5):
+def get_rid_of_low_firing_cells(data, hz_exclusion_threshold = 0.25, sd_exclusion_threshold = 1.5):
     
     neuron_dict = {}
     for sub in data:
@@ -185,7 +185,7 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, bin_pre_corr = Non
                 if fit_binned:
                     curr_neuron_heldouttasks_flat = mc.analyse.helpers_human_cells.neurons_to_state_bins(curr_neuron_heldouttasks_flat, binning_curr_testgrid)
                 
-        # import pdb; pdb.set_trace()    
+        import pdb; pdb.set_trace()    
         # depending on the permutations, change the train and test dataset.
         for entry in model_string:
             # then choose which tasks to take and go and select training regressors
@@ -283,7 +283,7 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
     
     
     simulated_regs = mc.analyse.helpers_human_cells.prep_regressors_for_neurons(clean_data, models_I_want=models_I_want, exclude_x_repeats=exclude_x_repeats, randomised_reward_locations=randomised_reward_locations, avg_across_runs=avg_across_runs)
-    # import pdb; pdb.set_trace() 
+    
     group_dir_coefs = f"{group_dir}/coefs"
     group_dir_corrs = f"{group_dir}/corrs"
     if not os.path.isdir(group_dir_coefs):
@@ -305,23 +305,10 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
         # create one entry in result_dict per cell 
         cells.append(f"{single_sub_dict['cell_labels'][cell_idx]}_{cell_idx}_{sub}")
 
-    # this won't work like this
-    # I want to give a single cell each, looping through the cell names
-    # currently that's stored differently than I need it (i.e. cell strings are a list, and then there is the dict)
-    # the loop needs to replace this loop: 
-    #    for cell_idx, cell in enumerate(single_sub_dict['neurons'][0]):
-        
-        # also figure out how to solve this in the internal loop, i.e. how to select the approriate cell
-        # then once I have this, run for a single subject on the cluster
-        # and install all the packages until that works
-        # then try to debug this script for a single subject: why are the regressions off/different?
-        # plot how they look like for state and location first
-        # they should be pretty much the same, at least the state ones.
-    
+
     print(f"starting parallel regression and correlation for all cells and models for subject {sub}")
-    
-    #corr_test, corr_test_binned, cell = run_elnetreg_cellwise(single_sub_dict, cells[0], fit_binned=fit_binned, bin_pre_corr=bin_pre_corr)   
-    #import pdb; pdb.set_trace() 
+    corr_test, corr_test_binned, cell = run_elnetreg_cellwise(single_sub_dict, cells[0], fit_binned=fit_binned, bin_pre_corr=bin_pre_corr)   
+    import pdb; pdb.set_trace() 
     
     parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(single_sub_dict, c, fit_binned=fit_binned, bin_pre_corr=bin_pre_corr) for c in cells)
     
@@ -372,29 +359,31 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
 
     
     
-# if running from command line, use this one!   
-if __name__ == "__main__":
-    #print(f"starting regression for subject {sub}")
-    fire.Fire(compute_one_subject)
+# # if running from command line, use this one!   
+# if __name__ == "__main__":
+#     #print(f"starting regression for subject {sub}")
+#     fire.Fire(compute_one_subject)
 #    call this script like
 #    python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
 
 # ['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']
 # ['only','onlynowand3future', 'onlynextand2future']
 
-# if __name__ == "__main__":
-#     # For debugging, bypass Fire and call compute_one_subject directly.
-#     compute_one_subject(
-#         sub=59,
-#         #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
-#         models_I_want=['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future'],
-#         exclude_x_repeats=[1,2],
-#         randomised_reward_locations=False,
-#         save_regs=True,
-#         #fit_binned='by_state_loc_change' # 'by_loc_change', 'by_state', 'by_state_loc_change'
-#         #bin_pre_corr='by_state_loc_change',
-#         avg_across_runs=True
-#     )
+if __name__ == "__main__":
+    # For debugging, bypass Fire and call compute_one_subject directly.
+    compute_one_subject(
+        sub=9,
+        #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
+        models_I_want=['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future'],
+        exclude_x_repeats=[1,2],
+        randomised_reward_locations=False,
+        save_regs=True,
+        fit_binned='by_state', # 'by_loc_change', 'by_state', 'by_state_loc_change'
+        # fit_binned='by_state_loc_change' # 'by_loc_change', 'by_state', 'by_state_loc_change'
+        # introduce a fit residuals options!
+        # bin_pre_corr='by_state',
+        avg_across_runs=True
+    )
 
 
 # these are hard-coded right now, so include them in the 'only' + models list 'state_reg', 'complete_musicbox_reg', 'reward_musicbox_reg', 'location_reg'

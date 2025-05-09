@@ -245,14 +245,28 @@ def create_x_regressors_per_state(beh_data_curr_rep_dict, no_regs_per_state=3, o
         # CHANGE HOW I DEAL WITH THE LAST REWARD!!!
         
     else:
+        # such that dimensions match!!!
         regressors = np.zeros([n_states*no_regs_per_state, len(walked_path)])
+        # right so this is a bit more complicated. because of the indexing, 
+        # the last repeat actually has to be treated differently. I think
+        # that the trajectory there has to basically be 1 shorter- but only for the last!
+        # what if i do this?
+        length_matrix = []
+        for count_paths, (pathlength) in enumerate(step_no):
+            length_matrix.append(len(walked_path[subpath_timings[count_paths]:subpath_timings[count_paths+1]]))
+        regressors = np.zeros([n_states*no_regs_per_state, np.sum(length_matrix)])
+            
+        
         cols_to_fill_previous = 0
         for count_paths, (pathlength) in enumerate(step_no):
             # identify subpaths
-            if count_paths == 3:
-                curr_path = walked_path[subpath_timings[count_paths]:]
-            else:
-                curr_path = walked_path[subpath_timings[count_paths]:subpath_timings[count_paths+1]]
+            # if count_paths == 3:
+            #     curr_path = walked_path[subpath_timings[count_paths]:]
+            # else:
+            #     curr_path = walked_path[subpath_timings[count_paths]:subpath_timings[count_paths+1]]
+                
+            curr_path = walked_path[subpath_timings[count_paths]:subpath_timings[count_paths+1]]
+            
             cols_to_fill = len(curr_path)
             # create a string that tells me how many columns are one nth of a state
             time_per_state_in_nth_part = ([cols_to_fill // no_regs_per_state + (1 if x < cols_to_fill % no_regs_per_state else 0) for x in range (no_regs_per_state)])
@@ -369,6 +383,10 @@ def create_regressors_per_state_phase_ephys(walked_path, subpath_timings, step_n
 
 def transform_data_to_betas(data_matrix, regressors, intercept = False):
     # import pdb; pdb.set_trace()
+    
+    # FIND OUT WHY THE STATE THING DOESNT WORK. 
+    # TIMINGS????
+    
     # careful! I now don't include an intercept by default.
     # this is because the way I use it, the regressors would be a linear combination of the intercept ([11111] vector)
     beta_matrix = np.zeros((len(data_matrix), len(regressors)))
@@ -3123,7 +3141,11 @@ def state_cells(empty_reg, grid_t_all, reward_locs):
             state_regressors[0, int(grid_times[0]):int(grid_times[1])] = 1
             state_regressors[1, int(grid_times[1]):int(grid_times[2])] = 1
             state_regressors[2, int(grid_times[2]):int(grid_times[3])] = 1
-            state_regressors[3, int(grid_times[3]):int(grid_times[4])] = 1
+            if repeat_idx == len(grid_t_all)-1:
+                state_regressors[3, int(grid_times[3]):int(grid_times[4]+1)] = 1
+            else:  
+                state_regressors[3, int(grid_times[3]):int(grid_times[4])] = 1
+            
     return state_regressors
 
 
@@ -3138,6 +3160,54 @@ def test_timings_rew(subject, locations, grid_t_all, reward_locs, number_of_grid
     # print(f"all timings matched with finding correct rewarded location for subject {subject} and grid {reward_locs}!")
 
 
+
+def single_reward(location, empty_reg, grid_t_all, reward_locs, setting = 'current'): 
+    # setting can be ['current', 'next', 'second_next', 'previous']
+    # import pdb; pdb.set_trace()
+    grid_t_all = grid_t_all-grid_t_all[0,0]
+    all_reward_locs = np.tile(reward_locs, 2)
+    
+    if setting == 'current':
+        difference = 0
+    elif setting == 'next':
+        difference = 1
+    elif setting == 'second_next':
+        difference = 2
+    elif setting == 'previous':
+        difference = -1
+    musicbox_regressors = empty_reg.copy()
+     
+    for repeat_idx, rep_times in enumerate(grid_t_all):
+        if np.isnan(rep_times).any():
+            continue
+        for state in range(0,4):
+            # curr_rew_loc = int(location[end_state]-1
+            # this should be equal to int(reward_locs[state]-1) if not random!
+            
+            # this can be used for actual locations. int(location[end_next_state]-1)
+            rew_loc_of_interest = int(all_reward_locs[state+difference]-1)
+            # curr_rew_loc = int(all_reward_locs[state]-1)
+            # next_rew_loc = int(all_reward_locs[state+1]-1)
+            # second_next_rew_loc = int(all_reward_locs[state+2]-1)
+            # prev_rew_loc = int(all_reward_locs[state-1]-1)
+            
+            # current
+            start_state = int(rep_times[state])
+            end_state = int(rep_times[state+1])
+            musicbox_regressors[rew_loc_of_interest, start_state:end_state] = 1
+
+    # plt.figure()
+    # plt.imshow(musicbox_regressors, aspect = 'auto')
+    # plt.axhline(8.5, color='white', linewidth=1)
+    # plt.axhline(17.5, color='white', linewidth=1)
+    # plt.axhline(26.5, color='white', linewidth=1)
+    # import pdb; pdb.set_trace()        
+    return musicbox_regressors
+    
+    
+    
+    
+    
 
 def music_box_simple_cells(location, empty_reg, grid_t_all, reward_locs, setting = None): 
     # setting can be ['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']
@@ -3230,10 +3300,13 @@ def locations_cells(location, empty_reg):
         previous_step_at = loc_change_points[i-1]
         if i == 0:
             location_regressors[curr_loc, 0:step_at] = 1
+        elif i == len(loc_change_points)-1:
+            location_regressors[curr_loc, previous_step_at:step_at] = 1
+            final_loc = int(location[step_at]-1)
+            location_regressors[final_loc, step_at:] = 1
         else:
             location_regressors[curr_loc, previous_step_at:step_at] = 1
     
-    # import pdb; pdb.set_trace()
     return location_regressors
      
 def musicbox_cells_complete_withoutphase(location, empty_reg, grid_t_all, reward_locs, setting = None):
@@ -3371,14 +3444,16 @@ def musicbox_cells_complete_withoutphase(location, empty_reg, grid_t_all, reward
    
 
 def musicbox_cells_complete(location, empty_reg, grid_t_all, reward_locs, setting = None):
-    # import pdb; pdb.set_trace()
-    
     # CAREFUL!
     # this musicbox currently encodes the future.
     # from 3 subpaths back, it predicts when you are going to walk on the fields
     # you are currently walking on. 
     # this is fine if they take the same paths, but it may make a difference if they are not.
     # I also don't include any phase-coding.
+    
+    # specifically, it does not wrap around- so the last few columns are only filled for
+    # current reward, not the future ones.
+    
     grid_t_all = grid_t_all-grid_t_all[0,0]
     
     state_regressors = empty_reg[0:4, :].copy()
@@ -3401,17 +3476,19 @@ def musicbox_cells_complete(location, empty_reg, grid_t_all, reward_locs, settin
     
     
     # this is current location
-    loc_change_points = np.where(np.diff(location) != 0)[0] + 1  # Find where index changes
+    loc_change_points = np.where(np.diff(location) != 0)[0] + 1  # Find where index changes 
     for i, step_at in enumerate(loc_change_points):
         curr_loc = location[step_at-1] # location before step
         previous_step_at = loc_change_points[i-1]
         if i == 0:
             musicbox_complete[curr_loc, 0:step_at] = 1
+        elif i == len(loc_change_points)-1:
+            musicbox_complete[curr_loc, previous_step_at:step_at] = 1
+            final_loc = int(location[step_at]-1)
+            musicbox_complete[final_loc, step_at:] = 1
         else:
             musicbox_complete[curr_loc, previous_step_at:step_at] = 1
-
-    
-    
+                
     # Additionally, propagate locations of current state around in the other states.
     # this will create only 4 musicboxneurons, where 'current' is the most precise.
     # import pdb; pdb.set_trace()
@@ -3507,8 +3584,6 @@ def musicbox_cells_complete(location, empty_reg, grid_t_all, reward_locs, settin
             musicbox_pt_two = musicbox_complete[18:27, :]
         musicbox_complete = np.concatenate((musicbox_pt_one, musicbox_pt_two), axis=0)
 
-
-    # import pdb; pdb.set_trace()
     return musicbox_complete 
 
 
