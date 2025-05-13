@@ -55,8 +55,10 @@ def get_data(sub, models_I_want=False, exclude_x_repeats=False, randomised_rewar
     return data, group_dir, file_name
     
 
-def get_rid_of_low_firing_cells(data, hz_exclusion_threshold = 0.25, sd_exclusion_threshold = 1.5):
-    
+def get_rid_of_low_firing_cells(data, hz_exclusion_threshold = 0.2, sd_exclusion_threshold = 1.5):
+    # 0.25 hz -> 1 spike per 4 secs
+    # 0.2 hz -> 1 spike per 5 secs
+    # 0.1 hz -> 1 spike per 10 secs
     neuron_dict = {}
     for sub in data:
         for task in data[sub]['neurons']:
@@ -89,6 +91,7 @@ def get_rid_of_low_firing_cells(data, hz_exclusion_threshold = 0.25, sd_exclusio
         if sub not in remaining_neurons:
             remaining_neurons[sub] = {}
             for m in data[sub]:
+                remaining_neurons[sub]['excluded_cells'] = neurons_to_exclude_str
                 if m in stuff_to_copy:
                     remaining_neurons[sub][m] = data[sub][m]
                 elif m in to_clean:
@@ -104,14 +107,79 @@ def get_rid_of_low_firing_cells(data, hz_exclusion_threshold = 0.25, sd_exclusio
                     elif m == 'cell_labels':
                         remaining_neurons[sub][m] = [x for i, x in enumerate(data[sub][m]) if i not in neurons_to_exclude]
 
-
+    
     print(f"exlcuding neurons {neurons_to_exclude_str} because average spike rate lower than {hz_exclusion_threshold} or variability bigger than std/mean = {sd_exclusion_threshold}")
     # import pdb; pdb.set_trace() 
     return remaining_neurons
     
 
 
-def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = None):
+# def generate_unique_invalid_permutations(idx_same_grids, n_permutations=1000, seed=None):
+#     """
+#     Generate unique permutations of idx_same_grids such that:
+#     - No value remains in the same position.
+#     - All permutations are unique.
+    
+#     Parameters:
+#         idx_same_grids (np.ndarray): Array of group assignments (e.g. shape (24,))
+#         n_permutations (int): Number of unique permutations to generate
+#         seed (int or None): Random seed for reproducibility
+    
+#     Returns:
+#         np.ndarray: Array of shape (n_permutations, len(idx_same_grids)) with valid permutations
+#     """
+#     if seed is not None:
+#         np.random.seed(seed)
+
+#     n = len(idx_same_grids)
+#     generated = set()
+#     results = []
+
+#     while len(results) < n_permutations:
+#         perm = np.random.permutation(n)
+#         shuffled = idx_same_grids[perm]
+
+#         # Valid if no element remains in original position
+#         if not np.any(shuffled == idx_same_grids):
+#             perm_tuple = tuple(shuffled)
+#             if perm_tuple not in generated:
+#                 generated.add(perm_tuple)
+#                 results.append(shuffled)
+
+#     return np.array(results)
+        
+
+def generate_unique_grid_permutations(reward_configs, n_permutations=1000, seed=42):
+    """
+    Generate unique permutations of reward_configs such that:
+    - No grid stays in the same position.
+    - Each permutation is unique.
+    
+    Returns:
+        np.ndarray of shape (n_permutations, len(reward_configs), 4)
+    """
+    np.random.seed(seed)
+    n = len(reward_configs)
+    reward_tuples = [tuple(row) for row in reward_configs]
+    generated = set()
+    results = []
+
+    while len(results) < n_permutations:
+        perm = np.random.permutation(n)
+        shuffled = [reward_tuples[i] for i in perm]
+
+        # Check: no item at original position
+        if all(shuffled[i] != reward_tuples[i] for i in range(n)):
+            perm_tuple = tuple(shuffled)
+            if perm_tuple not in generated:
+                generated.add(perm_tuple)
+                results.append(shuffled)
+
+    return np.array(results)
+
+
+
+def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = None, comp_loc_perms= None):
     # parameters that seem to work, can be set flexibly
     alpha=0.00001 ##0.01 used in El-gaby paper
     # l1_ratio= 0.01
@@ -131,144 +199,175 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = No
         if model.endswith('reg') or model.endswith('model'):
             model_string.append(model)
             corr_dict[model], corr_dict_binned[model] = {}, {}
-            
+     
+
+    # prepare the held-out task order and the permutations 
     unique_grids, idx_unique_grid, idx_same_grids, counts = np.unique(data['reward_configs'], axis=0,
                                                             return_index=True,
                                                             return_inverse=True,
                                                             return_counts=True)
-            
+        
+    perms  = 1
+    if comp_loc_perms:
+        unique_grid_permutations = generate_unique_grid_permutations(data['reward_configs'], n_permutations=1000)
+        perms = comp_loc_perms
+    
+     # prepare the result dictionaries    
     for model in model_string:
-        corr_dict[model][curr_cell] = np.zeros(len(unique_grids))
-        corr_dict_binned[model][curr_cell] = np.zeros(len(unique_grids))
+        # if permutations, then make the numpy array multi-dimensional (i.e. concatenate per perm)
+        # right now, its all_results['curr_cell'] = np.array(6,)
+        # for perms, it shall be all_results['curr_cell'] = np.array(6,1000)
+      
+        corr_dict[model][curr_cell] = np.zeros((len(unique_grids), perms))
+        corr_dict_binned[model][curr_cell] = np.zeros((len(unique_grids), perms))
+        # corr_dict_residuals[model][curr_cell] = np.zeros((len(unique_grids), perms))
         coefs_per_model[model] = []
         if fit_binned:
             coefs_per_model_binned[model] = []
         if fit_residuals == True:
             coefs_per_model_residuals[model] = []
-     
-    # import pdb; pdb.set_trace() 
-    for task_idx, left_out_grid_idx in enumerate(idx_unique_grid): 
-        
-        test_grid_idx = np.where(idx_same_grids == idx_same_grids[left_out_grid_idx])[0]
-        if not test_grid_idx.shape == (1,):
-            all_neurons_heldouttasks = itemgetter(*test_grid_idx)(data['neurons'])
-            curr_neuron_heldouttasks = [all_neurons[cell_idx] for all_neurons in all_neurons_heldouttasks]
-            curr_neuron_heldouttasks_flat = np.concatenate(curr_neuron_heldouttasks)
-            # import pdb; pdb.set_trace() 
-        else:
-            all_neurons_heldouttasks = data['neurons'][test_grid_idx[0]]
-            curr_neuron_heldouttasks_flat = all_neurons_heldouttasks[cell_idx]
-        
-        training_grid_idx=np.setdiff1d(np.arange(len(data['reward_configs'])),test_grid_idx)
-        all_neurons_training_tasks = itemgetter(*training_grid_idx)(data['neurons'])
-        curr_neuron_training_tasks = [all_neurons[cell_idx] for all_neurons in all_neurons_training_tasks]
-        
-        if fit_binned:
-            if fit_binned == 'by_state':
-                binning_model = 'state_reg'
-            elif fit_binned == 'by_loc_change':
-                binning_model = 'location_reg'
-            # multimodel uses slightly different function and indexing works differently
-            if fit_binned == 'by_state_loc_change':
-                binning_model = ['state_reg', 'location_reg']
-                binning_curr_testgrid, binning_curr_training_grids = {}, {}
-                for m in binning_model:
-                    binning_training_grids = itemgetter(*training_grid_idx)(data[m])
-                    binning_curr_training_grids[m] = np.transpose(np.concatenate(binning_training_grids, axis = 1))
-
-                    binning_neurons_test_grids = itemgetter(*test_grid_idx)(data[m])
-                    if not test_grid_idx.shape == (1,):
-                        binning_curr_testgrid[m] = np.transpose(np.concatenate(binning_neurons_test_grids, axis = 1))
-                    else:
-                        binning_curr_testgrid[m] = np.transpose(binning_neurons_test_grids)
-                if fit_binned:
-                    curr_neuron_heldouttasks_flat = mc.analyse.helpers_human_cells.neurons_to_bins_multimodel(curr_neuron_heldouttasks_flat, binning_curr_testgrid)
-            # use single model to bin    
-            else:
-                binning_training_grids = itemgetter(*training_grid_idx)(data[binning_model])
-                binning_curr_training_grids = np.transpose(np.concatenate(binning_training_grids, axis = 1))
-
-                binning_neurons_test_grids = itemgetter(*test_grid_idx)(data[binning_model])
-                if not test_grid_idx.shape == (1,):
-                    binning_curr_testgrid = np.transpose(np.concatenate(binning_neurons_test_grids, axis = 1))
-                else:
-                    binning_curr_testgrid = np.transpose(binning_neurons_test_grids)
                 
-                curr_neuron_heldouttasks_flat_binned = mc.analyse.helpers_human_cells.neurons_to_state_bins(curr_neuron_heldouttasks_flat, binning_curr_testgrid)
                 
-        # import pdb; pdb.set_trace()   
+    # all_results = {}
+    # all_results['curr_cell'] = curr_cell  
+    # all_results['corr'] = np.empty((len(idx_unique_grid), perms))
+    # if fit_binned:
+    #     all_results['corr_dict_binned'] = np.empty((len(idx_unique_grid), perms))
+    # if fit_residuals == True:
+    #     all_results['corr_dict_residuals'] = np.empty((len(idx_unique_grid), perms))
         
-        # depending on the permutations, change the train and test dataset.
-        for entry in model_string:
-            # then choose which tasks to take and go and select training regressors
-            simulated_neurons_training_tasks = itemgetter(*training_grid_idx)(data[entry])
-            # and test regressors
-            simulated_neurons_test_grids = itemgetter(*test_grid_idx)(data[entry])
+    for p_idx in range(0,perms):
+        if comp_loc_perms:
+            # create all of these based on the permutations such that I also avoid double-dipping.
+            unique_grids, idx_unique_grid, idx_same_grids, counts = np.unique(unique_grid_permutations[p_idx], axis=0,
+                                                                    return_index=True,
+                                                                    return_inverse=True,
+                                                                    return_counts=True)
+            
+        for task_idx, left_out_grid_idx in enumerate(idx_unique_grid): 
+            test_grid_idx = np.where(idx_same_grids == idx_same_grids[left_out_grid_idx])[0]
             if not test_grid_idx.shape == (1,):
-                simulated_neurons_test_grids_flat = np.transpose(np.concatenate(simulated_neurons_test_grids, axis = 1))
+                all_neurons_heldouttasks = itemgetter(*test_grid_idx)(data['neurons'])
+                curr_neuron_heldouttasks = [all_neurons[cell_idx] for all_neurons in all_neurons_heldouttasks]
+                curr_neuron_heldouttasks_flat = np.concatenate(curr_neuron_heldouttasks)
+                # import pdb; pdb.set_trace() 
             else:
-                simulated_neurons_test_grids_flat = np.transpose(simulated_neurons_test_grids)
-               
-            X = np.transpose(np.concatenate(simulated_neurons_training_tasks, axis = 1))
+                all_neurons_heldouttasks = data['neurons'][test_grid_idx[0]]
+                curr_neuron_heldouttasks_flat = all_neurons_heldouttasks[cell_idx]
             
-            if entry == 'stat_model':
-                X = X[:, 0:3].copy()
-                simulated_neurons_test_grids_flat = simulated_neurons_test_grids_flat[:, 0:3].copy()
+            training_grid_idx=np.setdiff1d(np.arange(len(data['reward_configs'])),test_grid_idx)
+            all_neurons_training_tasks = itemgetter(*training_grid_idx)(data['neurons'])
+            curr_neuron_training_tasks = [all_neurons[cell_idx] for all_neurons in all_neurons_training_tasks]
             
-            y = np.concatenate(curr_neuron_training_tasks)
-
-            reg = ElasticNet(alpha=alpha, positive=True, max_iter=100000).fit(X, y)  
-            coeffs_flat=reg.coef_
-            coefs_per_model[entry].append(coeffs_flat)
-            # next, create the predicted activity neuron.
-            predicted_activity_curr_neuron = np.sum((coeffs_flat*simulated_neurons_test_grids_flat), axis = 1)
-            Predicted_Actual_correlation=st.pearsonr(curr_neuron_heldouttasks_flat,predicted_activity_curr_neuron)[0]
-            # if np.all(curr_neuron_heldouttasks_flat == curr_neuron_heldouttasks_flat[0]) or np.all(predicted_activity_curr_neuron == predicted_activity_curr_neuron[0]):
-            #     import pdb; pdb.set_trace()
-            
-            corr_dict[entry][curr_cell][task_idx] = Predicted_Actual_correlation
-
             if fit_binned:
+                if fit_binned == 'by_state':
+                    binning_model = 'state_reg'
+                elif fit_binned == 'by_loc_change':
+                    binning_model = 'location_reg'
+                # multimodel uses slightly different function and indexing works differently
                 if fit_binned == 'by_state_loc_change':
-                    simulated_neurons_test_grids_flat_binned = mc.analyse.helpers_human_cells.neurons_to_bins_multimodel(simulated_neurons_test_grids_flat, binning_curr_testgrid)
-                    
-                    X_binned = mc.analyse.helpers_human_cells.neurons_to_bins_multimodel(X, binning_curr_training_grids)
-                    y_binned = mc.analyse.helpers_human_cells.neurons_to_bins_multimodel(y, binning_curr_training_grids)
-                    
-                else:
-                    simulated_neurons_test_grids_flat_binned = mc.analyse.helpers_human_cells.neurons_to_state_bins(simulated_neurons_test_grids_flat, binning_curr_testgrid)
-
-                    X_binned = mc.analyse.helpers_human_cells.neurons_to_state_bins(X, binning_curr_training_grids)
-                    y_binned = mc.analyse.helpers_human_cells.neurons_to_state_bins(y, binning_curr_training_grids)
-                
-                reg_binned = ElasticNet(alpha=alpha, positive=True, max_iter=100000).fit(X_binned, y_binned)  
-                coeffs_flat_binned=reg_binned.coef_
-                coefs_per_model_binned[entry].append(coeffs_flat_binned)
-                # next, create the predicted activity neuron.
-                predicted_activity_curr_neuron_binned = np.sum((coeffs_flat*simulated_neurons_test_grids_flat_binned), axis = 1)
-                Predicted_Actual_correlation_binned=st.pearsonr(curr_neuron_heldouttasks_flat_binned,predicted_activity_curr_neuron_binned)[0]
-                corr_dict_binned[entry][curr_cell][task_idx] = Predicted_Actual_correlation_binned
-                # if np.all(curr_neuron_heldouttasks_flat_binned == curr_neuron_heldouttasks_flat_binned[0]) or np.all(predicted_activity_curr_neuron_binned == predicted_activity_curr_neuron_binned[0]):
-                #     import pdb; pdb.set_trace()
-
+                    binning_model = ['state_reg', 'location_reg']
+                    binning_curr_testgrid, binning_curr_training_grids = {}, {}
+                    for m in binning_model:
+                        binning_training_grids = itemgetter(*training_grid_idx)(data[m])
+                        binning_curr_training_grids[m] = np.transpose(np.concatenate(binning_training_grids, axis = 1))
     
+                        binning_neurons_test_grids = itemgetter(*test_grid_idx)(data[m])
+                        if not test_grid_idx.shape == (1,):
+                            binning_curr_testgrid[m] = np.transpose(np.concatenate(binning_neurons_test_grids, axis = 1))
+                        else:
+                            binning_curr_testgrid[m] = np.transpose(binning_neurons_test_grids)
+                    if fit_binned:
+                        curr_neuron_heldouttasks_flat = mc.analyse.helpers_human_cells.neurons_to_bins_multimodel(curr_neuron_heldouttasks_flat, binning_curr_testgrid)
+                # use single model to bin    
+                else:
+                    binning_training_grids = itemgetter(*training_grid_idx)(data[binning_model])
+                    binning_curr_training_grids = np.transpose(np.concatenate(binning_training_grids, axis = 1))
+    
+                    binning_neurons_test_grids = itemgetter(*test_grid_idx)(data[binning_model])
+                    if not test_grid_idx.shape == (1,):
+                        binning_curr_testgrid = np.transpose(np.concatenate(binning_neurons_test_grids, axis = 1))
+                    else:
+                        binning_curr_testgrid = np.transpose(binning_neurons_test_grids)
+                    
+                    curr_neuron_heldouttasks_flat_binned = mc.analyse.helpers_human_cells.neurons_to_state_bins(curr_neuron_heldouttasks_flat, binning_curr_testgrid)
+                    
+            # import pdb; pdb.set_trace()   
+            
+            # depending on the permutations, change the train and test dataset.
+            for entry in model_string:
+                # then choose which tasks to take and go and select training regressors
+                simulated_neurons_training_tasks = itemgetter(*training_grid_idx)(data[entry])
+                # and test regressors
+                simulated_neurons_test_grids = itemgetter(*test_grid_idx)(data[entry])
+                if not test_grid_idx.shape == (1,):
+                    simulated_neurons_test_grids_flat = np.transpose(np.concatenate(simulated_neurons_test_grids, axis = 1))
+                else:
+                    simulated_neurons_test_grids_flat = np.transpose(simulated_neurons_test_grids)
+                   
+                X = np.transpose(np.concatenate(simulated_neurons_training_tasks, axis = 1))
+                
+                if entry == 'stat_model':
+                    X = X[:, 0:3].copy()
+                    simulated_neurons_test_grids_flat = simulated_neurons_test_grids_flat[:, 0:3].copy()
+                
+                y = np.concatenate(curr_neuron_training_tasks)
+    
+                reg = ElasticNet(alpha=alpha, positive=True, max_iter=100000).fit(X, y)  
+                coeffs_flat=reg.coef_
+                coefs_per_model[entry].append(coeffs_flat)
+                # next, create the predicted activity neuron.
+                predicted_activity_curr_neuron = np.sum((coeffs_flat*simulated_neurons_test_grids_flat), axis = 1)
+                Predicted_Actual_correlation=st.pearsonr(curr_neuron_heldouttasks_flat,predicted_activity_curr_neuron)[0]
+                # if np.all(curr_neuron_heldouttasks_flat == curr_neuron_heldouttasks_flat[0]) or np.all(predicted_activity_curr_neuron == predicted_activity_curr_neuron[0]):
+                #     import pdb; pdb.set_trace()
+                
+                corr_dict[entry][curr_cell][task_idx,p_idx] = Predicted_Actual_correlation
+    
+                if fit_binned:
+                    if fit_binned == 'by_state_loc_change':
+                        simulated_neurons_test_grids_flat_binned = mc.analyse.helpers_human_cells.neurons_to_bins_multimodel(simulated_neurons_test_grids_flat, binning_curr_testgrid)
+                        
+                        X_binned = mc.analyse.helpers_human_cells.neurons_to_bins_multimodel(X, binning_curr_training_grids)
+                        y_binned = mc.analyse.helpers_human_cells.neurons_to_bins_multimodel(y, binning_curr_training_grids)
+                        
+                    else:
+                        simulated_neurons_test_grids_flat_binned = mc.analyse.helpers_human_cells.neurons_to_state_bins(simulated_neurons_test_grids_flat, binning_curr_testgrid)
+    
+                        X_binned = mc.analyse.helpers_human_cells.neurons_to_state_bins(X, binning_curr_training_grids)
+                        y_binned = mc.analyse.helpers_human_cells.neurons_to_state_bins(y, binning_curr_training_grids)
+                    
+                    reg_binned = ElasticNet(alpha=alpha, positive=True, max_iter=100000).fit(X_binned, y_binned)  
+                    coeffs_flat_binned=reg_binned.coef_
+                    coefs_per_model_binned[entry].append(coeffs_flat_binned)
+                    # next, create the predicted activity neuron.
+                    predicted_activity_curr_neuron_binned = np.sum((coeffs_flat*simulated_neurons_test_grids_flat_binned), axis = 1)
+                    Predicted_Actual_correlation_binned=st.pearsonr(curr_neuron_heldouttasks_flat_binned,predicted_activity_curr_neuron_binned)[0]
+                    corr_dict_binned[entry][curr_cell][task_idx,p_idx] = Predicted_Actual_correlation_binned
+                    # if np.all(curr_neuron_heldouttasks_flat_binned == curr_neuron_heldouttasks_flat_binned[0]) or np.all(predicted_activity_curr_neuron_binned == predicted_activity_curr_neuron_binned[0]):
+                    #     import pdb; pdb.set_trace()
+        
     all_results = {}
+    all_results['curr_cell'] = curr_cell  
+    # all_results['corr'] = np.empty((len(idx_unique_grid), perms))
+    # if fit_binned:
+    #     all_results['corr_dict_binned'] = corr_dict_binned
+    # if fit_residuals == True:
+    #     all_results['corr_dict_residuals'] = np.empty((len(idx_unique_grid), perms))
+        
     all_results['corr'] = corr_dict
     if fit_binned:
         all_results['corr_dict_binned'] = corr_dict_binned
     if fit_residuals == True:
         all_results['corr_dict_residuals'] = corr_dict_residuals
-    all_results['curr_cell'] = curr_cell   
-    
-    # if permutations, then make the numpy array multi-dimensional (i.e. concatenate per perm)
-    # right now, its all_results['curr_cell'] = np.array(6,)
-    # for perms, it shall be all_results['curr_cell'] = np.array(6,1000)
-    
+
+        
+    # import pdb; pdb.set_trace()
     return all_results
 
     
  
-def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward_locations, save_regs, fit_binned = None, fit_residuals= False, avg_across_runs = False):
+def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward_locations, save_regs, fit_binned = None, fit_residuals= False, avg_across_runs = False, comp_loc_perms = False):
     
     data, group_dir, subj_reg_file = get_data(sub, models_I_want=models_I_want, exclude_x_repeats=exclude_x_repeats, randomised_reward_locations=randomised_reward_locations)
     
@@ -289,7 +388,6 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
     #       # rng = np.random.default_rng(seed); seed = hash(f"{subject_id}_{perm_index}") % 2**32
     #       # seed could be based on permutation number and subject ID (although in my case, maybe just subject)
 
-    
     
     simulated_regs = mc.analyse.helpers_human_cells.prep_regressors_for_neurons(clean_data, models_I_want=models_I_want, exclude_x_repeats=exclude_x_repeats, randomised_reward_locations=randomised_reward_locations, avg_across_runs=avg_across_runs)
     
@@ -318,9 +416,11 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
     print(f"starting parallel regression and correlation for all cells and models for subject {sub}")
     
 
-    #for cell in cells:
-    #    results = run_elnetreg_cellwise(single_sub_dict, cell, fit_binned=fit_binned, fit_residuals=fit_residuals)    
-    parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(single_sub_dict, c, fit_binned=fit_binned, fit_residuals=fit_residuals) for c in cells)
+    # for cell in cells:
+    #     results = run_elnetreg_cellwise(single_sub_dict, cell, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms = comp_loc_perms)    
+    
+    
+    parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(single_sub_dict, c, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms=comp_loc_perms) for c in cells)
     
     result_dir = {}
     result_dir['binned'], result_dir['raw'], result_dir['residuals'] = {}, {}, {}
@@ -332,7 +432,7 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
         if fit_residuals == True:
             result_dir['residuals'][curr_cell] = cell_idx['corr_dict_binned']
     
-    import pdb; pdb.set_trace() 
+    # import pdb; pdb.set_trace() 
     # define the basename
     result_file_name  = f"sub-{sub}_corrs"
     if models_I_want:
@@ -345,6 +445,9 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
         else:
             result_file_name = f"{result_file_name}_excl_rep{exclude_x_repeats[0]}-{exclude_x_repeats[-1]}"
     
+    if comp_loc_perms:
+        result_file_name =  str(comp_loc_perms) + 'perms_configs_shuffle_' + result_file_name
+            
     # I need to do some sort of extraction
     # but basically I want to do 
     # first, save the basic result
@@ -367,32 +470,33 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
 
     
     
-# # if running from command line, use this one!   
-# if __name__ == "__main__":
-#     #print(f"starting regression for subject {sub}")
-#     fire.Fire(compute_one_subject)
-# #    call this script like
-# #    python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
+# if running from command line, use this one!   
+if __name__ == "__main__":
+    #print(f"starting regression for subject {sub}")
+    fire.Fire(compute_one_subject)
+#    call this script like
+#    python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
 
 # ['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']
 # ['only','onlynowand3future', 'onlynextand2future']
 
-if __name__ == "__main__":
-    # For debugging, bypass Fire and call compute_one_subject directly.
-    compute_one_subject(
-        sub=4,
-        #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
-        models_I_want=['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future'],
-        exclude_x_repeats=[1,2],
-        randomised_reward_locations=False,
-        save_regs=True,
-        fit_binned='by_state', # 'by_loc_change', 'by_state', 'by_state_loc_change'
-        fit_residuals=False,
-        # fit_binned='by_state_loc_change' # 'by_loc_change', 'by_state', 'by_state_loc_change'
-        # introduce a fit residuals options!
-        # bin_pre_corr='by_state',
-        avg_across_runs=True
-    )
+# if __name__ == "__main__":
+#     # For debugging, bypass Fire and call compute_one_subject directly.
+#     compute_one_subject(
+#         sub=4,
+#         #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
+#         models_I_want=['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future'],
+#         exclude_x_repeats=[1],
+#         randomised_reward_locations=False,
+#         save_regs=True,
+#         fit_binned='by_state', # 'by_loc_change', 'by_state', 'by_state_loc_change'
+#         fit_residuals=False,
+#         # fit_binned='by_state_loc_change' # 'by_loc_change', 'by_state', 'by_state_loc_change'
+#         # introduce a fit residuals options!
+#         # bin_pre_corr='by_state',
+#         avg_across_runs=True,
+#         comp_loc_perms = 10
+#     )
 
 
 # these are hard-coded right now, so include them in the 'only' + models list 'state_reg', 'complete_musicbox_reg', 'reward_musicbox_reg', 'location_reg'
