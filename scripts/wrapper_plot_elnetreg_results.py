@@ -44,7 +44,7 @@ def load_result_dirs(file_name):
                         for inner_neuron, values in inner.items():
                             result_dir['raw'][sub][model][inner_neuron] = values
 
-            with open(f"{path_to_subfile}_binned", 'rb') as f:
+            with open(f"{path_to_subfile}_fit_binned_by_state", 'rb') as f:
                 sub_dir = pickle.load(f)
                 result_dir['binned'][sub] = {}
                 for neuron, model in sub_dir.items():
@@ -96,6 +96,10 @@ def plot_all(model_name_string, define_somehow_what_to_plot=None):
     results_corr_by_roi_df = mc.analyse.plotting_cells.prep_result_df_for_plotting_by_rois(results['raw'])
     title_addition = "raw correlation, only pos fit"
     mc.analyse.plotting_cells.plotting_df_based_corr_perm_histogram_by_ROIs(results_corr_by_roi_df,title_addition)
+    
+    results_corr_by_roi_binned_df = mc.analyse.plotting_cells.prep_result_df_for_plotting_by_rois(results['binned'])
+    title_addition_binned = "state-binned correlation, only pos fit"
+    mc.analyse.plotting_cells.plotting_df_based_corr_perm_histogram_by_ROIs(results_corr_by_roi_binned_df,title_addition_binned)
     
     
     
@@ -159,7 +163,8 @@ def plot_all(model_name_string, define_somehow_what_to_plot=None):
 if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     plot_all(
-        model_name_string='w_partial_musicboxes_excl_rep1-2_avg_in_12_bins_across_runs'
+        model_name_string='w_partial_musicboxes_excl_rep1-2_avg_in_20_bins_across_runs'
+        # sub-1_corrs_w_partial_musicboxes_excl_rep1-2_avg_in_20_bins_across_runs_fit_binned_by_state
     )
     
 # w_partial_musicboxes_excl_rep1-3_excl_rep1-3_pre_corr_binned-None_only_pos

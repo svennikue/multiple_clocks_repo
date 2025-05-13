@@ -48,11 +48,7 @@ def prep_result_df_for_plotting_by_rois(results):
 
 
 def plotting_df_based_corr_perm_histogram_by_ROIs(df_results, title_string_add):
-    import pdb; pdb.set_trace()
-    # rewrite for df!
-    # just filter by roi + model columns :)
-    
-    
+    # import pdb; pdb.set_trace()
     # ROI_labels = ['hippocampal', 'ACC','PCC','OFC', 'entorhinal', 'amygdala', 'mixed']
     bins=50
 

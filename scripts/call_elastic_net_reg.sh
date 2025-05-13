@@ -3,7 +3,8 @@
 for i in {1..59}; do
 
   # Skip the subjects we want to exclude
-  if [[ "$i" == "9" || "$i" == "27" || "$i" == "43" || "$i" == "44" ]]; then
+  # 27 and 44 have something wrong with location/reward timing
+  if [[ "$i" == "27" || "$i" == "44" ]]; then
       continue
   fi
   

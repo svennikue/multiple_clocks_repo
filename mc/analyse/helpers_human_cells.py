@@ -860,6 +860,7 @@ def label_unique_grids(data_dict, unique = True, dont_average_tasks = False):
 
 def clean_data(data, s):
     # hard-code problemgrids for each s
+    # import pdb; pdb.set_trace()
     if s == 'sub-59':
         problem_grid_idx = 21
     if s == 'sub-15':
@@ -873,7 +874,7 @@ def clean_data(data, s):
     data[s]['reward_configs'] =  np.delete(data_prep_tmp[s]['reward_configs'], problem_grid_idx, axis = 0)
     
     
-    return data
+    return data[s]
     
 
 def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repeats = None, randomised_reward_locations = False, avg_across_runs = False):
@@ -889,7 +890,7 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
     # clean subjects that messed up certain grids 
     for sub in data_dict:
         if sub in ['sub-15', 'sub-43', 'sub-59']:
-            data_dict[sub] = clean_data(sub)
+            data_dict[sub] = clean_data(data_dict, sub)
 
     data_prep = copy.deepcopy(data_dict)
 
