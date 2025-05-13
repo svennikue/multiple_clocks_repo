@@ -1,0 +1,1 @@
+--sub=1 --models_I_want="['onlynowand3future', 'onlynextand2future']" --exclude_x_repeats="[1]" --randomised_reward_locations=False --save_regs=True --fit_binned='by_state' --fit_residuals=False --avg_across_runs=True --comp_loc_perms=1000
