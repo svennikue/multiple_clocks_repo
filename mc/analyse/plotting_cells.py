@@ -42,9 +42,46 @@ def prep_result_df_for_plotting_by_rois(results):
                 df.at[i, 'average_corr'] = np.mean(results[sub][model][cell_label])
                 df.at[i, 'model'] = model
                 i = i + 1
-                
-                
+                           
     return df
+
+
+def prep_result_df_perms_for_plotting_by_rois(results, perm_results):
+    # Define your ROI labels
+    ROI_labels = ['ACC', 'OFC', 'PCC','hippocampal', 'PFC', 'entorhinal', 'amygdala', 'mixed']
+    
+    # new strategy: use pandas dataframe.
+    df = pd.DataFrame()
+    i = 0
+    for sub in results:
+        for model in results[sub]:
+            for cell_label in results[sub][model]:
+                if 'ACC' in cell_label:
+                    roi = 'ACC'
+                elif 'PCC' in cell_label:
+                    roi = 'PCC'
+                elif 'OFC' in cell_label:
+                    roi = 'OFC'
+                elif 'HC' in cell_label:
+                    roi = 'hippocampal'
+                elif 'EC' in cell_label:
+                    roi = 'entorhinal'
+                elif 'AMYG' in cell_label:
+                    roi = 'amygdala'
+                else:
+                    roi = 'mixed'
+                df.at[i, 'roi'] = roi
+                df.at[i, 'cell'] = cell_label
+                df.at[i, 'average_corr'] = np.mean(results[sub][model][cell_label])
+                df.at[i, 'model'] = model
+                i = i + 1
+                for p_idx in range(0, perm_results[sub][model][cell_label].shape[1]):
+                    df.at[i, f"perm_{p_idx}"] = np.mean(perm_results[sub][model][cell_label][:,p_idx])
+                    
+                
+    # import pdb; pdb.set_trace()           
+    return df
+
 
 
 def plotting_df_based_corr_perm_histogram_by_ROIs(df_results, title_string_add):

@@ -1,6 +1,7 @@
 #!/bin/bash
 # Loop over numbers 1 to 57
-for i in {1..59}; do
+# for i in {1..59}; do
+for i in {1..10}; do
 
   # Skip the subjects we want to exclude
   # 27 and 44 have something wrong with location/reward timing
@@ -20,7 +21,7 @@ for i in {1..59}; do
     --fit_binned='by_state' \
     --fit_residuals=False \
     --avg_across_runs=True \
-    --comp_loc_perms=1000
+    --comp_loc_perms=260
 
   #    python wrapper_human_cells_elnetreg.py "$i" \
   #  --models_I_want="['only','onlynowand3future','onlynextand2future']" \

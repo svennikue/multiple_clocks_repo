@@ -22,6 +22,7 @@ import copy
 import fire
 from joblib import Parallel, delayed
 import sys
+from itertools import permutations
 
 
 
@@ -112,68 +113,70 @@ def get_rid_of_low_firing_cells(data, hz_exclusion_threshold = 0.2, sd_exclusion
     # import pdb; pdb.set_trace() 
     return remaining_neurons
     
+       
 
-
-# def generate_unique_invalid_permutations(idx_same_grids, n_permutations=1000, seed=None):
+# def generate_unique_grid_permutations(reward_configs, n_permutations=1000, seed=42):
 #     """
-#     Generate unique permutations of idx_same_grids such that:
-#     - No value remains in the same position.
-#     - All permutations are unique.
-    
-#     Parameters:
-#         idx_same_grids (np.ndarray): Array of group assignments (e.g. shape (24,))
-#         n_permutations (int): Number of unique permutations to generate
-#         seed (int or None): Random seed for reproducibility
+#     Generate unique permutations of reward_configs such that:
+#     - No grid stays in the same position.
+#     - Each permutation is unique.
     
 #     Returns:
-#         np.ndarray: Array of shape (n_permutations, len(idx_same_grids)) with valid permutations
+#         np.ndarray of shape (n_permutations, len(reward_configs), 4)
 #     """
-#     if seed is not None:
-#         np.random.seed(seed)
-
-#     n = len(idx_same_grids)
+#     np.random.seed(seed)
+#     n = len(reward_configs)
+#     reward_tuples = [tuple(row) for row in reward_configs]
 #     generated = set()
 #     results = []
 
 #     while len(results) < n_permutations:
 #         perm = np.random.permutation(n)
-#         shuffled = idx_same_grids[perm]
+#         shuffled = [reward_tuples[i] for i in perm]
 
-#         # Valid if no element remains in original position
-#         if not np.any(shuffled == idx_same_grids):
+#         # Check: no item at original position
+#         if all(shuffled[i] != reward_tuples[i] for i in range(n)):
 #             perm_tuple = tuple(shuffled)
 #             if perm_tuple not in generated:
 #                 generated.add(perm_tuple)
 #                 results.append(shuffled)
 
 #     return np.array(results)
-        
 
-def generate_unique_grid_permutations(reward_configs, n_permutations=1000, seed=42):
+
+def generate_unique_grid_permutations(reward_configs, n_permutations=260, seed=42):
     """
     Generate unique permutations of reward_configs such that:
-    - No grid stays in the same position.
+    - Identical rows are always moved together.
+    - No group of identical rows stays in any of its original positions.
     - Each permutation is unique.
     
     Returns:
         np.ndarray of shape (n_permutations, len(reward_configs), 4)
     """
+    # import pdb; pdb.set_trace()
+    
     np.random.seed(seed)
-    n = len(reward_configs)
-    reward_tuples = [tuple(row) for row in reward_configs]
-    generated = set()
+    # Get unique grids and their mapping
+    unique_grids, idx_unique, idx_inverse, counts = np.unique(
+        reward_configs, axis=0, return_index=True, return_inverse=True, return_counts=True
+    )
+    
+    n_unique = len(unique_grids)
+    
+    # Generate all derangements of n_unique groups
+    def is_derangement(p): return all(i != p[i] for i in range(n_unique))
+    
+    all_derangements = [p for p in permutations(range(n_unique)) if is_derangement(p)]
+    np.random.shuffle(all_derangements)  # Shuffle for randomness
+    
+    max_possible = min(n_permutations, len(all_derangements))
     results = []
-
-    while len(results) < n_permutations:
-        perm = np.random.permutation(n)
-        shuffled = [reward_tuples[i] for i in perm]
-
-        # Check: no item at original position
-        if all(shuffled[i] != reward_tuples[i] for i in range(n)):
-            perm_tuple = tuple(shuffled)
-            if perm_tuple not in generated:
-                generated.add(perm_tuple)
-                results.append(shuffled)
+    
+    for perm in all_derangements[:max_possible]:
+        permuted_grids = unique_grids[list(perm)]
+        new_config = permuted_grids[idx_inverse]
+        results.append(new_config)
 
     return np.array(results)
 
@@ -210,7 +213,13 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = No
     perms  = 1
     if comp_loc_perms:
         unique_grid_permutations = generate_unique_grid_permutations(data['reward_configs'], n_permutations=1000)
-        perms = comp_loc_perms
+        
+        n_unique = len(unique_grids)
+        # Generate all derangements of n_unique groups
+        def is_derangement(p): return all(i != p[i] for i in range(n_unique))
+        all_derangements = [p for p in permutations(range(n_unique)) if is_derangement(p)]
+        perms = min(comp_loc_perms, len(all_derangements))
+        
     
      # prepare the result dictionaries    
     for model in model_string:
@@ -235,7 +244,7 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = No
     #     all_results['corr_dict_binned'] = np.empty((len(idx_unique_grid), perms))
     # if fit_residuals == True:
     #     all_results['corr_dict_residuals'] = np.empty((len(idx_unique_grid), perms))
-        
+    # import pdb; pdb.set_trace()     
     for p_idx in range(0,perms):
         if comp_loc_perms:
             # create all of these based on the permutations such that I also avoid double-dipping.
@@ -483,9 +492,9 @@ if __name__ == "__main__":
 # if __name__ == "__main__":
 #     # For debugging, bypass Fire and call compute_one_subject directly.
 #     compute_one_subject(
-#         sub=4,
+#         sub=2,
 #         #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
-#         models_I_want=['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future'],
+#         models_I_want=['onlynowand3future', 'onlynextand2future'],
 #         exclude_x_repeats=[1],
 #         randomised_reward_locations=False,
 #         save_regs=True,
@@ -495,7 +504,7 @@ if __name__ == "__main__":
 #         # introduce a fit residuals options!
 #         # bin_pre_corr='by_state',
 #         avg_across_runs=True,
-#         comp_loc_perms = 10
+#         comp_loc_perms=260 # since with 6 grids, I can only get !6 = 265 unique perms
 #     )
 
 
