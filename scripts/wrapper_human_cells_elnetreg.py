@@ -492,11 +492,11 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
     print(f"starting parallel regression and correlation for all cells and models for subject {sub}")
     
 
-    for cell in cells:
-        results = run_elnetreg_cellwise(single_sub_dict, cell, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms = comp_loc_perms)    
+    # for cell in cells:
+    #     results = run_elnetreg_cellwise(single_sub_dict, cell, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms = comp_loc_perms)    
     
     
-    # parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(single_sub_dict, c, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms=comp_loc_perms) for c in cells)
+    parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(single_sub_dict, c, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms=comp_loc_perms) for c in cells)
     
     result_dir = {}
     result_dir['binned'], result_dir['raw'], result_dir['residuals'] = {}, {}, {}
