@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def plot_perms_per_cell_and_roi(df_results):
+def plot_perms_per_cell_and_roi(df_results, n_perms):
     # import pdb; pdb.set_trace()
     # ROI_labels = ['hippocampal', 'ACC','PCC','OFC', 'entorhinal', 'amygdala', 'mixed']
     bins=50
@@ -31,7 +31,6 @@ def plot_perms_per_cell_and_roi(df_results):
     df_strong_clocks = df_strong_cells[df_strong_cells['model'] == 'clo_model'].reset_index(drop=True)
     #
     #
-    n_perms = 260
     # Plotting
     n_rows = int(np.ceil(np.sqrt(len(df_strong_clocks))))
     n_cols = int(np.ceil(len(df_strong_clocks) / n_rows))
@@ -78,56 +77,56 @@ def plot_perms_per_cell_and_roi(df_results):
 
     
     
-    df_strong_cells = df_results[df_results['average_corr'] > 0.05]
-    df_strong_state = df_strong_cells[df_strong_cells['model'] == 'state_reg'].reset_index(drop=True)
-    #
-    #
-    n_perms = 260
-    # Plotting
-    n_rows = int(np.ceil(np.sqrt(len(df_strong_state))))
-    n_cols = int(np.ceil(len(df_strong_state) / n_rows))
+    # df_strong_cells = df_results[df_results['average_corr'] > 0.05]
+    # df_strong_state = df_strong_cells[df_strong_cells['model'] == 'state_reg'].reset_index(drop=True)
+    # #
+    # #
+    # n_perms = 260
+    # # Plotting
+    # n_rows = int(np.ceil(np.sqrt(len(df_strong_state))))
+    # n_cols = int(np.ceil(len(df_strong_state) / n_rows))
     
-    fig, axs = plt.subplots(n_rows, n_cols, figsize=(18, 12))
-    fig.suptitle("State model", fontsize=16, y=1.02)  # Title slightly above the top
-    axs = axs.flatten()
+    # fig, axs = plt.subplots(n_rows, n_cols, figsize=(18, 12))
+    # fig.suptitle("State model", fontsize=16, y=1.02)  # Title slightly above the top
+    # axs = axs.flatten()
     
     
-    # Determine common x-axis range for centering
-    all_values = df_strong_state[[f'perm_{i}' for i in range(n_perms)]].values.flatten()
-    xlim = max(abs(np.min(all_values)), abs(np.max(all_values)))  # Symmetric about 0
+    # # Determine common x-axis range for centering
+    # all_values = df_strong_state[[f'perm_{i}' for i in range(n_perms)]].values.flatten()
+    # xlim = max(abs(np.min(all_values)), abs(np.max(all_values)))  # Symmetric about 0
 
     
-    for idx, row in df_strong_state.iterrows():
-        perm_values = row[[f'perm_{i}' for i in range(n_perms)]].values
-        avg_corr = row['average_corr']
+    # for idx, row in df_strong_state.iterrows():
+    #     perm_values = row[[f'perm_{i}' for i in range(n_perms)]].values
+    #     avg_corr = row['average_corr']
         
-        ax = axs[idx]
-        ax.hist(perm_values, bins=30, color='skyblue', edgecolor='black')
-        ax.axvline(avg_corr, color='red', linestyle='--', linewidth=2)
+    #     ax = axs[idx]
+    #     ax.hist(perm_values, bins=30, color='skyblue', edgecolor='black')
+    #     ax.axvline(avg_corr, color='red', linestyle='--', linewidth=2)
         
-        ax.axvline(0, color='black', linestyle='-', linewidth=1)
+    #     ax.axvline(0, color='black', linestyle='-', linewidth=1)
         
-        # Center x-axis around 0
-        ax.set_xlim(-xlim, xlim)
+    #     # Center x-axis around 0
+    #     ax.set_xlim(-xlim, xlim)
     
-        # Calculate one-tailed p-value
-        p_val = np.mean(perm_values >= avg_corr)
-        ax.text(0.95, 0.95, f"p = {p_val:.3f}", ha='right', va='top', transform=ax.transAxes)
+    #     # Calculate one-tailed p-value
+    #     p_val = np.mean(perm_values >= avg_corr)
+    #     ax.text(0.95, 0.95, f"p = {p_val:.3f}", ha='right', va='top', transform=ax.transAxes)
         
-        ax.set_title(f"{row['roi']} | {row['cell']}", fontsize=10)
-        ax.set_xlabel("Correlation")
-        ax.set_ylabel("Count")
+    #     ax.set_title(f"{row['roi']} | {row['cell']}", fontsize=10)
+    #     ax.set_xlabel("Correlation")
+    #     ax.set_ylabel("Count")
     
-    # Hide any unused subplots
-    for ax in axs[len(df_strong_state):]:
-        ax.axis('off')
+    # # Hide any unused subplots
+    # for ax in axs[len(df_strong_state):]:
+    #     ax.axis('off')
     
-    plt.tight_layout()
-    plt.tight_layout(rect=[0, 0, 1, 0.97])  # Adjust layout to make room for the title
-    plt.show()
-    #
-    #
-    #
+    # plt.tight_layout()
+    # plt.tight_layout(rect=[0, 0, 1, 0.97])  # Adjust layout to make room for the title
+    # plt.show()
+    # #
+    # #
+    # #
     
     
     

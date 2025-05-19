@@ -120,72 +120,6 @@ def get_rid_of_low_firing_cells(data, hz_exclusion_threshold = 0.2, sd_exclusion
     print(f"exlcuding neurons {neurons_to_exclude_str} because average spike rate lower than {hz_exclusion_threshold} or variability bigger than std/mean = {sd_exclusion_threshold}")
     # import pdb; pdb.set_trace() 
     return remaining_neurons
-    
-
-# # Updated function: generate strict permutations and then find their corresponding index vectors from reward_configs
-# def generate_unique_grid_permutations(reward_configs, n_permutations=260, seed=42):
-#     """
-#     Returns:
-#         - strict_permutations: Permuted reward configs (grouped derangement)
-#         - index_vectors: index vectors such that reward_configs[index_vector] == strict_permutation
-#     """
-#     np.random.seed(seed)
-
-#     # Step 1: Strict permutations using grouped derangements
-#     unique_grids, idx_unique, idx_inverse, counts = np.unique(
-#         reward_configs, axis=0, return_index=True, return_inverse=True, return_counts=True
-#     )
-
-#     n_unique = len(unique_grids)
-#     orig_config = reward_configs.copy()
-
-#     def is_derangement(p):
-#         return all(i != p[i] for i in range(n_unique))
-
-#     all_derangements = [p for p in permutations(range(n_unique)) if is_derangement(p)]
-#     np.random.shuffle(all_derangements)
-
-#     max_possible = min(n_permutations, len(all_derangements))
-#     strict_perms = []
-#     index_vectors = []
-
-#     for perm in all_derangements[:max_possible]:
-#         permuted_grids = unique_grids[list(perm)]
-#         new_config = permuted_grids[idx_inverse]
-
-#         import pdb; pdb.set_trace() 
-#         if all(not np.array_equal(orig_config[i], new_config[i]) for i in range(len(orig_config))):
-#             strict_perms.append(new_config)
-
-#             # # Track (row, count) from reward_configs to map to new_config
-#             # for i_r, row in enumerate(new_config):
-                
-            
-            
-#             # row_occurrence_counter = defaultdict(int)
-#             # row_position_map = defaultdict(list)
-
-#             # for idx, row in enumerate([tuple(row) for row in reward_configs]):
-#             #     row_position_map[row].append(idx)
-
-#             # index_vector = []
-#             # for row in [tuple(row) for row in new_config]:
-#             #     count = row_occurrence_counter[row]
-#             #     idx = row_position_map[row][count]
-#             #     index_vector.append(idx)
-#             #     row_occurrence_counter[row] += 1
-
-#             # index_vectors.append(index_vector)
-    
-    
-    
-#     return np.array(strict_perms), np.array(index_vectors)
-
-# # # Run the corrected version
-# # strict_matched_perms, matching_index_vectors = full_unique_index_vectors_for_strict_perms(reward_configs, n_permutations=260)
-# # strict_matched_perms.shape, matching_index_vectors.shape
-
-
 
 
 def generate_unique_grid_permutations(reward_configs, n_permutations=260, seed=42):
@@ -225,13 +159,6 @@ def generate_unique_grid_permutations(reward_configs, n_permutations=260, seed=4
         # Check: no row remains at the same index
         if all(not np.array_equal(orig_config[i], new_config[i]) for i in range(len(orig_config))):
             results.append(new_config)
-
-            # Create occurrence counters for rows
-            
-            # this doesnt quite work the way I want it to
-            # for now, do this instead:
-            #index_vectors.append(idx_inverse)
-            # Build the vector of indices such that reward_configs[idx_vector] == new_config
             
             # Create a map from each unique grid to its source indices
             grid_to_indices = {}
@@ -261,37 +188,9 @@ def generate_unique_grid_permutations(reward_configs, n_permutations=260, seed=4
                         idx_old = grid_to_indices[row_tuple][-1]
                     idx_vector[idx_new] = int(idx_old)
 
-            # idx_vector = []
-            # usage_counter = {k: 0 for k in grid_to_indices}
-
-            # for row in new_config:
-            #     row_tuple = tuple(row)
-            #     use_idx_list = grid_to_indices[row_tuple]
-            #     use_count = usage_counter[row_tuple]
-            #     idx_vector.append(use_idx_list[use_count % len(use_idx_list)])
-            #     usage_counter[row_tuple] += 1
-
             index_vectors.append(idx_vector)
     # import pdb; pdb.set_trace()
     return np.array(results), np.array(index_vectors)
-
-           
-           
-    #         idx_vector = []
-    #         used = set()
-    #         for target_row in new_config:
-    #               for i in range(len(reward_configs)):
-    #                   if i not in used and np.array_equal(reward_configs[i], target_row):
-    #                       idx_vector.append(i)
-    #                       used.add(i)
-    #                       break
-
-    #         index_vectors.append(idx_vector)
-
-     
-    # return np.array(results), np.array(index_vectors)
-
-
 
 
 
@@ -300,7 +199,8 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = No
     alpha=0.00001 ##0.01 used in El-gaby paper
     # l1_ratio= 0.01
     
-    
+    # if curr_cell == 'LEC_0_2':
+    #     import pdb; pdb.set_trace()
     cell_idx = int(curr_cell.split('_')[1])
     corr_dict, coefs_per_model = {}, {}
     if fit_binned:
@@ -325,7 +225,7 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = No
         
     perms  = 1
     if comp_loc_perms:
-        unique_grid_permutations, perm_idx_vectors = generate_unique_grid_permutations(data['reward_configs'], n_permutations=1000)
+        unique_grid_permutations, perm_idx_vectors = generate_unique_grid_permutations(data['reward_configs'], n_permutations=comp_loc_perms)
         perms = len(unique_grid_permutations)
         
      # prepare the result dictionaries    
@@ -403,49 +303,71 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = No
             # depending on the permutations, change the train and test dataset.
             for entry in model_string:
                 if comp_loc_perms:
+                    # the models will have different indices than the neurons.
                     # take the shuffled task configs as indices for the simulations
-                    left_out_grid_idx_sim = idx_unique_grid_sim[task_idx]
+                    left_out_grid_idx_sim = curr_perm_idx_vector[task_idx]
+                    # there should never be several if I average repeated tasks, but just in case
                     test_grid_idx_sim = np.where(idx_same_grids_sim == idx_same_grids_sim[left_out_grid_idx_sim])[0]
                     
-                    # this will be a bit more complicate now but ok- i first need to
-                    # generate the og indexing with the inverse vector?
-                    # import pdb; pdb.set_trace() 
                     
                     training_grid_idx_sim = curr_perm_idx_vector[~np.isin(curr_perm_idx_vector, test_grid_idx_sim)]
                     training_grid_idx_sim = np.array([int(e) for e in training_grid_idx_sim])
-                    # sometimes, the amount of grid repeats is not equal for each task.
-                    # this means if I permute the tasks, there will be different configs
-                    # that are suddenly repeated more often. this again means
-                    # that sometimes, there are more/less 'held out' or 'training'
-                    # grids than for the neuron. 
-                    # make sure to adjust those! Since it should be random 
-                    # anyways, just delete the last one.
                     
-                    # UUUUUGH THIS IS SO FUCKING ANNOYING
-                    # ok i think i should think of somehting else.
-                    # essentially, because they don't always solve the same amount of grids,
-                    # I here always end up with different amounts of data.
-                    # this is probably easy to go around if I did it some other way
-                    # fix this!!! 
-                    import pdb; pdb.set_trace()
-                    
-                    while len(training_grid_idx_sim) > len(training_grid_idx):
-                        training_grid_idx_sim = training_grid_idx_sim[0:-1]
-                    # also delete the last training set. This means less data,
-                    # but it also means 
-                    while len(test_grid_idx_sim) < len(test_grid_idx):
-                        test_grid_idx = test_grid_idx[0:-1]
-                    
-                    # redefine the test grid neurons in this case
-                    all_neurons_heldouttasks = itemgetter(*test_grid_idx)(data['neurons'])
-                    curr_neuron_heldouttasks = [all_neurons[cell_idx] for all_neurons in all_neurons_heldouttasks]
-                    curr_neuron_heldouttasks_flat = np.concatenate(curr_neuron_heldouttasks)
-                    
+                    # then use these perm vectors to refer to the OG grids
+
                     
                     # then choose which tasks to take and go and select training regressors
                     simulated_neurons_training_tasks = itemgetter(*training_grid_idx_sim)(data[entry])
                     # and test regressors
                     simulated_neurons_test_grids = itemgetter(*test_grid_idx)(data[entry])
+                
+                    
+                    # # left_out_grid_idx_sim = idx_unique_grid_sim[task_idx]
+                    # # there should never be several, but just in case
+                    # # test_grid_idx_sim = np.where(idx_same_grids_sim == idx_same_grids_sim[left_out_grid_idx_sim])[0]
+                    
+                    
+                    
+                    
+                    # # this will be a bit more complicate now but ok- i first need to
+                    # # generate the og indexing with the inverse vector?
+                    # # import pdb; pdb.set_trace() 
+                    
+                    # training_grid_idx_sim = curr_perm_idx_vector[~np.isin(curr_perm_idx_vector, test_grid_idx_sim)]
+                    # training_grid_idx_sim = np.array([int(e) for e in training_grid_idx_sim])
+                    # # sometimes, the amount of grid repeats is not equal for each task.
+                    # # this means if I permute the tasks, there will be different configs
+                    # # that are suddenly repeated more often. this again means
+                    # # that sometimes, there are more/less 'held out' or 'training'
+                    # # grids than for the neuron. 
+                    # # make sure to adjust those! Since it should be random 
+                    # # anyways, just delete the last one.
+                    
+                    # # UUUUUGH THIS IS SO FUCKING ANNOYING
+                    # # ok i think i should think of somehting else.
+                    # # essentially, because they don't always solve the same amount of grids,
+                    # # I here always end up with different amounts of data.
+                    # # this is probably easy to go around if I did it some other way
+                    # # fix this!!! 
+                    # import pdb; pdb.set_trace()
+                    
+                    # while len(training_grid_idx_sim) > len(training_grid_idx):
+                    #     training_grid_idx_sim = training_grid_idx_sim[0:-1]
+                    # # also delete the last training set. This means less data,
+                    # # but it also means 
+                    # while len(test_grid_idx_sim) < len(test_grid_idx):
+                    #     test_grid_idx = test_grid_idx[0:-1]
+                    
+                    # # redefine the test grid neurons in this case
+                    # all_neurons_heldouttasks = itemgetter(*test_grid_idx)(data['neurons'])
+                    # curr_neuron_heldouttasks = [all_neurons[cell_idx] for all_neurons in all_neurons_heldouttasks]
+                    # curr_neuron_heldouttasks_flat = np.concatenate(curr_neuron_heldouttasks)
+                    
+                    
+                    # # then choose which tasks to take and go and select training regressors
+                    # simulated_neurons_training_tasks = itemgetter(*training_grid_idx_sim)(data[entry])
+                    # # and test regressors
+                    # simulated_neurons_test_grids = itemgetter(*test_grid_idx)(data[entry])
                 else:
                     # if not permutated, take same order as for neurons
                     # then choose which tasks to take and go and select training regressors
@@ -586,7 +508,7 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
         if fit_residuals == True:
             result_dir['residuals'][curr_cell] = cell_idx['corr_dict_binned']
     
-    import pdb; pdb.set_trace() 
+    # import pdb; pdb.set_trace() 
     # define the basename
     result_file_name  = f"sub-{sub}_corrs"
     if models_I_want:
@@ -625,32 +547,32 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
     
     
 # # if running from command line, use this one!   
-# if __name__ == "__main__":
-#     #print(f"starting regression for subject {sub}")
-#     fire.Fire(compute_one_subject)
+if __name__ == "__main__":
+    #print(f"starting regression for subject {sub}")
+    fire.Fire(compute_one_subject)
 #    call this script like
 #    python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
 
 # ['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']
 # ['only','onlynowand3future', 'onlynextand2future']
 
-if __name__ == "__main__":
-    # For debugging, bypass Fire and call compute_one_subject directly.
-    compute_one_subject(
-        sub=2,
-        #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
-        models_I_want=['onlynowand3future', 'onlynextand2future'],
-        exclude_x_repeats=[1],
-        randomised_reward_locations=False,
-        save_regs=True,
-        fit_binned='by_state', # 'by_loc_change', 'by_state', 'by_state_loc_change'
-        fit_residuals=False,
-        # fit_binned='by_state_loc_change' # 'by_loc_change', 'by_state', 'by_state_loc_change'
-        # introduce a fit residuals options!
-        # bin_pre_corr='by_state',
-        avg_across_runs=True,
-        comp_loc_perms=10 # since with 6 grids, I can only get !6 = 265 unique perms
-    )
+# if __name__ == "__main__":
+#     # For debugging, bypass Fire and call compute_one_subject directly.
+#     compute_one_subject(
+#         sub=2,
+#         #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
+#         models_I_want=['onlynowand3future', 'onlynextand2future'],
+#         exclude_x_repeats=[1],
+#         randomised_reward_locations=False,
+#         save_regs=True,
+#         fit_binned='by_state', # 'by_loc_change', 'by_state', 'by_state_loc_change'
+#         fit_residuals=False,
+#         # fit_binned='by_state_loc_change' # 'by_loc_change', 'by_state', 'by_state_loc_change'
+#         # introduce a fit residuals options!
+#         # bin_pre_corr='by_state',
+#         avg_across_runs=True,
+#         comp_loc_perms=265 # since with 6 grids, I can only get !6 = 265 unique perms
+#     )
 
 
 # these are hard-coded right now, so include them in the 'only' + models list 'state_reg', 'complete_musicbox_reg', 'reward_musicbox_reg', 'location_reg'

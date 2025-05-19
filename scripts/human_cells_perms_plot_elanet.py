@@ -25,7 +25,7 @@ def load_result_dirs(file_name, perm_string):
     
     # subjects = [f"sub-{i}" for i in range(1, 65)]
     subjects = [f"sub-{i}" for i in range(1, 7)]
-    
+    subjects = ['sub-1', 'sub-2']
     actual_subjects = []
     # check if on server or local
     if not os.path.isdir(results_folder):
@@ -109,9 +109,9 @@ def plot_all(model_name_string, perms, define_somehow_what_to_plot=None):
     
     # title_addition = "raw correlation, only pos fit"
     # mc.analyse.plotting_cells.plotting_corr_perm_histogram_by_ROIs(results_corr_by_roi,title_addition)
-    results_corr_by_roi_df = mc.analyse.plotting_cells.prep_result_df_perms_for_plotting_by_rois(results['raw'], results['perm'])
+    results_corr_by_roi_df, no_perms = mc.analyse.plotting_cells.prep_result_df_perms_for_plotting_by_rois(results['raw'], results['perm'])
     
-    mc.plotting.results.plot_perms_per_cell_and_roi(results_corr_by_roi_df)
+    mc.plotting.results.plot_perms_per_cell_and_roi(results_corr_by_roi_df, no_perms)
     
     
     import pdb; pdb.set_trace()
@@ -189,7 +189,7 @@ if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     plot_all(
         model_name_string='w_partial_musicboxes_excl_rep1-1_avg_in_20_bins_across_runs',
-        perms = '260perms_configs_shuffle'
+        perms = '10perms_configs_shuffle'
         # sub-1_corrs_w_partial_musicboxes_excl_rep1-2_avg_in_20_bins_across_runs_fit_binned_by_state
     )
     

@@ -78,9 +78,9 @@ def prep_result_df_perms_for_plotting_by_rois(results, perm_results):
                 for p_idx in range(0, perm_results[sub][model][cell_label].shape[1]):
                     df.at[i, f"perm_{p_idx}"] = np.mean(perm_results[sub][model][cell_label][:,p_idx])
                     
-                
+    n_perms = perm_results[sub][model][cell_label].shape[1]            
     # import pdb; pdb.set_trace()           
-    return df
+    return df, n_perms
 
 
 
