@@ -31,7 +31,7 @@ def plot_perms_per_cell_and_roi(df_results):
     df_strong_clocks = df_strong_cells[df_strong_cells['model'] == 'clo_model'].reset_index(drop=True)
     #
     #
-    n_perms = 1000
+    n_perms = 260
     # Plotting
     n_rows = int(np.ceil(np.sqrt(len(df_strong_clocks))))
     n_cols = int(np.ceil(len(df_strong_clocks) / n_rows))
@@ -73,6 +73,7 @@ def plot_perms_per_cell_and_roi(df_results):
     
     plt.tight_layout()
     plt.tight_layout(rect=[0, 0, 1, 0.97])  # Adjust layout to make room for the title
+    plt.title("SMB model")
     plt.show()
 
     
@@ -81,7 +82,7 @@ def plot_perms_per_cell_and_roi(df_results):
     df_strong_state = df_strong_cells[df_strong_cells['model'] == 'state_reg'].reset_index(drop=True)
     #
     #
-    n_perms = 1000
+    n_perms = 260
     # Plotting
     n_rows = int(np.ceil(np.sqrt(len(df_strong_state))))
     n_cols = int(np.ceil(len(df_strong_state) / n_rows))

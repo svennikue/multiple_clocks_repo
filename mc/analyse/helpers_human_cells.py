@@ -1091,7 +1091,33 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
                     if m.endswith('reg') or m.endswith('model') or m.endswith('neurons'):
                         # this needs to be concatenated and all
                         data_prep[sub][m][grid_idx] = mc.simulation.predictions.transform_data_to_betas(data_prep_tmp[sub][m][grid_idx], regression_across_repeats_concat)
-    # import pdb; pdb.set_trace()
+      
+                
+    if avg_across_runs == True:
+        # finally, also average across tasks: each tasks in the end only exists once.
+        # import pdb; pdb.set_trace()
+        data_prep_tmp = copy.deepcopy(data_prep)
+        data_prep = {}
+        data_prep[sub] = {}
+        # copy cell_labels, excluded_cells, og_timings, og_grids
+        to_copy = ['cell_labels', 'excluded_cells', 'reward_configs', 'buttons', 'timings']
+        for c in to_copy:
+            data_prep[sub][c] = data_prep_tmp[sub][c]
+         
+        data_prep[sub]['reward_configs'], idx_unique, idx_inverse, counts = np.unique(
+            data_prep_tmp[sub]['reward_configs'], axis=0, return_index=True, return_inverse=True, return_counts=True
+        )
+        
+        for unique_grid_idx in idx_unique:
+            # collect all indices that are the same grid
+            same_grids_at = np.where(idx_inverse == unique_grid_idx)[0]
+            # then average these grids
+            for m in data_prep_tmp[sub]:
+                if m.endswith('reg') or m.endswith('model') or m.endswith('neurons'):
+                    if m not in data_prep[sub]:
+                        data_prep[sub][m] = []
+                    data_prep[sub][m].append(np.mean([data_prep_tmp[sub][m][i] for i in same_grids_at], axis=0))
+              
     return data_prep
 
 

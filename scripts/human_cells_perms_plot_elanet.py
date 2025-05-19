@@ -24,7 +24,7 @@ def load_result_dirs(file_name, perm_string):
     results_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/elastic_net_reg/corrs"
     
     # subjects = [f"sub-{i}" for i in range(1, 65)]
-    subjects = [f"sub-{i}" for i in range(1, 5)]
+    subjects = [f"sub-{i}" for i in range(1, 7)]
     
     actual_subjects = []
     # check if on server or local
@@ -189,7 +189,7 @@ if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     plot_all(
         model_name_string='w_partial_musicboxes_excl_rep1-1_avg_in_20_bins_across_runs',
-        perms = '1000perms_configs_shuffle'
+        perms = '260perms_configs_shuffle'
         # sub-1_corrs_w_partial_musicboxes_excl_rep1-2_avg_in_20_bins_across_runs_fit_binned_by_state
     )
     

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Loop over numbers 1 to 57
 # for i in {1..59}; do
-for i in {1..10}; do
+for i in {6..15}; do
 
   # Skip the subjects we want to exclude
   # 27 and 44 have something wrong with location/reward timing
