@@ -19,8 +19,15 @@ import pickle
 import matplotlib.pyplot as plt
 
 
-def load_result_dirs(file_name, perm_string, subs):
-    result_dir = {"binned": {}, "raw":{}, "perm":{}}
+def load_result_dirs(file_name, subs, perms_locs=None, perms_time=None):
+    result_dir = {"binned": {}, "raw":{}}
+    if perms_locs:
+        result_dir = {"binned": {}, "raw":{}, "perm_locs":{}}
+    if perms_time:
+        result_dir = {"binned": {}, "raw":{}, "perm_time":{}}
+    if perms_locs and perms_time:
+        result_dir = {"binned": {}, "raw":{}, "perm_time":{}, "perm_locs":{}}
+            
     results_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/elastic_net_reg/corrs"
     
     # subjects = [f"sub-{i}" for i in range(1, 65)]
@@ -59,19 +66,27 @@ def load_result_dirs(file_name, perm_string, subs):
                             result_dir['binned'][sub][model] = {}
                         for inner_neuron, values in inner.items():
                             result_dir['binned'][sub][model][inner_neuron] = values
-        
-            with open(f"{results_folder}/{perm_string}_{sub}_corrs_{file_name}", 'rb') as f:
-                sub_dir = pickle.load(f)
-                result_dir['perm'][sub] = {}
-                for neuron, model in sub_dir.items():
-                    for model, inner in model.items():
-                        if model not in result_dir['perm'][sub]:
-                            result_dir['perm'][sub][model] = {}
-                        for inner_neuron, values in inner.items():
-                            result_dir['perm'][sub][model][inner_neuron] = values
-                            
-                            
-    
+            if perms_time:
+                with open(f"{results_folder}/{perms_time}_{sub}_corrs_{file_name}", 'rb') as f:
+                    sub_dir = pickle.load(f)
+                    result_dir['perm_time'][sub] = {}
+                    for neuron, model in sub_dir.items():
+                        for model, inner in model.items():
+                            if model not in result_dir['perm_time'][sub]:
+                                result_dir['perm_time'][sub][model] = {}
+                            for inner_neuron, values in inner.items():
+                                result_dir['perm_time'][sub][model][inner_neuron] = values
+            if perms_locs:
+                with open(f"{results_folder}/{perms_locs}_{sub}_corrs_{file_name}", 'rb') as f:
+                    sub_dir = pickle.load(f)
+                    result_dir['perm_locs'][sub] = {}
+                    for neuron, model in sub_dir.items():
+                        for model, inner in model.items():
+                            if model not in result_dir['perm_locs'][sub]:
+                                result_dir['perm_locs'][sub][model] = {}
+                            for inner_neuron, values in inner.items():
+                                result_dir['perm_locs'][sub][model][inner_neuron] = values
+
     return result_dir, actual_subjects
 
 
@@ -98,11 +113,22 @@ def load_data(subs):
 
 
 
-def plot_all(model_name_string, perms, sub_list, plot_cells_corr_higher_than=0.05, save=False):
-    results, subjects = load_result_dirs(model_name_string, perms, subs=sub_list)
-    results_corr_by_roi_df, no_perms = mc.analyse.plotting_cells.prep_result_df_perms_for_plotting_by_rois(results['raw'], results['perm'])
+def plot_all(model_name_string, sub_list, perms_locs=None, perms_time=None, plot_cells_corr_higher_than=0.05, save=False):
+    results, subjects = load_result_dirs(model_name_string, subs=sub_list, perms_locs=perms_locs, perms_time=perms_time)
     
-    mc.plotting.results.plot_perms_per_cell_and_roi(results_corr_by_roi_df, no_perms,  corr_thresh=plot_cells_corr_higher_than, save=save)
+    if perms_locs:
+        task_perm_results=results['perm_locs']
+    else:
+        task_perm_results = perms_locs
+    
+    if perms_time:
+        time_perm_results=results['perm_time']
+    else:
+        time_perm_results = perms_time
+        
+    results_corr_by_roi_df, no_perms = mc.analyse.plotting_cells.prep_result_df_perms_for_plotting_by_rois(results['raw'], time_perm_results=time_perm_results, task_perm_results=task_perm_results)
+    
+    mc.plotting.results.plot_perms_per_cell_and_roi(results_corr_by_roi_df, no_perms, corr_thresh=plot_cells_corr_higher_than, save=save)
     
     
     import pdb; pdb.set_trace()
@@ -122,8 +148,9 @@ if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     plot_all(
         model_name_string='w_partial_musicboxes_excl_rep1-1_avg_in_20_bins_across_runs',
-        perms = '265perms_configs_shuffle',
-        sub_list=[1,2,3,4,5,6,8,9,10,11,12,13,14,15],
+        sub_list=[1,2,3,4,5,6,8,9,10,11],
+        perms_locs = '265perms_configs_shuffle',
+        perms_time = '300perms_timepoints_shuffle',
         plot_cells_corr_higher_than=0.05,
         save=False
         # sub-1_corrs_w_partial_musicboxes_excl_rep1-2_avg_in_20_bins_across_runs_fit_binned_by_state

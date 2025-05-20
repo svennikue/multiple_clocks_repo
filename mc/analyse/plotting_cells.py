@@ -46,7 +46,7 @@ def prep_result_df_for_plotting_by_rois(results):
     return df
 
 
-def prep_result_df_perms_for_plotting_by_rois(results, perm_results):
+def prep_result_df_perms_for_plotting_by_rois(results, time_perm_results=None, task_perm_results=None):
     # Define your ROI labels
     #ROI_labels = ['ACC', 'OFC', 'PCC','hippocampal', 'PFC', 'entorhinal', 'amygdala', 'mixed']
     
@@ -54,9 +54,9 @@ def prep_result_df_perms_for_plotting_by_rois(results, perm_results):
     # new strategy: use pandas dataframe.
     df = pd.DataFrame()
     i = 0
-    for sub in perm_results:
-        for model in perm_results[sub]:
-            for cell_label in perm_results[sub][model]:
+    for sub in results:
+        for model in results[sub]:
+            for cell_label in results[sub][model]:
                 if 'ACC' in cell_label:
                     roi = 'ACC'
                 elif 'PCC' in cell_label:
@@ -76,18 +76,25 @@ def prep_result_df_perms_for_plotting_by_rois(results, perm_results):
                 df.at[i, 'average_corr'] = np.mean(results[sub][model][cell_label])
                 df.at[i, 'model'] = model
                 
-                for p_idx in range(0, perm_results[sub][model][cell_label].shape[1]):
-                    # if cell_label == 'LEC_0_2' and model == 'clo_model':
-                    #     test.append(np.mean(perm_results[sub][model][cell_label][:,p_idx]))
-                    df.at[i, f"perm_{p_idx}"] = np.mean(perm_results[sub][model][cell_label][:,p_idx])
-                    
+                if task_perm_results:
+                    for p_idx in range(0, task_perm_results[sub][model][cell_label].shape[1]):
+                        # if cell_label == 'LEC_0_2' and model == 'clo_model':
+                        #     test.append(np.mean(perm_results[sub][model][cell_label][:,p_idx]))
+                        df.at[i, f"task_perm_{p_idx}"] = np.mean(task_perm_results[sub][model][cell_label][:,p_idx])
+                if time_perm_results:
+                    for p_idx in range(0, time_perm_results[sub][model][cell_label].shape[1]):
+                        df.at[i, f"time_perm_{p_idx}"] = np.mean(time_perm_results[sub][model][cell_label][:,p_idx])
                 i = i + 1
-                 
-                    
-                 
-    n_perms = perm_results[sub][model][cell_label].shape[1]            
+    
+    n_perms_min = 0
+    if time_perm_results and task_perm_results:
+        n_perms_min = min(time_perm_results[sub][model][cell_label].shape[1], task_perm_results[sub][model][cell_label].shape[1])
+    elif time_perm_results:
+        n_perms_min = time_perm_results[sub][model][cell_label].shape[1]
+    elif task_perm_results:
+        n_perms_min = task_perm_results[sub][model][cell_label].shape[1]
     # import pdb; pdb.set_trace()           
-    return df, n_perms
+    return df, n_perms_min
 
 
 

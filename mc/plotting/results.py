@@ -27,7 +27,35 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
     # plot those cells that are strong for the respective model (corr higher than 0.05)
     df_strong_cells = df_results[df_results['average_corr'] > corr_thresh]
     for curr_model in models:
-        df_strong_curr_model = df_strong_cells[df_strong_cells['model'] == curr_model].reset_index(drop=True)
+        # df_strong_curr_model = df_strong_cells[df_strong_cells['model'] == curr_model].reset_index(drop=True)
+        df_strong_curr_model = df_strong_cells[df_strong_cells['model'] == curr_model].copy()
+
+        # If 'time_perm_0' exists, compute p_val_time for each row
+        if 'time_perm_0' in df_strong_curr_model.columns:
+            p_val_times = []
+            for _, row in df_strong_curr_model.iterrows():
+                perm_values = row[[f'time_perm_{i}' for i in range(n_perms)]].values
+                p_val_time = np.mean(perm_values >= row['average_corr'])
+                p_val_times.append(p_val_time)
+            df_strong_curr_model['p_val_time'] = p_val_times
+        
+            # Sort by p_val_time and take top 25
+            if len(df_strong_curr_model) > 25:
+                df_strong_curr_model = df_strong_curr_model.sort_values('p_val_time').head(25)
+        else:
+            df_strong_curr_model = df_strong_curr_model.sort_values('average_corr').head(25)
+            
+        df_strong_curr_model = df_strong_curr_model.reset_index(drop=True)
+
+        # also store p vals for task perms
+        if 'task_perm_0' in df_strong_curr_model.columns:
+            p_val_task = []
+            for _, row in df_strong_curr_model.iterrows():
+                perm_values = row[[f'task_perm_{i}' for i in range(n_perms)]].values
+                p_val_task = np.mean(perm_values >= row['average_corr'])
+                p_val_task.append(p_val_task)
+            df_strong_curr_model['p_val_task'] = p_val_task
+            
         #
         #
         # Plotting
@@ -38,28 +66,57 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
         fig.suptitle(f"{curr_model}", fontsize=15, y=0.99)  # Title slightly above the top
         axs = axs.flatten()
         
+        # Custom colors
+        color_task_perms = '#214066'   # dark turquoise blue
+        color_time_perms = '#7A9DB1'   # blue-grey
+        true_val_color = '#E2725B'   # terracotta/salmon
+
+
         
         # Determine common x-axis range for centering
-        all_values = df_strong_curr_model[[f'perm_{i}' for i in range(n_perms)]].values.flatten()
-        xlim = max(abs(np.min(all_values)), abs(np.max(all_values)))  # Symmetric about 0
+        # all_values = df_strong_curr_model[[f'perm_{i}' for i in range(n_perms)]].values.flatten()
+        
+        if 'task_perm_0' in df_strong_curr_model.columns:
+            all_values = df_strong_curr_model[[f'task_perm_{i}' for i in range(n_perms)]].values.flatten()
+        if 'time_perm_0' in df_strong_curr_model.columns:
+            all_values = df_strong_curr_model[[f'time_perm_{i}' for i in range(n_perms)]].values.flatten()
+        if 'task_perm_0' in df_strong_curr_model.columns and 'time_perm_0' in df_strong_curr_model.columns:
+            values_task = df_strong_curr_model[[f'task_perm_{i}' for i in range(n_perms)]].values.flatten()
+            values_time = df_strong_curr_model[[f'time_perm_{i}' for i in range(n_perms)]].values.flatten()
+            all_values = np.concatenate((values_task, values_time))
+
+        xlim = max(abs(np.nanmin(all_values)), abs(np.nanmax(all_values)))  # Symmetric about 0
     
         
         for idx, row in df_strong_curr_model.iterrows():
-            perm_values = row[[f'perm_{i}' for i in range(n_perms)]].values
+            
             avg_corr = row['average_corr']
             
             ax = axs[idx]
-            ax.hist(perm_values, bins=30, color='skyblue', edgecolor='black')
-            ax.axvline(avg_corr, color='red', linestyle='--', linewidth=2)
+            if 'task_perm_0' in df_strong_curr_model.columns:
+                perm_values = row[[f'task_perm_{i}' for i in range(n_perms)]].values
+                ax.hist(perm_values, bins=30, color=color_task_perms, alpha=0.5, label='Task perm.', edgecolor=None)
+                # Calculate one-tailed p-value
+                p_val_task = np.mean(perm_values >= avg_corr)
+                ax.text(0.95, 0.70, f"p_task = {p_val_task:.3f}", ha='right', va='top', transform=ax.transAxes)
+                
+            if 'time_perm_0' in df_strong_curr_model.columns:
+                perm_values = row[[f'time_perm_{i}' for i in range(n_perms)]].values
+                ax.hist(perm_values, bins=30, color=color_time_perms, alpha=0.5, label='Time perm.', edgecolor=None)
+                # Calculate one-tailed p-value
+                p_val_time = np.mean(perm_values >= avg_corr)
+                ax.text(0.95, 0.95, f"p_time = {p_val_time:.3f}", ha='right', va='top', transform=ax.transAxes)
+                
+                
+            
+            ax.axvline(avg_corr, color=true_val_color, linestyle='--', linewidth=2)
             
             ax.axvline(0, color='black', linestyle='-', linewidth=1)
             
             # Center x-axis around 0
             ax.set_xlim(-xlim, xlim)
         
-            # Calculate one-tailed p-value
-            p_val = np.mean(perm_values >= avg_corr)
-            ax.text(0.95, 0.95, f"p = {p_val:.3f}", ha='right', va='top', transform=ax.transAxes)
+
             
             ax.set_title(f"{row['roi']} | {row['cell']}", fontsize=10)
             ax.set_xlabel("Correlation", fontsize = 9)
@@ -84,6 +141,7 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
             plt.savefig(f"{curr_model}_perms_best_cells.png", dpi=300, bbox_inches='tight')
         else:
             plt.show()
+    
         
         
     
