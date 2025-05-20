@@ -160,8 +160,38 @@ def generate_unique_grid_permutations(reward_configs, n_permutations=10, seed=42
     return np.array(results), np.array(list(index_vectors))
 
 
+def generate_unique_timepoint_permutations(data_dict, models, n_permutations=10, seed=42):
+    """
+    Generate unique deranged permutations of time points across tasks:
+    - No timepoints remains in its original position
+    """
+    # shuffled_data = copy.deepcopy(data_dict)
+    shuffled_data = {}
+    np.random.seed(seed)
+    def random_derangement(len_all_tasks):
+        while True:
+            p = np.random.permutation(len_all_tasks)
+            if not np.any(p == np.arange(len_all_tasks)):
+                return p
+    
+    for m in models:
+        no_tasks = len(data_dict[m])
+        concatenated_model = np.concatenate(data_dict[m], axis = 1)
+        len_all_tasks = concatenated_model.shape[1]
+        # then create random perms based on the length
+        shuffled_data[m] = []
+        for _ in range(n_permutations):
+            idx = random_derangement(len_all_tasks)
+            shuffled_model = concatenated_model[:, idx]
+            shuffled_model_split = np.split(shuffled_model, no_tasks, axis = 1)
+            shuffled_data[m].append(shuffled_model_split)
+    
+    return shuffled_data
+        
+        
 
-def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = None, comp_loc_perms= None):
+
+def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = None, comp_loc_perms= None, comp_time_perms=None):
     print(f"...fitting and testing cell {curr_cell}")
     # parameters that seem to work, can be set flexibly
     alpha=0.00001 ##0.01 used in El-gaby paper
@@ -194,8 +224,16 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = No
         unique_grid_permutations, perm_idx_vectors = generate_unique_grid_permutations(data['reward_configs'], n_permutations=comp_loc_perms)
         perms = len(unique_grid_permutations)
         end = time.time()
-        print(f"Permutation generation took {end - start:.2f} seconds")
-            
+        print(f"Permutation generation for task order took {end - start:.2f} seconds")
+    
+    if comp_time_perms:
+        start = time.time()
+        shuffled_data = generate_unique_timepoint_permutations(data, model_string, n_permutations=comp_time_perms)
+        perms = comp_time_perms
+        end = time.time()
+        print(f"Permutation generation for timepoints took {end - start:.2f} seconds")
+        
+    
      # prepare the result dictionaries    
     for model in model_string:
         corr_dict[model][curr_cell] = np.zeros((len(unique_grids), perms))
@@ -287,7 +325,12 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = No
                     simulated_neurons_training_tasks = itemgetter(*training_grid_idx_sim)(data[entry])
                     # and test regressors
                     simulated_neurons_test_grids = itemgetter(*test_grid_idx)(data[entry])
-
+                elif comp_time_perms:
+                    # if timepoints permuted, take same task order as for neurons, 
+                    # but from permuted dictionary
+                    simulated_neurons_training_tasks = itemgetter(*training_grid_idx)(shuffled_data[entry][p_idx])
+                    # and test regressors
+                    simulated_neurons_test_grids = itemgetter(*test_grid_idx)(shuffled_data[entry][p_idx])
                 else:
                     # if not permutated, take same order as for neurons
                     # then choose which tasks to take and go and select training regressors
@@ -347,7 +390,7 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = No
         # print(f"Fitting one permutation took {end_perm - start_perm:.2f} seconds")
         
     end_perms = time.time()
-    print(f"Fitting all permutations took {end_perms - start_perms:.2f} seconds")
+    print(f"Fitting all {p_idx} permutations took {end_perms - start_perms:.2f} seconds")
     
     all_results = {}
     all_results['curr_cell'] = curr_cell  
@@ -369,7 +412,7 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = No
 
     
  
-def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward_locations, save_regs, fit_binned = None, fit_residuals= False, avg_across_runs = False, comp_loc_perms = False):
+def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward_locations, save_regs, fit_binned = None, fit_residuals= False, avg_across_runs = False, comp_loc_perms = False, comp_time_perms=False):
     
     data, group_dir, subj_reg_file = get_data(sub, models_I_want=models_I_want, exclude_x_repeats=exclude_x_repeats, randomised_reward_locations=randomised_reward_locations)
     
@@ -415,14 +458,12 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
         cells.append(f"{single_sub_dict['cell_labels'][cell_idx]}_{cell_idx}_{sub}")
 
 
-    print(f"starting parallel regression and correlation for all cells and models for subject {sub}")
-    
-
     # for cell in cells:
-    #     results = run_elnetreg_cellwise(single_sub_dict, cell, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms = comp_loc_perms)    
+    #     results = run_elnetreg_cellwise(single_sub_dict, cell, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms=comp_loc_perms, comp_time_perms=comp_time_perms)    
     
+     
+    parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(single_sub_dict, c, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms=comp_loc_perms, comp_time_perms=comp_time_perms) for c in cells)
     
-    parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(single_sub_dict, c, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms=comp_loc_perms) for c in cells)
     
     result_dir = {}
     result_dir['binned'], result_dir['raw'], result_dir['residuals'] = {}, {}, {}
@@ -449,7 +490,10 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
     
     if comp_loc_perms:
         result_file_name =  str(comp_loc_perms) + 'perms_configs_shuffle_' + result_file_name
-            
+    
+    if comp_time_perms:
+        result_file_name =  str(comp_time_perms) + 'perms_timepoints_shuffle_' + result_file_name
+        
     # I need to do some sort of extraction
     # but basically I want to do 
     # first, save the basic result
@@ -472,12 +516,12 @@ def compute_one_subject(sub, models_I_want, exclude_x_repeats, randomised_reward
 
     
     
-# # if running from command line, use this one!   
+# if running from command line, use this one!   
 if __name__ == "__main__":
     #print(f"starting regression for subject {sub}")
     fire.Fire(compute_one_subject)
-#    call this script like
-#    python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
+    # call this script like
+    # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
 
 # # ['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']
 # # ['only','onlynowand3future', 'onlynextand2future']
@@ -485,7 +529,7 @@ if __name__ == "__main__":
 # if __name__ == "__main__":
 #     # For debugging, bypass Fire and call compute_one_subject directly.
 #     compute_one_subject(
-#         sub=7,
+#         sub=2,
 #         #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
 #         models_I_want=['onlynowand3future', 'onlynextand2future'],
 #         exclude_x_repeats=[1],
@@ -497,7 +541,8 @@ if __name__ == "__main__":
 #         # introduce a fit residuals options!
 #         # bin_pre_corr='by_state',
 #         avg_across_runs=True,
-#         comp_loc_perms=265 # since with 6 grids, I can only get !6 = 265 unique perms
+#         #comp_loc_perms=265, # since with 6 grids, I can only get !6 = 265 unique perms
+#         comp_time_perms=10
 #     )
 
 

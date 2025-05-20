@@ -13,21 +13,19 @@ from matplotlib import pyplot as plt
 
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 
 
-def plot_perms_per_cell_and_roi(df_results, n_perms):
+def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=False):
     # import pdb; pdb.set_trace()
     # ROI_labels = ['hippocampal', 'ACC','PCC','OFC', 'entorhinal', 'amygdala', 'mixed']
     bins=50
-
     models = df_results['model'].unique().tolist()
     cells = df_results['cell'].unique().tolist()
     
     
-    # one goal: I want to know if the clocks model is still significant.
-    # plot all clocks model cells that were higher than 0.05
-    
-    df_strong_cells = df_results[df_results['average_corr'] > 0.05]
+    # plot those cells that are strong for the respective model (corr higher than 0.05)
+    df_strong_cells = df_results[df_results['average_corr'] > corr_thresh]
     for curr_model in models:
         df_strong_curr_model = df_strong_cells[df_strong_cells['model'] == curr_model].reset_index(drop=True)
         #
@@ -77,11 +75,17 @@ def plot_perms_per_cell_and_roi(df_results, n_perms):
         # plt.title("SMB model")
         
         # then store these figures if on cluster. 
-        plt.show()
-
-
-    import pdb; pdb.set_trace()
-    
+        if save==True:
+            fig_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/elastic_net_reg/corrs"
+            if not os.path.isdir(fig_folder):
+                fig_folder = "/ceph/behrens/svenja/human_ABCD_ephys/derivatives/group/elastic_net_reg/corrs"
+            
+            os.makedirs(f"{fig_folder}/figures", exist_ok=True)
+            plt.savefig(f"{curr_model}_perms_best_cells.png", dpi=300, bbox_inches='tight')
+        else:
+            plt.show()
+        
+        
     
     
 
