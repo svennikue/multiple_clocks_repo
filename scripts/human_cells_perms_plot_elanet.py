@@ -25,7 +25,7 @@ def load_result_dirs(file_name, perm_string):
     
     # subjects = [f"sub-{i}" for i in range(1, 65)]
     subjects = [f"sub-{i}" for i in range(1, 7)]
-    subjects = ['sub-1', 'sub-2']
+    #subjects = ['sub-1', 'sub-2']
     actual_subjects = []
     # check if on server or local
     if not os.path.isdir(results_folder):
@@ -119,59 +119,59 @@ def plot_all(model_name_string, perms, define_somehow_what_to_plot=None):
     
     
     
-    title_addition = "raw correlation, only pos fit"
-    mc.analyse.plotting_cells.plotting_df_based_corr_perm_histogram_by_ROIs(results_corr_by_roi_df,title_addition)
+    # title_addition = "raw correlation, only pos fit"
+    # mc.analyse.plotting_cells.plotting_df_based_corr_perm_histogram_by_ROIs(results_corr_by_roi_df,title_addition)
     
-    results_corr_by_roi_binned_df = mc.analyse.plotting_cells.prep_result_df_for_plotting_by_rois(results['binned'])
-    title_addition_binned = "state-binned correlation, only pos fit"
-    mc.analyse.plotting_cells.plotting_df_based_corr_perm_histogram_by_ROIs(results_corr_by_roi_binned_df,title_addition_binned)
-    
-    
-    
-    top_ten_cells_binned, predicted_cells_binned = mc.analyse.helpers_human_cells.identify_max_cells_for_model(results['binned'])
-    top_ten_cells_raw, predicted_cells_raw = mc.analyse.helpers_human_cells.identify_max_cells_for_model(results['raw'])
+    # results_corr_by_roi_binned_df = mc.analyse.plotting_cells.prep_result_df_for_plotting_by_rois(results['binned'])
+    # title_addition_binned = "state-binned correlation, only pos fit"
+    # mc.analyse.plotting_cells.plotting_df_based_corr_perm_histogram_by_ROIs(results_corr_by_roi_binned_df,title_addition_binned)
     
     
     
-    og_data = load_data(subjects)
-    
-    
-    # for this I need the raw data. 
-    #             for task in all_data[subject]['neurons']:
-                # cells_to_store.append(task[cell_idx])
-                # subset_dict = {}
-                # subset_dict[cell_label] = cells_to_store.copy()
-                # subset_dict['reward_configs'] = all_data[subject]['reward_configs'].copy()
-                # subset_dict['locations'] = all_data[subject]['locations'].copy()
-                # subset_dict['timings'] = all_data[subject]['timings'].copy()
-    mc.analyse.helpers_human_cells.store_best_cells(top_ten_cells_binned, og_data, name_extension_string='binned')
-    mc.analyse.helpers_human_cells.store_best_cells(top_ten_cells_raw, og_data, name_extension_string='raw')
+    # top_ten_cells_binned, predicted_cells_binned = mc.analyse.helpers_human_cells.identify_max_cells_for_model(results['binned'])
+    # top_ten_cells_raw, predicted_cells_raw = mc.analyse.helpers_human_cells.identify_max_cells_for_model(results['raw'])
     
     
     
+    # og_data = load_data(subjects)
     
-    # import numpy as np
-    # import matplotlib.pyplot as plt
-    # for sub in all_data:
-    #     for task in all_data[sub]['neurons']:
-    #         for i, neuron in enumerate(task):
-    #             curr_cell = f"{sub}_{all_data[sub]['cell_labels'][i]}_{i}"
-    #             if curr_cell not in neuron_dict:
-    #                 neuron_dict[curr_cell] = []   
+    
+    # # for this I need the raw data. 
+    # #             for task in all_data[subject]['neurons']:
+    #             # cells_to_store.append(task[cell_idx])
+    #             # subset_dict = {}
+    #             # subset_dict[cell_label] = cells_to_store.copy()
+    #             # subset_dict['reward_configs'] = all_data[subject]['reward_configs'].copy()
+    #             # subset_dict['locations'] = all_data[subject]['locations'].copy()
+    #             # subset_dict['timings'] = all_data[subject]['timings'].copy()
+    # mc.analyse.helpers_human_cells.store_best_cells(top_ten_cells_binned, og_data, name_extension_string='binned')
+    # mc.analyse.helpers_human_cells.store_best_cells(top_ten_cells_raw, og_data, name_extension_string='raw')
+    
+    
+    
+    
+    # # import numpy as np
+    # # import matplotlib.pyplot as plt
+    # # for sub in all_data:
+    # #     for task in all_data[sub]['neurons']:
+    # #         for i, neuron in enumerate(task):
+    # #             curr_cell = f"{sub}_{all_data[sub]['cell_labels'][i]}_{i}"
+    # #             if curr_cell not in neuron_dict:
+    # #                 neuron_dict[curr_cell] = []   
                     
-    #             avg_rate_hz = np.sum(neuron) / (len(neuron) * 0.025)
-    #             neuron_dict[curr_cell].append(avg_rate_hz)
+    # #             avg_rate_hz = np.sum(neuron) / (len(neuron) * 0.025)
+    # #             neuron_dict[curr_cell].append(avg_rate_hz)
                 
-    # # Compute the average for each dictionary entry
-    # averages = [np.mean(values) for values in neuron_dict.values()]
+    # # # Compute the average for each dictionary entry
+    # # averages = [np.mean(values) for values in neuron_dict.values()]
 
-    # # Plot the resulting 600 data points as a histogram
-    # plt.figure(figsize=(10, 6))
-    # plt.hist(averages, bins=300, edgecolor='black')
-    # plt.xlabel('Average Firing rate')
-    # plt.ylabel('Frequency')
-    # plt.title('Histogram of Average Values')
-    # plt.show()
+    # # # Plot the resulting 600 data points as a histogram
+    # # plt.figure(figsize=(10, 6))
+    # # plt.hist(averages, bins=300, edgecolor='black')
+    # # plt.xlabel('Average Firing rate')
+    # # plt.ylabel('Frequency')
+    # # plt.title('Histogram of Average Values')
+    # # plt.show()
 
 
     
@@ -189,7 +189,7 @@ if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     plot_all(
         model_name_string='w_partial_musicboxes_excl_rep1-1_avg_in_20_bins_across_runs',
-        perms = '10perms_configs_shuffle'
+        perms = '265perms_configs_shuffle'
         # sub-1_corrs_w_partial_musicboxes_excl_rep1-2_avg_in_20_bins_across_runs_fit_binned_by_state
     )
     

@@ -878,7 +878,7 @@ def clean_data(data, s):
     
 
 def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repeats = None, randomised_reward_locations = False, avg_across_runs = False):
-    #import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     no_state = 4
     no_locations = 9
     no_buttons = 4
@@ -1092,7 +1092,7 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
                         # this needs to be concatenated and all
                         data_prep[sub][m][grid_idx] = mc.simulation.predictions.transform_data_to_betas(data_prep_tmp[sub][m][grid_idx], regression_across_repeats_concat)
       
-                
+    # import pdb; pdb.set_trace()            
     if avg_across_runs == True:
         # finally, also average across tasks: each tasks in the end only exists once.
         # import pdb; pdb.set_trace()
@@ -1108,15 +1108,25 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
             data_prep_tmp[sub]['reward_configs'], axis=0, return_index=True, return_inverse=True, return_counts=True
         )
         
-        for unique_grid_idx in idx_unique:
+        for unique_grid_idx in range(len(idx_unique)):
             # collect all indices that are the same grid
             same_grids_at = np.where(idx_inverse == unique_grid_idx)[0]
+            
+            # first test if these are actually really the same grids!
+            same_grids = []
+            for same_idx in same_grids_at:
+                same_grids.append(data_prep_tmp[sub]['reward_configs'][same_idx])
+                _, test_count = np.unique(same_grids, return_counts=True)
+                # if these grid configs aren't the same, the count will be lower
+            if test_count[0] != len(same_grids_at):
+                import pdb; pdb.set_trace()
+                
             # then average these grids
             for m in data_prep_tmp[sub]:
                 if m.endswith('reg') or m.endswith('model') or m.endswith('neurons'):
                     if m not in data_prep[sub]:
                         data_prep[sub][m] = []
-                    data_prep[sub][m].append(np.mean([data_prep_tmp[sub][m][i] for i in same_grids_at], axis=0))
+                    data_prep[sub][m].append(np.nanmean([data_prep_tmp[sub][m][i] for i in same_grids_at], axis=0))
               
     return data_prep
 

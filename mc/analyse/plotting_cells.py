@@ -48,14 +48,15 @@ def prep_result_df_for_plotting_by_rois(results):
 
 def prep_result_df_perms_for_plotting_by_rois(results, perm_results):
     # Define your ROI labels
-    ROI_labels = ['ACC', 'OFC', 'PCC','hippocampal', 'PFC', 'entorhinal', 'amygdala', 'mixed']
+    #ROI_labels = ['ACC', 'OFC', 'PCC','hippocampal', 'PFC', 'entorhinal', 'amygdala', 'mixed']
     
+    # test = []
     # new strategy: use pandas dataframe.
     df = pd.DataFrame()
     i = 0
-    for sub in results:
-        for model in results[sub]:
-            for cell_label in results[sub][model]:
+    for sub in perm_results:
+        for model in perm_results[sub]:
+            for cell_label in perm_results[sub][model]:
                 if 'ACC' in cell_label:
                     roi = 'ACC'
                 elif 'PCC' in cell_label:
@@ -74,10 +75,16 @@ def prep_result_df_perms_for_plotting_by_rois(results, perm_results):
                 df.at[i, 'cell'] = cell_label
                 df.at[i, 'average_corr'] = np.mean(results[sub][model][cell_label])
                 df.at[i, 'model'] = model
-                i = i + 1
+                
                 for p_idx in range(0, perm_results[sub][model][cell_label].shape[1]):
+                    # if cell_label == 'LEC_0_2' and model == 'clo_model':
+                    #     test.append(np.mean(perm_results[sub][model][cell_label][:,p_idx]))
                     df.at[i, f"perm_{p_idx}"] = np.mean(perm_results[sub][model][cell_label][:,p_idx])
                     
+                i = i + 1
+                 
+                    
+                 
     n_perms = perm_results[sub][model][cell_label].shape[1]            
     # import pdb; pdb.set_trace()           
     return df, n_perms
