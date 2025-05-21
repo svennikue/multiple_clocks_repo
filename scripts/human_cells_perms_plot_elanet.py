@@ -128,10 +128,10 @@ def plot_all(model_name_string, sub_list, perms_locs=None, perms_time=None, plot
         
     results_corr_by_roi_df, no_perms = mc.analyse.plotting_cells.prep_result_df_perms_for_plotting_by_rois(results['raw'], time_perm_results=time_perm_results, task_perm_results=task_perm_results)
     
-    mc.plotting.results.plot_perms_per_cell_and_roi(results_corr_by_roi_df, no_perms, corr_thresh=plot_cells_corr_higher_than, save=save)
+    mc.plotting.results.plot_perms_per_cell_and_roi(results_corr_by_roi_df, no_perms, corr_thresh=plot_cells_corr_higher_than, save=save, model_name_string=model_name_string)
     
     
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     
     
     
@@ -152,7 +152,7 @@ if __name__ == "__main__":
         perms_locs = '265perms_configs_shuffle',
         perms_time = '300perms_timepoints_shuffle',
         plot_cells_corr_higher_than=0.05,
-        save=False
+        save=True
         # sub-1_corrs_w_partial_musicboxes_excl_rep1-2_avg_in_20_bins_across_runs_fit_binned_by_state
     )
     

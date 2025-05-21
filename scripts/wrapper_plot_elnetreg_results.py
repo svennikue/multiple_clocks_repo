@@ -163,7 +163,7 @@ def plot_all(model_name_string, define_somehow_what_to_plot=None):
 if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     plot_all(
-        model_name_string='w_partial_musicboxes_excl_rep1-2_avg_in_20_bins_across_runs'
+        model_name_string='w_partial_musicboxes_excl_rep1-1_avg_in_20_bins_across_runs'
         # sub-1_corrs_w_partial_musicboxes_excl_rep1-2_avg_in_20_bins_across_runs_fit_binned_by_state
     )
     
