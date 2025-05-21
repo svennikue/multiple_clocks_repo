@@ -150,7 +150,7 @@ if __name__ == "__main__":
         model_name_string='w_partial_musicboxes_excl_rep1-1_avg_in_20_bins_across_runs',
         sub_list=[1,2,3,4,5,6,8,9,10,11],
         perms_locs = '265perms_configs_shuffle',
-        perms_time = '300perms_timepoints_shuffle',
+        perms_time = '265perms_timepoints_shuffle',
         plot_cells_corr_higher_than=0.05,
         save=True
         # sub-1_corrs_w_partial_musicboxes_excl_rep1-2_avg_in_20_bins_across_runs_fit_binned_by_state
