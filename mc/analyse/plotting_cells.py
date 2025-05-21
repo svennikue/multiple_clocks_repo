@@ -85,6 +85,23 @@ def prep_result_df_perms_for_plotting_by_rois(results, time_perm_results=None, t
                     for p_idx in range(0, time_perm_results[sub][model][cell_label].shape[1]):
                         df.at[i, f"time_perm_{p_idx}"] = np.mean(time_perm_results[sub][model][cell_label][:,p_idx])
                 i = i + 1
+                
+                # if task_perm_results:
+                #     try:
+                #         for p_idx in range(task_perm_results[sub][model][cell_label].shape[1]):
+                #             df.at[i, f"task_perm_{p_idx}"] = np.mean(task_perm_results[sub][model][cell_label][:, p_idx])
+                #     except KeyError:
+                #         pass  # Skip this combination if keys are missing
+                
+                # if time_perm_results:
+                #     try:
+                #         for p_idx in range(time_perm_results[sub][model][cell_label].shape[1]):
+                #             df.at[i, f"time_perm_{p_idx}"] = np.mean(time_perm_results[sub][model][cell_label][:, p_idx])
+                #     except KeyError:
+                #         pass  # Skip this combination if keys are missing
+                
+                # i = i + 1
+
     
     n_perms_min = 0
     if time_perm_results and task_perm_results:

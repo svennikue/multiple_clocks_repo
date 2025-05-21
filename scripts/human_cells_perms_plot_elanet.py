@@ -44,6 +44,7 @@ def load_result_dirs(file_name, subs, perms_locs=None, perms_time=None):
     
     for sub in subjects:
         path_to_subfile = f"{results_folder}/{sub}_corrs_{file_name}"
+        # build in some thing that doesnt make it crash all the time if the file doesnt exist
         if os.path.isfile(path_to_subfile):
             actual_subjects.append(sub)
 
@@ -56,36 +57,39 @@ def load_result_dirs(file_name, subs, perms_locs=None, perms_time=None):
                             result_dir['raw'][sub][model] = {}
                         for inner_neuron, values in inner.items():
                             result_dir['raw'][sub][model][inner_neuron] = values
-
-            with open(f"{path_to_subfile}_fit_binned_by_state", 'rb') as f:
-                sub_dir = pickle.load(f)
-                result_dir['binned'][sub] = {}
-                for neuron, model in sub_dir.items():
-                    for model, inner in model.items():
-                        if model not in result_dir['binned'][sub]:
-                            result_dir['binned'][sub][model] = {}
-                        for inner_neuron, values in inner.items():
-                            result_dir['binned'][sub][model][inner_neuron] = values
+            if os.path.isfile(f"{path_to_subfile}_fit_binned_by_state"):
+                with open(f"{path_to_subfile}_fit_binned_by_state", 'rb') as f:
+                    sub_dir = pickle.load(f)
+                    result_dir['binned'][sub] = {}
+                    for neuron, model in sub_dir.items():
+                        for model, inner in model.items():
+                            if model not in result_dir['binned'][sub]:
+                                result_dir['binned'][sub][model] = {}
+                            for inner_neuron, values in inner.items():
+                                result_dir['binned'][sub][model][inner_neuron] = values
+                    
             if perms_time:
-                with open(f"{results_folder}/{perms_time}_{sub}_corrs_{file_name}", 'rb') as f:
-                    sub_dir = pickle.load(f)
-                    result_dir['perm_time'][sub] = {}
-                    for neuron, model in sub_dir.items():
-                        for model, inner in model.items():
-                            if model not in result_dir['perm_time'][sub]:
-                                result_dir['perm_time'][sub][model] = {}
-                            for inner_neuron, values in inner.items():
-                                result_dir['perm_time'][sub][model][inner_neuron] = values
+                if os.path.isfile(f"{results_folder}/{perms_time}_{sub}_corrs_{file_name}"):         
+                    with open(f"{results_folder}/{perms_time}_{sub}_corrs_{file_name}", 'rb') as f:
+                        sub_dir = pickle.load(f)
+                        result_dir['perm_time'][sub] = {}
+                        for neuron, model in sub_dir.items():
+                            for model, inner in model.items():
+                                if model not in result_dir['perm_time'][sub]:
+                                    result_dir['perm_time'][sub][model] = {}
+                                for inner_neuron, values in inner.items():
+                                    result_dir['perm_time'][sub][model][inner_neuron] = values
             if perms_locs:
-                with open(f"{results_folder}/{perms_locs}_{sub}_corrs_{file_name}", 'rb') as f:
-                    sub_dir = pickle.load(f)
-                    result_dir['perm_locs'][sub] = {}
-                    for neuron, model in sub_dir.items():
-                        for model, inner in model.items():
-                            if model not in result_dir['perm_locs'][sub]:
-                                result_dir['perm_locs'][sub][model] = {}
-                            for inner_neuron, values in inner.items():
-                                result_dir['perm_locs'][sub][model][inner_neuron] = values
+                if os.path.isfile(f"{results_folder}/{perms_locs}_{sub}_corrs_{file_name}"):
+                    with open(f"{results_folder}/{perms_locs}_{sub}_corrs_{file_name}", 'rb') as f:
+                        sub_dir = pickle.load(f)
+                        result_dir['perm_locs'][sub] = {}
+                        for neuron, model in sub_dir.items():
+                            for model, inner in model.items():
+                                if model not in result_dir['perm_locs'][sub]:
+                                    result_dir['perm_locs'][sub][model] = {}
+                                for inner_neuron, values in inner.items():
+                                    result_dir['perm_locs'][sub][model][inner_neuron] = values
 
     return result_dir, actual_subjects
 
@@ -146,15 +150,29 @@ def plot_all(model_name_string, sub_list, perms_locs=None, perms_time=None, plot
 
 if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
+    # no for timepoints: 27, 40, 44, 50
+    # no for tasks: 7, 27, 40, 43, 44, 50, 
     plot_all(
         model_name_string='w_partial_musicboxes_excl_rep1-1_avg_in_20_bins_across_runs',
-        sub_list=[1,2,3,4,5,6,8,9,10,11,12,13,14,15,16,18,19,20,21,22,23,24,25,26,28,29,30,31,32,33,34,35,36,38,39,40,41,42,43,44,45,46,48,49,50,51,52,53,54,55,56,58,59],
+        sub_list=[1,2,4,5,6,8,9,10,11,12,13,14,15,16,18,19,20,21,22,23,24,25,26,28,29,30,31,32,33,34,35,36,38,39,41,42,45,46,48,49,51,52,53,54,55,56,58,59],
         perms_locs = '265perms_configs_shuffle',
         perms_time = '265perms_timepoints_shuffle',
         plot_cells_corr_higher_than=0.05,
         save=True
         # sub-1_corrs_w_partial_musicboxes_excl_rep1-2_avg_in_20_bins_across_runs_fit_binned_by_state
     )
+    
+# if __name__ == "__main__":
+#     # For debugging, bypass Fire and call compute_one_subject directly.
+#     plot_all(
+#         model_name_string='w_partial_musicboxes_excl_rep1-1_avg_in_20_bins_across_runs',
+#         sub_list=[1,2,3,5,6,7,8,9,10],
+#         perms_locs = '265perms_configs_shuffle',
+#         perms_time = '300perms_timepoints_shuffle',
+#         plot_cells_corr_higher_than=0.05,
+#         save=True
+#         # sub-1_corrs_w_partial_musicboxes_excl_rep1-2_avg_in_20_bins_across_runs_fit_binned_by_state
+#     )
     
 # w_partial_musicboxes_excl_rep1-3_excl_rep1-3_pre_corr_binned-None_only_pos
 

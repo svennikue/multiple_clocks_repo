@@ -12,6 +12,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 import os
 from scipy.stats import ttest_ind
+import pandas as pd
 
 
 def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=False, model_name_string=None):
@@ -79,6 +80,8 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
         # then print some stats: percentage of cells, overall and per ROI for
         # each of the permutation ps
 
+        results_file = []
+        
         # first: overall
         n_cells = len(df_curr_model)
         mean_avg_corr = np.mean(df_curr_model['average_corr'])
@@ -89,8 +92,13 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
         print(f"n = {n_p_val_time_sig} or {n_p_val_time_sig/n_cells:.3f} % cells are sig. for time shuffles,")
         print(f"n = {n_p_val_task_sig} or {n_p_val_task_sig/n_cells:.3f} % cells are sig. for task config shuffles,")
         print(f"n = {n_p_val_perm_diff_sig} or {n_p_val_perm_diff_sig/n_cells:.3f} % have sig. different perm distributions.")
-           
 
+        results_file.append(f"for {curr_model}, for n = {n_cells} cells all over the brain, the mean corr is {mean_avg_corr:.3f}")
+        results_file.append(f"n = {n_p_val_time_sig} or {n_p_val_time_sig/n_cells:.3f} % cells are sig. for time shuffles,")
+        results_file.append(f"n = {n_p_val_task_sig} or {n_p_val_task_sig/n_cells:.3f} % cells are sig. for task config shuffles,")
+        results_file.append(f"n = {n_p_val_perm_diff_sig} or {n_p_val_perm_diff_sig/n_cells:.3f} % have sig. different perm distributions.")
+        
+        
         # second: per roi
         for roi in rois:
             df_curr_model_curr_roi = df_curr_model[df_curr_model['roi'] == roi].copy().reset_index(drop=True)
@@ -103,8 +111,19 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
             print(f"n = {n_p_val_time_sig} or {n_p_val_time_sig/n_cells_in_roi:.3f} % cells are sig. for time shuffles,")
             print(f"n = {n_p_val_task_sig} or {n_p_val_task_sig/n_cells_in_roi:.3f} % cells are sig. for task config shuffles,")
             print(f"n = {n_p_val_perm_diff_sig} or {n_p_val_perm_diff_sig/n_cells_in_roi:.3f} % have sig. different perm distributions.")
+            
+            results_file.append(f"for {curr_model}, for n = {n_cells_in_roi} cells in {roi}, mean corr is {mean_avg_corr:.3f}")
+            results_file.append(f"n = {n_p_val_time_sig} or {n_p_val_time_sig/n_cells_in_roi:.3f} % cells are sig. for time shuffles,")
+            results_file.append(f"n = {n_p_val_task_sig} or {n_p_val_task_sig/n_cells_in_roi:.3f} % cells are sig. for task config shuffles,")
+            results_file.append(f"n = {n_p_val_perm_diff_sig} or {n_p_val_perm_diff_sig/n_cells_in_roi:.3f} % have sig. different perm distributions.")
 
 
+        # Write everything to a .txt file at the end
+        if save==True:
+            with open(f"{res_folder}/{model_name_string}_stats.txt", 'w') as f:
+                f.write('\n'.join(results_file))
+    
+    
 
         # 3. PLOTTING
         # plot the distributions for the nicest 25 cells per model
@@ -112,7 +131,8 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
         # subset to only plot the top 25 cells
         if len(df_curr_model) > 25: 
             df_strong_curr_model = df_curr_model.sort_values('average_corr', ascending=False).head(25).reset_index(drop=True)
-        
+        else:
+           df_strong_curr_model = df_curr_model.sort_values('average_corr', ascending=False).reset_index(drop=True) 
         
         fig, axs = plt.subplots(n_rows, n_cols, figsize=(18, 12))
         fig.suptitle(f"{curr_model}", fontsize=15, y=0.99)  # Title slightly above the top
@@ -136,10 +156,13 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
             ax = axs[idx]
             if 'task_perm_0' in df_strong_curr_model.columns:
                 perm_values_task = row[[f'task_perm_{i}' for i in range(n_perms)]].values
-                ax.hist(perm_values_task, bins=30, color=color_task_perms, alpha=0.5, label='Task perm.', edgecolor=None)
-                # Calculate one-tailed p-value
-                p_val_task = np.mean(perm_values_task >= avg_corr)
-                ax.text(0.95, 0.70, f"p_task = {p_val_task:.3f}", ha='right', va='top', transform=ax.transAxes)
+                if pd.Series(perm_values_task).isna().all() == True:
+                    perm_values_task = np.zeros(1)
+                else:
+                    ax.hist(perm_values_task, bins=30, color=color_task_perms, alpha=0.5, label='Task perm.', edgecolor=None)
+                    # Calculate one-tailed p-value
+                    p_val_task = np.mean(perm_values_task >= avg_corr)
+                    ax.text(0.95, 0.70, f"p_task = {p_val_task:.3f}", ha='right', va='top', transform=ax.transAxes)
                 
             if 'time_perm_0' in df_strong_curr_model.columns:
                 perm_values_time = row[[f'time_perm_{i}' for i in range(n_perms)]].values
@@ -173,6 +196,7 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
             plt.savefig(f"{res_folder}/figures/{curr_model}_{model_name_string}_perms_best_cells.png", dpi=300, bbox_inches='tight')
         else:
             plt.show()
+            
     
         
         
