@@ -557,7 +557,7 @@ def compute_one_subject(sub, models_I_want, only_repeats_included, randomised_re
 
  
     
-# # if running from command line, use this one!   
+# # # if running from command line, use this one!   
 if __name__ == "__main__":
     #print(f"starting regression for subject {sub}")
     fire.Fire(compute_one_subject)
@@ -584,7 +584,7 @@ if __name__ == "__main__":
 #         avg_across_runs=True,
 #         # comp_loc_perms=100, # since with 6 grids, I can only get !6 = 265 unique perms
 #         # comp_time_perms=10
-#         comp_circular_perms=100
+#         # comp_circular_perms=100
 #     )
 
 

@@ -41,7 +41,7 @@ def load_result_dirs(file_name, subs, perms_locs=None, perms_time=None):
 
     # loop through all subjects
     # first find how many subjects there are
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     for sub in subjects:
         path_to_subfile = f"{results_folder}/{sub}_corrs_{file_name}"
         # build in some thing that doesnt make it crash all the time if the file doesnt exist
