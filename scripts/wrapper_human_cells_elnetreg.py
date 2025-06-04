@@ -188,7 +188,44 @@ def generate_unique_timepoint_permutations(data_dict, models, n_permutations=10,
     
     return shuffled_data
         
-        
+def generate_circular_timepoint_permutations_neurons(data_dict, n_permutations=10, seed=42):   
+    """"
+    Take og cells, concatenate them, permute them in a time-conserved, circular
+    fashion, split them again,
+    
+    NO ACTUALLY THIS NEEDS TO BE EARLIER!!! WHEN I CREATE MY REGRESSORS.
+    
+    """
+    
+    
+    
+def generate_unique_timepoint_permutations_neurons(data_dict, n_permutations=10, seed=42):
+    """
+    Generate unique deranged permutations of time points across tasks:
+    - No timepoints remains in its original position
+    """
+    # shuffled_data = copy.deepcopy(data_dict)
+    shuffled_data = {}
+    np.random.seed(seed)
+    def random_derangement(len_all_tasks):
+        while True:
+            p = np.random.permutation(len_all_tasks)
+            if not np.any(p == np.arange(len_all_tasks)):
+                return p
+
+    no_tasks = len(data_dict['neurons'])
+    concatenated_model = np.concatenate(data_dict['neurons'], axis = 1)
+    len_all_tasks = concatenated_model.shape[1]
+    # then create random perms based on the length
+    shuffled_data['neurons'] = []
+    for _ in range(n_permutations):
+        idx = random_derangement(len_all_tasks)
+        shuffled_model = concatenated_model[:, idx]
+        shuffled_model_split = np.split(shuffled_model, no_tasks, axis = 1)
+        shuffled_data['neurons'].append(shuffled_model_split)
+
+    return shuffled_data
+
 
 
 def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = None, comp_loc_perms= None, comp_time_perms=None, circular_perms=None):
@@ -228,18 +265,17 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = No
     
     if comp_time_perms:
         start = time.time()
-        shuffled_data = generate_unique_timepoint_permutations(data, model_string, n_permutations=comp_time_perms)
+        # shuffled_data = generate_unique_timepoint_permutations(data, model_string, n_permutations=comp_time_perms)
+        shuffled_data = generate_unique_timepoint_permutations_neurons(data, n_permutations=comp_time_perms)
         perms = comp_time_perms
         end = time.time()
         print(f"Permutation generation for timepoints took {end - start:.2f} seconds")
     
     if circular_perms:
-        import pdb; pdb.set_trace()
-        # WRITE A FUNCTION HERE FOR THE CIRCULAR PERMUTATION
-        # NEEDS TO GIVE ME X VECTORS THAT DO THE CIRCULAR INDEXING
-        # FOR CONCATENATING ALL data['neurons'], THEN CIRCULAR-INDEXING
-        # NP.CONCATENATE(data['neurons'], axis = 1) OR SO
-    
+        perms = circular_perms
+        shuffled_data = {}
+        shuffled_data['neurons'] = data['perm_neurons']
+
      # prepare the result dictionaries    
     for model in model_string:
         corr_dict[model][curr_cell] = np.zeros((len(unique_grids), perms))
@@ -255,16 +291,9 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = No
     # import pdb; pdb.set_trace()   
     for p_idx in range(0,perms):
         start_perms = time.time()
-        # create indices of shuffled task configs for simulations.
-        
-        # FOR THE CIRCULAR PERMUTATION THINGY, YOU COULD TAKE 
-        # NP.CONCATENATE(data['neurons'], axis = 1) OR SO
-        # AND THEN DO THE PERMUTATION HERE.
-        # JUST WRITE A FUNCTION THAT CONCATENATES, THEN CHANGES THE INDEX, 
-        # THEN SPLITS UP AGAIN PER PERMUTATION.
-        
+
         if comp_loc_perms:
-            unique_grids_sim, idx_unique_grid_sim, idx_same_grids_sim, counts_sim = np.unique(unique_grid_permutations[p_idx], axis=0,
+            unique_grids_perm, idx_unique_grid_perm, idx_same_grids_perm, counts_perm = np.unique(unique_grid_permutations[p_idx], axis=0,
                                                                     return_index=True,
                                                                     return_inverse=True,
                                                                     return_counts=True)
@@ -282,17 +311,43 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = No
             else:
                 all_neurons_heldouttasks = data['neurons'][test_grid_idx[0]]
                 curr_neuron_heldouttasks_flat = all_neurons_heldouttasks[cell_idx]
+                
+                
             training_grid_idx=np.setdiff1d(np.arange(len(data['reward_configs'])),test_grid_idx)
             all_neurons_training_tasks = itemgetter(*training_grid_idx)(data['neurons'])
-            curr_neuron_training_tasks = [all_neurons[cell_idx] for all_neurons in all_neurons_training_tasks]
-            import pdb; pdb.set_trace() 
-            # CHANGE THIS!!
-            # BUILD IN PERMUTATION HERE INSTEAD OF BELOW (FOR CURR_NEURON_TRAININGS OR TEST_TASKS)
-            # WILL TAKE LESS TIME!
+
+            # permuting the cells
             if comp_loc_perms or comp_time_perms or circular_perms:
-                
+                if comp_loc_perms:
+                    # take the shuffled task configs as indices for the permuted neurons
+                    left_out_grid_idx_perm = curr_perm_idx_vector[task_idx]
+                    # there should never be several if I average repeated tasks, but just in case
+                    test_grid_idx_perm = np.where(idx_same_grids_perm == idx_same_grids_perm[left_out_grid_idx_perm])[0]
                     
+                    training_grid_idx_perm = curr_perm_idx_vector[~np.isin(curr_perm_idx_vector, test_grid_idx_perm)]
+                    training_grid_idx_perm= np.array([int(e) for e in training_grid_idx_perm])
                     
+                    # then use these perm vectors to refer to the OG grids
+                    # for the test neurons 
+                    all_neurons_heldouttasks = data['neurons'][test_grid_idx[0]]
+                    curr_neuron_heldouttasks_flat = all_neurons_heldouttasks[cell_idx]
+                    
+                    # then choose which tasks to take and go and select training regressors
+                    all_neurons_training_tasks = itemgetter(*training_grid_idx_perm)(data['neurons'])
+                    
+                elif comp_time_perms or circular_perms:
+                    # if timepoints permuted, take same task order,
+                    # but from permuted dictionary
+                    # for test neurons
+                    all_neurons_heldouttasks = itemgetter(*test_grid_idx)(shuffled_data['neurons'][p_idx])
+                    curr_neuron_heldouttasks_flat = all_neurons_heldouttasks[cell_idx]
+                    # and trainings neurons
+                    all_neurons_training_tasks = itemgetter(*training_grid_idx)(shuffled_data['neurons'][p_idx])
+
+            # choose the current cell. 
+            curr_neuron_training_tasks = [all_neurons[cell_idx] for all_neurons in all_neurons_training_tasks]
+
+       
             if fit_binned:
                 if fit_binned == 'by_state':
                     binning_model = 'state_reg'
@@ -325,43 +380,12 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = No
                         binning_curr_testgrid = np.transpose(binning_neurons_test_grids)
                     
                     curr_neuron_heldouttasks_flat_binned = mc.analyse.helpers_human_cells.neurons_to_state_bins(curr_neuron_heldouttasks_flat, binning_curr_testgrid)
-                    
-            # import pdb; pdb.set_trace()   
-            # depending on the permutations, change the train and test dataset.
+            
+            
             for entry in model_string:
-                if comp_loc_perms:
-                    import pdb; pdb.set_trace() 
-                    # CHANGE THIS!!
-                    # INSTEAD OF SIMUALTED NEURONS, THIS NEED TO BE THE ACTUAL CELLS.
-                    # WILL TAKE LESS TIME!
-                    
-                    # start_perm = time.time()
-                    # the models will have different indices than the neurons.
-                    # take the shuffled task configs as indices for the simulations
-                    left_out_grid_idx_sim = curr_perm_idx_vector[task_idx]
-                    # there should never be several if I average repeated tasks, but just in case
-                    test_grid_idx_sim = np.where(idx_same_grids_sim == idx_same_grids_sim[left_out_grid_idx_sim])[0]
-                    
-                    training_grid_idx_sim = curr_perm_idx_vector[~np.isin(curr_perm_idx_vector, test_grid_idx_sim)]
-                    training_grid_idx_sim = np.array([int(e) for e in training_grid_idx_sim])
-                    
-                    # then use these perm vectors to refer to the OG grids
-                    # then choose which tasks to take and go and select training regressors
-                    simulated_neurons_training_tasks = itemgetter(*training_grid_idx_sim)(data[entry])
-                    # and test regressors
-                    simulated_neurons_test_grids = itemgetter(*test_grid_idx)(data[entry])
-                elif comp_time_perms:
-                    # if timepoints permuted, take same task order as for neurons, 
-                    # but from permuted dictionary
-                    simulated_neurons_training_tasks = itemgetter(*training_grid_idx)(shuffled_data[entry][p_idx])
-                    # and test regressors
-                    simulated_neurons_test_grids = itemgetter(*test_grid_idx)(shuffled_data[entry][p_idx])
-                else:
-                    # if not permutated, take same order as for neurons
-                    # then choose which tasks to take and go and select training regressors
-                    simulated_neurons_training_tasks = itemgetter(*training_grid_idx)(data[entry])
-                    # and test regressors
-                    simulated_neurons_test_grids = itemgetter(*test_grid_idx)(data[entry])
+                simulated_neurons_training_tasks = itemgetter(*training_grid_idx)(data[entry])
+                # and test regressors
+                simulated_neurons_test_grids = itemgetter(*test_grid_idx)(data[entry])
                     
                 if not test_grid_idx.shape == (1,):
                     simulated_neurons_test_grids_flat = np.transpose(np.concatenate(simulated_neurons_test_grids, axis = 1))
@@ -383,9 +407,7 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = No
                 # next, create the predicted activity neuron.
                 predicted_activity_curr_neuron = np.sum((coeffs_flat*simulated_neurons_test_grids_flat), axis = 1)
                 Predicted_Actual_correlation=nan_safe_pearsonr(curr_neuron_heldouttasks_flat,predicted_activity_curr_neuron)
-                # if np.all(curr_neuron_heldouttasks_flat == curr_neuron_heldouttasks_flat[0]) or np.all(predicted_activity_curr_neuron == predicted_activity_curr_neuron[0]):
-                #     import pdb; pdb.set_trace()
-                
+
                 corr_dict[entry][curr_cell][task_idx,p_idx] = Predicted_Actual_correlation
     
                 if fit_binned:
@@ -418,13 +440,7 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = No
     print(f"Fitting all {p_idx} permutations took {end_perms - start_perms:.2f} seconds")
     
     all_results = {}
-    all_results['curr_cell'] = curr_cell  
-    # all_results['corr'] = np.empty((len(idx_unique_grid), perms))
-    # if fit_binned:
-    #     all_results['corr_dict_binned'] = corr_dict_binned
-    # if fit_residuals == True:
-    #     all_results['corr_dict_residuals'] = np.empty((len(idx_unique_grid), perms))
-        
+    all_results['curr_cell'] = curr_cell
     all_results['corr'] = corr_dict
     if fit_binned:
         all_results['corr_dict_binned'] = corr_dict_binned
@@ -432,7 +448,6 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = No
         all_results['corr_dict_residuals'] = corr_dict_residuals
 
         
-    # import pdb; pdb.set_trace()
     return all_results
 
     
@@ -459,7 +474,7 @@ def compute_one_subject(sub, models_I_want, only_repeats_included, randomised_re
     #       # seed could be based on permutation number and subject ID (although in my case, maybe just subject)
 
     
-    simulated_regs = mc.analyse.helpers_human_cells.prep_regressors_for_neurons(clean_data, models_I_want=models_I_want, only_repeats_included=only_repeats_included, randomised_reward_locations=randomised_reward_locations, avg_across_runs=avg_across_runs)
+    simulated_regs = mc.analyse.helpers_human_cells.prep_regressors_for_neurons(clean_data, models_I_want=models_I_want, only_repeats_included=only_repeats_included, randomised_reward_locations=randomised_reward_locations, avg_across_runs=avg_across_runs, comp_circular_perms=comp_circular_perms)
     
     group_dir_coefs = f"{group_dir}/coefs"
     group_dir_corrs = f"{group_dir}/corrs"
@@ -483,11 +498,11 @@ def compute_one_subject(sub, models_I_want, only_repeats_included, randomised_re
         cells.append(f"{single_sub_dict['cell_labels'][cell_idx]}_{cell_idx}_{sub}")
 
 
-    for cell in cells:
-        results = run_elnetreg_cellwise(single_sub_dict, cell, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms=comp_loc_perms, comp_time_perms=comp_time_perms)    
+    # for cell in cells:
+    #     results = run_elnetreg_cellwise(single_sub_dict, cell, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms=comp_loc_perms, comp_time_perms=comp_time_perms, circular_perms=comp_circular_perms)    
     
      
-    parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(single_sub_dict, c, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms=comp_loc_perms, comp_time_perms=comp_time_perms, comp_circular_perms=comp_circular_perms) for c in cells)
+    parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(single_sub_dict, c, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms=comp_loc_perms, comp_time_perms=comp_time_perms, circular_perms=comp_circular_perms) for c in cells)
     
     
     result_dir = {}
@@ -518,9 +533,10 @@ def compute_one_subject(sub, models_I_want, only_repeats_included, randomised_re
     
     if comp_time_perms:
         result_file_name =  str(comp_time_perms) + 'perms_timepoints_shuffle_' + result_file_name
-        
-    # I need to do some sort of extraction
-    # but basically I want to do 
+    
+    if comp_circular_perms:
+        result_file_name =  str(comp_circular_perms) + 'perms_circular_shuffle_' + result_file_name
+
     # first, save the basic result
     with open(os.path.join(group_dir_corrs,result_file_name), 'wb') as f:
         pickle.dump(result_dir['raw'], f)
@@ -542,34 +558,34 @@ def compute_one_subject(sub, models_I_want, only_repeats_included, randomised_re
  
     
 # # if running from command line, use this one!   
-# if __name__ == "__main__":
-#     #print(f"starting regression for subject {sub}")
-#     fire.Fire(compute_one_subject)
-#     # call this script like
-#     # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
+if __name__ == "__main__":
+    #print(f"starting regression for subject {sub}")
+    fire.Fire(compute_one_subject)
+    # call this script like
+    # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
 
 # # ['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']
 # # ['only','onlynowand3future', 'onlynextand2future']
 
-if __name__ == "__main__":
-    # For debugging, bypass Fire and call compute_one_subject directly.
-    compute_one_subject(
-        sub=2,
-        #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
-        models_I_want=['onlynowand3future', 'onlynextand2future'],
-        only_repeats_included=[0,1], # i want: [0,1] and [1,2,3,4,5] and [6,7,8,9,10]
-        randomised_reward_locations=False,
-        save_regs=True,
-        fit_binned='by_state', # 'by_loc_change', 'by_state', 'by_state_loc_change'
-        fit_residuals=False,
-        # fit_binned='by_state_loc_change' # 'by_loc_change', 'by_state', 'by_state_loc_change'
-        # introduce a fit residuals options!
-        # bin_pre_corr='by_state',
-        avg_across_runs=True,
-        # comp_loc_perms=265, # since with 6 grids, I can only get !6 = 265 unique perms
-        # comp_time_perms=10
-        # comp_circular_perms=500
-    )
+# if __name__ == "__main__":
+#     # For debugging, bypass Fire and call compute_one_subject directly.
+#     compute_one_subject(
+#         sub=2,
+#         #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
+#         models_I_want=['onlynowand3future', 'onlynextand2future'],
+#         only_repeats_included=[1,2,3,4,5], # i want: [0,1] and [1,2,3,4,5] and [6,7,8,9,10]
+#         randomised_reward_locations=False,
+#         save_regs=True,
+#         fit_binned='by_state', # 'by_loc_change', 'by_state', 'by_state_loc_change'
+#         fit_residuals=False,
+#         # fit_binned='by_state_loc_change' # 'by_loc_change', 'by_state', 'by_state_loc_change'
+#         # introduce a fit residuals options!
+#         # bin_pre_corr='by_state',
+#         avg_across_runs=True,
+#         # comp_loc_perms=100, # since with 6 grids, I can only get !6 = 265 unique perms
+#         # comp_time_perms=10
+#         comp_circular_perms=100
+#     )
 
 
 # these are hard-coded right now, so include them in the 'only' + models list 'state_reg', 'complete_musicbox_reg', 'reward_musicbox_reg', 'location_reg'

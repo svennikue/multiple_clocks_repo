@@ -875,9 +875,49 @@ def clean_data(data, s):
     
     
     return data[s]
-    
 
-def prep_regressors_for_neurons(data_dict, models_I_want = None, only_repeats_included = None, randomised_reward_locations = False, avg_across_runs = False):
+
+    
+def generate_circular_timepoint_permutations_neurons(neurons, n_perms = 10):
+    """
+    Perform circular timepoint permutations on multi-task neural data.
+
+    Parameters:
+    - neurons: list of np.arrays with shape (n_neurons, n_timepoints), one per task
+    - n_perms: number of circular permutations to generate
+
+    Returns:
+    - permuted_neurons: list of length n_perms
+        Each element is a list of 19 arrays (one per task), like the input
+    """
+    # import pdb; pdb.set_trace()
+    # Step 1: Concatenate all neurons along the time axis
+    original_shapes = [arr.shape[1] for arr in neurons]  # timepoints per task
+    concatenated = np.concatenate(neurons, axis=1)       # shape: (n_neurons, total_time)
+
+    total_time = concatenated.shape[1]
+    shift_step = total_time // n_perms                   # how far to shift each time
+
+    permuted_neurons = []
+
+    for i in range(n_perms):
+        shift = shift_step * (i + 1)                     # avoid shift=0 for the first perm
+        rotated = np.roll(concatenated, shift=shift, axis=1)
+
+        # Split back into original segments
+        split_data = []
+        idx = 0
+        for length in original_shapes:
+            split_data.append(rotated[:, idx:idx + length])
+            idx += length
+
+        permuted_neurons.append(split_data)   
+
+    return permuted_neurons
+
+
+
+def prep_regressors_for_neurons(data_dict, models_I_want = None, only_repeats_included = None, randomised_reward_locations = False, avg_across_runs = False, comp_circular_perms = None):
     # import pdb; pdb.set_trace()
     no_state = 4
     no_locations = 9
@@ -894,6 +934,10 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, only_repeats_in
 
     data_prep = copy.deepcopy(data_dict)
 
+    if comp_circular_perms:
+        data_prep[sub]['perm_neurons'] = mc.analyse.helpers_human_cells.generate_circular_timepoint_permutations_neurons(data_dict[sub]['neurons'], n_perms = comp_circular_perms)
+        
+        
     for sub in data_dict:
         print(f"now starting to process data from subject {sub}")
         for m in all_models:
@@ -931,9 +975,8 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, only_repeats_in
             
             
         for grid_idx, grid_config in enumerate(reward_configurations):
-            # CHANGEE SUCH THAST EARLY OR LATE CAN BE EXCLUDED
             # import pdb; pdb.set_trace()
-            if only_repeats_included:    
+            if only_repeats_included:
                 if 'max' in only_repeats_included:
                     timings_task = data_dict[sub]['timings'][grid_idx][only_repeats_included[0]:]
                     if (sub == 'sub-25' and grid_idx == 9) or (sub == 'sub-52' and grid_idx == 6) or (sub == 'sub-44' and grid_idx == 3) or (sub == 'sub-28' and grid_idx == 16) or (sub == 'sub-02' and grid_idx == 18):
@@ -943,7 +986,8 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, only_repeats_in
                     start_from_repeat = np.min(only_repeats_included)
                     end_at_repeat = np.max(only_repeats_included)
                     timings_task = data_dict[sub]['timings'][grid_idx][start_from_repeat:end_at_repeat+1]
-
+                    if end_at_repeat > 3 and (sub == 'sub-02' and grid_idx == 18):
+                        timings_task = timings_task[:-1, :]
                     
                 # timings_task = data_dict[sub]['timings'][grid_idx][start_from_repeat:end_at_repeat]
                 # if 'max' in exclude_x_repeats:
@@ -952,8 +996,6 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, only_repeats_in
                 #     timings_task = data_dict[sub]['timings'][grid_idx][start_from_repeat:]
             else:  
                 timings_task = data_dict[sub]['timings'][grid_idx]
-            
-
 
             
             if randomised_reward_locations == False:
@@ -1004,6 +1046,11 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, only_repeats_in
             data_prep[sub]['neurons'][grid_idx]= data_prep[sub]['neurons'][grid_idx][:, int(timings_task[0,0]):int(timings_task[-1,-1])]
             data_prep[sub]['locations'][grid_idx] = data_prep[sub]['locations'][grid_idx][int(timings_task[0,0]):int(timings_task[-1,-1]+1)]
             data_prep[sub]['buttons'][grid_idx] = data_prep[sub]['buttons'][grid_idx][int(timings_task[0,0]):int(timings_task[-1,-1]+1)]
+            
+            if comp_circular_perms:
+                for perm in data_prep[sub]['perm_neurons']:
+                    perm[grid_idx]= perm[grid_idx][:, int(timings_task[0,0]):int(timings_task[-1,-1])]
+
             # length_curr_grid = len(data_prep[sub]['locations'][grid_idx])
 
             # this is still linked to the differences in slicing 9th of may 2025
@@ -1103,10 +1150,14 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, only_repeats_in
             if avg_across_runs == True:
                 data_prep_tmp = copy.deepcopy(data_prep)
                 for m in data_prep[sub]:
-                    if m.endswith('reg') or m.endswith('model') or m.endswith('neurons'):
+                    if m.endswith('reg') or m.endswith('model') or m == 'neurons':
                         # this needs to be concatenated and all
                         data_prep[sub][m][grid_idx] = mc.simulation.predictions.transform_data_to_betas(data_prep_tmp[sub][m][grid_idx], regression_across_repeats_concat)
-      
+                if comp_circular_perms:
+                    for perm in data_prep[sub]['perm_neurons']:
+                        perm[grid_idx]= mc.simulation.predictions.transform_data_to_betas(perm[grid_idx], regression_across_repeats_concat)
+
+
     # import pdb; pdb.set_trace()            
     if avg_across_runs == True:
         # finally, also average across tasks: each tasks in the end only exists once.
@@ -1114,15 +1165,21 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, only_repeats_in
         data_prep_tmp = copy.deepcopy(data_prep)
         data_prep = {}
         data_prep[sub] = {}
-        # copy cell_labels, excluded_cells, og_timings, og_grids
-        to_copy = ['cell_labels', 'excluded_cells', 'reward_configs', 'buttons', 'timings']
+        # copy cell_labels, excluded_cells, og_timings, og_buttons
+        to_copy = ['cell_labels', 'excluded_cells', 'buttons', 'timings']
         for c in to_copy:
             data_prep[sub][c] = data_prep_tmp[sub][c]
-         
+        
+        # store the new order of reward_configs here
         data_prep[sub]['reward_configs'], idx_unique, idx_inverse, counts = np.unique(
             data_prep_tmp[sub]['reward_configs'], axis=0, return_index=True, return_inverse=True, return_counts=True
         )
         
+        if comp_circular_perms:
+            data_prep[sub]['perm_neurons'] = []
+            for perm in data_prep_tmp[sub]['perm_neurons']:
+                data_prep[sub]['perm_neurons'].append([])
+                
         for unique_grid_idx in range(len(idx_unique)):
             # collect all indices that are the same grid
             same_grids_at = np.where(idx_inverse == unique_grid_idx)[0]
@@ -1135,14 +1192,17 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, only_repeats_in
                 # if these grid configs aren't the same, the count will be lower
             if test_count[0] != len(same_grids_at):
                 import pdb; pdb.set_trace()
-                
+  
             # then average these grids
             for m in data_prep_tmp[sub]:
-                if m.endswith('reg') or m.endswith('model') or m.endswith('neurons'):
+                if m.endswith('reg') or m.endswith('model') or m == 'neurons':
                     if m not in data_prep[sub]:
                         data_prep[sub][m] = []
                     data_prep[sub][m].append(np.nanmean([data_prep_tmp[sub][m][i] for i in same_grids_at], axis=0))
-              
+            
+            if comp_circular_perms:
+                for p, perm in enumerate(data_prep_tmp[sub]['perm_neurons']):
+                    data_prep[sub]['perm_neurons'][p].append(np.nanmean([perm[i] for i in same_grids_at], axis = 0))
     return data_prep
 
 

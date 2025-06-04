@@ -346,6 +346,7 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
         
         # first: overall
         n_cells = len(df_curr_model)
+        import pdb; pdb.set_trace()
         mean_avg_corr = np.mean(df_curr_model['average_corr'])
         n_p_val_time_sig = len(df_curr_model[df_curr_model['p_val_time'] < 0.05])
         n_p_val_task_sig = len(df_curr_model[df_curr_model['p_val_task'] < 0.05])
