@@ -877,7 +877,7 @@ def clean_data(data, s):
     return data[s]
     
 
-def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repeats = None, randomised_reward_locations = False, avg_across_runs = False):
+def prep_regressors_for_neurons(data_dict, models_I_want = None, only_repeats_included = None, randomised_reward_locations = False, avg_across_runs = False):
     # import pdb; pdb.set_trace()
     no_state = 4
     no_locations = 9
@@ -931,15 +931,30 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
             
             
         for grid_idx, grid_config in enumerate(reward_configurations):
-            if exclude_x_repeats:
-                start_from_repeat = np.max(exclude_x_repeats)
-                timings_task = data_dict[sub]['timings'][grid_idx][start_from_repeat:]
+            # CHANGEE SUCH THAST EARLY OR LATE CAN BE EXCLUDED
+            # import pdb; pdb.set_trace()
+            if only_repeats_included:    
+                if 'max' in only_repeats_included:
+                    timings_task = data_dict[sub]['timings'][grid_idx][only_repeats_included[0]:]
+                    if (sub == 'sub-25' and grid_idx == 9) or (sub == 'sub-52' and grid_idx == 6) or (sub == 'sub-44' and grid_idx == 3) or (sub == 'sub-28' and grid_idx == 16) or (sub == 'sub-02' and grid_idx == 18):
+                        # cut the last row of the timings as they didn't finish it in that repeat
+                        timings_task = timings_task[:-1, :]
+                else:
+                    start_from_repeat = np.min(only_repeats_included)
+                    end_at_repeat = np.max(only_repeats_included)
+                    timings_task = data_dict[sub]['timings'][grid_idx][start_from_repeat:end_at_repeat+1]
+
+                    
+                # timings_task = data_dict[sub]['timings'][grid_idx][start_from_repeat:end_at_repeat]
+                # if 'max' in exclude_x_repeats:
+                #     start_from_repeat = np.min(exclude_x_repeats)
+                #     start_from_repeat = np.max(exclude_x_repeats)
+                #     timings_task = data_dict[sub]['timings'][grid_idx][start_from_repeat:]
             else:  
                 timings_task = data_dict[sub]['timings'][grid_idx]
-                
-            if (sub == 'sub-25' and grid_idx == 9) or (sub == 'sub-52' and grid_idx == 6) or (sub == 'sub-44' and grid_idx == 3) or (sub == 'sub-28' and grid_idx == 16) or (sub == 'sub-02' and grid_idx == 18):
-                # cut the last row of the timings as they didn't finish it in that repeat
-                timings_task = timings_task[:-1, :]
+            
+
+
             
             if randomised_reward_locations == False:
                 # check the match between timings and reward configs
@@ -1131,7 +1146,36 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, exclude_x_repea
     return data_prep
 
 
-def identify_max_cells_for_model(result_dir):
+
+def remove_top_x_percent_of_x_model(result_df, delete_from_model, x_percent):
+    # import pdb; pdb.set_trace()
+    overview = {}
+    overview['all_cells'] = result_df['cell'].unique().tolist()
+    
+    df_filtered = result_df[result_df['model'] == delete_from_model].sort_values(by=['average_corr'], ascending=True).reset_index(drop=True)
+    n_cells_in_model = len(df_filtered)
+    n_to_remove = int(n_cells_in_model*x_percent/100)
+    
+    
+    # import pdb; pdb.set_trace()
+    # z_scores = (real_corrs - np.mean(null_corrs)) / np.std(null_corrs)
+    # cutoff = np.percentile(null_corrs, 95)
+
+
+
+    n_to_keep = n_cells_in_model - n_to_remove
+    cells_without_best_model_cells = df_filtered['cell'][0:n_to_keep].unique().tolist()
+    # Remove these cells from the original dataframe
+    results_clean = result_df[result_df['cell'].isin(cells_without_best_model_cells)].reset_index(drop=True)
+    
+    overview['cells_to_keep'] = cells_without_best_model_cells
+    
+    
+    return results_clean, overview
+
+
+
+def identify_max_cells_for_model(result_dir, x_percentage_of_cells = None):
     # import pdb; pdb.set_trace()
     df = pd.DataFrame()
     all_cells = {}
@@ -1154,9 +1198,17 @@ def identify_max_cells_for_model(result_dir):
     for model in result_dir[sub]:
         all_cells[model] = df[df['model'] == model]
     
+    
     top_ten = {}
-    for model in all_cells:
-        top_ten[model] = all_cells[model].sort_values(by=['average_corr'], ascending=False)[0:10]
+    if x_percentage_of_cells:
+        for model in all_cells:
+            # find out how many cells are x percent of all cells in this model
+            n_cells_in_model = len(all_cells[model])
+            percent = int(n_cells_in_model*x_percentage_of_cells/100)
+            top_ten[model] = all_cells[model].sort_values(by=['average_corr'], ascending=False)[0:percent]
+    else:
+        for model in all_cells:
+            top_ten[model] = all_cells[model].sort_values(by=['average_corr'], ascending=False)[0:10]
     # import pdb; pdb.set_trace()
     return top_ten, all_cells
       

@@ -13,7 +13,269 @@ import numpy as np
 import os
 from scipy.stats import ttest_ind
 import pandas as pd
+import seaborn as sns
+import scipy.stats as st 
 
+
+def slope_plot_early_late_per_roi(df_early, df_late, title_string_add):
+    
+    # import pdb; pdb.set_trace()
+    # Define your colors
+    early_color = '#00BFC4'      # turquoise-blue
+    late_color = '#E07B39'       # terracotta-orange
+    
+    # Merge the two DataFrames on cell and roi
+    merged_df = pd.merge(
+        df_early[['cell', 'roi', 'average_corr', 'model']],
+        df_late[['cell', 'roi', 'average_corr', 'model']],
+        on=['cell', 'roi', 'model'],
+        suffixes=('_before', '_after')
+    ).reset_index(drop=True)
+    
+    models = df_early['model'].unique().tolist()
+    
+    # only plot subset for now
+    # import pdb; pdb.set_trace()
+    models = ['complete_musicbox_reg', 'clo_model', 'curr_rings_split_clock_model', 'one_fut_rings_split_clock_model', 'two_fut_rings_split_clock_model', 'three_fut_rings_split_clock_model', 'phas_model', 'state_reg']
+    
+    
+    # List of unique ROIs
+    rois = merged_df['roi'].unique()
+    n_roi = len(rois)
+    
+    for model in models:
+        merged_df_model = merged_df[merged_df['model'] == model]
+        
+        # Plot
+        fig, axes = plt.subplots(1, n_roi, figsize=(n_roi * 5, 5), sharey=True)
+        if n_roi == 1:
+            axes = [axes]
+        
+        for ax, roi in zip(axes, rois):
+            df_roi = merged_df_model[merged_df_model['roi'] == roi]
+        
+            for _, row in df_roi.iterrows():
+                # Grey line connecting before and after
+                ax.plot([0, 1], [row['average_corr_before'], row['average_corr_after']], color='gray', linewidth=0.5)
+        
+            # Scatter points
+            ax.scatter([0]*len(df_roi), df_roi['average_corr_before'], color=early_color, label='before', zorder=3)
+            ax.scatter([1]*len(df_roi), df_roi['average_corr_after'], color=late_color, label='after', zorder=3)
+        
+            # Aesthetics
+            ax.set_xticks([0, 1])
+            ax.set_xticklabels(['Early', 'Late'])
+            ax.set_title(roi)
+            ax.set_ylabel('Average Correlation')
+            ax.set_xlim(-0.5, 1.5)
+            ax.grid(True, axis='y', linestyle='--', alpha=0.4)
+            ax.tick_params(axis='both', labelsize=12)
+            ax.axhline(0, linestyle='solid', color='black', linewidth=1)
+    
+        # Only add legend to the first axis
+        axes[0].legend()
+        
+        fig.suptitle(f"{model}\n — {title_string_add}", fontsize=12, y=0.97)
+    
+        
+        plt.tight_layout()
+        plt.show()
+
+    
+    
+
+def plotting_two_df_corr_perm_histogram_by_ROIs(df_early, df_late, title_string_add):
+    # import pdb; pdb.set_trace()
+    
+    # Define colors
+    early_color = '#00BFC4'      # turquoise-blue
+    late_color = '#E07B39'       # terracotta-orange
+    
+    line_thickness = 2
+    
+    # Function to get significance stars
+    def get_significance(corrs):
+        t_stat, p_two = st.ttest_1samp(corrs, 0)
+        p_one = p_two / 2 if t_stat > 0 else 1 - (p_two / 2)
+        if p_one < 0.001:
+            return '***'
+        elif p_one < 0.01:
+            return '**'
+        elif p_one < 0.05:
+            return '*'
+        else:
+            return ''
+    
+    models = df_early['model'].unique().tolist()
+    
+    # only plot subset for now
+    # import pdb; pdb.set_trace()
+    models = ['complete_musicbox_reg', 'location_reg', 'musicbox_onlynowand3future_complete_reg', 'musicbox_onlynextand2future_complete_reg', 'midn_model', 'phas_model', 'stat_model', 'phas_stat_model', 'clo_model', 'curr_rings_split_clock_model', 'one_fut_rings_split_clock_model', 'two_fut_rings_split_clock_model', 'three_fut_rings_split_clock_model']
+    
+    
+    for model in models:
+        df_early_model = df_early[df_early['model'] == model]
+        df_late_model = df_late[df_late['model'] == model]
+        
+        rois = sorted(set(df_early_model['roi'].unique()).union(df_late_model['roi'].unique()))
+        n_roi = len(rois)
+        
+        # fig, axes = plt.subplots(1, n_roi, figsize=(n_roi * 5, 5), sharey=True)
+        
+        fig, axes = plt.subplots(1, n_roi, figsize=(n_roi * 6, 3), sharey=True)
+
+        if n_roi == 1:
+            axes = [axes]
+    
+        for ax, roi in zip(axes, rois):
+            # Get early and late data
+            corrs_early = df_early_model[df_early_model['roi'] == roi]['average_corr'].dropna()
+            corrs_late = df_late_model[df_late_model['roi'] == roi]['average_corr'].dropna()
+    
+            # Get stars for significance vs zero
+            early_sig = get_significance(corrs_early)
+            late_sig = get_significance(corrs_late)
+    
+            # KDE plots
+            
+            # # KDE plots with custom bandwidth and curve height
+            # sns.kdeplot(
+            #     corrs_early, ax=ax, color=early_color, fill=True, alpha=0.4,
+            #     linewidth=line_thickness, bw_adjust=0.2, label=f"early {early_sig}"
+            # )
+            # sns.kdeplot(
+            #     corrs_late, ax=ax, color=late_color, fill=True, alpha=0.4,
+            #     linewidth=line_thickness, bw_adjust=0.2, label=f"late {late_sig}"
+            # )
+        
+
+            # Vertical lines at means
+            mean_early = corrs_early.mean()
+            mean_late = corrs_late.mean()
+            ax.axvline(mean_early, color=early_color, linestyle='solid', linewidth=line_thickness)
+            ax.axvline(mean_late, color=late_color, linestyle='solid', linewidth=line_thickness)
+    
+            # Zero reference line
+            ax.axvline(0, color='black', linestyle='dashed', linewidth=line_thickness)
+    
+            # Plot overlapping histograms with transparency (true frequency)
+            ax.hist(
+                corrs_early, bins=20, color=early_color, alpha=0.5,
+                label=f"early {early_sig}", edgecolor='black'
+            )
+            ax.hist(
+                corrs_late, bins=20, color=late_color, alpha=0.5,
+                label=f"late {late_sig}", edgecolor='black'
+            )
+            
+            # Add vertical lines for means
+            ax.axvline(mean_early, color=early_color, linestyle='solid', linewidth=2)
+            ax.axvline(mean_late, color=late_color, linestyle='solid', linewidth=2)
+            
+            # Add zero reference
+            ax.axvline(0, color='black', linestyle='dashed', linewidth=2)
+            
+            # Y-axis now shows count (no need to change scale)
+            ax.set_ylabel("Frequency", fontsize=10)
+
+
+            # Labels and formatting
+            ax.set_title(f"{roi}\n{len(corrs_early)} early / {len(corrs_late)} late neurons", fontsize=10)
+            ax.set_xlabel("Correlation coefficient", fontsize=12)
+            ax.tick_params(axis='both', labelsize=10, width=2, length=6)
+            ax.set_ylabel("Density", fontsize=10)
+            ax.legend()
+    
+        # Move model name to top of entire figure
+        fig.suptitle(f"{model}\n — {title_string_add}", fontsize=12, y=0.93)
+
+        plt.tight_layout()
+        plt.show()
+        
+
+
+
+
+
+def plot_overlap_in_cells(df1, df2, top_x_percent):
+    # import pdb; pdb.set_trace()
+
+    # Define your ROI order (top to bottom)
+    # first get all rois
+    rois = df1['roi'].unique().tolist()
+    roi_rank = {roi: i for i, roi in enumerate(rois)}
+    
+    # --- Setup filtering ---
+    def get_top_cells(df, model_name='stat_model', top_percent=top_x_percent):
+        df_filtered = df[df['model'] == model_name]
+        cutoff = df_filtered['average_corr'].quantile(1 - top_percent / 100)
+        return df_filtered[df_filtered['average_corr'] >= cutoff]
+    
+    # --- Filter ---
+    df1_top = get_top_cells(df1)
+    df2_top = get_top_cells(df2)
+    
+    # --- Sets of cell IDs ---
+    cells1 = set(df1_top['cell'])
+    cells2 = set(df2_top['cell'])
+    
+    only1 = cells1 - cells2
+    only2 = cells2 - cells1
+    both = cells1 & cells2
+
+    # --- Create plot data ---
+    plot_data = []
+    
+    def add_points(df, cells, label, x_center):
+        for cell in cells:
+            row = df[df['cell'] == cell].iloc[0]
+            roi = row['roi']
+            corr = row['average_corr']
+            if roi not in roi_rank:
+                continue  # Skip unknown ROIs
+            y_base = -roi_rank[roi]  # invert for top-to-bottom
+            x = np.random.normal(loc=x_center, scale=0.2)
+            y = np.random.normal(loc=y_base, scale=0.2)
+            size = corr * 800  # adjust scaling more aggressively
+            plot_data.append({'x': x, 'y': y, 'group': label, 'size': size, 'roi': roi})
+    
+    add_points(df1_top, only1, 'df1 only', -1)
+    add_points(df2_top, only2, 'df2 only', 1)
+    # Average the corr from both dfs for overlap
+    for cell in both:
+        row1 = df1_top[df1_top['cell'] == cell].iloc[0]
+        row2 = df2_top[df2_top['cell'] == cell].iloc[0]
+        roi = row1['roi']
+        if roi not in roi_rank:
+            continue
+        avg_corr = (row1['average_corr'] + row2['average_corr']) / 2
+        y_base = -roi_rank[roi]
+        x = np.random.normal(loc=0, scale=0.2)
+        y = np.random.normal(loc=y_base, scale=0.2)
+        size = (avg_corr - 0.3) * 800
+        plot_data.append({'x': x, 'y': y, 'group': 'overlap', 'size': size, 'roi': roi})
+    
+    plot_df = pd.DataFrame(plot_data)
+    
+    # --- Plotting ---
+    plt.figure(figsize=(10, 6))
+    for group, alpha in zip(['df1 only', 'df2 only', 'overlap'], [0.5, 0.5, 0.9]):
+        subset = plot_df[plot_df['group'] == group]
+        plt.scatter(subset['x'], subset['y'], s=subset['size'], alpha=alpha, label=group)
+    
+    # Add ROI labels on y-axis
+    y_ticks = [-roi_rank[roi] for roi in rois]
+    plt.yticks(y_ticks, rois)
+    plt.xticks([])  # Remove x-axis ticks (groups are implicit)
+    plt.xlabel('')
+    plt.ylabel('ROI')
+    plt.title(f'Overlapping Structured Representations by ROI\n(Top {top_x_percent}% average_corr, Model = state_model)')
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+    
 
 def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=False, model_name_string=None):
     if save==True:

@@ -10,6 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.stats as st
 import pandas as pd
+import seaborn as sns
 
 
 
@@ -24,6 +25,12 @@ def prep_result_df_for_plotting_by_rois(results):
         for model in results[sub]:
             for cell_label in results[sub][model]:
                 if 'ACC' in cell_label:
+                    roi = 'ACC'
+                elif 'vCC' in cell_label:
+                    roi = 'ACC'
+                elif 'MCC' in cell_label:
+                    roi = 'ACC'
+                elif 'AMC' in cell_label:
                     roi = 'ACC'
                 elif 'PCC' in cell_label:
                     roi = 'PCC'
@@ -114,6 +121,12 @@ def prep_result_df_perms_for_plotting_by_rois(results, time_perm_results=None, t
     return df, n_perms_min
 
 
+    
+    
+    
+    
+    
+    
 
 def plotting_df_based_corr_perm_histogram_by_ROIs(df_results, title_string_add):
     # import pdb; pdb.set_trace()
