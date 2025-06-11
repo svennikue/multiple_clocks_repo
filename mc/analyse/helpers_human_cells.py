@@ -175,7 +175,44 @@ def neurons_concat_per_ROI_acrosstasks(neuron_dict, order, unique_tasks = False,
     return neuron_concat_dict
 
 
+def count_cells_per_roi(subject_dict):
+    # import pdb; pdb.set_trace()
+    all_cells = []
+    no_ACC, no_PCC, no_OFC, no_HC, no_EC, no_AMYG, no_mixed = 0,0,0,0,0,0,0
+    for sub in subject_dict:
+        for cell_idx, cell in enumerate(subject_dict[sub]['neurons'][0]):
+            # create one entry in result_dict per cell 
+            cell_label = f"{subject_dict[sub]['cell_labels'][cell_idx]}_{cell_idx}_{sub}"
+            all_cells.append(cell_label)
+            if 'ACC' in cell_label:
+                no_ACC = no_ACC+1
+            elif 'vCC' in cell_label:
+                no_ACC = no_ACC+1
+            elif 'PCC' in cell_label:
+                no_PCC = no_PCC+1
+            elif 'OFC' in cell_label:
+                no_OFC = no_OFC+1
+            elif 'HC' in cell_label:
+                no_HC = no_HC+1
+            elif 'MCC' in cell_label:
+                no_HC = no_HC+1
+            elif 'EC' in cell_label:
+                no_EC = no_EC+1
+            elif 'AMYG' in cell_label:
+                no_AMYG= no_AMYG+1
+            else:
+                no_mixed=no_mixed+1
+    sum_all_cells = no_ACC + no_PCC + no_OFC+ no_HC+ no_EC+ no_AMYG + no_mixed
+    sum_PFC_cells = no_ACC + no_PCC + no_OFC
+    sum_MTL_cells = no_HC+ no_EC+ no_AMYG
+    
+    print(f"We overall have {sum_all_cells} cells.")
+    print(f"out of this, {no_ACC} are in ACC,{no_PCC} in PCC, and {no_OFC} in OFC. \n this makes it {sum_PFC_cells} prefrontal cells.")
+    print(f"out of this, {no_HC} are in HC ,{no_EC} in EC, and {no_AMYG} in Amygdala. \n this makes it {sum_MTL_cells} MTL cells.")
 
+    
+                    
+    
                     
 def run_RSA(data, only_specific_model = False, per_ROI = True, plotting = True, simple_models = False, dont_avg_rep_tasks = False):
     # import pdb; pdb.set_trace()

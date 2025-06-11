@@ -348,18 +348,52 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
         n_cells = len(df_curr_model)
         # import pdb; pdb.set_trace()
         mean_avg_corr = np.mean(df_curr_model['average_corr'])
-        n_p_val_time_sig = len(df_curr_model[df_curr_model['p_val_time'] < 0.05])
-        n_p_val_task_sig = len(df_curr_model[df_curr_model['p_val_task'] < 0.05])
-        n_p_val_perm_diff_sig = len(df_curr_model[df_curr_model['p_val_perm_diff'] < 0.05])
+        
         print(f"for {curr_model}, for n = {n_cells} cells all over the brain, the mean corr is {mean_avg_corr:.3f}")
-        print(f"n = {n_p_val_time_sig} or {n_p_val_time_sig/n_cells:.3f} % cells are sig. for time shuffles,")
-        print(f"n = {n_p_val_task_sig} or {n_p_val_task_sig/n_cells:.3f} % cells are sig. for task config shuffles,")
-        print(f"n = {n_p_val_perm_diff_sig} or {n_p_val_perm_diff_sig/n_cells:.3f} % have sig. different perm distributions.")
-
         results_file.append(f"for {curr_model}, for n = {n_cells} cells all over the brain, the mean corr is {mean_avg_corr:.3f}")
-        results_file.append(f"n = {n_p_val_time_sig} or {n_p_val_time_sig/n_cells:.3f} % cells are sig. for time shuffles,")
-        results_file.append(f"n = {n_p_val_task_sig} or {n_p_val_task_sig/n_cells:.3f} % cells are sig. for task config shuffles,")
-        results_file.append(f"n = {n_p_val_perm_diff_sig} or {n_p_val_perm_diff_sig/n_cells:.3f} % have sig. different perm distributions.")
+        
+        
+        if 'task_perm_0' in df_curr_model.columns:
+            n_p_val_task_sig = len(df_curr_model[df_curr_model['p_val_task'] < 0.05])
+            
+            if n_p_val_task_sig > 0:
+                mean_corr_sig_task = np.mean(df_curr_model[df_curr_model['p_val_task'] < 0.05])
+            else:
+                mean_corr_sig_task = 0
+                   
+            print(f"n = {n_p_val_task_sig} or {(n_p_val_task_sig/n_cells)*100:.3f} % cells are sig. for task config shuffles,")
+            results_file.append(f"n = {n_p_val_task_sig} or {(n_p_val_task_sig/n_cells)*100:.3f} % cells are sig. for task config shuffles,")
+        
+        
+        # this is the one I want to keep.
+        if 'time_perm_0' in df_curr_model.columns:
+            n_p_val_time_sig = len(df_curr_model[df_curr_model['p_val_time'] < 0.05])
+            
+            # and compute the mean for the significant cells.
+            df_curr_model_sig = df_curr_model[df_curr_model['p_val_time'] < 0.05]
+            n_sig_cells = len(df_curr_model_sig)
+            if n_sig_cells > 0:
+                mean_avg_corr_sig = np.mean(df_curr_model_sig['average_corr'])
+            else:
+                mean_avg_corr_sig = 0
+            print(f"for {curr_model}, for n = {n_sig_cells} cells or or {(n_sig_cells/n_cells)*100:.3f} % of cells all over the brain are sig., their mean corr being r = {mean_avg_corr_sig:.3f}")
+            results_file.append(f"for {curr_model}, for n = {n_sig_cells} cells or or {(n_sig_cells/n_cells)*100:.3f} % of cells all over the brain are sig., their mean corr being r = {mean_avg_corr_sig:.3f}")
+            
+            # also save the signficant cells as .csv
+            if save == True:
+                df_curr_model_sig.to_csv(f"{res_folder}/{model_name_string}_sig_after_temp_perms.csv", index=False)
+            
+
+        if 'task_perm_0' in df_curr_model.columns and 'time_perm_0' in df_curr_model.columns:
+            n_p_val_perm_diff_sig = len(df_curr_model[df_curr_model['p_val_perm_diff'] < 0.05])
+            
+            if n_p_val_perm_diff_sig > 0:
+                mean_corr_sig_diff = np.mean(df_curr_model[df_curr_model['p_val_perm_diff'] < 0.05])
+            else:
+                mean_corr_sig_diff = 0
+            
+            print(f"n = {n_p_val_perm_diff_sig} or {(n_p_val_perm_diff_sig/n_cells)*100} % have sig. different perm distributions.")
+            results_file.append(f"n = {n_p_val_perm_diff_sig} or {(n_p_val_perm_diff_sig/n_cells)*100:.1f} % have sig. different perm distributions.")
         
         
         # second: per roi
@@ -367,20 +401,38 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
             df_curr_model_curr_roi = df_curr_model[df_curr_model['roi'] == roi].copy().reset_index(drop=True)
             n_cells_in_roi = len(df_curr_model_curr_roi)
             mean_avg_corr = np.mean(df_curr_model_curr_roi['average_corr'])
-            n_p_val_time_sig = len(df_curr_model_curr_roi[df_curr_model_curr_roi['p_val_time'] < 0.05])
-            n_p_val_task_sig = len(df_curr_model_curr_roi[df_curr_model_curr_roi['p_val_task'] < 0.05])
-            n_p_val_perm_diff_sig = len(df_curr_model_curr_roi[df_curr_model_curr_roi['p_val_perm_diff'] < 0.05])
             print(f"for {curr_model}, for n = {n_cells_in_roi} cells in {roi}, mean corr is {mean_avg_corr:.3f}")
-            print(f"n = {n_p_val_time_sig} or {n_p_val_time_sig/n_cells_in_roi:.3f} % cells are sig. for time shuffles,")
-            print(f"n = {n_p_val_task_sig} or {n_p_val_task_sig/n_cells_in_roi:.3f} % cells are sig. for task config shuffles,")
-            print(f"n = {n_p_val_perm_diff_sig} or {n_p_val_perm_diff_sig/n_cells_in_roi:.3f} % have sig. different perm distributions.")
-            
             results_file.append(f"for {curr_model}, for n = {n_cells_in_roi} cells in {roi}, mean corr is {mean_avg_corr:.3f}")
-            results_file.append(f"n = {n_p_val_time_sig} or {n_p_val_time_sig/n_cells_in_roi:.3f} % cells are sig. for time shuffles,")
-            results_file.append(f"n = {n_p_val_task_sig} or {n_p_val_task_sig/n_cells_in_roi:.3f} % cells are sig. for task config shuffles,")
-            results_file.append(f"n = {n_p_val_perm_diff_sig} or {n_p_val_perm_diff_sig/n_cells_in_roi:.3f} % have sig. different perm distributions.")
+            
+            if 'time_perm_0' in df_curr_model.columns:
+                n_p_val_time_sig = len(df_curr_model_curr_roi[df_curr_model_curr_roi['p_val_time'] < 0.05])
+                print(f"n = {n_p_val_time_sig} or {(n_p_val_time_sig/n_cells_in_roi)*100:.1f} % cells are sig. for time shuffles,")
+                results_file.append(f"n = {n_p_val_task_sig} or {(n_p_val_task_sig/n_cells_in_roi)*100:.1f} % cells are sig. for task config shuffles,")
+                
+            
+                # and compute the mean for the significant cells.
+                df_curr_model_curr_roi_sig = df_curr_model_curr_roi[df_curr_model_curr_roi['p_val_time'] < 0.05]
+                n_sig_cells_curr_model_curr_roi = len(df_curr_model_curr_roi_sig)
+                if n_sig_cells_curr_model_curr_roi > 0:
+                    mean_avg_corr_sig_curr_model_curr_roi = np.mean(df_curr_model_curr_roi_sig['average_corr'])
+                else:
+                    mean_avg_corr_sig_curr_model_curr_roi = 0
+                print(f"for {curr_model}, for n = {n_sig_cells_curr_model_curr_roi} cells or {(n_sig_cells_curr_model_curr_roi/n_cells)*100:.1f} % of cells in {roi} are sig., their mean corr being r = {mean_avg_corr_sig_curr_model_curr_roi:.3f}")
+                results_file.append(f"for {curr_model}, for n = {n_sig_cells_curr_model_curr_roi} cells or {(n_sig_cells_curr_model_curr_roi/n_cells)*100:.1f} % of cells in {roi} are sig., their mean corr being r = {mean_avg_corr_sig_curr_model_curr_roi:.3f}")
+                
+                
+                
+            if 'task_perm_0' in df_curr_model.columns:
+                n_p_val_task_sig = len(df_curr_model_curr_roi[df_curr_model_curr_roi['p_val_task'] < 0.05])
+                print(f"n = {n_p_val_task_sig} or {(n_p_val_task_sig/n_cells_in_roi)*100:.1f} % cells are sig. for task config shuffles,")
+                results_file.append(f"n = {n_p_val_time_sig} or {(n_p_val_time_sig/n_cells_in_roi)*100:.1f} % cells are sig. for time shuffles,")
+                
+            if 'task_perm_0' in df_curr_model.columns and 'time_perm_0' in df_curr_model.columns:
+                n_p_val_perm_diff_sig = len(df_curr_model_curr_roi[df_curr_model_curr_roi['p_val_perm_diff'] < 0.05])
+                print(f"n = {n_p_val_perm_diff_sig} or {(n_p_val_perm_diff_sig/n_cells_in_roi)*100:.1f} % have sig. different perm distributions.")
+                results_file.append(f"n = {n_p_val_perm_diff_sig} or {(n_p_val_perm_diff_sig/n_cells_in_roi)*100:.1f} % have sig. different perm distributions.")
 
-
+            
         # Write everything to a .txt file at the end
         if save==True:
             with open(f"{res_folder}/{model_name_string}_stats.txt", 'w') as f:
@@ -389,14 +441,21 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
     
 
         # 3. PLOTTING
-        # plot the distributions for the nicest 25 cells per model
+        # plot the distributions for the nicest 25 cells per model, filtered for significant cells if possible
         
-        # subset to only plot the top 25 cells
-        if len(df_curr_model) > 25: 
-            df_strong_curr_model = df_curr_model.sort_values('average_corr', ascending=False).head(25).reset_index(drop=True)
+        if 'time_perm_0' in df_curr_model.columns and n_sig_cells > 0:
+            if len(df_curr_model_sig) > 25:
+                df_strong_curr_model = df_curr_model_sig.sort_values('average_corr', ascending=False).head(25).reset_index(drop=True)
+            else:
+                df_strong_curr_model = df_curr_model_sig.sort_values('average_corr', ascending=False).reset_index(drop=True) 
         else:
-           df_strong_curr_model = df_curr_model.sort_values('average_corr', ascending=False).reset_index(drop=True) 
-        
+            # if there are no significant cells after temporal permutation testing
+            # subset to only plot the top 25 cells
+            if len(df_curr_model) > 25: 
+                df_strong_curr_model = df_curr_model.sort_values('average_corr', ascending=False).head(25).reset_index(drop=True)
+            else:
+               df_strong_curr_model = df_curr_model.sort_values('average_corr', ascending=False).reset_index(drop=True) 
+            
         fig, axs = plt.subplots(n_rows, n_cols, figsize=(18, 12))
         fig.suptitle(f"{curr_model}", fontsize=15, y=0.99)  # Title slightly above the top
         axs = axs.flatten()

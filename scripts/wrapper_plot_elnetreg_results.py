@@ -22,7 +22,16 @@ def load_result_dirs(file_name_list):
     for file_name in file_name_list:
         result_dir = {"binned": {}, "raw":{}}
         results_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/elastic_net_reg/corrs"
+        
+        # utah_and_UCLA_cells = [1,2,4,6,17,23,24,29,30,39,41,42,47,48, 52, 53, 54, 55, 3, 40, 50, 51, 56]
+        # subjects = [f"sub-{i}" for i in utah_and_UCLA_cells]
+        
+        #only_baylor_cells = [5,7,8,9,10,11,12,13,14,15,16,18, 19,25,26,27,28,31,32,33,34,35, 36,37,38,43,44,45,46,49, 57,58,59]
+        #subjects = [f"sub-{i}" for i in only_baylor_cells]
+        
         subjects = [f"sub-{i}" for i in range(1, 65)]
+        
+        
         actual_subjects = []
         # check if on server or local
         if not os.path.isdir(results_folder):
@@ -137,49 +146,62 @@ def plot_all(model_name_string_list, define_somehow_what_to_plot=None):
     
     
     # show overlap between early and late cells for top state and phase
-    mc.plotting.results.slope_plot_early_late_per_roi(df_early= all_results['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
-                                                                    df_late = all_results['w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'], 
-                                                                    title_string_add = f"overlap early - late cells ")
+    # mc.plotting.results.slope_plot_early_late_per_roi(df_early= all_results['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
+    #                                                                 df_late = all_results['w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'], 
+    #                                                                 title_string_add = f"overlap early - late cells ")
 
-    # show overlap between early and late cells for top state and phase
-    mc.plotting.results.slope_plot_early_late_per_roi(df_early= all_results_binned['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
-                                                                    df_late = all_results_binned['w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'], 
-                                                                    title_string_add = f"overlap early - late cells \n binned by state")
+    # # show overlap between early and late cells for top state and phase
+    # mc.plotting.results.slope_plot_early_late_per_roi(df_early= all_results_binned['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
+    #                                                                 df_late = all_results_binned['w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'], 
+    #                                                                 title_string_add = f"overlap early - late cells \n binned by state")
         
     
     
-    # show overlap between early and late cells, state + phase removed
-    mc.plotting.results.slope_plot_early_late_per_roi(df_early= cleaned_results['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
-                                                                    df_late = cleaned_results['w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'], 
-                                                                    title_string_add = f"overlap early - late cells \n excl. {x_percent_to_remove_state}% best state + phase ")
+    # # show overlap between early and late cells, state + phase removed
+    # mc.plotting.results.slope_plot_early_late_per_roi(df_early= cleaned_results['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
+    #                                                                 df_late = cleaned_results['w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'], 
+    #                                                                 title_string_add = f"overlap early - late cells \n excl. {x_percent_to_remove_state}% best state + phase ")
 
     # only state removed
-    mc.plotting.results.slope_plot_early_late_per_roi(df_early= cleaned_results_only_state['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
-                                                                    df_late = cleaned_results_only_state['w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'], 
-                                                                    title_string_add = f"overlap early - late cells \n excl. {x_percent_to_remove_state}% best state")
-
-
-    
-    # mc.plotting.results.plotting_two_df_corr_perm_histogram_by_ROIs(df_early= cleaned_results['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
-    #                                                                 df_late = cleaned_results['w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'], 
-    #                                                                 title_string_add = f"excl. {x_percent_to_remove_state}% best state + {x_percent_to_remove_phase}% phase")
-    
-    
-    # mc.plotting.results.plotting_two_df_corr_perm_histogram_by_ROIs(df_early= cleaned_results_binned_only_state['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
-    #                                                                 df_late = cleaned_results_binned_only_state['w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'], 
-    #                                                                 title_string_add = f"excl. {x_percent_to_remove_state}% best state \n binned")
-    
-    
-    
-    # mc.plotting.results.plotting_two_df_corr_perm_histogram_by_ROIs(df_early= cleaned_results_binned['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
-    #                                                                 df_late = cleaned_results_binned['w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'], 
-    #                                                                 title_string_add = f"excl. {x_percent_to_remove_state}% best state + {x_percent_to_remove_phase}% phase \n binned")
-    
-
-
-
+    # mc.plotting.results.slope_plot_early_late_per_roi(df_early= cleaned_results_only_state['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
+    #                                                                 df_late = cleaned_results_only_state['w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'], 
+    #                                                                 title_string_add = f"overlap early - late cells \n excl. {x_percent_to_remove_state}% best state")
 
     import pdb; pdb.set_trace()
+    
+    mc.plotting.results.plotting_two_df_corr_perm_histogram_by_ROIs(df_early= all_results['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
+                                                                    df_late = all_results['w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'], 
+                                                                    title_string_add = f"all cells")
+
+    
+    mc.plotting.results.plotting_two_df_corr_perm_histogram_by_ROIs(df_early= cleaned_results['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
+                                                                    df_late = cleaned_results['w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'], 
+                                                                    title_string_add = f"excl. {x_percent_to_remove_state}% best state + {x_percent_to_remove_phase}% phase")
+    
+    
+    
+    mc.plotting.results.plotting_two_df_corr_perm_histogram_by_ROIs(df_early= cleaned_results_only_state['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
+                                                                    df_late = cleaned_results_only_state['w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'], 
+                                                                    title_string_add = f"excl. {x_percent_to_remove_state}% best state")
+    
+    
+    
+    
+    mc.plotting.results.plotting_two_df_corr_perm_histogram_by_ROIs(df_early= cleaned_results_binned_only_state['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
+                                                                    df_late = cleaned_results_binned_only_state['w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'], 
+                                                                    title_string_add = f"excl. {x_percent_to_remove_state}% best state \n binned")
+    
+    
+    
+    mc.plotting.results.plotting_two_df_corr_perm_histogram_by_ROIs(df_early= cleaned_results_binned['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
+                                                                    df_late = cleaned_results_binned['w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'], 
+                                                                    title_string_add = f"excl. {x_percent_to_remove_state}% best state + {x_percent_to_remove_phase}% phase \n binned")
+    
+
+
+
+
+    
         
 
     
@@ -205,7 +227,7 @@ def plot_all(model_name_string_list, define_somehow_what_to_plot=None):
     
     
     
-    top_ten_cells_binned, predicted_cells_binned = mc.analyse.helpers_human_cells.identify_max_cells_for_model(results['binned'])
+    top_ten_cells_binned, predicted_cells_binned = mc.analyse.helpers_human_cells.identify_max_cells_for_model(cleaned_results['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs']['binned'])
     top_ten_cells_raw, predicted_cells_raw = mc.analyse.helpers_human_cells.identify_max_cells_for_model(results['raw'])
     
     
@@ -217,6 +239,7 @@ def plot_all(model_name_string_list, define_somehow_what_to_plot=None):
     
     
     og_data = load_data(subjects)
+    mc.analyse.helpers_human_cells.count_cells_per_roi(og_data)
     
     
     # for this I need the raw data. 
@@ -229,6 +252,10 @@ def plot_all(model_name_string_list, define_somehow_what_to_plot=None):
                 # subset_dict['timings'] = all_data[subject]['timings'].copy()
     mc.analyse.helpers_human_cells.store_best_cells(top_ten_cells_binned, og_data, name_extension_string='binned')
     mc.analyse.helpers_human_cells.store_best_cells(top_ten_cells_raw, og_data, name_extension_string='raw')
+    
+    
+    
+    # to get an overview of how many cells there are.
     
     
     

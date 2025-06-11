@@ -28,14 +28,14 @@ def prep_result_df_for_plotting_by_rois(results):
                     roi = 'ACC'
                 elif 'vCC' in cell_label:
                     roi = 'ACC'
-                elif 'MCC' in cell_label:
-                    roi = 'ACC'
                 elif 'AMC' in cell_label:
                     roi = 'ACC'
                 elif 'PCC' in cell_label:
                     roi = 'PCC'
                 elif 'OFC' in cell_label:
                     roi = 'OFC'
+                elif 'MCC' in cell_label:
+                    roi = 'hippocampal'
                 elif 'HC' in cell_label:
                     roi = 'hippocampal'
                 elif 'EC' in cell_label:

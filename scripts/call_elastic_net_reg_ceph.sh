@@ -14,13 +14,13 @@ for i in {1..6}; do
   # Call the Python script with the appropriate arguments
   python wrapper_human_cells_elnetreg.py "$i" \
     --models_I_want="['onlynowand3future', 'onlynextand2future']" \
-    --exclude_x_repeats="[1]" \
+    --only_repeats_included="[1,2,3,4,5]"\
     --randomised_reward_locations=False \
     --save_regs=True \
     --fit_binned='by_state' \
     --fit_residuals=False \
     --avg_across_runs=True \
-    --comp_loc_perms=265
+#    --comp_loc_perms=265
 
 done
 
