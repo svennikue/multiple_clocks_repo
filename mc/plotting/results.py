@@ -407,7 +407,7 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
             if 'time_perm_0' in df_curr_model.columns:
                 n_p_val_time_sig = len(df_curr_model_curr_roi[df_curr_model_curr_roi['p_val_time'] < 0.05])
                 print(f"n = {n_p_val_time_sig} or {(n_p_val_time_sig/n_cells_in_roi)*100:.1f} % cells are sig. for time shuffles,")
-                results_file.append(f"n = {n_p_val_task_sig} or {(n_p_val_task_sig/n_cells_in_roi)*100:.1f} % cells are sig. for task config shuffles,")
+                results_file.append(f"n = {n_p_val_time_sig} or {(n_p_val_time_sig/n_cells_in_roi)*100:.1f} % cells are sig. for task config shuffles,")
                 
             
                 # and compute the mean for the significant cells.
@@ -425,7 +425,7 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
             if 'task_perm_0' in df_curr_model.columns:
                 n_p_val_task_sig = len(df_curr_model_curr_roi[df_curr_model_curr_roi['p_val_task'] < 0.05])
                 print(f"n = {n_p_val_task_sig} or {(n_p_val_task_sig/n_cells_in_roi)*100:.1f} % cells are sig. for task config shuffles,")
-                results_file.append(f"n = {n_p_val_time_sig} or {(n_p_val_time_sig/n_cells_in_roi)*100:.1f} % cells are sig. for time shuffles,")
+                results_file.append(f"n = {n_p_val_task_sig} or {(n_p_val_task_sig/n_cells_in_roi)*100:.1f} % cells are sig. for task shuffles,")
                 
             if 'task_perm_0' in df_curr_model.columns and 'time_perm_0' in df_curr_model.columns:
                 n_p_val_perm_diff_sig = len(df_curr_model_curr_roi[df_curr_model_curr_roi['p_val_perm_diff'] < 0.05])
