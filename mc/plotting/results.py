@@ -15,6 +15,7 @@ from scipy.stats import ttest_ind
 import pandas as pd
 import seaborn as sns
 import scipy.stats as st 
+import math
 
 
 def slope_plot_early_late_per_roi(df_early, df_late, title_string_add):
@@ -310,8 +311,12 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
             p_val_times = []
             for _, row in df_curr_model.iterrows():
                 perm_values = row[[f'time_perm_{i}' for i in range(n_perms)]].values
-                p_val_time = np.mean(perm_values >= row['average_corr'])
-                p_val_times.append(p_val_time)
+                if not math.isnan(row['average_corr']):
+                    p_val_time = np.mean(perm_values >= row['average_corr'])
+                    p_val_times.append(p_val_time)
+                else:
+                    p_val_times.append(np.nan)
+            print(f"there were n = {np.sum(np.isnan(p_val_times))} nans in the average corr for {curr_model}!")
             df_curr_model['p_val_time'] = p_val_times
 
         # also store p vals for task perms
@@ -319,8 +324,11 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
             p_val_tasks = []
             for _, row in df_curr_model.iterrows():
                 perm_values = row[[f'task_perm_{i}' for i in range(n_perms)]].values
-                p_val_task = np.mean(perm_values >= row['average_corr'])
-                p_val_tasks.append(p_val_task)
+                if not math.isnan(row['average_corr']):
+                    p_val_task = np.mean(perm_values >= row['average_corr'])
+                    p_val_tasks.append(p_val_task)
+                else:
+                    p_val_tasks.append(np.nan)
             df_curr_model['p_val_task'] = p_val_tasks
         
 
@@ -381,7 +389,7 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
             
             # also save the signficant cells as .csv
             if save == True:
-                df_curr_model_sig.to_csv(f"{res_folder}/{model_name_string}_sig_after_temp_perms.csv", index=False)
+                df_curr_model_sig.to_csv(f"{res_folder}/{curr_model}_{model_name_string}_sig_after_temp_perms.csv", index=False)
             
 
         if 'task_perm_0' in df_curr_model.columns and 'time_perm_0' in df_curr_model.columns:
@@ -417,8 +425,8 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
                     mean_avg_corr_sig_curr_model_curr_roi = np.mean(df_curr_model_curr_roi_sig['average_corr'])
                 else:
                     mean_avg_corr_sig_curr_model_curr_roi = 0
-                print(f"for {curr_model}, for n = {n_sig_cells_curr_model_curr_roi} cells or {(n_sig_cells_curr_model_curr_roi/n_cells)*100:.1f} % of cells in {roi} are sig., their mean corr being r = {mean_avg_corr_sig_curr_model_curr_roi:.3f}")
-                results_file.append(f"for {curr_model}, for n = {n_sig_cells_curr_model_curr_roi} cells or {(n_sig_cells_curr_model_curr_roi/n_cells)*100:.1f} % of cells in {roi} are sig., their mean corr being r = {mean_avg_corr_sig_curr_model_curr_roi:.3f}")
+                print(f"for {curr_model}, for n = {n_sig_cells_curr_model_curr_roi} cells or {(n_sig_cells_curr_model_curr_roi/n_cells_in_roi)*100:.1f} % of cells in {roi} are sig., their mean corr being r = {mean_avg_corr_sig_curr_model_curr_roi:.3f}")
+                results_file.append(f"for {curr_model}, for n = {n_sig_cells_curr_model_curr_roi} cells or {(n_sig_cells_curr_model_curr_roi/n_cells_in_roi)*100:.1f} % of cells in {roi} are sig., their mean corr being r = {mean_avg_corr_sig_curr_model_curr_roi:.3f}")
                 
                 
                 

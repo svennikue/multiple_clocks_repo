@@ -95,6 +95,13 @@ def load_data(subs):
 def plot_all(model_name_string_list, define_somehow_what_to_plot=None):
     results, subjects = load_result_dirs(model_name_string_list)
     
+    result_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/elastic_net_reg/"
+    # check if on server or local
+    if not os.path.isdir(result_folder):
+        print("running on ceph")
+        result_folder = "/ceph/behrens/svenja/human_ABCD_ephys/derivatives/group/elastic_net_reg/"
+
+    
     # results_corr_by_roi = mc.analyse.plotting_cells.prep_result_for_plotting_by_rois(results['raw']) 
     # results_corr_by_roi_binned = mc.analyse.plotting_cells.prep_result_for_plotting_by_rois(results['binned'])
     
@@ -106,6 +113,8 @@ def plot_all(model_name_string_list, define_somehow_what_to_plot=None):
     
     all_results, all_results_binned, cleaned_results, cleaned_results_binned, cell_overview, cell_overview_binned = {}, {}, {}, {}, {}, {}
     cleaned_results_only_state, cleaned_results_binned_only_state, cell_overview_only_state, cell_overview_binned_only_state = {}, {}, {}, {}
+    
+    results_rem_sig_state, results_rem_sig_state_and_phase, cell_overview_rem_sig_state, cell_overview_rem_sig_state_and_phase = {}, {}, {}, {}
     
     for results_for_version in results:
         # prepare data to plot.
@@ -119,6 +128,20 @@ def plot_all(model_name_string_list, define_somehow_what_to_plot=None):
         
         # here you could consider doing 2 overlapping distributions to compare early-late better
         # also add where the lowest state-cell that was removed sat with a line.
+        
+        
+        
+        #
+        # instead of removing the top performing cells, remove the significant state
+        # and phase cells.
+        # I currently can only do this for not-binned.
+        # /Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/elastic_net_reg/curr_rings_split_clock_model_w_partial_musicboxes_only_reps_6-10_avg_in_20_bins_across_runs_sig_after_temp_perms.csv
+        
+        path_to_file_state = f"{result_folder}stat_model_{results_for_version}_sig_after_temp_perms.csv"
+        results_rem_sig_state[results_for_version], cell_overview_rem_sig_state[results_for_version] = mc.analyse.helpers_human_cells.remove_certain_cells_for_x_model(all_results[results_for_version], path_to_file_state)
+        
+        path_to_file_phase = f"{result_folder}phas_model_{results_for_version}_sig_after_temp_perms.csv"
+        results_rem_sig_state_and_phase[results_for_version], cell_overview_rem_sig_state_and_phase[results_for_version] = mc.analyse.helpers_human_cells.remove_certain_cells_for_x_model(results_rem_sig_state[results_for_version], path_to_file_phase)
         
         # next step: remove the top x_percent of state cells
        
@@ -167,6 +190,25 @@ def plot_all(model_name_string_list, define_somehow_what_to_plot=None):
     #                                                                 df_late = cleaned_results_only_state['w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'], 
     #                                                                 title_string_add = f"overlap early - late cells \n excl. {x_percent_to_remove_state}% best state")
 
+    
+    # only state removed
+    mc.plotting.results.slope_plot_early_late_per_roi(df_early= results_rem_sig_state['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
+                                                                    df_late = results_rem_sig_state['w_partial_musicboxes_only_reps_6-10_avg_in_20_bins_across_runs'], 
+                                                                    title_string_add = f"overlap early - late cells \n excl. sig. state cells")
+    # show overlap between early and late cells, state + phase removed
+    mc.plotting.results.slope_plot_early_late_per_roi(df_early= results_rem_sig_state_and_phase['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
+                                                                    df_late = results_rem_sig_state_and_phase['w_partial_musicboxes_only_reps_6-10_avg_in_20_bins_across_runs'], 
+                                                                    title_string_add = f"excl. sig. state and phase cells")
+
+    mc.plotting.results.plotting_two_df_corr_perm_histogram_by_ROIs(df_early= results_rem_sig_state['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
+                                                                df_late = results_rem_sig_state['w_partial_musicboxes_only_reps_6-10_avg_in_20_bins_across_runs'], 
+                                                                title_string_add = f"excl. sig. state cells")
+    
+    
+    mc.plotting.results.plotting_two_df_corr_perm_histogram_by_ROIs(df_early= results_rem_sig_state_and_phase['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
+                                                                df_late = results_rem_sig_state_and_phase['w_partial_musicboxes_only_reps_6-10_avg_in_20_bins_across_runs'], 
+                                                                title_string_add = f"excl. sig. state and phase cells")
+    
     import pdb; pdb.set_trace()
     
     mc.plotting.results.plotting_two_df_corr_perm_histogram_by_ROIs(df_early= all_results['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
@@ -299,7 +341,7 @@ if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     plot_all(
         model_name_string_list=['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs',
-                           'w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs']
+                           'w_partial_musicboxes_only_reps_6-10_avg_in_20_bins_across_runs']
         # model_name_string='w_partial_musicboxes_only_reps_0-1_avg_in_20_bins_across_runs'
         # model_name_string='w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'
         # model_name_string='w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'

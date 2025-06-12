@@ -1272,6 +1272,26 @@ def remove_top_x_percent_of_x_model(result_df, delete_from_model, x_percent):
 
 
 
+
+def remove_certain_cells_for_x_model(result_df, path_to_csv):
+    
+    # Load the list of cells to delete
+    delete_cells_df = pd.read_csv(path_to_csv)  # path_to_csv = 'path/to/delete_cells.csv'
+    cells_to_delete = delete_cells_df['cell'].tolist()
+    
+    # Remove these cells from the original DataFrame
+    results_clean = result_df[~result_df['cell'].isin(cells_to_delete)].reset_index(drop=True)
+    
+    # Overview
+    overview = {}
+    overview['all_cells'] = result_df['cell'].unique().tolist()
+    overview['cells_to_keep'] = results_clean['cell'].unique().tolist()
+    
+    return results_clean, overview
+
+
+
+
 def identify_max_cells_for_model(result_dir, x_percentage_of_cells = None):
     # import pdb; pdb.set_trace()
     df = pd.DataFrame()

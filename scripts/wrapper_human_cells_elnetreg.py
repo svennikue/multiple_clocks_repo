@@ -431,7 +431,7 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = No
                     Predicted_Actual_correlation_binned=nan_safe_pearsonr(curr_neuron_heldouttasks_flat_binned,predicted_activity_curr_neuron_binned)
                     corr_dict_binned[entry][curr_cell][task_idx,p_idx] = Predicted_Actual_correlation_binned
                     # if np.all(curr_neuron_heldouttasks_flat_binned == curr_neuron_heldouttasks_flat_binned[0]) or np.all(predicted_activity_curr_neuron_binned == predicted_activity_curr_neuron_binned[0]):
-                    import pdb; pdb.set_trace()
+                    # import pdb; pdb.set_trace()
     
         # end_perm = time.time()
         # print(f"Fitting one permutation took {end_perm - start_perm:.2f} seconds")
@@ -498,8 +498,8 @@ def compute_one_subject(sub, models_I_want, only_repeats_included, randomised_re
         cells.append(f"{single_sub_dict['cell_labels'][cell_idx]}_{cell_idx}_{sub}")
 
 
-    for cell in cells:
-        results = run_elnetreg_cellwise(single_sub_dict, cell, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms=comp_loc_perms, comp_time_perms=comp_time_perms, circular_perms=comp_circular_perms)    
+    # for cell in cells:
+    #     results = run_elnetreg_cellwise(single_sub_dict, cell, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms=comp_loc_perms, comp_time_perms=comp_time_perms, circular_perms=comp_circular_perms)    
     
      
     parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(single_sub_dict, c, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms=comp_loc_perms, comp_time_perms=comp_time_perms, circular_perms=comp_circular_perms) for c in cells)
@@ -557,35 +557,35 @@ def compute_one_subject(sub, models_I_want, only_repeats_included, randomised_re
 
  
     
-# # # # if running from command line, use this one!   
-# if __name__ == "__main__":
-#     #print(f"starting regression for subject {sub}")
-#     fire.Fire(compute_one_subject)
-#     # call this script like
-#     # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
+# # # if running from command line, use this one!   
+if __name__ == "__main__":
+    #print(f"starting regression for subject {sub}")
+    fire.Fire(compute_one_subject)
+    # call this script like
+    # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
 
 # ['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']
 # ['only','onlynowand3future', 'onlynextand2future']
 
-if __name__ == "__main__":
-    # For debugging, bypass Fire and call compute_one_subject directly.
-    compute_one_subject(
-        sub=2,
-        #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
-        models_I_want=['onlynowand3future', 'onlynextand2future'],
-        only_repeats_included=[1,2,3,4,5], # i want: [0,1] and [1,2,3,4,5] and [6,7,8,9,10]
-        randomised_reward_locations=False,
-        save_regs=True,
-        fit_binned='by_state', # 'by_loc_change', 'by_state', 'by_state_loc_change'
-        fit_residuals=False,
-        # fit_binned='by_state_loc_change' # 'by_loc_change', 'by_state', 'by_state_loc_change'
-        # introduce a fit residuals options!
-        # bin_pre_corr='by_state',
-        avg_across_runs=True,
-        # comp_loc_perms=100, # since with 6 grids, I can only get !6 = 265 unique perms
-        # comp_time_perms=10
-        # comp_circular_perms=100
-    )
+# if __name__ == "__main__":
+#     # For debugging, bypass Fire and call compute_one_subject directly.
+#     compute_one_subject(
+#         sub=2,
+#         #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
+#         models_I_want=['onlynowand3future', 'onlynextand2future'],
+#         only_repeats_included=[1,2,3,4,5], # i want: [0,1] and [1,2,3,4,5] and [6,7,8,9,10]
+#         randomised_reward_locations=False,
+#         save_regs=True,
+#         fit_binned='by_state', # 'by_loc_change', 'by_state', 'by_state_loc_change'
+#         fit_residuals=False,
+#         # fit_binned='by_state_loc_change' # 'by_loc_change', 'by_state', 'by_state_loc_change'
+#         # introduce a fit residuals options!
+#         # bin_pre_corr='by_state',
+#         avg_across_runs=True,
+#         # comp_loc_perms=100, # since with 6 grids, I can only get !6 = 265 unique perms
+#         # comp_time_perms=10
+#         # comp_circular_perms=100
+#     )
 
 
 # these are hard-coded right now, so include them in the 'only' + models list 'state_reg', 'complete_musicbox_reg', 'reward_musicbox_reg', 'location_reg'
