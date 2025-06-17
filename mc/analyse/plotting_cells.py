@@ -14,6 +14,46 @@ import seaborn as sns
 
 
 
+def prep_result_df_for_plotting_by_small_rois(results):
+    # Define your ROI labels
+    ROI_labels = ['PFC','hippocampal', 'PFC', 'entorhinal', 'amyg and thal']
+    
+    # new strategy: use pandas dataframe.
+    df = pd.DataFrame()
+    i = 0
+    for sub in results:
+        for model in results[sub]:
+            for cell_label in results[sub][model]:
+                if 'ACC' in cell_label:
+                    roi = 'PFC'
+                elif 'vCC' in cell_label:
+                    roi = 'PFC'
+                elif 'AMC' in cell_label:
+                    roi = 'PFC'
+                elif 'PCC' in cell_label:
+                    roi = 'PFC'
+                elif 'OFC' in cell_label:
+                    roi = 'PFC'
+                elif 'MCC' in cell_label:
+                    roi = 'hippocampal'
+                elif 'HC' in cell_label:
+                    roi = 'hippocampal'
+                elif 'EC' in cell_label:
+                    roi = 'entorhinal'
+                elif 'AMYG' in cell_label:
+                    roi = 'amyg and thal'
+                else:
+                    roi = 'amyg and thal'
+                df.at[i, 'roi'] = roi
+                df.at[i, 'cell'] = cell_label
+                df.at[i, 'average_corr'] = np.mean(results[sub][model][cell_label])
+                df.at[i, 'model'] = model
+                i = i + 1
+                           
+    return df
+
+    
+
 def prep_result_df_for_plotting_by_rois(results):
     # Define your ROI labels
     ROI_labels = ['ACC', 'OFC', 'PCC','hippocampal', 'PFC', 'entorhinal', 'amygdala', 'mixed']

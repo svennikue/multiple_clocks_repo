@@ -1,18 +1,25 @@
-% extract which subjects are the ones that have the same grids.
-% then reshape the cells such that they are formatted as 
-% firing rate per 50ms.
-% then also recode the locations as location per 50ms bins.
+% script to extract all cells and save them as csv
+% Restructure them as well to analyse them analoguesly to the mouse data:
+% save reward locations per task [n tasks x 4] and cell label per subject
+
+% save cells in bins of 50ms -> encode firing rate per 50ms [n cells x time points]
+% save location in bins of 50ms -> [location x  time points]
+% save timings of state start + reward start for ABCD = [n repeats x 8
+% timings]
+% save all three of them in separate csv-s; split by task 
+%%
+
 
 clear all
 source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
 if ~exist(source_dir, 'dir')
     source_dir = '/ceph/behrens/svenja/human_ABCD_ephys'
     %abcd_data = load(sprintf("%s/beh_cells/abcd_data_FIXED_19-Feb-2025.mat", source_dir));
-    abcd_data = load(sprintf("%s/beh_cells/abcd_data_17-Apr-2025.mat", source_dir));
+    abcd_data = load(sprintf("%s/beh_cells/abcd_data_24-Apr-2025.mat", source_dir));
     
 else
     %abcd_data = load(sprintf("%s/abcd_data_FIXED_19-Feb-2025.mat", source_dir));
-    abcd_data = load(sprintf("%s/abcd_data_17-Apr-2025.mat", source_dir));
+    abcd_data = load(sprintf("%s/abcd_data_24-Apr-2025.mat", source_dir));
 end
 
 deriv_dir = sprintf("%s/derivatives/", source_dir);
@@ -52,16 +59,6 @@ bin_size = 0.025; %play around with this! Mohamady has 0.025
 
 
 for sub = 1:length(subject_list)
-    % if sub == 6 || sub == 9 || sub == 27 || sub == 44
-    % if sub == 9
-    %     % 6 because it has every other grid_onset_timestamp transposed and that
-    %     % annoying
-    %     % 9 because it the timings start with negative values, so there
-    %     % must have been something wrong
-    %     % because 27 has the subj.trial_vars.state_change_times encoded in
-    %     % a transposed way (?) and that creates problems
-    %     continue;
-    % end
     subj = abcd_data.abcd_data(sub);
     all_cells = [];
     region_labels_cells = {};

@@ -111,7 +111,7 @@ def plotting_two_df_corr_perm_histogram_by_ROIs(df_early, df_late, title_string_
     
     # only plot subset for now
     # import pdb; pdb.set_trace()
-    models = ['complete_musicbox_reg', 'location_reg', 'musicbox_onlynowand3future_complete_reg', 'musicbox_onlynextand2future_complete_reg', 'midn_model', 'phas_model', 'stat_model', 'phas_stat_model', 'clo_model', 'curr_rings_split_clock_model', 'one_fut_rings_split_clock_model', 'two_fut_rings_split_clock_model', 'three_fut_rings_split_clock_model']
+    # models = ['complete_musicbox_reg', 'location_reg', 'musicbox_onlynowand3future_complete_reg', 'musicbox_onlynextand2future_complete_reg', 'midn_model', 'phas_model', 'stat_model', 'phas_stat_model', 'clo_model', 'curr_rings_split_clock_model', 'one_fut_rings_split_clock_model', 'two_fut_rings_split_clock_model', 'three_fut_rings_split_clock_model']
     
     
     for model in models:
@@ -284,7 +284,7 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
         if not os.path.isdir(res_folder):
             res_folder = "/ceph/behrens/svenja/human_ABCD_ephys/derivatives/group/elastic_net_reg/corrs"
         
-
+    # import pdb; pdb.set_trace()
     models = df_results['model'].unique().tolist()
     cells = df_results['cell'].unique().tolist()
     rois = df_results['roi'].unique().tolist()
@@ -443,7 +443,7 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
             
         # Write everything to a .txt file at the end
         if save==True:
-            with open(f"{res_folder}/{model_name_string}_stats.txt", 'w') as f:
+            with open(f"{res_folder}/{curr_model}_{model_name_string}_stats.txt", 'w') as f:
                 f.write('\n'.join(results_file))
     
     

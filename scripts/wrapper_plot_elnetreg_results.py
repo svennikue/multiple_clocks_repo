@@ -65,7 +65,7 @@ def load_result_dirs(file_name_list):
                             for inner_neuron, values in inner.items():
                                 result_dir['binned'][sub][model][inner_neuron] = values
         several_results[file_name] = result_dir
-        
+        import pdb; pdb.set_trace()
     return several_results, actual_subjects
 
 
@@ -95,7 +95,7 @@ def load_data(subs):
 def plot_all(model_name_string_list, define_somehow_what_to_plot=None):
     results, subjects = load_result_dirs(model_name_string_list)
     
-    result_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/elastic_net_reg/"
+    result_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/elastic_net_reg/corrs/sig_cells_per_model_ceph_12-06-2025/"
     # check if on server or local
     if not os.path.isdir(result_folder):
         print("running on ceph")
@@ -116,10 +116,18 @@ def plot_all(model_name_string_list, define_somehow_what_to_plot=None):
     
     results_rem_sig_state, results_rem_sig_state_and_phase, cell_overview_rem_sig_state, cell_overview_rem_sig_state_and_phase = {}, {}, {}, {}
     
+    all_results_big_rois, results_rem_sig_state_big_rois = {}, {}
+    
     for results_for_version in results:
         # prepare data to plot.
         all_results[results_for_version] = mc.analyse.plotting_cells.prep_result_df_for_plotting_by_rois(results[results_for_version]['raw'])
         all_results_binned[results_for_version] = mc.analyse.plotting_cells.prep_result_df_for_plotting_by_rois(results[results_for_version]['binned'])
+        
+        
+        # prepare data to plot in ROIs, lumping PFC together.
+        all_results_big_rois[results_for_version] = mc.analyse.plotting_cells.prep_result_df_for_plotting_by_small_rois(results[results_for_version]['raw'])
+        
+        
         
         #
         x_percent_to_remove_state = 35
@@ -139,6 +147,10 @@ def plot_all(model_name_string_list, define_somehow_what_to_plot=None):
         
         path_to_file_state = f"{result_folder}stat_model_{results_for_version}_sig_after_temp_perms.csv"
         results_rem_sig_state[results_for_version], cell_overview_rem_sig_state[results_for_version] = mc.analyse.helpers_human_cells.remove_certain_cells_for_x_model(all_results[results_for_version], path_to_file_state)
+        results_rem_sig_state_big_rois[results_for_version], _ = mc.analyse.helpers_human_cells.remove_certain_cells_for_x_model(all_results_big_rois[results_for_version], path_to_file_state)
+        
+        
+        
         
         path_to_file_phase = f"{result_folder}phas_model_{results_for_version}_sig_after_temp_perms.csv"
         results_rem_sig_state_and_phase[results_for_version], cell_overview_rem_sig_state_and_phase[results_for_version] = mc.analyse.helpers_human_cells.remove_certain_cells_for_x_model(results_rem_sig_state[results_for_version], path_to_file_phase)
@@ -204,10 +216,13 @@ def plot_all(model_name_string_list, define_somehow_what_to_plot=None):
                                                                 df_late = results_rem_sig_state['w_partial_musicboxes_only_reps_6-10_avg_in_20_bins_across_runs'], 
                                                                 title_string_add = f"excl. sig. state cells")
     
+    mc.plotting.results.plotting_two_df_corr_perm_histogram_by_ROIs(df_early= results_rem_sig_state_big_rois['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
+                                                                df_late = results_rem_sig_state_big_rois['w_partial_musicboxes_only_reps_6-10_avg_in_20_bins_across_runs'], 
+                                                                title_string_add = f"excl. sig. state cells")
     
-    mc.plotting.results.plotting_two_df_corr_perm_histogram_by_ROIs(df_early= results_rem_sig_state_and_phase['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
-                                                                df_late = results_rem_sig_state_and_phase['w_partial_musicboxes_only_reps_6-10_avg_in_20_bins_across_runs'], 
-                                                                title_string_add = f"excl. sig. state and phase cells")
+    # mc.plotting.results.plotting_two_df_corr_perm_histogram_by_ROIs(df_early= results_rem_sig_state_and_phase['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
+    #                                                             df_late = results_rem_sig_state_and_phase['w_partial_musicboxes_only_reps_6-10_avg_in_20_bins_across_runs'], 
+    #                                                             title_string_add = f"excl. sig. state and phase cells")
     
     import pdb; pdb.set_trace()
     

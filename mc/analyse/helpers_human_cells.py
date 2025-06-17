@@ -1193,7 +1193,8 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, only_repeats_in
                 if comp_circular_perms:
                     for perm in data_prep[sub]['perm_neurons']:
                         perm[grid_idx]= mc.simulation.predictions.transform_data_to_betas(perm[grid_idx], regression_across_repeats_concat)
-
+            
+            import pdb; pdb.set_trace()
 
     # import pdb; pdb.set_trace()            
     if avg_across_runs == True:
