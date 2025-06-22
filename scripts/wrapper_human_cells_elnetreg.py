@@ -92,8 +92,9 @@ def get_rid_of_low_firing_cells(data, hz_exclusion_threshold = 0.1, sd_exclusion
 
     remaining_neurons = {}
     stuff_to_copy = ['reward_configs', 'timings', 'locations', 'buttons']
-    to_clean = ['cell_labels', 'neurons']
-    
+    to_clean = ['cell_labels', 'neurons', 'electrode_labels']
+    # import pdb; pdb.set_trace() 
+    # MAKE SURE TO COPY ELECTRODE LABELS!!!
     for sub in data:
         if sub not in remaining_neurons:
             remaining_neurons[sub] = {}
@@ -112,6 +113,8 @@ def get_rid_of_low_firing_cells(data, hz_exclusion_threshold = 0.1, sd_exclusion
                             cleaned = np.delete(el, neurons_to_exclude, axis=0)
                             remaining_neurons[sub][m].append(cleaned)
                     elif m == 'cell_labels':
+                        remaining_neurons[sub][m] = [x for i, x in enumerate(data[sub][m]) if i not in neurons_to_exclude]
+                    elif m == 'electrode_labels':
                         remaining_neurons[sub][m] = [x for i, x in enumerate(data[sub][m]) if i not in neurons_to_exclude]
 
     
@@ -233,7 +236,7 @@ def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = No
     # parameters that seem to work, can be set flexibly
     alpha=0.00001 ##0.01 used in El-gaby paper
     # l1_ratio= 0.01
-    cell_idx = int(curr_cell.split('_')[1])
+    cell_idx = int(curr_cell.split('_')[2])
     corr_dict, coefs_per_model = {}, {}
     if fit_binned:
         coefs_per_model_binned = {}
@@ -494,8 +497,9 @@ def compute_one_subject(sub, models_I_want, only_repeats_included, randomised_re
     # then parallelise the computation I do on the cells.
     cells = []
     for cell_idx, cell in enumerate(single_sub_dict['neurons'][0]):
+        # import pdb; pdb.set_trace()
         # create one entry in result_dict per cell 
-        cells.append(f"{single_sub_dict['cell_labels'][cell_idx]}_{cell_idx}_{sub}")
+        cells.append(f"{single_sub_dict['electrode_labels'][cell_idx]}_cellno_{cell_idx:02}_sesh_{sub:02}_{single_sub_dict['cell_labels'][cell_idx]}")
 
 
     # for cell in cells:
@@ -557,35 +561,35 @@ def compute_one_subject(sub, models_I_want, only_repeats_included, randomised_re
 
  
     
-# # # # if running from command line, use this one!   
-# if __name__ == "__main__":
-#     #print(f"starting regression for subject {sub}")
-#     fire.Fire(compute_one_subject)
-#     # call this script like
-#     # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
+# # # if running from command line, use this one!   
+if __name__ == "__main__":
+    #print(f"starting regression for subject {sub}")
+    fire.Fire(compute_one_subject)
+    # call this script like
+    # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
 
 # ['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']
 # ['only','onlynowand3future', 'onlynextand2future']
 
-if __name__ == "__main__":
-    # For debugging, bypass Fire and call compute_one_subject directly.
-    compute_one_subject(
-        sub=2,
-        #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
-        models_I_want=['onlynowand3future', 'onlynextand2future'],
-        only_repeats_included=[1,2,3,4,5], # i want: [0,1] and [1,2,3,4,5] and [6,7,8,9,10]
-        randomised_reward_locations=False,
-        save_regs=True,
-        fit_binned='by_state', # 'by_loc_change', 'by_state', 'by_state_loc_change'
-        fit_residuals=False,
-        # fit_binned='by_state_loc_change' # 'by_loc_change', 'by_state', 'by_state_loc_change'
-        # introduce a fit residuals options!
-        # bin_pre_corr='by_state',
-        avg_across_runs=True,
-        # comp_loc_perms=100, # since with 6 grids, I can only get !6 = 265 unique perms
-        # comp_time_perms=10
-        # comp_circular_perms=100
-    )
+# if __name__ == "__main__":
+#     # For debugging, bypass Fire and call compute_one_subject directly.
+#     compute_one_subject(
+#         sub=2,
+#         #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
+#         models_I_want=['onlynowand3future', 'onlynextand2future'],
+#         only_repeats_included=[1,2,3,4,5,6,7,8,9,10], # i want: [0,1] and [1,2,3,4,5] and [6,7,8,9,10]
+#         randomised_reward_locations=False,
+#         save_regs=True,
+#         fit_binned='by_state', # 'by_loc_change', 'by_state', 'by_state_loc_change'
+#         fit_residuals=False,
+#         # fit_binned='by_state_loc_change' # 'by_loc_change', 'by_state', 'by_state_loc_change'
+#         # introduce a fit residuals options!
+#         # bin_pre_corr='by_state',
+#         avg_across_runs=True,
+#         # comp_loc_perms=100, # since with 6 grids, I can only get !6 = 265 unique perms
+#         # comp_time_perms=10
+#         # comp_circular_perms=100
+#     )
 
 
 # these are hard-coded right now, so include them in the 'only' + models list 'state_reg', 'complete_musicbox_reg', 'reward_musicbox_reg', 'location_reg'

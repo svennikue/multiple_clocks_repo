@@ -89,6 +89,9 @@ def load_cell_data(source_folder, subject_list):
         data_dir[f"sub-{sub}"]["reward_configs"] = np.genfromtxt(f"{source_folder}/s{sub}/cells_and_beh/all_configs_sub{sub}.csv", delimiter=',')
         with open(f"{source_folder}/s{sub}/cells_and_beh/all_cells_region_labels_sub{sub}.txt", 'r') as file:
             data_dir[f"sub-{sub}"]["cell_labels"] = [line.strip() for line in file]
+        with open(f"{source_folder}/s{sub}/cells_and_beh/all_electrode_labels_sub{sub}.txt", 'r') as file:
+            data_dir[f"sub-{sub}"]["electrode_labels"] = [line.strip() for line in file]
+        # import pdb; pdb.set_trace() 
         timinges_pattern = r'timings_rewards_grid(\d+)_sub{sub}\.csv'.replace('{sub}', str(sub))
         location_pattern = r'locations_per_25ms_grid(\d+)_sub{sub}\.csv'.replace('{sub}', str(sub))
         cells_pattern = r'all_cells_firing_rate_grid(\d+)_sub{sub}\.csv'.replace('{sub}', str(sub))
@@ -1194,7 +1197,7 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, only_repeats_in
                     for perm in data_prep[sub]['perm_neurons']:
                         perm[grid_idx]= mc.simulation.predictions.transform_data_to_betas(perm[grid_idx], regression_across_repeats_concat)
             
-            import pdb; pdb.set_trace()
+            #import pdb; pdb.set_trace()
 
     # import pdb; pdb.set_trace()            
     if avg_across_runs == True:
@@ -1204,7 +1207,7 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, only_repeats_in
         data_prep = {}
         data_prep[sub] = {}
         # copy cell_labels, excluded_cells, og_timings, og_buttons
-        to_copy = ['cell_labels', 'excluded_cells', 'buttons', 'timings']
+        to_copy = ['cell_labels', 'excluded_cells', 'buttons', 'timings', 'electrode_labels']
         for c in to_copy:
             data_prep[sub][c] = data_prep_tmp[sub][c]
         

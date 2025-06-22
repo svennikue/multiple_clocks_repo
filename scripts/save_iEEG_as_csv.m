@@ -62,6 +62,7 @@ for sub = 1:length(subject_list)
     subj = abcd_data.abcd_data(sub);
     all_cells = [];
     region_labels_cells = {};
+    og_labels_cells = {};
     subject_folder = sprintf("%ss%02d/cells_and_beh", deriv_dir, sub);
     if ~exist(subject_folder, 'dir')
         mkdir(subject_folder); % Create the folder if it does not exist
@@ -99,15 +100,23 @@ for sub = 1:length(subject_list)
         % counting how many spikes are within 
         [firing_rate_curr_cell, edges] = histcounts(curr_spike_times, edges);
         region_labels_cells{c} = subj.neural_data(c).regionLabel;
+        og_labels_cells{c} = subj.neural_data(c).electrodeLabel;
         all_cells = [all_cells; firing_rate_curr_cell];
     end
 
     % per subject, also extract all grid configs and all cell labels
-    filename = (sprintf("%s/all_cells_region_labels_sub%02d.txt", subject_folder, sub));
-    fid = fopen(filename, 'wt');  % Open a text file for writing
+    filename_c = (sprintf("%s/all_cells_region_labels_sub%02d.txt", subject_folder, sub));
+    fid = fopen(filename_c, 'wt');  % Open a text file for writing
     % Write each label on a new line
     for i = 1:length(region_labels_cells)
         fprintf(fid, '%s\n', region_labels_cells{i});
+    end
+    fclose(fid);  % Close the file
+    % per subject, also extract all all og electrode labels
+    filename_e = (sprintf("%s/all_electrode_labels_sub%02d.txt", subject_folder, sub));
+    fid = fopen(filename_e, 'wt');  % Open a text file for writing
+    for i = 1:length(og_labels_cells)
+        fprintf(fid, '%s\n', og_labels_cells{i});
     end
     fclose(fid);  % Close the file
 
