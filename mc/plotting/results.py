@@ -292,6 +292,7 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
     color_task_perms = '#214066'   # dark turquoise blue
     color_time_perms = '#7A9DB1'   # blue-grey
     true_val_color = '#E2725B'   # terracotta/salmon
+    
     # Always plotting the top 25 cells.
     # n_rows = int(np.ceil(np.sqrt(len(df_strong_curr_model))))
     # n_cols = int(np.ceil(len(df_strong_curr_model) / n_rows))
@@ -301,7 +302,6 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
     # plot those cells that are strong for the respective model (corr higher than 0.05)
     # df_strong_cells = df_results[df_results['average_corr'] > corr_thresh]
     for curr_model in models:
-        # df_strong_curr_model = df_strong_cells[df_strong_cells['model'] == curr_model].reset_index(drop=True)
         df_curr_model = df_results[df_results['model'] == curr_model].copy()
         
         # 1: COMPUTE SOME PERM STATS PER MODEL/CELL

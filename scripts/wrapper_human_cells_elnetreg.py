@@ -574,7 +574,7 @@ if __name__ == "__main__":
 # if __name__ == "__main__":
 #     # For debugging, bypass Fire and call compute_one_subject directly.
 #     compute_one_subject(
-#         sub=2,
+#         sub=44,
 #         #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
 #         models_I_want=['onlynowand3future', 'onlynextand2future'],
 #         only_repeats_included=[1,2,3,4,5,6,7,8,9,10], # i want: [0,1] and [1,2,3,4,5] and [6,7,8,9,10]

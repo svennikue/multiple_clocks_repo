@@ -168,7 +168,8 @@ if __name__ == "__main__":
     # no for tasks: 7, 27, 40, 43, 44, 50, 
     plot_all(
         model_name_string='w_partial_musicboxes_only_reps_6-10_avg_in_20_bins_across_runs',
-        sub_list=[1,2,4,5,6,8,9,10,11,12,13,14,15,16,18,19,20,21,22,23,24,25,26,28,29,30,31,32,33,34,35,36,38,39,41,42,45,46,48,49,51,52,53,54,55,56,58,59],
+        sub_list = list(range(0,61))
+        #sub_list=[1,2,4,5,6,8,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,26,28,29,30,31,33,34,35,36,38,39,41,42,45,46,48,49,51,52,53,54,55,56],
         # perms_locs = '265perms_configs_shuffle',
         perms_time = '500perms_circular_shuffle',
         plot_cells_corr_higher_than=0.05,

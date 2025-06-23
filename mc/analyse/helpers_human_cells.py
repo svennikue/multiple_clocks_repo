@@ -901,18 +901,36 @@ def label_unique_grids(data_dict, unique = True, dont_average_tasks = False):
 def clean_data(data, s):
     # hard-code problemgrids for each s
     # import pdb; pdb.set_trace()
+    if s == 'sub-27':
+        problem_grid_idx = [4,7]
     if s == 'sub-59':
-        problem_grid_idx = 21
+        problem_grid_idx = [21]
     if s == 'sub-15':
-        problem_grid_idx = 23
+        problem_grid_idx = [23]
     if s == 'sub-43':
-        problem_grid_idx = 3
-    
+        problem_grid_idx = [3]
+    if s == 'sub-44':
+        problem_grid_idx = [3]
+        
     data_prep_tmp = copy.deepcopy(data)
+    indices_to_keep = [i for i in range(len(data_prep_tmp[s]['buttons'])) if i not in problem_grid_idx]
     for entry in ['buttons', 'locations', 'neurons', 'timings']:
-        data[s][entry] = [x for i, x in enumerate(data_prep_tmp[s][entry]) if i != problem_grid_idx]
-    data[s]['reward_configs'] =  np.delete(data_prep_tmp[s]['reward_configs'], problem_grid_idx, axis = 0)
+        data[s][entry] = [data_prep_tmp[s][entry][i] for i in indices_to_keep]
     
+    data[s]['reward_configs'] = np.delete(data_prep_tmp[s]['reward_configs'], problem_grid_idx, axis=0)
+
+        # data_prep_tmp = copy.deepcopy(data)
+        # for entry in ['buttons', 'locations', 'neurons', 'timings']:
+        #     data[s][entry] = [x for i, x in enumerate(data_prep_tmp[s][entry]) if i != problem_grid_idx]
+        # data[s]['reward_configs'] =  np.delete(data_prep_tmp[s]['reward_configs'], problem_grid_idx, axis = 0)
+        
+        
+        
+        # for problem_grid_idx in problems:
+        #     for entry in ['buttons', 'locations', 'neurons', 'timings']:
+        #         data[s][entry] = [x for i, x in enumerate(data_prep_tmp[s][entry]) if i != problem_grid_idx]
+        #     data[s]['reward_configs'] =  np.delete(data_prep_tmp[s]['reward_configs'], problem_grid_idx, axis = 0)
+            
     
     return data[s]
 
@@ -958,7 +976,6 @@ def generate_circular_timepoint_permutations_neurons(neurons, n_perms = 10):
 
 
 def prep_regressors_for_neurons(data_dict, models_I_want = None, only_repeats_included = None, randomised_reward_locations = False, avg_across_runs = False, comp_circular_perms = None):
-    # import pdb; pdb.set_trace()
     no_state = 4
     no_locations = 9
     no_buttons = 4
@@ -969,7 +986,7 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, only_repeats_in
     
     # clean subjects that messed up certain grids 
     for sub in data_dict:
-        if sub in ['sub-15', 'sub-43', 'sub-59']:
+        if sub in ['sub-15', 'sub-27','sub-43','sub-44', 'sub-59']:
             data_dict[sub] = clean_data(data_dict, sub)
 
     data_prep = copy.deepcopy(data_dict)
