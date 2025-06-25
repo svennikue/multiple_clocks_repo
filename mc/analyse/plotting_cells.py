@@ -95,11 +95,11 @@ def prep_result_df_for_plotting_by_rois(results):
 
 def prep_result_df_perms_for_plotting_by_rois(results, time_perm_results=None, task_perm_results=None):
     
-    df = pd.DataFrame()
-    i = 0
+    rows = []
     for sub in results:
         for model in results[sub]:
             for cell_label in results[sub][model]:
+                row = {}
                 if 'ACC' in cell_label:
                     roi = 'ACC'
                 elif 'PCC' in cell_label:
@@ -114,18 +114,35 @@ def prep_result_df_perms_for_plotting_by_rois(results, time_perm_results=None, t
                     roi = 'amygdala'
                 else:
                     roi = 'mixed'
-                df.at[i, 'roi'] = roi
-                df.at[i, 'cell'] = cell_label
-                df.at[i, 'average_corr'] = np.mean(results[sub][model][cell_label])
-                df.at[i, 'model'] = model
-                
+                row['roi'] = roi
+                row['cell'] = cell_label
+                row['average_corr'] = np.mean(results[sub][model][cell_label])
+                row['model'] = model
+            
+                # Add task_perm columns
                 if task_perm_results:
-                    for p_idx in range(0, task_perm_results[sub][model][cell_label].shape[1]):
-                        df.at[i, f"task_perm_{p_idx}"] = np.mean(task_perm_results[sub][model][cell_label][:,p_idx])
+                    matrix = task_perm_results[sub][model][cell_label]
+                    for p_idx in range(matrix.shape[1]):
+                        row[f"task_perm_{p_idx}"] = np.mean(matrix[:, p_idx])
+                
+                # Add time_perm columns
                 if time_perm_results:
-                    for p_idx in range(0, time_perm_results[sub][model][cell_label].shape[1]):
-                        df.at[i, f"time_perm_{p_idx}"] = np.mean(time_perm_results[sub][model][cell_label][:,p_idx])
-                i = i + 1
+                    matrix = time_perm_results[sub][model][cell_label]
+                    for p_idx in range(matrix.shape[1]):
+                        row[f"time_perm_{p_idx}"] = np.mean(matrix[:, p_idx])
+    
+                # Append this row to the list
+                rows.append(row)
+
+
+    df = pd.DataFrame(rows)
+                # if task_perm_results:
+                #     for p_idx in range(0, task_perm_results[sub][model][cell_label].shape[1]):
+                #         df.at[i, f"task_perm_{p_idx}"] = np.mean(task_perm_results[sub][model][cell_label][:,p_idx])
+                # if time_perm_results:
+                #     for p_idx in range(0, time_perm_results[sub][model][cell_label].shape[1]):
+                #         df.at[i, f"time_perm_{p_idx}"] = np.mean(time_perm_results[sub][model][cell_label][:,p_idx])
+                # i = i + 1
 
 
     n_perms_min = 0

@@ -13,7 +13,6 @@ specs:
 
 import fire
 import sys
-import mc
 import numpy as np
 import pandas as pd
 import os
@@ -25,20 +24,22 @@ import mne
 import scipy
 import math
 import scipy.ndimage as ndimage
+from joblib import Parallel, delayed
 
 print("ARGS:", sys.argv)
 
 
 # some fixed parameters
 theta = [3,8]
-middle = [10, 80]
-gamma = [80, 180]
-ultra_high_gamma = [180, 250]
+SW = [8,40]
+middle = [40, 80]
+gamma = [80, 150]
+ultra_high_gamma = [150, 250]
 # Downsample snippet to twice the highest frequency I will filter for
 downsampled_sampling_rate = 2 * ultra_high_gamma[1]
 
-freq_bands_keys = ['theta', 'middle', 'hgamma', 'ultra_high_gamma']
-freq_bands = {freq_bands_keys[0]: (theta[0], theta[1]), freq_bands_keys[1]: (middle[0],middle[1]), freq_bands_keys[2]: (gamma[0], gamma[1]), freq_bands_keys[3]: (ultra_high_gamma[0], ultra_high_gamma[1])}
+freq_bands_keys = ['theta', 'SW', 'middle', 'hgamma', 'ultra_high_gamma']
+freq_bands = {freq_bands_keys[0]: (theta[0], theta[1]), freq_bands_keys[1]: (SW[0],SW[1]), freq_bands_keys[2]: (middle[0],middle[1]), freq_bands_keys[3]: (gamma[0], gamma[1]), freq_bands_keys[4]: (ultra_high_gamma[0], ultra_high_gamma[1])}
 
 Baylor_list = [5,7,8,9,10,11,12,13,14,15,16,18, 19,20,21,22,25,26,27,28,31,32,33,34,35, 36,37,38,43,44,45,46,49, 57,58,59]
 Utah_list = [1,2,4,6,17,23,24,29,30,39,41,42,47,48, 52, 53, 54, 55]
@@ -74,7 +75,7 @@ def load_behaviour(sesh):
     # Filter to keep only grids that were fully completed with 10 correct repeats
     df_beh = df_beh[df_beh.groupby('grid_no')['rep_correct'].transform(lambda x: (x == 9).any())]
     behaviour_dict['beh'] = df_beh
-
+    print(f"loaded behavioural file: {path_to_beh}")
     return(behaviour_dict)
 
 
@@ -103,12 +104,13 @@ def get_channel_list(reader, ROI):
     # I could here load the electrods*.csv to identify only those electrodes that
     # are in grey matter and HPC, and take a closest white-matter one for referencing.
     # alternative: only take the deepest channel (01)
-    
+    print(f"extracted all {ROI} channels: {ROI_channels}")
     return ROI_channels, ROI_indices
     
     
     
 def pre_prepare_LFP_dataset(subj_beh):
+    # import pdb; pdb.set_trace()
     ## find file path, file type and sampling rate to load. hard-coded by location ##
     # depending on where the data comes from, treat the data differently.
     lfp_dir = os.path.join(subj_beh['LFP_path'], f"s{subj_beh['sesh']:02}")
@@ -160,6 +162,7 @@ def pre_prepare_LFP_dataset(subj_beh):
         nsx_to_load = 3
         
     lfp_files= glob.glob(os.path.join(lfp_dir, f"*.ns{nsx_to_load}"))
+    print(f"current session was recorded in {data_from}")
     return data_from, nsx_to_load, lfp_files, sampling_rate_Hz
 
 
@@ -232,16 +235,16 @@ def time_frequ_rep_morlet_one_rep(LFP, channel_indices):
     return power
 
 
-def extract_ripple_from_one_rep(mean_power, channel_indices):
+def extract_ripple_from_one_rep(mean_power, channel_indices, onset_in_sec):
     ## Collect all possible ripples for the current snippet ##
     min_length_ripple = math.ceil(length_ripple_in_secs*downsampled_sampling_rate)
     all_clusters = np.zeros((len(channel_indices), mean_power['theta'].shape[1]))
     # all_clusters = np.zeros((len(channel_indices_to_use), raw_analog_epo_cropped.shape[-1]))
-    onsets, durations, descriptions, band_order = [], [], [], [], []
+    onsets, durations, channels_of_curr_ripples, band_order = [], [], [], []
     for new_channel_idx, channel_name in enumerate(channel_indices):
         cluster_bin = np.zeros((len(mean_power.keys()), mean_power['theta'].shape[1]))
         for iband, band in enumerate(mean_power.keys()):
-            band_order.append(band)
+            band_order.append(band) # just to check this maintains the intended order
             # set this to exceeding e.g. 4x standard deviation from power in this band 
             threshold_hl = np.mean(mean_power[band][new_channel_idx,:]) + higher_than_x_stds * np.std(mean_power[band][new_channel_idx,:])
             cond = mean_power[band][new_channel_idx,:] > threshold_hl 
@@ -255,145 +258,133 @@ def extract_ripple_from_one_rep(mean_power, channel_indices):
                 # check how long each cluster is in samples 1/freq * len = secs
                 # according to ripple bible paper, clusters need to be 15 ms or more
                 # Yunzeh: 20 ms to 200 ms, with a 30 ms interval between events
-                cluster_len = np.where(clusters == cluster_idx)[0]
-                if len(cluster_len) >= min_length_ripple:
+                curr_cluster = np.where(clusters == cluster_idx)[0]
+                if len(curr_cluster) >= min_length_ripple:
                     # include the gap of at least one ripple's length
-                    if cluster_len[0] >= min_length_ripple:
-                        gap_before = np.all(cond[cluster_len[0] - min_length_ripple:cluster_len[0]] == 0)
+                    if curr_cluster[0] >= min_length_ripple:
+                        gap_before = np.all(cond[curr_cluster[0] - min_length_ripple:curr_cluster[0]] == 0)
                     else:
                         gap_before = False
                     # check for gap after cluster
-                    if len(cond) - cluster_len[-1] - 1 >= min_length_ripple:
-                        gap_after = np.all(cond[cluster_len[-1] + 1:cluster_len[-1] + 1 + min_length_ripple] == 0)
+                    if len(cond) - curr_cluster[-1] - 1 >= min_length_ripple:
+                        gap_after = np.all(cond[curr_cluster[-1] + 1:curr_cluster[-1] + 1 + min_length_ripple] == 0)
                     else:
                         gap_after = False
                     # Only consider clusters with sufficient gaps on both sides
                     if gap_before and gap_after:
-                        cluster_bin[iband, cluster_len] = 1
+                        cluster_bin[iband, curr_cluster] = 1
 
-        # either keep all events that are at the same time higher than threshold for
-        # theta and ultra high gamma and not for middle
-        high_theta_and_vhgamma = (
-                    (cluster_bin[0, :] == 1) &
-                    (cluster_bin[3, :] == 1) &
-                    (cluster_bin[1, :] == 0) &
-                    (cluster_bin[2, :] == 0)
-                )
+        # # either keep all events that are at the same time higher than threshold for
+        # # theta and ultra high gamma and not for middle
+        # high_theta_and_gamma = (
+        #             (cluster_bin[0, :] == 1) &
+        #             (cluster_bin[2, :] == 0) &
+        #             (cluster_bin[3, :] == 1) &
+        #         )
         
-        clusters, n_clusters = ndimage.label(high_theta_and_vhgamma)
+        # clusters, n_clusters = ndimage.label(high_theta_and_vhgamma)
         
-        # or just high theta
-        high_theta_and_vhgamma = (
-                    (cluster_bin[0, :] == 1) &
-                    (cluster_bin[1, :] == 0) &
-                    (cluster_bin[2, :] == 0)
+        # or just care about no broadband and ripple band (80-120Hz)
+        low_middle_high_gamma = (
+                    (cluster_bin[2, :] == 0) &
+                    (cluster_bin[3, :] == 1)
                 )
-        clusters, n_clusters = ndimage.label(high_theta_and_vhgamma)
+        clusters, n_clusters = ndimage.label(low_middle_high_gamma)
         # if I want to, I can here also change it to 'high frequency broadband events"
         
         # save all clusters per channel.
         all_clusters[new_channel_idx,:] = (1+new_channel_idx)*clusters 
         for cluster_idx in range(1, n_clusters+1):
             # again check how long each cluster is. Cli is equal to the number of how the current cluster is marked
-            final_cluster_len = np.where(clusters == cluster_idx)[0]
+            curr_cluster_combobands = np.where(clusters == cluster_idx)[0]
             # only keep if it is still long enough!
-            if len(final_cluster_len) >= min_length_ripple:
-                onsets.append(cluster_len[0]) #onset is in samples, not seconds.
+            if len(curr_cluster_combobands) >= min_length_ripple:
+                # directly convert back from samples to seconds for readability
+                onsets.append(curr_cluster_combobands[0]/downsampled_sampling_rate + onset_in_sec) #onset is in samples, not seconds.
                 # onsets.append(cl[0] + sec_lower*sampling_freq[0]) #onset is in samples, not seconds.
-                durations.append(len(final_cluster_len)) #duration is also samples, not seconds.
-                descriptions.append(f"channel_{channel_name}")
+                durations.append(len(curr_cluster_combobands)/downsampled_sampling_rate) #duration is also samples, not seconds.
+                channels_of_curr_ripples.append(f"channel_{channel_name}")
                     
-    return onsets, durations, descriptions
+    return onsets, durations, channels_of_curr_ripples
     
     
+def run_repeat_wise_ripple_detection(row, ROI, dataset, file_type, file_list, sample_rate):
+    sample_start = row['new_grid_onset']
+    sample_end = row['t_D']
+    label = row['labels']
+    
+    LFP_snippet, channels_OI, channel_idx_OI = load_lazy_LFP_snippet(
+        ROI, dataset, file_type, file_list, sample_rate, sample_start, sample_end
+    )
+    # run a morlet transformation to get power spectra 
+    power = time_frequ_rep_morlet_one_rep(LFP_snippet, channel_idx_OI)
+    # then extract ripples based on increased power in the right bands
+    ripple_onsets, ripple_durations, ripple_channels = extract_ripple_from_one_rep(
+        power['LFP_mean_power'], channels_OI, sample_start
+    )
+    # Build ripple info as a list of dicts
+    ripple_entries = [
+        {
+            'rep_corr': row['rep_correct'],
+            'rep_overall': row['rep_overall'],
+            'grid_no': row['grid_no'],
+            'onset': onset,
+            'duration': duration,
+            'channels': channels
+        }
+        for onset, duration, channels in zip(ripple_onsets, ripple_durations, ripple_channels)
+    ]
+
+    return label, power, ripple_entries
     
 
-def extract_ripples_from_one_session(session, ROI, save = False):
+def extract_ripples_from_one_session(session, ROI, save_all = False):
     # first load behaviour
+    # import pdb; pdb.set_trace()
     beh_dict = load_behaviour(session)
     # then collect some specifics on this session (all hospitals store LFPs differently)
     # note that for now, I only wrote a script for the Baylor LFPs.
     dataset, file_type, file_list, sample_rate = pre_prepare_LFP_dataset(beh_dict)
-    power_dict, ripple_candidates, ripple_onsets, ripple_descriptions = {}, {}, {}, {}
-    
-    # probably parallelise this loop!!
-    for idx, row in beh_dict['beh'].iterrows():
-        sample_start = row['new_grid_onset']
-        sample_end = row['t_D']
-        LFP_snippet, channels_OI, channel_idx_OI = load_lazy_LFP_snippet(ROI, dataset, file_type, file_list, sample_rate, sample_start, sample_end)
-        
-        # # or maybe don't do that??
-        # # I believe it's essentially automatically inverted to an index
-        # # transform seconds in samples
-        # sample_idx_start = int(row['new_grid_onset'] * sample_rate)
-        # sample_idx_end = int(row['t_D'] * sample_rate)
-        # # then load and downsample only the current snippet
-        # # in here, I could also do the referencing... currently NOT implemented.
-        # LFP_snippet, channels_OI = load_lazy_LFP_snippet(ROI, dataset, file_type, file_list, sample_rate, sample_idx_start, sample_idx_end)
-        # then first run a morlet transformation to get power spectra 
-        power_dict[row['labels']] = time_frequ_rep_morlet_one_rep(LFP_snippet, channel_idx_OI)
-        # next, identify ripples based on the mean power dictionary!
-        ripple_candidates[row['labels']], ripple_onsets[row['labels']], ripple_descriptions[row['labels']] = extract_ripple_from_one_rep(power_dict[row['labels']]['LFP_mean_power'], channels_OI)
-        import pdb; pdb.set_trace()
-        
-        
-        
-        # I think the rest might go here
-        # onset_secs_per_channel[channel_list[initial_channel_idx]].append(cl[0]/sampling_freq[block] + sec_lower)
-       
-        # if f"channel_{channel_name}" not in event_id:
-        #     event_id[f"channel_{channel_name}"] = new_channel_idx
-        # if channel_name not in onset_secs_per_channel:
-        #     onset_secs_per_channel[channel_name] = []       
-                
-                
-        # onset_secs_per_channel[channel_name].append(final_cluster_len[0]/downsampled_sampling_rate + sec_lower)
-    
-        # # channel_ripple_dict[channel_list[initial_channel_idx]] = onset_secs
-    
-        # # I NEED A neo.io file for these raw_cropped
-        # ch_types = ["ecog"] * len(channels_to_use)
-        # info = mne.create_info(ch_names=channels_to_use, ch_types=ch_types, sfreq=downsampled_sampling_rate)
-        # # info = mne.create_info(ch_names=channels_to_use, ch_types=ch_types, sfreq=sampling_freq[0])
-        # # raw_np_cropped = raw_analog_cropped.as_array()
-        # # memory management
-        # # del raw_analog_cropped, raw_analog_epo_cropped
-        # raw_cropped = mne.io.RawArray(downsampled_data.T, info) 
-        # # raw_cropped = mne.io.RawArray(raw_np_cropped.T, info) 
-        
-        # # import pdb; pdb.set_trace()
-        # # create a mne.io object
-        # ch_types = ["sEEG"] * len(channels_to_use)
-        # annot = mne.Annotations(onset=[x/downsampled_sampling_rate for x in onsets], duration=[x/downsampled_sampling_rate for x in durations], description=descriptions)
-        # # annot = mne.Annotations(onset=[x/sampling_freq[0] for x in onsets], duration=[x/sampling_freq[0] for x in durations], description=descriptions)
-        
-        # raw_cropped.set_annotations(annot)
-        # # add events
-        # events, event_id = mne.events_from_annotations(raw_cropped, event_id=event_id)
-        # # events are times at which something happens, e.g. a ripple occurs
-        # events_dict[repeat] = events
-    
-    if save == True:
-        x = 1
-        # if ROI == 'all':
-        #     with open(f"{result_dir}/{sub}_all_channels_{preproc_type}_HFB_by_seconds.pkl", 'wb') as file:
-        #         pickle.dump(onset_in_secs_dict, file)
-                    
-        #     with open(f"{result_dir}/{sub}_ROI_dict.pkl", 'wb') as file:
-        #         pickle.dump(ROI_dict, file)
-                
-        #     with open(f"{result_dir}/{sub}_HFB_power_dict.pkl", 'wb') as file:
-        #         pickle.dump(power_dict_across_tasks, file)
-                        
+    # Run in parallel
+    print("Now starting to detect ripples per task repeat...")
+    results = Parallel(n_jobs=4)(
+        delayed(run_repeat_wise_ripple_detection)(row, ROI, dataset, file_type, file_list, sample_rate)
+        for _, row in beh_dict['beh'].iterrows())
 
-        # with open(f"{result_dir}/{sub}_{ROI}_{preproc_type}_HFB_events_dir.pkl", 'wb') as file:
-        #     pickle.dump(events_dict, file)
-            
-        # with open(f"{result_dir}/{sub}_{ROI}_{preproc_type}_HFB_by_seconds.pkl", 'wb') as file:
-        #     pickle.dump(onset_in_secs_dict, file)
-            
-        
+    # # if not running in parallel
+    # power_dict, ripple_onsets, ripple_durations, ripple_channels = {}, {}, {}, {}
+    # for idx, row in beh_dict['beh'].iterrows():
+    #     sample_start = row['new_grid_onset']
+    #     sample_end = row['t_D']
+    #     LFP_snippet, channels_OI, channel_idx_OI = load_lazy_LFP_snippet(ROI, dataset, file_type, file_list, sample_rate, sample_start, sample_end)
+    #     # run a morlet transformation to get power spectra 
+    #     power_dict[row['labels']] = time_frequ_rep_morlet_one_rep(LFP_snippet, channel_idx_OI)
+    #     # then extract ripples based on increased power in the right bands
+    #     ripple_onsets[row['labels']], ripple_durations[row['labels']], ripple_channels[row['labels']] = extract_ripple_from_one_rep(power_dict[row['labels']]['LFP_mean_power'], channels_OI, sample_start)
     
+    
+    # Unpack the results
+    power_dict = {}
+    ripple_rows = []
+    
+    for label, power, ripple_entries in results:
+        power_dict[label] = power
+        ripple_rows.extend(ripple_entries)
+    
+    # Create DataFrame from ripple info
+    ripple_df = pd.DataFrame(ripple_rows)
+    if save_all == True:
+        source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group"
+        if not os.path.isdir(source_dir):
+            print("running on ceph")
+            source_dir = "/ceph/behrens/svenja/human_ABCD_ephys/derivatives/group"
+        
+        ripple_dir = f"{source_dir}/LFP-ripples"
+        os.makedirs(ripple_dir, exist_ok=True) 
+        print("Saving results in {ripple_dir}")        
+        ripple_df.to_csv(f"{ripple_dir}/ripples_s{session:02}.csv", index=False)
+    
+    print("...Done!") 
     
 
 # # # # if running from command line, use this one!   
@@ -408,8 +399,8 @@ def extract_ripples_from_one_session(session, ROI, save = False):
 if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     extract_ripples_from_one_session(
-        session=5,
+        session=7,
         ROI='HPC', #ROI = 'all' # 'mPFC' or 'HPC'
-        save_all = True
+        save_all = False
     )
 

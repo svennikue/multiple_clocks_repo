@@ -148,19 +148,6 @@ def plot_all(model_name_string, sub_list, perms_locs=None, perms_time=None, plot
 #     # python wrapper_plot_elnetreg_results.py --model_name_string='w_partial_musicboxes_excl_rep1-2', --models_I_want='['withoutnow', 'only2and3future','onlynowandnext']' --exclude_x_repeats='[1,2]' --randomised_reward_locations=False --save_regs=True
 
 
-# if __name__ == "__main__":
-#     # For debugging, bypass Fire and call compute_one_subject directly.
-#     # no for timepoints: 27, 40, 44, 50
-#     # no for tasks: 7, 27, 40, 43, 44, 50, 
-#     plot_all(
-#         model_name_string='w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs',
-#         sub_list=[2],
-#         perms_locs = '100perms_configs_shuffle',
-#         perms_time = '100perms_circular_shuffle',
-#         plot_cells_corr_higher_than=0.05,
-#         save=False
-#         # sub-1_corrs_w_partial_musicboxes_excl_rep1-2_avg_in_20_bins_across_runs_fit_binned_by_state
-#     )
     
 if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
@@ -168,7 +155,7 @@ if __name__ == "__main__":
     # no for tasks: 7, 27, 40, 43, 44, 50, 
     plot_all(
         model_name_string='w_partial_musicboxes_only_reps_6-10_avg_in_20_bins_across_runs',
-        sub_list = list(range(0,61))
+        sub_list = [i for i in range(61) if i not in [2, 28, 40, 52, 57, 58, 59, 60]],
         #sub_list=[1,2,4,5,6,8,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,26,28,29,30,31,33,34,35,36,38,39,41,42,45,46,48,49,51,52,53,54,55,56],
         # perms_locs = '265perms_configs_shuffle',
         perms_time = '500perms_circular_shuffle',
@@ -178,19 +165,6 @@ if __name__ == "__main__":
     )
     
     
-# if __name__ == "__main__":
-#     # For debugging, bypass Fire and call compute_one_subject directly.
-#     # no for timepoints: 27, 40, 44, 50
-#     # no for tasks: 7, 27, 40, 43, 44, 50, 
-#     plot_all(
-#         model_name_string='w_partial_musicboxes_excl_rep1-1_avg_in_20_bins_across_runs',
-#         sub_list=[1,2,4,5,6,8,9,10,11,12,13,14,15,16,18,19,20,21,22,23,24,25,26,28,29,30,31,32,33,34,35,36,38,39,41,42,45,46,48,49,51,52,53,54,55,56,58,59],
-#         perms_locs = '265perms_configs_shuffle',
-#         perms_time = '265perms_timepoints_shuffle',
-#         plot_cells_corr_higher_than=0.05,
-#         save=True
-#         # sub-1_corrs_w_partial_musicboxes_excl_rep1-2_avg_in_20_bins_across_runs_fit_binned_by_state
-#     )
 
 # if __name__ == "__main__":
 #     # For debugging, bypass Fire and call compute_one_subject directly.
