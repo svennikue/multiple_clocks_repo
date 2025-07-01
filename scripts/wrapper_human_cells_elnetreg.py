@@ -35,7 +35,6 @@ def nan_safe_pearsonr(x, y):
 
 
 
-
 def get_data(sub, models_I_want=False, only_repeats_included=False, randomised_reward_locations=False):
     ### SETTINGS
     data_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives"

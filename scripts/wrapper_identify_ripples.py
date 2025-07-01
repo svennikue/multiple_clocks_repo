@@ -344,6 +344,20 @@ def extract_ripples_from_one_session(session, ROI, save_all = False):
     # first load behaviour
     # import pdb; pdb.set_trace()
     beh_dict = load_behaviour(session)
+    
+    
+    # STOP!
+    
+    # instead of this, read in the split LFPs.
+    # they are stored in timepoints x channels
+    # also read in the channel list!
+    # then do something like
+    # correct_LFP_format = LFP_snippet.T.reshape(1,LFP_snippet.shape[1], LFP_snippet.shape[0])
+    
+    # because for the morlet transform, it has to be in the format of 
+    # (n_epochs, n_chans, n_times)
+    
+    
     # then collect some specifics on this session (all hospitals store LFPs differently)
     # note that for now, I only wrote a script for the Baylor LFPs.
     dataset, file_type, file_list, sample_rate = pre_prepare_LFP_dataset(beh_dict)
