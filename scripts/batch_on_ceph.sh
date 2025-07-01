@@ -53,15 +53,10 @@ cat <<EOT >> $file_sbatch
 #SBATCH -p gpu
 #SBATCH -N 1
 #SBATCH -c 16
-#SBATCH --mem=64G
+#SBATCH --mem=128G
 #SBATCH --time=0-03:00
 #SBATCH --gres=gpu:1  
 
-
-export OMP_NUM_THREADS=4
-export MKL_NUM_THREADS=4
-export NUMEXPR_NUM_THREADS=4
-export OPENBLAS_NUM_THREADS=4
 
 source ~/.bashrc
 micromamba activate spyder_env
@@ -71,7 +66,3 @@ micromamba activate spyder_env
 /usr/bin/time -v python $2 ${job_array[i]}
 
 EOT
-
-sbatch $file_sbatch
-
-done

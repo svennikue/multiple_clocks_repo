@@ -110,7 +110,7 @@ def get_channel_list(reader, ROI):
     
     
 def pre_prepare_LFP_dataset(subj_beh):
-    # import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
     ## find file path, file type and sampling rate to load. hard-coded by location ##
     # depending on where the data comes from, treat the data differently.
     lfp_dir = os.path.join(subj_beh['LFP_path'], f"s{subj_beh['sesh']:02}")
@@ -167,6 +167,7 @@ def pre_prepare_LFP_dataset(subj_beh):
 
 
 def load_lazy_LFP_snippet(ROI, data_from, nsx_to_load, lfp_files, sampling_rate_Hz, sample_idx_start, sample_idx_end):
+    # import pdb; pdb.set_trace()
     ## load the channels and data of a LFP snippet ##
     # for now, only single session ones from Baylor work.
     if data_from == 'Baylor':
@@ -237,6 +238,7 @@ def time_frequ_rep_morlet_one_rep(LFP, channel_indices):
 
 def extract_ripple_from_one_rep(mean_power, channel_indices, onset_in_sec):
     ## Collect all possible ripples for the current snippet ##
+    import pdb; pdb.set_trace()
     min_length_ripple = math.ceil(length_ripple_in_secs*downsampled_sampling_rate)
     all_clusters = np.zeros((len(channel_indices), mean_power['theta'].shape[1]))
     # all_clusters = np.zeros((len(channel_indices_to_use), raw_analog_epo_cropped.shape[-1]))
@@ -295,7 +297,7 @@ def extract_ripple_from_one_rep(mean_power, channel_indices, onset_in_sec):
         # save all clusters per channel.
         all_clusters[new_channel_idx,:] = (1+new_channel_idx)*clusters 
         for cluster_idx in range(1, n_clusters+1):
-            # again check how long each cluster is. Cli is equal to the number of how the current cluster is marked
+            # determine how long a ripple is 
             curr_cluster_combobands = np.where(clusters == cluster_idx)[0]
             # only keep if it is still long enough!
             if len(curr_cluster_combobands) >= min_length_ripple:
@@ -347,21 +349,23 @@ def extract_ripples_from_one_session(session, ROI, save_all = False):
     dataset, file_type, file_list, sample_rate = pre_prepare_LFP_dataset(beh_dict)
     # Run in parallel
     print("Now starting to detect ripples per task repeat...")
-    results = Parallel(n_jobs=4)(
-        delayed(run_repeat_wise_ripple_detection)(row, ROI, dataset, file_type, file_list, sample_rate)
-        for _, row in beh_dict['beh'].iterrows())
+    # results = Parallel(n_jobs=4)(
+    #     delayed(run_repeat_wise_ripple_detection)(row, ROI, dataset, file_type, file_list, sample_rate)
+    #     for _, row in beh_dict['beh'].iterrows())
 
-    # # if not running in parallel
-    # power_dict, ripple_onsets, ripple_durations, ripple_channels = {}, {}, {}, {}
-    # for idx, row in beh_dict['beh'].iterrows():
-    #     sample_start = row['new_grid_onset']
-    #     sample_end = row['t_D']
-    #     LFP_snippet, channels_OI, channel_idx_OI = load_lazy_LFP_snippet(ROI, dataset, file_type, file_list, sample_rate, sample_start, sample_end)
-    #     # run a morlet transformation to get power spectra 
-    #     power_dict[row['labels']] = time_frequ_rep_morlet_one_rep(LFP_snippet, channel_idx_OI)
-    #     # then extract ripples based on increased power in the right bands
-    #     ripple_onsets[row['labels']], ripple_durations[row['labels']], ripple_channels[row['labels']] = extract_ripple_from_one_rep(power_dict[row['labels']]['LFP_mean_power'], channels_OI, sample_start)
+    # if not running in parallel
+    power_dict, ripple_onsets, ripple_durations, ripple_channels = {}, {}, {}, {}
+    for idx, row in beh_dict['beh'].iterrows():
+        
+        sample_start = row['new_grid_onset']
+        sample_end = row['t_D']
+        LFP_snippet, channels_OI, channel_idx_OI = load_lazy_LFP_snippet(ROI, dataset, file_type, file_list, sample_rate, sample_start, sample_end)
+        # run a morlet transformation to get power spectra 
+        power_dict[row['labels']] = time_frequ_rep_morlet_one_rep(LFP_snippet, channel_idx_OI)
+        # then extract ripples based on increased power in the right bands
+        ripple_onsets[row['labels']], ripple_durations[row['labels']], ripple_channels[row['labels']] = extract_ripple_from_one_rep(power_dict[row['labels']]['LFP_mean_power'], channels_OI, sample_start)
     
+    import pdb; pdb.set_trace() 
     
     # Unpack the results
     power_dict = {}
@@ -399,7 +403,7 @@ def extract_ripples_from_one_session(session, ROI, save_all = False):
 if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     extract_ripples_from_one_session(
-        session=7,
+        session=5,
         ROI='HPC', #ROI = 'all' # 'mPFC' or 'HPC'
         save_all = False
     )
