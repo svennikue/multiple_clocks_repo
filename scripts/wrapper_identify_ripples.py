@@ -170,7 +170,7 @@ def load_lazy_LFP_snippet(ROI, data_from, nsx_to_load, lfp_files, sampling_rate_
     # import pdb; pdb.set_trace()
     ## load the channels and data of a LFP snippet ##
     # for now, only single session ones from Baylor work.
-    if data_from == 'Baylor':
+    if data_from == 'Baylor' or data_from == 'Utah':
         # https://neo.readthedocs.io/en/0.3.3/io.html
         reader = neo.io.BlackrockIO(filename=lfp_files[0], nsx_to_load=nsx_to_load)
         channel_list, channel_indices = get_channel_list(reader, ROI)
@@ -220,6 +220,10 @@ def load_lazy_LFP_snippet(ROI, data_from, nsx_to_load, lfp_files, sampling_rate_
  
        
 def time_frequ_rep_morlet_one_rep(LFP, channel_indices):
+    # before running this, put in this format:
+    # downsampled_analog_epo_cropped = downsampled_data.T.reshape(1,downsampled_data.shape[1], downsampled_data.shape[0])
+    #import pdb; pdb.set_trace()
+        
     ## per frequency set, determine time frequency spectra based on morlet transforms ##
     power = {'LFP_mean_power': {}, 'LFP_stepwise_power': {}}
     for band, (l_freq, h_freq) in freq_bands.items():
@@ -417,7 +421,7 @@ def extract_ripples_from_one_session(session, ROI, save_all = False):
 if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     extract_ripples_from_one_session(
-        session=5,
+        session=1,
         ROI='HPC', #ROI = 'all' # 'mPFC' or 'HPC'
         save_all = False
     )

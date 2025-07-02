@@ -26,6 +26,7 @@ ultra_high_gamma = [150, 250]
 downsampled_sampling_rate = 2 * ultra_high_gamma[1]
 
 
+
 def get_channel_list_baylor_utah(reader): 
     ## extract the channel labels I want in this analysis, e.g. only hippocampal electrodes
     # note this only works for Baylor datasets
@@ -41,34 +42,44 @@ def get_channel_list_baylor_utah(reader):
 
 
 
-def store_LFP_snippet(file, config, start, end, save_at=False, file_name=False):
-    if config['recording_site'] == 'baylor':
+
+def store_LFP_snippet(file, config, start, end, save_at=False, file_name=False, block_one=False):
+    if config['recording_site'] == 'baylor' or config['recording_site'] == 'utah':
         # https://neo.readthedocs.io/en/0.3.3/io.html
         reader = neo.io.BlackrockIO(filename=file, nsx_to_load=config['LFP_file_format'])
         channel_list = get_channel_list_baylor_utah(reader)
-   
+    # import pdb; pdb.set_trace()   
     if save_at:
         filepath = os.path.join(save_at, 'channels.npy')
         if not os.path.exists(filepath):
             np.save(filepath, np.array(channel_list))
             print(f"Saved channel list to {filepath}")
             
-        
-    # TAKE THE SEG_INDEX ALSO FROM INDEX!
-    # ALSO THE analogsignals n...
-    
-    raw_file_lazy = reader.read_segment(seg_index=1, lazy=True)
-    # just in case this was the wrong segment index.
-    
+    raw_file_lazy = reader.read_segment(seg_index=0, lazy=True)
     if raw_file_lazy.t_stop < 20:
-        raw_file_lazy = reader.read_segment(seg_index=0, lazy=True)
+        raw_file_lazy = reader.read_segment(seg_index=1, lazy=True)
+        print("Loading second segment instead, first one was shorter than 20 samples!")
     
+    len_block_one = []
+    if block_one == True:
+        len_block_one = raw_file_lazy.t_stop.magnitude
+    
+    # TAKE THE SEG_INDEX ALSO FROM INDEX!
+    # ALSO THE analogsignals n...    
+    # just in case this was the wrong segment index.
+    # check if the segment thingy works like this! for some sessions the segment is different.
+    # if (sub in ['s11'] and file_half == 0) or (sub in ['s18'] and file_half in [1, 2]):
+    #     block_size.append(reader[file_half].get_signal_size(seg_index=0, block_index=0))
+    # else:
+    #     block_size.append(reader[file_half].get_signal_size(seg_index=1, block_index=0))
 
     load_sample = 0
     num_samples = raw_file_lazy.analogsignals[load_sample].shape
     if num_samples[0] < 100:
         load_sample = 1
-        
+
+    if start == 0:
+        start = float(raw_file_lazy.t_start.magnitude)
     # to decrease memory load only load segments
     raw_analog_cropped = raw_file_lazy.analogsignals[load_sample].load(time_slice = (start, end))
     # raw_analog_cropped = raw_file_lazy.analogsignals[load_sample].load(time_slice = (sample_idx_start, sample_idx_end))
@@ -81,10 +92,10 @@ def store_LFP_snippet(file, config, start, end, save_at=False, file_name=False):
     if save_at:
         if file_name:
             np.save(os.path.join(save_at, f"{file_name}.npy"), downsampled_data)
-
-    # downsampled_analog_epo_cropped = downsampled_data.T.reshape(1,downsampled_data.shape[1], downsampled_data.shape[0])
-    #import pdb; pdb.set_trace()
     
+    return len_block_one
+
+
 
 
 def load_behaviour(sesh):
@@ -116,7 +127,6 @@ def load_behaviour(sesh):
     
     
     
-
 def preprocess_one_session(session, save_all = False):
     # first load behaviour
     # import pdb; pdb.set_trace()
@@ -124,6 +134,8 @@ def preprocess_one_session(session, save_all = False):
     beh_dict = load_behaviour(session_id)
     path_to_save = f"{beh_dict['LFP_path']}/derivatives/s{session_id}/LFP"
     os.makedirs(path_to_save, exist_ok=True) 
+    if save_all == False:
+        path_to_save = False
     # use the behaviour to store the respective snippets of the task
     # then collect some specifics on this session (all hospitals store LFPs differently)
     # note that for now, I only wrote a script for the Baylor LFPs.
@@ -138,7 +150,6 @@ def preprocess_one_session(session, save_all = False):
     
     if len(lfp_files) == 1:
         print(f"Now starting to load and downsample LFP data to {downsampled_sampling_rate} Hz per task repeat...")
-        # if not running in parallel
         for idx, row in beh_dict['beh'].iterrows():
             if idx % 10 == 0:
                 print(f"Processing LFP snippet {idx}")
@@ -150,29 +161,71 @@ def preprocess_one_session(session, save_all = False):
             store_LFP_snippet(lfp_files[0], session_config, sample_start, sample_end, path_to_save, lfp_name)
      
     elif len(lfp_files) > 1:
-        import pdb; pdb.set_trace() 
-   
-    # these can be several blocks for baylor.
-    
+        for lfp_file in lfp_files:
+            if 'blk-01' in lfp_file:
+                print(f"Now starting to load and downsample LFP data to {downsampled_sampling_rate} Hz per task repeat, block 1...")
+                # first filter for only block 1.
+                curr_block_beh = beh_dict['beh'][beh_dict['beh']['session_no']==1].reset_index(drop=True)
+                
+                # # also just to check print this
+                # block_two_beh = beh_dict['beh'][beh_dict['beh']['session_no']==2]
+                # print(block_two_beh.head)
+                # print('compare the time here with the length of lfp file one!')
+            
+                for idx, row in curr_block_beh.iterrows():
+                    if idx % 10 == 0:
+                        print(f"Processing LFP snippet {idx}, block 1")
+                    sample_start = row['new_grid_onset']
+                    sample_end = row['t_D']
+                    
+                    locs = [int(row[f'loc_{l}']) for l in ['A', 'B', 'C', 'D']]
+                    loc_string = ''.join(str(l) for l in locs)
+                    lfp_name = f"lfp_snippet_{sample_start:.2f}-{sample_end:.2f}sec_grid{row['grid_no']}_ABCD_{loc_string}_{downsampled_sampling_rate}_Hz"
+                    first_block_secs = store_LFP_snippet(lfp_file, session_config, sample_start, sample_end, path_to_save, lfp_name, block_one=True)
+
+            elif 'blk-02' in lfp_file:
+                 print(f"Now starting to load and downsample LFP data to {downsampled_sampling_rate} Hz per task repeat, block 2...")
+                 # first filter for only block 2.
+                 curr_block_beh = beh_dict['beh'][beh_dict['beh']['session_no']==2].reset_index(drop=True)
+                 # delete this once you are done.
+                 # import pdb; pdb.set_trace()
+                 print(f"block one was {first_block_secs} secs, next grid repeat at {curr_block_beh['new_grid_onset'].iloc[0]}")
+                 print(f"difference is {curr_block_beh['new_grid_onset'].iloc[0] -  first_block_secs} secs, I reset to 0.")
+                 for idx, row in curr_block_beh.iterrows():
+                     if idx % 10 == 0:
+                         print(f"Processing LFP snippet {idx}, block 2")
+                     if idx == 0: 
+                         sample_start = 0
+                     else:
+                         sample_start = row['new_grid_onset'] - first_block_secs
+                         # I don't really know what is correct here.
+                         # I think that the first grid in block 2 basically runs right from 
+                         # when block 1 ends, i.e. 0 seconds will be right in the file.
+
+                     sample_end = row['t_D'] - first_block_secs
+                     locs = [int(row[f'loc_{l}']) for l in ['A', 'B', 'C', 'D']]
+                     loc_string = ''.join(str(l) for l in locs)
+                     lfp_name = f"lfp_snippet_{sample_start:.2f}-{sample_end:.2f}sec_grid{row['grid_no']}_ABCD_{loc_string}_{downsampled_sampling_rate}_Hz"
+                     _ = store_LFP_snippet(lfp_file, session_config, sample_start, sample_end, path_to_save, lfp_name)        
+
     print("...Done!") 
     
     
 
-# # # # if running from command line, use this one!   
-# if __name__ == "__main__":
-#     #print(f"starting regression for subject {sub}")
-#     fire.Fire(preprocess_one_session)
-#     # call this script like
-#     # python preprocess_LFP.py 5 --save_all='TRUE'
-
-
-
+# if running from command line, use this one!   
 if __name__ == "__main__":
-    # For debugging, bypass Fire and call preprocess_one_session directly.
-    preprocess_one_session(
-        session=5,
-        save_all = False
-    )
+    fire.Fire(preprocess_one_session)
+    # call this script like
+    # python preprocess_LFP.py 5 --save_all='TRUE'
+
+
+
+# if __name__ == "__main__":
+#     # For debugging, bypass Fire and call preprocess_one_session directly.
+#     preprocess_one_session(
+#         session=1,
+#         save_all = False
+#     )
     
     
     
