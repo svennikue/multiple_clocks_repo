@@ -19,6 +19,12 @@ import glob
 import neo
 from scipy.signal import resample
 import numpy as np
+import sys
+import re
+import warnings
+
+
+print("ARGS:", sys.argv)
 
 # downsample everything to the same frequency:
 ultra_high_gamma = [150, 250]
@@ -48,7 +54,7 @@ def store_LFP_snippet(file, config, start, end, save_at=False, file_name=False, 
         # https://neo.readthedocs.io/en/0.3.3/io.html
         reader = neo.io.BlackrockIO(filename=file, nsx_to_load=config['LFP_file_format'])
         channel_list = get_channel_list_baylor_utah(reader)
-    # import pdb; pdb.set_trace()   
+      
     if save_at:
         filepath = os.path.join(save_at, 'channels.npy')
         if not os.path.exists(filepath):
@@ -56,6 +62,7 @@ def store_LFP_snippet(file, config, start, end, save_at=False, file_name=False, 
             print(f"Saved channel list to {filepath}")
             
     raw_file_lazy = reader.read_segment(seg_index=0, lazy=True)
+    import pdb; pdb.set_trace() 
     if raw_file_lazy.t_stop < 20:
         raw_file_lazy = reader.read_segment(seg_index=1, lazy=True)
         print("Loading second segment instead, first one was shorter than 20 samples!")
@@ -125,8 +132,28 @@ def load_behaviour(sesh):
     return(behaviour_dict)
 
     
+def sort_block_files(files, blocks):
+    # Extract EMU number
+    def extract_emu(file):
+        match = re.search(r'EMU-(\d+)', os.path.basename(file))
+        return int(match.group(1)) if match else float('inf')
     
+    # Sort by EMU number
+    sorted_pairs = sorted(zip(files, blocks), key=lambda x: extract_emu(x[0]))
     
+    # Separate the sorted lists
+    sorted_files = [f for f, _ in sorted_pairs]
+    sorted_blocks = [b for _, b in sorted_pairs]
+    import pdb; pdb.set_trace()
+    # Check if blocks are sorted as well
+    if sorted_blocks != sorted(sorted_blocks):
+        warnings.warn("Block order does not match EMU number order. Proceeding with EMU-sorted files anyway.")
+
+    return sorted_files
+  
+
+
+  
 def preprocess_one_session(session, save_all = False):
     # first load behaviour
     # import pdb; pdb.set_trace()
@@ -142,12 +169,13 @@ def preprocess_one_session(session, save_all = False):
     # Load the full YAML file
     with open(f"{beh_dict['LFP_path']}/config_human_ABCD_iEEG.yaml", 'r') as f:
         config = yaml.safe_load(f)
-    # Access only the part you need
+        
     session_config = config.get(session_id)
+    print(f"session is {session_id}, recording site is {session_config['recording_site']}")
     
-    if session_config['recording_site'] == 'baylor' or  session_config['recording_site'] == 'utah':
-        lfp_files= glob.glob(os.path.join(f"{beh_dict['LFP_path']}/s{session_id}", f"*.ns{session_config['LFP_file_format']}"))
-    
+    if session_config['recording_site'] == 'baylor' or session_config['recording_site'] == 'utah':
+        lfp_files= glob.glob(os.path.join(f"{beh_dict['LFP_path']}/s{session_id}/LFP", f"*.ns{session_config['LFP_file_format']}"))
+        print(f"found n = {len(lfp_files)} lfp files in the folder {beh_dict['LFP_path']}/s{session_id}/LFP")
     if len(lfp_files) == 1:
         print(f"Now starting to load and downsample LFP data to {downsampled_sampling_rate} Hz per task repeat...")
         for idx, row in beh_dict['beh'].iterrows():
@@ -161,6 +189,15 @@ def preprocess_one_session(session, save_all = False):
             store_LFP_snippet(lfp_files[0], session_config, sample_start, sample_end, path_to_save, lfp_name)
      
     elif len(lfp_files) > 1:
+        
+        # SO THIS PROBABLY JUST NEEDS TO BE SORTED 'alphabetically'.
+        # this is because sometimes, there are two 'block 2', but now i can just loop
+        # through the config file thingy.
+        # lfp_files = sorted(lfp_files, key=lambda x: int(x.split('blk-')[1].split('_')[0]))
+        
+        lfp_files = sort_block_files(lfp_files, session_config['blocks'])
+        import pdb; pdb.set_trace()
+
         for lfp_file in lfp_files:
             if 'blk-01' in lfp_file:
                 print(f"Now starting to load and downsample LFP data to {downsampled_sampling_rate} Hz per task repeat, block 1...")
@@ -212,20 +249,20 @@ def preprocess_one_session(session, save_all = False):
     
     
 
-# if running from command line, use this one!   
-if __name__ == "__main__":
-    fire.Fire(preprocess_one_session)
-    # call this script like
-    # python preprocess_LFP.py 5 --save_all='TRUE'
-
-
-
+# # if running from command line, use this one!   
 # if __name__ == "__main__":
-#     # For debugging, bypass Fire and call preprocess_one_session directly.
-#     preprocess_one_session(
-#         session=1,
-#         save_all = False
-#     )
+#     fire.Fire(preprocess_one_session)
+#     # call this script like
+#     # python preprocess_LFP.py 5 --save_all='TRUE'
+
+
+
+if __name__ == "__main__":
+    # For debugging, bypass Fire and call preprocess_one_session directly.
+    preprocess_one_session(
+        session=18,
+        save_all = False
+    )
     
     
     

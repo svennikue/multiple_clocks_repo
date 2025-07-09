@@ -189,16 +189,7 @@ def generate_unique_timepoint_permutations(data_dict, models, n_permutations=10,
             shuffled_data[m].append(shuffled_model_split)
     
     return shuffled_data
-        
-def generate_circular_timepoint_permutations_neurons(data_dict, n_permutations=10, seed=42):   
-    """"
-    Take og cells, concatenate them, permute them in a time-conserved, circular
-    fashion, split them again,
-    
-    NO ACTUALLY THIS NEEDS TO BE EARLIER!!! WHEN I CREATE MY REGRESSORS.
-    
-    """
-    
+
     
     
 def generate_unique_timepoint_permutations_neurons(data_dict, n_permutations=10, seed=42):
@@ -498,9 +489,9 @@ def compute_one_subject(sub, models_I_want, only_repeats_included, randomised_re
     for cell_idx, cell in enumerate(single_sub_dict['neurons'][0]):
         # import pdb; pdb.set_trace()
         # create one entry in result_dict per cell 
-        cells.append(f"{single_sub_dict['electrode_labels'][cell_idx]}_cellno_{cell_idx:02}_sesh_{sub:02}_{single_sub_dict['cell_labels'][cell_idx]}")
+        cells.append(f"{single_sub_dict['electrode_labels'][cell_idx]}_sesh_{sub:02}_{single_sub_dict['cell_labels'][cell_idx]}")
 
-
+    # import pdb; pdb.set_trace() 
     # for cell in cells:
     #     results = run_elnetreg_cellwise(single_sub_dict, cell, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms=comp_loc_perms, comp_time_perms=comp_time_perms, circular_perms=comp_circular_perms)    
     
@@ -573,7 +564,7 @@ if __name__ == "__main__":
 # if __name__ == "__main__":
 #     # For debugging, bypass Fire and call compute_one_subject directly.
 #     compute_one_subject(
-#         sub=44,
+#         sub=3,
 #         #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
 #         models_I_want=['onlynowand3future', 'onlynextand2future'],
 #         only_repeats_included=[1,2,3,4,5,6,7,8,9,10], # i want: [0,1] and [1,2,3,4,5] and [6,7,8,9,10]

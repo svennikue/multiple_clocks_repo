@@ -116,7 +116,7 @@ for sub = 1:length(subject_list)
     filename_e = (sprintf("%s/all_electrode_labels_sub%02d.txt", subject_folder, sub));
     fid = fopen(filename_e, 'wt');  % Open a text file for writing
     for i = 1:length(og_labels_cells)
-        fprintf(fid, '%s\n', og_labels_cells{i});
+        fprintf(fid, '%02d-%s\n', i, og_labels_cells{i});
     end
     fclose(fid);  % Close the file
 
