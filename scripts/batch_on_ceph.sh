@@ -53,8 +53,9 @@ cat <<EOT >> $file_sbatch
 #SBATCH -p gpu
 #SBATCH -N 1
 #SBATCH -c 16
-#SBATCH --mem=32G
-#SBATCH --time=0-01:00
+#SBATCH --mem=128G
+#SBATCH --time=0-03:00
+#SBATCH --gres=gpu:1  
 
 source ~/.bashrc
 micromamba activate spyder_env

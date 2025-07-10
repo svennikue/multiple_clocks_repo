@@ -221,12 +221,12 @@ def generate_unique_timepoint_permutations_neurons(data_dict, n_permutations=10,
 
 
 
-def run_elnetreg_cellwise(data, curr_cell, fit_binned = None, fit_residuals = None, comp_loc_perms= None, comp_time_perms=None, circular_perms=None):
+def run_elnetreg_cellwise(data, curr_cell, cell_idx, fit_binned = None, fit_residuals = None, comp_loc_perms= None, comp_time_perms=None, circular_perms=None):
     print(f"...fitting and testing cell {curr_cell}")
     # parameters that seem to work, can be set flexibly
     alpha=0.00001 ##0.01 used in El-gaby paper
     # l1_ratio= 0.01
-    cell_idx = int(curr_cell.split('_')[2])
+    # cell_idx = int(curr_cell.split('-')[0])-1
     corr_dict, coefs_per_model = {}, {}
     if fit_binned:
         coefs_per_model_binned = {}
@@ -491,12 +491,12 @@ def compute_one_subject(sub, models_I_want, only_repeats_included, randomised_re
         # create one entry in result_dict per cell 
         cells.append(f"{single_sub_dict['electrode_labels'][cell_idx]}_sesh_{sub:02}_{single_sub_dict['cell_labels'][cell_idx]}")
 
-    # import pdb; pdb.set_trace() 
-    # for cell in cells:
-    #     results = run_elnetreg_cellwise(single_sub_dict, cell, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms=comp_loc_perms, comp_time_perms=comp_time_perms, circular_perms=comp_circular_perms)    
     
+    # for cell_idx, cell in enumerate(cells):
+    #     results = run_elnetreg_cellwise(single_sub_dict, cell, cell_idx, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms=comp_loc_perms, comp_time_perms=comp_time_perms, circular_perms=comp_circular_perms)    
+    # import pdb; pdb.set_trace() 
      
-    parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(single_sub_dict, c, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms=comp_loc_perms, comp_time_perms=comp_time_perms, circular_perms=comp_circular_perms) for c in cells)
+    parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(single_sub_dict, c, cell_idx, fit_binned=fit_binned, fit_residuals=fit_residuals, comp_loc_perms=comp_loc_perms, comp_time_perms=comp_time_perms, circular_perms=comp_circular_perms) for cell_idx, c in enumerate(cells))
     
     
     result_dir = {}
@@ -564,7 +564,7 @@ if __name__ == "__main__":
 # if __name__ == "__main__":
 #     # For debugging, bypass Fire and call compute_one_subject directly.
 #     compute_one_subject(
-#         sub=3,
+#         sub=53,
 #         #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
 #         models_I_want=['onlynowand3future', 'onlynextand2future'],
 #         only_repeats_included=[1,2,3,4,5,6,7,8,9,10], # i want: [0,1] and [1,2,3,4,5] and [6,7,8,9,10]
