@@ -15,11 +15,11 @@ source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_huma
 if ~exist(source_dir, 'dir')
     source_dir = '/ceph/behrens/svenja/human_ABCD_ephys'
     %abcd_data = load(sprintf("%s/beh_cells/abcd_data_FIXED_19-Feb-2025.mat", source_dir));
-    abcd_data = load(sprintf("%s/beh_cells/abcd_data_24-Apr-2025.mat", source_dir));
+    abcd_data = load(sprintf("%s/beh_cells/abcd_data_10-Jul-2025.mat", source_dir));
     
 else
     %abcd_data = load(sprintf("%s/abcd_data_FIXED_19-Feb-2025.mat", source_dir));
-    abcd_data = load(sprintf("%s/abcd_data_24-Apr-2025.mat", source_dir));
+    abcd_data = load(sprintf("%s/abcd_data_10-Jul-2025.mat", source_dir));
 end
 
 deriv_dir = sprintf("%s/derivatives/", source_dir);
@@ -82,14 +82,8 @@ for sub = 1:length(subject_list)
     % as firing rate in a 25 ms timewindow
     % for the neural data, I am creating bins in one go from
     % 0 seconds to end_time
-    onset_time_behaviour = subj.trial_vars(1).rule_onset_timestamp;
+    % onset_time_behaviour = subj.trial_vars(1).rule_onset_timestamp;
     end_time_behaviour = subj.trial_vars(end).end_trial_timestamp;
-
-    % if sub > 51
-    %     end_time_behaviour = subj.trial_vars(end).DONOTUSE_button_pressed_timestamp(end);
-    % else
-    %     end_time_behaviour = subj.trial_vars(end).button_pressed_timestamp(end);
-    % end
 
     for c = 1:length(subj.neural_data)
         curr_spike_times = subj.neural_data(c).spikeTimes;
@@ -123,11 +117,6 @@ for sub = 1:length(subject_list)
     % concatenate the positions and position changes for each grid and repeat
     for c = 1:length(subj.trial_vars)
         curr_button_t = subj.trial_vars(c).DONOTUSE_button_pressed_timestamp;
-        % if sub > 51
-        %     curr_button_t = subj.trial_vars(c).DONOTUSE_button_pressed_timestamp;
-        % else
-        %     curr_button_t = subj.trial_vars(c).button_pressed_timestamp;
-        % end
         curr_button = subj.trial_vars(c).button_pressed;
 
         curr_position_time = subj.trial_vars(c).visit_begin_timestamp_c;
@@ -222,10 +211,17 @@ for sub = 1:length(subject_list)
             prev_last_repeat = index_last_repeat(g_i-1);
             %t_prev_end_trial = subj.trial_vars(prev_last_repeat).end_trial_timestamp;
             %start_idx = floor(t_prev_end_trial/ bin_size) + 1;
-            %start_idx = [subj.trial_vars(prev_last_repeat+1).grid_onset_timestamp(1)];
+            start_idx = [subj.trial_vars(prev_last_repeat+1).grid_onset_timestamp(1)];
             timings_curr_grid = t_found_reward(prev_last_repeat+1:last_repeat, :);
-            start_looking_for_A = arrayfun(@(x) x.end_trial_timestamp, subj.trial_vars(prev_last_repeat:last_repeat-1));
-            start_idx = t_found_reward(prev_last_repeat, end);
+            start_looking_for_A = arrayfun(@(x) x.grid_onset_timestamp(1), subj.trial_vars(prev_last_repeat+1:last_repeat));
+           
+            % 11th of july 2025 - testing if reverting this works better-
+            % if the start of a grid is the actual recorded start, this
+            % might align better with the fact that there might be small
+            % gaps between finding a reward and starting a new loop.
+            % start_looking_for_A = arrayfun(@(x) x.end_trial_timestamp, subj.trial_vars(prev_last_repeat:last_repeat-1));
+            % start_idx = t_found_reward(prev_last_repeat, end);
+
             % except if it's nan- then look for the last recorded timestamp
             % of the previous trial
             test_idx = 0;

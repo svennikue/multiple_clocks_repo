@@ -154,10 +154,15 @@ if __name__ == "__main__":
     # no for timepoints: 27, 40, 44, 50
     # no for tasks: 7, 27, 40, 43, 44, 50, 
     plot_all(
-        model_name_string='w_partial_musicboxes_only_reps_6-10_avg_in_20_bins_across_runs',
-        sub_list = [i for i in range(61) if i not in [2, 28, 40, 52, 57, 58, 59, 60]],
-        #sub_list=[1,2,4,5,6,8,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,26,28,29,30,31,33,34,35,36,38,39,41,42,45,46,48,49,51,52,53,54,55,56],
-        # perms_locs = '265perms_configs_shuffle',
+        # for late, 2, 28, 52 doesnt work
+        #model_name_string='w_partial_musicboxes_only_reps_6-10_avg_in_20_bins_across_runs',
+        #sub_list = [i for i in range(60) if i not in [2, 28, 40, 52, 57, 58, 59]],
+        # everything works for early
+        #model_name_string='w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs',
+        #sub_list = [i for i in range(60)],
+        # for all, 28,52 doesnt exist
+        model_name_string='w_partial_musicboxes_only_reps_1-10_avg_in_20_bins_across_runs',
+        sub_list = [i for i in range(60) if i not in [28, 52]],
         perms_time = '500perms_circular_shuffle',
         plot_cells_corr_higher_than=0.05,
         save=True

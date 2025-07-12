@@ -19,11 +19,11 @@ source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_huma
 if ~exist(source_dir, 'dir')
     source_dir = '/ceph/behrens/svenja/human_ABCD_ephys'
     %abcd_data = load(sprintf("%s/beh_cells/abcd_data_FIXED_19-Feb-2025.mat", source_dir));
-    abcd_data = load(sprintf("%s/beh_cells/abcd_data_24-Apr-2025.mat", source_dir));
+    abcd_data = load(sprintf("%s/beh_cells/abcd_data_10-Jul-2025.mat", source_dir));
     
 else
     %abcd_data = load(sprintf("%s/abcd_data_FIXED_19-Feb-2025.mat", source_dir));
-    abcd_data = load(sprintf("%s/abcd_data_24-Apr-2025.mat", source_dir));
+    abcd_data = load(sprintf("%s/abcd_data_10-Jul-2025.mat", source_dir));
 end
 
 deriv_dir = sprintf("%s/derivatives/", source_dir);
@@ -59,7 +59,9 @@ for sub = 1:length(subject_list)
     trial_rep_in_grid = [subj.trial_vars.trial_num_in_grid]';
     session_no = [subj.trial_vars.session_num]';
     end_trials = [subj.trial_vars.end_trial_timestamp]';
-    new_trial_onset = [subj.trial_vars(1).rule_onset_timestamp;end_trials(1:end-1,:)];
+    
+    new_trial_onset = [arrayfun(@(s) s.grid_onset_timestamp(1), subj.trial_vars)]';
+    %new_trial_onset = [subj.trial_vars(1).rule_onset_timestamp;end_trials(1:end-1,:)];
 
     behaviour_all = [trial_rep_in_grid_correct, t_found_reward, configurations, trial_rep_in_grid, new_trial_onset, session_no, grid_num];
 

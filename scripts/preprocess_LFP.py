@@ -49,7 +49,7 @@ def get_channel_list_baylor_utah(reader):
 
 
 
-def store_LFP_snippet(file, config, start, end, save_at=False, file_name=False, block_one=False):
+def store_LFP_snippet(file, idx, config, start, end, save_at=False, file_name=False, store_block_len=False):
     if config['recording_site'] == 'baylor' or config['recording_site'] == 'utah':
         # https://neo.readthedocs.io/en/0.3.3/io.html
         reader = neo.io.BlackrockIO(filename=file, nsx_to_load=config['LFP_file_format'])
@@ -61,25 +61,19 @@ def store_LFP_snippet(file, config, start, end, save_at=False, file_name=False, 
             np.save(filepath, np.array(channel_list))
             print(f"Saved channel list to {filepath}")
             
-    raw_file_lazy = reader.read_segment(seg_index=0, lazy=True)
-    import pdb; pdb.set_trace() 
-    if raw_file_lazy.t_stop < 20:
-        raw_file_lazy = reader.read_segment(seg_index=1, lazy=True)
-        print("Loading second segment instead, first one was shorter than 20 samples!")
+    segment_to_read = config['segment'][idx]
+    raw_file_lazy = reader.read_segment(seg_index=segment_to_read, lazy=True)
+    if raw_file_lazy.t_stop < 20: # should not be needed, but keep in case I did a mistake
+        if segment_to_read == 0:
+            raw_file_lazy = reader.read_segment(seg_index=1, lazy=True)
+        elif segment_to_read == 1:
+            raw_file_lazy = reader.read_segment(seg_index=0, lazy=True)
+        print("Loading the other segment instead, the one from config file was shorter than 20 samples!")
     
-    len_block_one = []
-    if block_one == True:
-        len_block_one = raw_file_lazy.t_stop.magnitude
+    len_block = []
+    if store_block_len == True:
+        len_block = raw_file_lazy.t_stop.magnitude
     
-    # TAKE THE SEG_INDEX ALSO FROM INDEX!
-    # ALSO THE analogsignals n...    
-    # just in case this was the wrong segment index.
-    # check if the segment thingy works like this! for some sessions the segment is different.
-    # if (sub in ['s11'] and file_half == 0) or (sub in ['s18'] and file_half in [1, 2]):
-    #     block_size.append(reader[file_half].get_signal_size(seg_index=0, block_index=0))
-    # else:
-    #     block_size.append(reader[file_half].get_signal_size(seg_index=1, block_index=0))
-
     load_sample = 0
     num_samples = raw_file_lazy.analogsignals[load_sample].shape
     if num_samples[0] < 100:
@@ -100,7 +94,7 @@ def store_LFP_snippet(file, config, start, end, save_at=False, file_name=False, 
         if file_name:
             np.save(os.path.join(save_at, f"{file_name}.npy"), downsampled_data)
     
-    return len_block_one
+    return len_block
 
 
 
@@ -132,31 +126,42 @@ def load_behaviour(sesh):
     return(behaviour_dict)
 
     
-def sort_block_files(files, blocks):
-    # Extract EMU number
-    def extract_emu(file):
-        match = re.search(r'EMU-(\d+)', os.path.basename(file))
-        return int(match.group(1)) if match else float('inf')
-    
+
+def sort_block_files(files, expected_blocks):
+    #     import pdb; pdb.set_trace()
+    def extract_emu_and_blk(file_path):
+        basename = os.path.basename(file_path)
+        emu_match = re.search(r'EMU-(\d+)', basename)
+        blk_match = re.search(r'blk-\d+', basename)
+        emu = int(emu_match.group(1)) if emu_match else float('inf')
+        blk = blk_match.group(0) if blk_match else 'blk-unknown'
+        return emu, blk
+
+    # Extract tuples of (file, emu, blk)
+    file_info = [(f, *extract_emu_and_blk(f)) for f in files]
+
     # Sort by EMU number
-    sorted_pairs = sorted(zip(files, blocks), key=lambda x: extract_emu(x[0]))
-    
-    # Separate the sorted lists
-    sorted_files = [f for f, _ in sorted_pairs]
-    sorted_blocks = [b for _, b in sorted_pairs]
-    import pdb; pdb.set_trace()
-    # Check if blocks are sorted as well
-    if sorted_blocks != sorted(sorted_blocks):
-        warnings.warn("Block order does not match EMU number order. Proceeding with EMU-sorted files anyway.")
+    sorted_info = sorted(file_info, key=lambda x: x[1])  # sort by EMU
+
+    # Extract sorted files and their block labels
+    sorted_files = [f for f, _, _ in sorted_info]
+    sorted_blocks = [blk for _, _, blk in sorted_info]
+
+    # Check block order
+    if sorted_blocks != expected_blocks:
+        raise ValueError(
+            f"Block order does not match EMU-sorted files.\n"
+            f"Expected: {expected_blocks}\nGot:      {sorted_blocks}"
+        )
 
     return sorted_files
-  
+
 
 
   
 def preprocess_one_session(session, save_all = False):
     # first load behaviour
-    # import pdb; pdb.set_trace()
+    
     session_id = f"{session:02}"
     beh_dict = load_behaviour(session_id)
     path_to_save = f"{beh_dict['LFP_path']}/derivatives/s{session_id}/LFP"
@@ -189,16 +194,8 @@ def preprocess_one_session(session, save_all = False):
             store_LFP_snippet(lfp_files[0], session_config, sample_start, sample_end, path_to_save, lfp_name)
      
     elif len(lfp_files) > 1:
-        
-        # SO THIS PROBABLY JUST NEEDS TO BE SORTED 'alphabetically'.
-        # this is because sometimes, there are two 'block 2', but now i can just loop
-        # through the config file thingy.
-        # lfp_files = sorted(lfp_files, key=lambda x: int(x.split('blk-')[1].split('_')[0]))
-        
         lfp_files = sort_block_files(lfp_files, session_config['blocks'])
-        import pdb; pdb.set_trace()
-
-        for lfp_file in lfp_files:
+        for idx_file, lfp_file in enumerate(lfp_files):
             if 'blk-01' in lfp_file:
                 print(f"Now starting to load and downsample LFP data to {downsampled_sampling_rate} Hz per task repeat, block 1...")
                 # first filter for only block 1.
@@ -218,9 +215,9 @@ def preprocess_one_session(session, save_all = False):
                     locs = [int(row[f'loc_{l}']) for l in ['A', 'B', 'C', 'D']]
                     loc_string = ''.join(str(l) for l in locs)
                     lfp_name = f"lfp_snippet_{sample_start:.2f}-{sample_end:.2f}sec_grid{row['grid_no']}_ABCD_{loc_string}_{downsampled_sampling_rate}_Hz"
-                    first_block_secs = store_LFP_snippet(lfp_file, session_config, sample_start, sample_end, path_to_save, lfp_name, block_one=True)
+                    first_block_secs = store_LFP_snippet(lfp_file, idx_file, session_config, sample_start, sample_end, path_to_save, lfp_name, store_block_len=True)
 
-            elif 'blk-02' in lfp_file:
+            elif idx_file == 1:
                  print(f"Now starting to load and downsample LFP data to {downsampled_sampling_rate} Hz per task repeat, block 2...")
                  # first filter for only block 2.
                  curr_block_beh = beh_dict['beh'][beh_dict['beh']['session_no']==2].reset_index(drop=True)
@@ -231,10 +228,11 @@ def preprocess_one_session(session, save_all = False):
                  for idx, row in curr_block_beh.iterrows():
                      if idx % 10 == 0:
                          print(f"Processing LFP snippet {idx}, block 2")
-                     if idx == 0: 
-                         sample_start = 0
-                     else:
-                         sample_start = row['new_grid_onset'] - first_block_secs
+                     # if idx == 0: 
+                     #     import pdb; pdb.set_trace()
+                     #     sample_start = 0
+                     # else:
+                     sample_start = row['new_grid_onset'] - first_block_secs
                          # I don't really know what is correct here.
                          # I think that the first grid in block 2 basically runs right from 
                          # when block 1 ends, i.e. 0 seconds will be right in the file.
@@ -243,9 +241,35 @@ def preprocess_one_session(session, save_all = False):
                      locs = [int(row[f'loc_{l}']) for l in ['A', 'B', 'C', 'D']]
                      loc_string = ''.join(str(l) for l in locs)
                      lfp_name = f"lfp_snippet_{sample_start:.2f}-{sample_end:.2f}sec_grid{row['grid_no']}_ABCD_{loc_string}_{downsampled_sampling_rate}_Hz"
-                     _ = store_LFP_snippet(lfp_file, session_config, sample_start, sample_end, path_to_save, lfp_name)        
+                     seconds_block_secs = store_LFP_snippet(lfp_file, idx_file, session_config, sample_start, sample_end, path_to_save, lfp_name, store_block_len=True)        
 
+            elif idx_file == 2:
+                 print(f"Now starting to load and downsample LFP data to {downsampled_sampling_rate} Hz per task repeat, block 3...")
+                 # first filter for only block 2.
+                 curr_block_beh = beh_dict['beh'][beh_dict['beh']['session_no']==3].reset_index(drop=True)
+                 # delete this once you are done.
+                 # import pdb; pdb.set_trace()
+                 print(f"block one and two were {first_block_secs+seconds_block_secs} secs, next grid repeat at {curr_block_beh['new_grid_onset'].iloc[0]}")
+                 print(f"difference is {curr_block_beh['new_grid_onset'].iloc[0] -  (first_block_secs+seconds_block_secs)} secs, I reset to 0.")
+                 for idx, row in curr_block_beh.iterrows():
+                     if idx % 10 == 0:
+                         print(f"Processing LFP snippet {idx}, block 3")
+                     # if idx == 0: 
+                     #     sample_start = 0
+                     # else:
+                     sample_start = row['new_grid_onset'] - (first_block_secs+seconds_block_secs)
+                         # I don't really know what is correct here.
+                         # I think that the first grid in block 2 basically runs right from 
+                         # when block 1 ends, i.e. 0 seconds will be right in the file.
+                     sample_end = row['t_D'] - (first_block_secs+seconds_block_secs)
+                     locs = [int(row[f'loc_{l}']) for l in ['A', 'B', 'C', 'D']]
+                     loc_string = ''.join(str(l) for l in locs)
+                     lfp_name = f"lfp_snippet_{sample_start:.2f}-{sample_end:.2f}sec_grid{row['grid_no']}_ABCD_{loc_string}_{downsampled_sampling_rate}_Hz"
+                     third_block_secs = store_LFP_snippet(lfp_file, idx_file, session_config, sample_start, sample_end, path_to_save, lfp_name, store_block_len=True)        
+    
+    import pdb; pdb.set_trace()
     print("...Done!") 
+    
     
     
 
@@ -260,7 +284,7 @@ def preprocess_one_session(session, save_all = False):
 if __name__ == "__main__":
     # For debugging, bypass Fire and call preprocess_one_session directly.
     preprocess_one_session(
-        session=18,
+        session=15,
         save_all = False
     )
     
