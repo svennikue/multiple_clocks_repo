@@ -19,7 +19,7 @@ source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_huma
 if ~exist(source_dir, 'dir')
     source_dir = '/ceph/behrens/svenja/human_ABCD_ephys'
     %abcd_data = load(sprintf("%s/beh_cells/abcd_data_FIXED_19-Feb-2025.mat", source_dir));
-    abcd_data = load(sprintf("%s/beh_cells/abcd_data_10-Jul-2025.mat", source_dir));
+    abcd_data = load(sprintf("%s/beh_cells/abcd_data_24-Apr-2025.mat", source_dir));
     
 else
     %abcd_data = load(sprintf("%s/abcd_data_FIXED_19-Feb-2025.mat", source_dir));

@@ -191,7 +191,7 @@ def preprocess_one_session(session, save_all = False):
             locs = [int(row[f'loc_{l}']) for l in ['A', 'B', 'C', 'D']]
             loc_string = ''.join(str(l) for l in locs)
             lfp_name = f"lfp_snippet_{sample_start:.2f}-{sample_end:.2f}sec_grid{row['grid_no']}_ABCD_{loc_string}_{downsampled_sampling_rate}_Hz"
-            store_LFP_snippet(lfp_files[0], session_config, sample_start, sample_end, path_to_save, lfp_name)
+            store_LFP_snippet(lfp_files[0], 0, session_config, sample_start, sample_end, path_to_save, lfp_name)
      
     elif len(lfp_files) > 1:
         lfp_files = sort_block_files(lfp_files, session_config['blocks'])
@@ -284,7 +284,7 @@ def preprocess_one_session(session, save_all = False):
 if __name__ == "__main__":
     # For debugging, bypass Fire and call preprocess_one_session directly.
     preprocess_one_session(
-        session=15,
+        session=23,
         save_all = False
     )
     
