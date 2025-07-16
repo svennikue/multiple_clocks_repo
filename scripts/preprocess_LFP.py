@@ -177,7 +177,7 @@ def preprocess_one_session(session, save_all = False):
         
     session_config = config.get(session_id)
     print(f"session is {session_id}, recording site is {session_config['recording_site']}")
-    
+    import pdb; pdb.set_trace()
     if session_config['recording_site'] == 'baylor' or session_config['recording_site'] == 'utah':
         lfp_files= glob.glob(os.path.join(f"{beh_dict['LFP_path']}/s{session_id}/LFP", f"*.ns{session_config['LFP_file_format']}"))
         print(f"found n = {len(lfp_files)} lfp files in the folder {beh_dict['LFP_path']}/s{session_id}/LFP")
@@ -267,7 +267,7 @@ def preprocess_one_session(session, save_all = False):
                      lfp_name = f"lfp_snippet_{sample_start:.2f}-{sample_end:.2f}sec_grid{row['grid_no']}_ABCD_{loc_string}_{downsampled_sampling_rate}_Hz"
                      third_block_secs = store_LFP_snippet(lfp_file, idx_file, session_config, sample_start, sample_end, path_to_save, lfp_name, store_block_len=True)        
     
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     print("...Done!") 
     
     
@@ -284,7 +284,7 @@ def preprocess_one_session(session, save_all = False):
 if __name__ == "__main__":
     # For debugging, bypass Fire and call preprocess_one_session directly.
     preprocess_one_session(
-        session=23,
+        session=27,
         save_all = False
     )
     
