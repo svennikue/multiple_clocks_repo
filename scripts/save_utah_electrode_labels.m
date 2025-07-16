@@ -8,15 +8,13 @@ clear all
 
 base_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
 if ~exist(base_dir, 'dir')
-    base_dir = '/ceph/behrens/svenja/human_ABCD_ephys/beh_cells'
+    base_dir = '/ceph/behrens/svenja/human_ABCD_ephys'
 end
 
 deriv_dir = fullfile(base_dir, 'derivatives');
 
 % define the utah subject list
 session_list = [1,2,4,6,17,23,24,29,30,39,41,42,47,48, 52, 53, 54, 55];
-
-session_list = [17];
 
 % Loop through sessions
 for i = 1:length(session_list)

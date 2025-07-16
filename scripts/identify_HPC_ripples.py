@@ -80,7 +80,7 @@ def time_frequ_rep_morlet_one_rep(LFP):
     theta = [3,8]
     SW = [8,40]
     middle = [40, 80]
-    gamma = [80, 150]
+    gamma = [80, 120]
 
     freq_bands_keys = ['theta', 'SW', 'middle', 'hgamma', 'ultra_high_gamma']
     freq_bands = {freq_bands_keys[0]: (theta[0], theta[1]), freq_bands_keys[1]: (SW[0],SW[1]), freq_bands_keys[2]: (middle[0],middle[1]), freq_bands_keys[3]: (gamma[0], gamma[1]), freq_bands_keys[4]: (ultra_high_gamma[0], ultra_high_gamma[1])}
@@ -91,7 +91,7 @@ def time_frequ_rep_morlet_one_rep(LFP):
         freq_list = np.arange(l_freq, h_freq, step)
         # l_power = mne.time_frequency.tfr_array_morlet(raw_analog_epo_cropped, sampling_freq[block], freqs=freq_list, output="power", n_jobs=-1).squeeze()
         # avoid n_jobs > 1 to avoid problems of nested parallelisms
-        l_power = mne.time_frequency.tfr_array_morlet(LFP, downsampled_sampling_rate, freqs=freq_list, output="power", n_jobs = 1).squeeze()
+        l_power = mne.time_frequency.tfr_array_morlet(LFP, downsampled_sampling_rate, n_cycles = 4, freqs=freq_list, output="power", n_jobs = 1).squeeze()
         for idx_freq in range(len(freq_list)):
             for channel_idx in range(LFP.shape[1]):
                 l_power[channel_idx,idx_freq,:] = scipy.stats.zscore(l_power[channel_idx,idx_freq,:], axis=None)
@@ -223,27 +223,42 @@ def identify_channels_i_want(config, beh):
 
 
 
-def referencing(lfp, channels):
-    # Extract common prefix (before -01 or -04)
-    def extract_base(label):
-        return re.sub(r'(01|04)-\d+$', '', label)
-
-    # make a new table where each row has channel 01 and 04
-    channels['base'] = channels['anat_label'].apply(extract_base)
-    # Split into -01 and -04
-    df_01 = channels[channels['anat_label'].str.contains('01-')].copy()
-    df_04 = channels[channels['anat_label'].str.contains('04-')].copy()
+def referencing(lfp, channels, rec_site):
+    # import pdb; pdb.set_trace()
+    if rec_site == 'baylor':
+        # Extract common prefix (before -01 or -04)
+        def extract_base(label):
+            return re.sub(r'(01|04)-\d+$', '', label)
     
+        # Split into -01 and -04
+        df_01 = channels[channels['anat_label'].str.contains('01-')].copy()
+        df_04 = channels[channels['anat_label'].str.contains('04-')].copy()
+
+    elif rec_site == 'utah':
+        # Extract common prefix (before 'P1' or 'P4')
+        def extract_base(label):
+            return label[:-2] if label.endswith(('P1', 'P4')) else label
+    
+        # Split into P1 and P4
+        df_01 = channels[channels['anat_label'].str.endswith('P1')].copy()
+        df_04 = channels[channels['anat_label'].str.endswith('P4')].copy()
+    
+    # Add base column for matching
     df_01['base'] = df_01['anat_label'].apply(extract_base)
     df_04['base'] = df_04['anat_label'].apply(extract_base)
     
-    # Merge on common base
+    # Merge on base
     df_matched = df_01.merge(df_04[['base', 'anat_label', 'ns_index']], on='base', suffixes=('', '_ref'))
     
-    # Optional cleanup
-    df_matched = df_matched.rename(columns={'anat_label': 'anat_label_01', 'ns_label': 'ns_label_01', 'ns_index': 'ns_index_01',
-                                            'anat_label_ref': 'anat_label_04', 'ns_index_ref': 'ns_index_04'})
-
+    # Rename columns for clarity
+    df_matched = df_matched.rename(columns={
+        'anat_label': 'anat_label_01',
+        'ns_label': 'ns_label_01',
+        'ns_index': 'ns_index_01',
+        'anat_label_ref': 'anat_label_04',
+        'ns_index_ref': 'ns_index_04'
+    })
+    
     # Prepare output array
     referenced_lfp = []
     
@@ -268,7 +283,7 @@ def referencing(lfp, channels):
 
 
 def extract_ripples_from_one_session(session, save_all = False):
-    # import pdb; pdb.set_trace()
+    # 
     # first load behaviour
     sesh = f"{session:02}"
     beh_dict = load_behaviour(session)
@@ -292,7 +307,9 @@ def extract_ripples_from_one_session(session, save_all = False):
         lfp_snippet = np.load(lfp_snippet_path)
         # first, reference the central hippocampal contact with a contact
         # further away (04)
-        lfp_snippet_ref, matched_channels = referencing(lfp_snippet, hippocampal_channels)
+        
+        lfp_snippet_ref, matched_channels = referencing(lfp_snippet, hippocampal_channels, session_config['recording_site'])
+        
         power_dict[basename] = time_frequ_rep_morlet_one_rep(lfp_snippet_ref)
         ripple_df_curr_snippet = extract_ripple_from_one_rep(power_dict[basename]['LFP_mean_power'],matched_channels, basename)
         ripple_df = pd.concat([ripple_df, ripple_df_curr_snippet], ignore_index=True)
