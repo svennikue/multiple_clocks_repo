@@ -200,6 +200,8 @@ def identify_channels_i_want(config, beh):
         electrode_labels = pd.read_csv(electrode_labels_path, header=None, names=["labels", "ns_index"])
         for idx, row in electrode_labels.iterrows():
             if 'HIP' in row['labels']:
+                if np.isnan(row['ns_index']):
+                    continue
                 if '1' in row['labels'] or '4' in row['labels']:
                     new_row = {
                     "anat_label": row['labels'],
@@ -309,7 +311,12 @@ def extract_ripples_from_one_session(session, save_all = False):
         # further away (04)
         
         lfp_snippet_ref, matched_channels = referencing(lfp_snippet, hippocampal_channels, session_config['recording_site'])
-        
+        if save_all == True:
+            # store the referenced data and the new channels.
+            ref_lfp_name = f"{beh_dict['LFP_path']}/derivatives/s{sesh}/LFP/ref_{basename}"
+            np.save(ref_lfp_name, np.squeeze(lfp_snippet_ref))
+            matched_channels.to_csv(f"{beh_dict['LFP_path']}/derivatives/s{sesh}/LFP/matched_channels_{basename}.csv", index=False)
+
         power_dict[basename] = time_frequ_rep_morlet_one_rep(lfp_snippet_ref)
         ripple_df_curr_snippet = extract_ripple_from_one_rep(power_dict[basename]['LFP_mean_power'],matched_channels, basename)
         ripple_df = pd.concat([ripple_df, ripple_df_curr_snippet], ignore_index=True)
@@ -349,7 +356,7 @@ def extract_ripples_from_one_session(session, save_all = False):
 if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     extract_ripples_from_one_session(
-        session=5,
+        session=2,
         save_all = True
     )
 

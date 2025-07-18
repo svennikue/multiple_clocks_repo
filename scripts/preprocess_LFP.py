@@ -123,6 +123,7 @@ def load_behaviour(sesh):
     df_beh = df_beh[df_beh.groupby('grid_no')['rep_correct'].transform(lambda x: (x == 9).any())]
     behaviour_dict['beh'] = df_beh
     print(f"loaded behavioural file: {path_to_beh}")
+    import pdb; pdb.set_trace()
     return(behaviour_dict)
 
     
@@ -177,7 +178,7 @@ def preprocess_one_session(session, save_all = False):
         
     session_config = config.get(session_id)
     print(f"session is {session_id}, recording site is {session_config['recording_site']}")
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     if session_config['recording_site'] == 'baylor' or session_config['recording_site'] == 'utah':
         lfp_files= glob.glob(os.path.join(f"{beh_dict['LFP_path']}/s{session_id}/LFP", f"*.ns{session_config['LFP_file_format']}"))
         print(f"found n = {len(lfp_files)} lfp files in the folder {beh_dict['LFP_path']}/s{session_id}/LFP")
@@ -284,8 +285,8 @@ def preprocess_one_session(session, save_all = False):
 if __name__ == "__main__":
     # For debugging, bypass Fire and call preprocess_one_session directly.
     preprocess_one_session(
-        session=27,
-        save_all = False
+        session=4,
+        save_all = True
     )
     
     
