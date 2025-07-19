@@ -73,7 +73,26 @@ def store_LFP_snippet(file, idx, config, start, end, save_at=False, file_name=Fa
     len_block = []
     if store_block_len == True:
         len_block = raw_file_lazy.t_stop.magnitude
-    
+    if raw_file_lazy.t_stop > 10000:
+        # import pdb; pdb.set_trace()
+        
+        # ok i dont actually know what this is...
+        # it seems like the times just start randomly at some point
+        # if I do raw_file_lazy.t_stop - raw_file_lazy.t_start, I get a sensible time
+        # but I don't really know how to deal with that
+        len_block = raw_file_lazy.t_stop.magnitude - raw_file_lazy.t_start.magnitude
+        start = start+ raw_file_lazy.t_start.item()
+        end = end+ raw_file_lazy.t_start.item()
+        
+        
+        
+        # no this was wrong
+        # then the file has been sampled not in seconds but in samples
+        # so get sampling frequency, and multiply by timings.
+        # start = start*config['sampling_rate']
+        # end = end*config['sampling_rate']
+        
+            
     load_sample = 0
     num_samples = raw_file_lazy.analogsignals[load_sample].shape
     if num_samples[0] < 100:
@@ -123,7 +142,7 @@ def load_behaviour(sesh):
     df_beh = df_beh[df_beh.groupby('grid_no')['rep_correct'].transform(lambda x: (x == 9).any())]
     behaviour_dict['beh'] = df_beh
     print(f"loaded behavioural file: {path_to_beh}")
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     return(behaviour_dict)
 
     
@@ -197,7 +216,7 @@ def preprocess_one_session(session, save_all = False):
     elif len(lfp_files) > 1:
         lfp_files = sort_block_files(lfp_files, session_config['blocks'])
         for idx_file, lfp_file in enumerate(lfp_files):
-            if 'blk-01' in lfp_file:
+            if idx_file == 0:
                 print(f"Now starting to load and downsample LFP data to {downsampled_sampling_rate} Hz per task repeat, block 1...")
                 # first filter for only block 1.
                 curr_block_beh = beh_dict['beh'][beh_dict['beh']['session_no']==1].reset_index(drop=True)
@@ -225,7 +244,7 @@ def preprocess_one_session(session, save_all = False):
                  # delete this once you are done.
                  # import pdb; pdb.set_trace()
                  print(f"block one was {first_block_secs} secs, next grid repeat at {curr_block_beh['new_grid_onset'].iloc[0]}")
-                 print(f"difference is {curr_block_beh['new_grid_onset'].iloc[0] -  first_block_secs} secs, I reset to 0.")
+                 print(f"difference is {curr_block_beh['new_grid_onset'].iloc[0] -  first_block_secs} secs.")
                  for idx, row in curr_block_beh.iterrows():
                      if idx % 10 == 0:
                          print(f"Processing LFP snippet {idx}, block 2")
@@ -251,7 +270,7 @@ def preprocess_one_session(session, save_all = False):
                  # delete this once you are done.
                  # import pdb; pdb.set_trace()
                  print(f"block one and two were {first_block_secs+seconds_block_secs} secs, next grid repeat at {curr_block_beh['new_grid_onset'].iloc[0]}")
-                 print(f"difference is {curr_block_beh['new_grid_onset'].iloc[0] -  (first_block_secs+seconds_block_secs)} secs, I reset to 0.")
+                 print(f"difference is {curr_block_beh['new_grid_onset'].iloc[0] -  (first_block_secs+seconds_block_secs)} secs")
                  for idx, row in curr_block_beh.iterrows():
                      if idx % 10 == 0:
                          print(f"Processing LFP snippet {idx}, block 3")
@@ -274,20 +293,20 @@ def preprocess_one_session(session, save_all = False):
     
     
 
-# # if running from command line, use this one!   
-# if __name__ == "__main__":
-#     fire.Fire(preprocess_one_session)
-#     # call this script like
-#     # python preprocess_LFP.py 5 --save_all='TRUE'
-
-
-
+# if running from command line, use this one!   
 if __name__ == "__main__":
-    # For debugging, bypass Fire and call preprocess_one_session directly.
-    preprocess_one_session(
-        session=4,
-        save_all = True
-    )
+    fire.Fire(preprocess_one_session)
+    # call this script like
+    # python preprocess_LFP.py 5 --save_all='TRUE'
+
+
+
+# if __name__ == "__main__":
+#     # For debugging, bypass Fire and call preprocess_one_session directly.
+#     preprocess_one_session(
+#         session=31,
+#         save_all = True
+#     )
     
     
     
