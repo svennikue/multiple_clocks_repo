@@ -293,20 +293,20 @@ def preprocess_one_session(session, save_all = False):
     
     
 
-# if running from command line, use this one!   
-if __name__ == "__main__":
-    fire.Fire(preprocess_one_session)
-    # call this script like
-    # python preprocess_LFP.py 5 --save_all='TRUE'
-
-
-
+# # if running from command line, use this one!   
 # if __name__ == "__main__":
-#     # For debugging, bypass Fire and call preprocess_one_session directly.
-#     preprocess_one_session(
-#         session=31,
-#         save_all = True
-#     )
+#     fire.Fire(preprocess_one_session)
+#     # call this script like
+#     # python preprocess_LFP.py 5 --save_all='TRUE'
+
+
+
+if __name__ == "__main__":
+    # For debugging, bypass Fire and call preprocess_one_session directly.
+    preprocess_one_session(
+        session=33,
+        save_all = True
+    )
     
     
     
