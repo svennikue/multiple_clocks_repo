@@ -57,7 +57,7 @@ def get_data(sub, models_I_want=False, only_repeats_included=False, randomised_r
         file_name = f"prep_data_for_regression_random_rew_order"
     if only_repeats_included:
         file_name = f"{file_name}_reps_{only_repeats_included[0]}-{only_repeats_included[-1]}"
-    
+    import pdb; pdb.set_trace() 
     return data, group_dir, file_name
     
 
@@ -551,35 +551,35 @@ def compute_one_subject(sub, models_I_want, only_repeats_included, randomised_re
 
  
     
-# # # if running from command line, use this one!   
-if __name__ == "__main__":
-    #print(f"starting regression for subject {sub}")
-    fire.Fire(compute_one_subject)
-    # call this script like
-    # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
+# # # # if running from command line, use this one!   
+# if __name__ == "__main__":
+#     #print(f"starting regression for subject {sub}")
+#     fire.Fire(compute_one_subject)
+#     # call this script like
+#     # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
 
 # ['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']
 # ['only','onlynowand3future', 'onlynextand2future']
 
-# if __name__ == "__main__":
-#     # For debugging, bypass Fire and call compute_one_subject directly.
-#     compute_one_subject(
-#         sub=53,
-#         #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
-#         models_I_want=['onlynowand3future', 'onlynextand2future'],
-#         only_repeats_included=[1,2,3,4,5,6,7,8,9,10], # i want: [0,1] and [1,2,3,4,5] and [6,7,8,9,10]
-#         randomised_reward_locations=False,
-#         save_regs=True,
-#         fit_binned='by_state', # 'by_loc_change', 'by_state', 'by_state_loc_change'
-#         fit_residuals=False,
-#         # fit_binned='by_state_loc_change' # 'by_loc_change', 'by_state', 'by_state_loc_change'
-#         # introduce a fit residuals options!
-#         # bin_pre_corr='by_state',
-#         avg_across_runs=True,
-#         # comp_loc_perms=100, # since with 6 grids, I can only get !6 = 265 unique perms
-#         # comp_time_perms=10
-#         # comp_circular_perms=100
-#     )
+if __name__ == "__main__":
+    # For debugging, bypass Fire and call compute_one_subject directly.
+    compute_one_subject(
+        sub=15,
+        #models_I_want=['withoutnow', 'onlynowand3future', 'onlynextand2future'],
+        models_I_want=['onlynowand3future', 'onlynextand2future'],
+        only_repeats_included=[1,2,3,4,5,6,7,8,9,10], # i want: [0,1] and [1,2,3,4,5] and [6,7,8,9,10]
+        randomised_reward_locations=False,
+        save_regs=True,
+        fit_binned='by_state', # 'by_loc_change', 'by_state', 'by_state_loc_change'
+        fit_residuals=False,
+        # fit_binned='by_state_loc_change' # 'by_loc_change', 'by_state', 'by_state_loc_change'
+        # introduce a fit residuals options!
+        # bin_pre_corr='by_state',
+        avg_across_runs=True,
+        # comp_loc_perms=100, # since with 6 grids, I can only get !6 = 265 unique perms
+        # comp_time_perms=10
+        # comp_circular_perms=100
+    )
 
 
 # these are hard-coded right now, so include them in the 'only' + models list 'state_reg', 'complete_musicbox_reg', 'reward_musicbox_reg', 'location_reg'
