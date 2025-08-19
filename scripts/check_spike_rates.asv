@@ -1,0 +1,618 @@
+%% Script to analyse the goodness of spike sorting/ reliability of cell
+%% 18th of August 2025
+%%
+
+clear all
+do_plot = false;  % toggle plotting
+
+source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
+if ~exist(source_dir, 'dir')
+    source_dir = '/ceph/behrens/svenja/human_ABCD_ephys'
+    %abcd_data = load(sprintf("%s/beh_cells/abcd_data_FIXED_19-Feb-2025.mat", source_dir));
+    abcd_data = load(sprintf("%s/beh_cells/abcd_data_24-Apr-2025.mat", source_dir));
+    
+else
+    %abcd_data = load(sprintf("%s/abcd_data_FIXED_19-Feb-2025.mat", source_dir));
+    abcd_data = load(sprintf("%s/abcd_data_10-Jul-2025.mat", source_dir));
+end
+
+deriv_dir = sprintf("%s/derivatives/", source_dir);
+
+
+function bad_summary = check_spike_quality_bygrid(abcd_data, varargin)
+% CHECK_SPIKE_QUALITY_BYGRID
+% Evaluate spike-rate stability within behavior-defined trial windows, grouped by grid_num.
+%
+% Data layout assumed:
+%   - Subjects: abcd_data.abcd_data(sub)
+%   - Cells:    abcd_data.abcd_data(sub).neural_data(cell_idx).spikeTimes   (seconds)
+%   - Trials:   abcd_data.abcd_data(sub).trial_vars(t)
+%       * trial_vars(t).grid_onset_timestamp(1)   -> trial start (seconds)
+%       * trial_vars(t).end_trial_timestamp       -> trial end   (seconds)
+%       * trial_vars(t).grid_num                  -> grid identifier (scalar)
+%
+% Logic:
+%   For each subject & cell & grid_num:
+%     - Baseline FR = (total spikes in all trials of that grid) / (total duration of those trials)
+%     - A trial is "bad" if its FR < ThresholdFrac * Baseline FR
+%
+% Parameters (Name-Value):
+%   'ThresholdFrac'  : default 0.20 (i.e., 20% of baseline FR)
+%   'MinTrialDur'    : default 0.050 s (skip trials shorter than this)
+%   'CellIndices'    : [] (all cells); vector of indices if you want subset per subject
+%   'GridFilter'     : [] (all grids); numeric array of grid_num values to include
+%
+% Returns:
+%   bad_summary : struct array with fields:
+%     subject, cell_index, grid_num, baseline_FR_Hz, n_trials, n_bad_trials,
+%     pct_trials_bad, bad_trial_ids, bad_trial_FRs_Hz, bad_trial_durations_s
+%
+% Notes:
+%   - Trial windows are treated as [start, end) in seconds.
+%   - Trials with NaNs/Inf or non-positive duration are ignored.
+%   - No output is printed for stable cells; a summary is printed only for cells with any bad trials.
+
+% ----------------- Parameters -----------------
+p = inputParser;
+addParameter(p, 'ThresholdFrac', 0.20, @(x) isnumeric(x) && x > 0 && x < 1);
+addParameter(p, 'MinTrialDur', 0.050, @(x) isnumeric(x) && x >= 0); % seconds
+addParameter(p, 'CellIndices', [], @(x) isempty(x) || isnumeric(x));
+addParameter(p, 'GridFilter', [], @(x) isempty(x) || isnumeric(x));
+parse(p, varargin{:});
+
+thr_frac   = p.Results.ThresholdFrac;
+min_dur    = p.Results.MinTrialDur;
+cell_mask  = p.Results.CellIndices;
+grid_allow = p.Results.GridFilter;
+
+% ----------------- Output container -----------------
+bad_summary = struct( ...
+    'subject', {}, ...
+    'cell_index', {}, ...
+    'grid_num', {}, ...
+    'baseline_FR_Hz', {}, ...
+    'n_trials', {}, ...
+    'n_bad_trials', {}, ...
+    'pct_trials_bad', {}, ...
+    'bad_trial_ids', {}, ...
+    'bad_trial_FRs_Hz', {}, ...
+    'bad_trial_durations_s', {} );
+
+% ----------------- Main loops -----------------
+subject_list = 1:length(abcd_data.abcd_data);
+
+for sub = subject_list
+    subj = abcd_data.abcd_data(sub);
+
+    % Trials table/struct
+    if ~isfield(subj, 'trial_vars') || isempty(subj.trial_vars)
+        continue
+    end
+    trial_vars = subj.trial_vars(:);
+    T = numel(trial_vars);
+
+    % Extract trial timing + grid numbers once
+    starts = nan(T,1);
+    ends   = nan(T,1);
+    grids  = nan(T,1);
+    for t = 1:T
+        % Safety against missing fields or empty values
+        try
+            s = trial_vars(t).grid_onset_timestamp(1);
+        catch
+            s = NaN;
+        end
+        try
+            e = trial_vars(t).end_trial_timestamp;
+        catch
+            e = NaN;
+        end
+        try
+            g = trial_vars(t).grid_num;
+        catch
+            g = NaN;
+        end
+        starts(t) = s;
+        ends(t)   = e;
+        grids(t)  = g;
+    end
+
+    % Valid trials (finite, start < end, min duration)
+    durs = ends - starts;
+    valid_trials = isfinite(starts) & isfinite(ends) & isfinite(grids) & (durs > min_dur);
+
+    if ~any(valid_trials)
+        continue
+    end
+
+    % Unique grids (optionally filtered)
+    grid_list = unique(grids(valid_trials));
+    if ~isempty(grid_allow)
+        grid_list = intersect(grid_list, grid_allow);
+    end
+    if isempty(grid_list)
+        continue
+    end
+
+    % Cells in this subject
+    if ~isfield(subj, 'neural_data') || isempty(subj.neural_data)
+        continue
+    end
+    nCells = numel(subj.neural_data);
+    if isempty(cell_mask)
+        cell_indices = 1:nCells;
+    else
+        % clamp to available cells for this subject
+        cell_indices = intersect(1:nCells, cell_mask(:).');
+    end
+
+    for cell_idx = cell_indices
+        if ~isfield(subj.neural_data(cell_idx), 'spikeTimes')
+            continue
+        end
+        spikes = subj.neural_data(cell_idx).spikeTimes(:);
+        spikes = spikes(isfinite(spikes));
+        if isempty(spikes)
+            continue
+        end
+        spikes = sort(spikes);
+
+        % ---- Evaluate per grid ----
+        for gi = 1:numel(grid_list)
+            g = grid_list(gi);
+            trial_sel = valid_trials & (grids == g);
+            if ~any(trial_sel)
+                continue
+            end
+
+            trial_ids = find(trial_sel);
+            % Baseline across all trials of this grid: total spikes / total time
+            total_spikes = 0;
+            total_time   = 0;
+
+            % Per-trial FR storage
+            trial_FRs = nan(numel(trial_ids),1);
+            trial_dur = nan(numel(trial_ids),1);
+
+            for k = 1:numel(trial_ids)
+                t = trial_ids(k);
+                t0 = starts(t);
+                t1 = ends(t);
+                dur = t1 - t0;
+
+                % Count spikes in [t0, t1)
+                % Using logical indexing is clear and robust:
+                nsp = sum(spikes >= t0 & spikes < t1);
+
+                total_spikes = total_spikes + nsp;
+                total_time   = total_time + dur;
+
+                trial_dur(k) = dur;
+                trial_FRs(k) = nsp / dur;  % Hz
+            end
+
+            if total_time <= 0
+                continue
+            end
+
+            baseline_FR = total_spikes / total_time;         % Hz
+            thr = thr_frac * baseline_FR;
+
+            bad_mask = trial_FRs < thr;
+            if any(bad_mask)
+                bad_ids  = trial_ids(bad_mask);
+                bad_frs  = trial_FRs(bad_mask);
+                bad_durs = trial_dur(bad_mask);
+
+                bad_summary(end+1) = struct( ... %#ok<AGROW>
+                    'subject', sub, ...
+                    'cell_index', cell_idx, ...
+                    'grid_num', g, ...
+                    'baseline_FR_Hz', baseline_FR, ...
+                    'n_trials', numel(trial_ids), ...
+                    'n_bad_trials', numel(bad_ids), ...
+                    'pct_trials_bad', 100*numel(bad_ids)/numel(trial_ids), ...
+                    'bad_trial_ids', bad_ids, ...
+                    'bad_trial_FRs_Hz', bad_frs, ...
+                    'bad_trial_durations_s', bad_durs);
+            end
+        end
+    end
+end
+
+% ----------------- Print final summary (only bad) -----------------
+if isempty(bad_summary)
+    fprintf('All cells appear stable across behavioural epochs at %.0f%% threshold.\n', thr_frac*100);
+else
+    fprintf('Unreliable cells across behavioural epochs (threshold %.0f%% of grid baseline FR):\n', thr_frac*100);
+    for i = 1:numel(bad_summary)
+        B = bad_summary(i);
+        fprintf('  Subject %d, Cell %d, Grid %g: baseline FR = %.3f Hz | bad trials %d/%d (%.1f%%)\n', ...
+            B.subject, B.cell_index, B.grid_num, B.baseline_FR_Hz, ...
+            B.n_bad_trials, B.n_trials, B.pct_trials_bad);
+
+        % Show a few example bad trials
+        showN = min(5, numel(B.bad_trial_ids));
+        for j = 1:showN
+            fprintf('    - Trial %d: FR = %.3f Hz, dur = %.3f s\n', ...
+                B.bad_trial_ids(j), B.bad_trial_FRs_Hz(j), B.bad_trial_durations_s(j));
+        end
+        if numel(B.bad_trial_ids) > showN
+            fprintf('    ... (%d more bad trials)\n', numel(B.bad_trial_ids) - showN);
+        end
+    end
+end
+end
+
+% % Default: 20% threshold, all cells, all grids
+% bad_cells = check_spike_quality_bygrid(abcd_data);
+% 
+% % Stricter threshold, only some grids (e.g., grids 3 and 7)
+% bad_cells = check_spike_quality_bygrid(abcd_data, 'ThresholdFrac', 0.15, 'GridFilter', [3 7]);
+
+% Only evaluate a subset of cells (e.g., first 200)
+% bad_cells = check_spike_quality_bygrid(abcd_data, 'CellIndices', 1:50);
+
+
+function plot_spikerate_bygrid(abcd_data, varargin)
+% PLOT_SPIKERATE_BYGRID
+% For each subject in abcd_data.abcd_data:
+%   - Compute each cell's mean firing rate (FR) across the whole task window:
+%       [min(grid_onset_timestamp(1)), max(end_trial_timestamp)]
+%   - Compute each cell's mean FR per grid (group trials by grid_num)
+%   - Plot per subject:
+%       * per-grid FR per cell (solid line with markers)
+%       * overall FR per cell (dashed horizontal line)
+%
+% Assumed data layout:
+%   abcd_data.abcd_data(sub).neural_data(cell_idx).spikeTimes  (seconds)
+%   abcd_data.abcd_data(sub).trial_vars(t).grid_onset_timestamp(1) (s)
+%   abcd_data.abcd_data(sub).trial_vars(t).end_trial_timestamp     (s)
+%   abcd_data.abcd_data(sub).trial_vars(t).grid_num                (scalar)
+%
+% Name-Value options:
+%   'Subjects'     : [] (all subjects) or vector of subject indices to plot
+%   'MinTrialDur'  : 0.050  (skip trials shorter than this; seconds)
+%   'LineWidth'    : 1.2
+%   'MarkerSize'   : 4
+%
+% Figures:
+%   - Groups subjects 10 per figure as 2x5 subplots.
+
+% ----------------- Parameters -----------------
+p = inputParser;
+addParameter(p, 'Subjects', [], @(x) isempty(x) || isnumeric(x));
+addParameter(p, 'MinTrialDur', 0.050, @(x) isnumeric(x) && x >= 0);
+addParameter(p, 'LineWidth', 1.2, @(x) isnumeric(x) && x > 0);
+addParameter(p, 'MarkerSize', 4, @(x) isnumeric(x) && x > 0);
+parse(p, varargin{:});
+
+min_dur   = p.Results.MinTrialDur;
+lw        = p.Results.LineWidth;
+ms        = p.Results.MarkerSize;
+
+if ~isfield(abcd_data, 'abcd_data') || isempty(abcd_data.abcd_data)
+    warning('No abcd_data.abcd_data found.');
+    return
+end
+
+S_all = 1:numel(abcd_data.abcd_data);
+if isempty(p.Results.Subjects)
+    subjects = S_all;
+else
+    subjects = intersect(S_all, p.Results.Subjects(:).');
+end
+if isempty(subjects)
+    warning('No valid subjects to plot.');
+    return
+end
+
+% ------------- Helper for colors per subject -------------
+get_colors = @(n) lines(max(n,1));   % exactly n colors (works for any n)
+
+% ------------- Layout across figures (10 subplots/figure) -------------
+subs_per_fig = 10;
+nFigs = ceil(numel(subjects)/subs_per_fig);
+
+for f = 1:nFigs
+    fig_subs = subjects( (1 + (f-1)*subs_per_fig) : min(f*subs_per_fig, numel(subjects)) );
+    figure('Name', sprintf('Spike rate per grid — subjects %d–%d (fig %d/%d)', ...
+        fig_subs(1), fig_subs(end), f, nFigs), 'Color', 'w');
+
+    for si = 1:numel(fig_subs)
+        sub = fig_subs(si);
+        subj = abcd_data.abcd_data(sub);
+
+        % ----- Gather trials -----
+        if ~isfield(subj, 'trial_vars') || isempty(subj.trial_vars)
+            continue
+        end
+        trial_vars = subj.trial_vars(:);
+        T = numel(trial_vars);
+
+        starts = nan(T,1);
+        ends   = nan(T,1);
+        grids  = nan(T,1);
+
+        for t = 1:T
+            % Be robust to missing fields/empty arrays
+            try s = trial_vars(t).grid_onset_timestamp(1); catch, s = NaN; end
+            try e = trial_vars(t).end_trial_timestamp;     catch, e = NaN; end
+            try g = trial_vars(t).grid_num;                catch, g = NaN; end
+            starts(t) = s;
+            ends(t)   = e;
+            grids(t)  = g;
+        end
+
+        durs = ends - starts;
+        valid_trials = isfinite(starts) & isfinite(ends) & isfinite(grids) & (durs > min_dur);
+        if ~any(valid_trials)
+            continue
+        end
+
+        % Entire task window
+        task_t0 = min(starts(valid_trials));
+        task_t1 = max(ends(valid_trials));
+        task_dur = task_t1 - task_t0;
+        if task_dur <= 0
+            continue
+        end
+
+        % Order grids by the median trial start time to reflect sequence of completion
+        grids_valid = grids(valid_trials);
+        starts_valid = starts(valid_trials);
+        ug = unique(grids_valid);
+        % Compute a time-order for grids
+        grid_order_time = zeros(size(ug));
+        for gi = 1:numel(ug)
+            mask = (grids_valid == ug(gi));
+            grid_order_time(gi) = median(starts_valid(mask));
+        end
+        [~, order_idx] = sort(grid_order_time);
+        grid_list = ug(order_idx);
+        xvals = 1:numel(grid_list); % "amount of tasks solved"
+
+        % Cells
+        if ~isfield(subj, 'neural_data') || isempty(subj.neural_data)
+            continue
+        end
+        nCells = numel(subj.neural_data);
+        Cmap = get_colors(nCells);
+        if size(Cmap,1) < nCells, Cmap = hsv(nCells); end
+
+        % Preallocate per-cell arrays for y-limit decision
+        all_vals_this_subject = [];
+
+        % Compute per-cell metrics
+        percell_overallFR = nan(nCells,1);
+        percell_gridFR = nan(nCells, numel(grid_list));
+
+        % Count spikes efficiently per cell
+        for c = 1:nCells
+            if ~isfield(subj.neural_data(c), 'spikeTimes') || isempty(subj.neural_data(c).spikeTimes)
+                continue
+            end
+            spikes = subj.neural_data(c).spikeTimes(:);
+            spikes = spikes(isfinite(spikes));
+            if isempty(spikes), continue; end
+            spikes = sort(spikes);
+
+            % Overall FR across whole task
+            n_all = sum(spikes >= task_t0 & spikes < task_t1);
+            FR_overall = n_all / task_dur; % Hz
+            percell_overallFR(c) = FR_overall;
+
+            % Per-grid FRs
+            for gi = 1:numel(grid_list)
+                g = grid_list(gi);
+                mask = valid_trials & (grids == g);
+                if ~any(mask)
+                    percell_gridFR(c,gi) = NaN;
+                    continue
+                end
+                % Sum spikes and durations across trials for this grid
+                total_spk = 0;
+                total_dur = 0;
+                idx = find(mask);
+                for k = 1:numel(idx)
+                    t = idx(k);
+                    t0 = starts(t); t1 = ends(t);
+                    total_spk = total_spk + sum(spikes >= t0 & spikes < t1);
+                    total_dur = total_dur + (t1 - t0);
+                end
+                if total_dur > 0
+                    percell_gridFR(c,gi) = total_spk / total_dur; % Hz
+                else
+                    percell_gridFR(c,gi) = NaN;
+                end
+            end
+
+            all_vals_this_subject = [all_vals_this_subject; FR_overall; percell_gridFR(c,:).']; %#ok<AGROW>
+        end
+
+        % ----- Plotting for this subject -----
+        subplot(2,5,si);
+        hold on
+
+        % y-limits: 0–2 unless higher values exist
+        ymax = 2;
+        if any(isfinite(all_vals_this_subject))
+            ymax = max(2, nanmax(all_vals_this_subject));
+        end
+        % add 5% headroom if >2
+        if ymax > 2, ymax = 1.05 * ymax; end
+
+        % plot per-grid FR (solid with markers) and overall FR (dashed horizontal)
+        for c = 1:nCells
+            y_grid = percell_gridFR(c,:);
+            if all(isnan(y_grid)) && isnan(percell_overallFR(c))
+                continue
+            end
+            col = Cmap( 1 + mod(c-1, size(Cmap,1)), :);
+            % per-grid
+            plot(xvals, y_grid, '-', 'LineWidth', lw, 'Color', col);
+            plot(xvals, y_grid, '.', 'MarkerSize', ms, 'Color', col);
+            % overall (same color, dashed)
+            if ~isnan(percell_overallFR(c))
+                y = percell_overallFR(c);
+                plot([xvals(1), xvals(end)], [y, y], '--', 'LineWidth', lw, 'Color', col);
+            end
+        end
+
+        % Axes/labels
+        ylim([0, ymax]);
+        xlim([1, max(1, numel(xvals))]);
+        xticks(xvals);
+        xlabel('Tasks solved (unique grids)');
+        ylabel('Spike rate (Hz)');
+        title(sprintf('Subject %d: %d cells, %d grids', sub, nCells, numel(grid_list)));
+
+        % Legend: only if not overcrowded
+        if nCells <= 12
+            leg_entries = arrayfun(@(c) sprintf('Cell %d', c), 1:nCells, 'UniformOutput', false);
+            legend(leg_entries, 'Location', 'northeastoutside', 'Box', 'off');
+        end
+
+        grid on
+        box off
+        hold off
+    end
+
+    % Tight layout-ish
+    sgtitle(sprintf('Spike rate per grid (overall dashed) — Figure %d/%d', f, nFigs));
+end
+end
+
+% Basic
+plot_spikerate_bygrid(abcd_data);
+
+% Specific subjects, thicker lines, bigger markers
+% plot_spikerate_bygrid(abcd_data, 'Subjects', 1:20, 'LineWidth', 1.6, 'MarkerSize', 6);
+
+
+
+
+
+% function bad_summary = check_spike_stability_abcd(abcd_data, varargin)
+% % CHECK_SPIKE_STABILITY_ABCD
+% % Loop through subjects and their cells in abcd_data.abcd_data.
+% % Each cell has spike times in seconds:
+% %   abcd_data.abcd_data(sub).neural_data(cell_idx).spikeTimes
+% %
+% % Parameters (optional, name-value pairs):
+% %   'ChunkMinutes'   -> chunk length in minutes (default 5)
+% %   'ThresholdFrac'  -> threshold fraction of mean FR (default 0.20)
+% %
+% % Returns struct 'bad_summary' with info only for unreliable cells.
+% 
+% % ----------------- Parameters -----------------
+% p = inputParser;
+% addParameter(p, 'ChunkMinutes', 5, @(x) isnumeric(x) && x > 0);
+% addParameter(p, 'ThresholdFrac', 0.20, @(x) isnumeric(x) && x > 0 && x < 1);
+% parse(p, varargin{:});
+% 
+% chunk_len = p.Results.ChunkMinutes * 60; % seconds
+% thresh_frac = p.Results.ThresholdFrac;
+% 
+% % ----------------- Initialize -----------------
+% bad_summary = struct( ...
+%     'subject', {}, ...
+%     'cell_index', {}, ...
+%     'mean_FR_Hz', {}, ...
+%     'n_chunks', {}, ...
+%     'n_bad_chunks', {}, ...
+%     'pct_chunks_bad', {}, ...
+%     'bad_chunk_ranges_s', {});
+% 
+% 
+% % subject_list = 1:length(abcd_data.abcd_data);
+% subject_list = 1:3;
+% 
+% 
+% % ----------------- Main loop -----------------
+% for sub = subject_list
+%     subj = abcd_data.abcd_data(sub);
+% 
+%     for cell_idx = 1:length(subj.neural_data)
+%         curr_cell_spike_times = subj.neural_data(cell_idx).spikeTimes(:);
+%         curr_cell_spike_times = curr_cell_spike_times(~isnan(curr_cell_spike_times) & isfinite(curr_cell_spike_times));
+%         curr_cell_spike_times = sort(curr_cell_spike_times);
+% 
+%         if isempty(curr_cell_spike_times)
+%             continue
+%         end
+% 
+%         % Recording assumed to be from 0 → last spike
+%         t0 = 0;
+%         t_end = max(curr_cell_spike_times);
+%         rec_dur = t_end - t0;
+%         if rec_dur <= 0
+%             continue
+%         end
+% 
+%         % Mean firing rate (Hz)
+%         mean_fr = numel(curr_cell_spike_times) / rec_dur;
+% 
+%         % Chunk edges
+%         edges = t0:chunk_len:t_end;
+%         if edges(end) < t_end
+%             edges = [edges, t_end];
+%         end
+% 
+%         % Firing rate per chunk
+%         counts = histcounts(curr_cell_spike_times, edges);
+%         durations = diff(edges);
+%         chunk_fr = counts ./ durations;
+% 
+%         % Check which chunks are "bad"
+%         thr = thresh_frac * mean_fr;
+%         bad_idx = find(chunk_fr < thr);
+% 
+%         if ~isempty(bad_idx)
+%             bad_ranges = [edges(bad_idx).', edges(bad_idx+1).'];
+%             pct_bad = 100 * numel(bad_idx) / numel(chunk_fr);
+% 
+%             bad_summary(end+1) = struct( ... %#ok<AGROW>
+%                 'subject', sub, ...
+%                 'cell_index', cell_idx, ...
+%                 'mean_FR_Hz', mean_fr, ...
+%                 'n_chunks', numel(chunk_fr), ...
+%                 'n_bad_chunks', numel(bad_idx), ...
+%                 'pct_chunks_bad', pct_bad, ...
+%                 'bad_chunk_ranges_s', bad_ranges);
+%         end
+%     end
+% end
+% 
+% % ----------------- Print summary -----------------
+% if isempty(bad_summary)
+%     fprintf('All cells appear stable at %.0f%% threshold (chunk = %.1f min).\n', ...
+%         thresh_frac*100, chunk_len/60);
+% else
+%     fprintf('Unreliable cells (threshold %.0f%% of mean FR; chunk = %.1f min):\n', ...
+%         thresh_frac*100, chunk_len/60);
+%     for i = 1:numel(bad_summary)
+%         B = bad_summary(i);
+%         fprintf('  Subject %d, Cell %d: mean FR = %.3f Hz | bad chunks %d/%d (%.1f%%)\n', ...
+%             B.subject, B.cell_index, B.mean_FR_Hz, ...
+%             B.n_bad_chunks, B.n_chunks, B.pct_chunks_bad);
+% 
+%         % Show up to 5 bad chunks
+%         showN = min(5, size(B.bad_chunk_ranges_s,1));
+%         for j = 1:showN
+%             r = B.bad_chunk_ranges_s(j,:);
+%             fprintf('    - [%.1f s, %.1f s)\n', r(1), r(2));
+%         end
+%         if size(B.bad_chunk_ranges_s,1) > showN
+%             fprintf('    ... (%d more)\n', size(B.bad_chunk_ranges_s,1)-showN);
+%         end
+%     end
+% end
+% end
+% 
+% 
+% 
+% bad_cells = check_spike_stability_abcd(abcd_data);
+% 
+% % with custom chunk size / threshold
+% bad_cells = check_spike_stability_abcd(abcd_data, 'ChunkMinutes', 10, 'ThresholdFrac', 0.15);

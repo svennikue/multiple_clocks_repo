@@ -13,6 +13,7 @@
 % behaviour_all(1,10) = new_grid_onset
 % behaviour_all(1,11) = recording ??
 % behaviour_all(1,12) = grid_no
+% behaviour_all(1,13) = trial_correct
 
 clear all
 source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
@@ -59,11 +60,13 @@ for sub = 1:length(subject_list)
     trial_rep_in_grid = [subj.trial_vars.trial_num_in_grid]';
     session_no = [subj.trial_vars.session_num]';
     end_trials = [subj.trial_vars.end_trial_timestamp]';
+    trial_correct = [subj.trial_vars.trial_correct]';
+
     
     new_trial_onset = [arrayfun(@(s) s.grid_onset_timestamp(1), subj.trial_vars)]';
     %new_trial_onset = [subj.trial_vars(1).rule_onset_timestamp;end_trials(1:end-1,:)];
 
-    behaviour_all = [trial_rep_in_grid_correct, t_found_reward, configurations, trial_rep_in_grid, new_trial_onset, session_no, grid_num];
+    behaviour_all = [trial_rep_in_grid_correct, t_found_reward, configurations, trial_rep_in_grid, new_trial_onset, session_no, grid_num, trial_correct];
 
 
     % NOW FIGURE OUT HOW TO PUT IT ALL TOGETHER

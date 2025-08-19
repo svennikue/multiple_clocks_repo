@@ -78,7 +78,46 @@ def button_change_indices(buttons):
     changes = np.where(arr[:-1] != arr[1:])[0] + 1
     return changes
     
+def load_norm_data(source_folder, subject_list):
+    # load all files I prepared with Matlab into a subject dictionary
+    data_dict = {}
+    for sub in subject_list:
+        print(f"loading files for subject {sub}")
+        sub_folder = f"{source_folder}/s{sub}/cells_and_beh"
+        if not os.path.exists(sub_folder):
+            print(f"files for session {sub} not found!")
+            continue
+        
+        data_dict[f"sub-{sub}"] = {}
+        data_dict[f"sub-{sub}"]["reward_configs"] = np.genfromtxt(f"{sub_folder}/all_configs_sub{sub}.csv", delimiter=',')
+        with open(f"{sub_folder}/all_cells_region_labels_sub{sub}.txt", 'r') as file:
+            data_dict[f"sub-{sub}"]["cell_labels"] = [line.strip() for line in file]
+                                                      
+        with open(f"{sub_folder}/all_electrode_labels_sub{sub}.txt", 'r') as file:
+            data_dict[f"sub-{sub}"]["electrode_labels"] = [line.strip() for line in file]
+        
 
+        data_dict[f"sub-{sub}"]["locations"] = pd.read_csv(f"{sub_folder}/locations.csv", header=None)
+        data_dict[f"sub-{sub}"]["timings"] = pd.read_csv(f"{sub_folder}/state_boundaries.csv", header=None)
+        data_dict[f"sub-{sub}"]["normalised_neurons"] = {}
+        data_dict[f"sub-{sub}"]['beh'] = pd.read_csv(f'{sub_folder}/all_trial_times_{sub}.csv', header = None)
+        column_names = ['rep_correct', 't_A', 't_B', 't_C', 't_D', 'loc_A', 'loc_B', 'loc_C', 'loc_D', 'rep_overall', 'new_grid_onset', 'session_no', 'grid_no', 'correct']
+        data_dict[f"sub-{sub}"]['beh'].columns = column_names
+        # Use glob to find all matching CSV files
+        # file_pattern = os.path.join(sub_folder, "cell-*-360_bins.csv")
+        file_pattern = os.path.join(sub_folder, "cell-*-360_bins_passed.csv")
+        cell_files = glob.glob(file_pattern)
+        for cell_file_path in cell_files:
+            file_name = os.path.basename(cell_file_path)
+            # cell_name = file_name[len("cell_"):-len("-360_bins.csv")]
+            cell_name = file_name[len("cell_"):-len("-360_bins_passed.csv")]
+            data_dict[f"sub-{sub}"]["normalised_neurons"][cell_name] = pd.read_csv(cell_file_path, header=None)
+
+    return data_dict
+
+
+    
+    
     
 def load_cell_data(source_folder, subject_list):
     # load all files I prepared with Matlab into a subject dictionary

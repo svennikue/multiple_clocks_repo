@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+base="/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives"
+
+for i in {01..60};
+  do dir="$base/s$i/cells_and_beh";
+  if [[ -d "$dir" ]]; then
+    echo "Cleaning $dir"
+    find "$dir" -maxdepth 1 -type f -name 'cell*360_bins.csv' -print -delete
+  else
+    echo "Skip (missing): $dir"
+  fi
+done
