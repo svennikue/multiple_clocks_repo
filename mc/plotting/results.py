@@ -21,7 +21,7 @@ from matplotlib.lines import Line2D
 
 
 
-def plot_perm_spatial_consistency(perm_df, true_df, out_dir):
+def plot_perm_spatial_consistency(perm_df, true_df, out_dir, group_dir_fut_spat):
 #     # --- CONFIG ---
 #     alpha_fdr = 0.05                                     # FDR level
 #     NOW_SET = {330, 0, 30}
