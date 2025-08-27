@@ -26,6 +26,7 @@ import scipy.stats as st
 import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter1d
 from scipy.interpolate import interp1d
+from matplotlib.patches import Patch
 
 #####
 # SETTINGS
@@ -33,7 +34,8 @@ plot_state = False
 plot_spatial_corr = False
 plot_future_spatial_corr = False
 plot_goal_progress_tuning = False
-plot_goal_progress_tuning_half_split = True
+plot_goal_progress_tuning_half_split = False
+plot_firing_rate_per_incl_reps = True
 
 #import pdb; pdb.set_trace()
 # 
@@ -131,7 +133,48 @@ results_path = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_hu
 
 list_of_all_results = []
 
-
+if plot_firing_rate_per_incl_reps == True:
+    source_path = '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/spatial_peaks'
+    sparsity_c = 'gridwise_qc'
+    included_reps_list = ['all', 'all_correct', 'early', 'late']
+    FR_dict = {}
+    for trials in included_reps_list:
+        file_name = f"spatial_consistency_{trials}_repeats_excl_{sparsity_c}_pct_neurons.csv"
+        df = pd.read_csv(f"{source_path}/{file_name}")
+        FR_dict[trials] = df['mean_firing_rate'].to_numpy()
+    
+    
+    data_list = []
+    for r in FR_dict:
+        data_list.append(FR_dict[r])
+        
+        # plt.figure();
+        # plt.hist(FR_dict[r], bins = 50)
+        # plt.title(r)
+    
+    # Colors and legend patches
+    colors = {
+        "all": "lightcoral",
+        "all_correct": "mediumpurple",
+        "early": "teal",
+        "late": "green"
+    }
+    legend_patches = [
+        Patch(facecolor=colors["all"], edgecolor='black', label="all repeats"),
+        Patch(facecolor=colors["all_correct"], edgecolor='black', label="all correct repeats"),
+        Patch(facecolor=colors["early"], edgecolor='black', label="early repeats"),
+        Patch(facecolor=colors["late"], edgecolor='black', label="late repeats")
+    ]
+    
+    plt.figure(); 
+    plt.hist(data_list, bins = 20, stacked=False, 
+             color = [colors["all"], colors["all_correct"], colors["early"], colors["late"]], 
+             edgecolor='black',)
+    plt.title('mean firing rate per cell, by repeats included')
+    plt.legend(handles=legend_patches, loc='upper center', frameon=False)   
+    
+    
+    
 if plot_state == True:
     state_results = []
     # List all files and print their basenames
