@@ -70,6 +70,21 @@ def filter_data(data, session, rep_filter):
     #import pdb; pdb.set_trace()
     return filtered_data
 
+
+
+def weighted_pearson(x, y, w):
+    x = np.asarray(x, float); y = np.asarray(y, float); w = np.asarray(w, float)
+    nan_mask = np.isfinite(x) & np.isfinite(y) & (w > 0)
+    if nan_mask.sum() < 2: 
+        return np.nan
+    x = x[nan_mask]; y = y[nan_mask]; w = w[nan_mask]
+    mx = np.average(x, weights=w); my = np.average(y, weights=w)
+    cov = np.average((x-mx)*(y-my), weights=w)
+    vx  = np.average((x-mx)**2,     weights=w)
+    vy  = np.average((y-my)**2,     weights=w)
+    return cov/np.sqrt(vx*vy) if vx>0 and vy>0 else np.nan
+
+
 def plot_spatial_shifts_and_rate_maps(FR_maps_neuron, unique_grids, cell_name, all_shift_curves, best_idx):
     
     temporal_shift = 30
@@ -128,17 +143,17 @@ def plot_spatial_shifts_and_rate_maps(FR_maps_neuron, unique_grids, cell_name, a
         
     
    
-def comp_peak_spatial_tuning(neurons, locs, beh, cell_name, idx_same_grids, plotting=False, perm_no = None):
+def comp_peak_spatial_tuning(neurons, locs, beh, cell_name, idx_same_grids, plotting=False, perm_no = None, weighted = False):
     temporal_shift = 30
     shifts = np.arange(0, 360, temporal_shift)  # 12 shifts
     unique_grids = np.unique(idx_same_grids)
         
-    mean_corr_per_shift = []
-    # mean_corr_per_shift_test_pd = []
-    fr_maps_by_shift = []
+    mean_corr_per_shift,fr_maps_by_shift, dwell_by_shift = [], [], []
     
     for shift in shifts:
         mean_firing_rates_locs = np.full((9, len(unique_grids)), np.nan, dtype=float)
+        dwell_time_at_locs = np.full((9, len(unique_grids)), np.nan, dtype=float)
+        
         for task_count, task_id in enumerate(unique_grids):
             mask_curr_grid = (idx_same_grids == task_id)
             neurons_curr_grid = neurons[mask_curr_grid]
@@ -158,41 +173,56 @@ def comp_peak_spatial_tuning(neurons, locs, beh, cell_name, idx_same_grids, plot
             nan_mask = np.isfinite(fr_all_reps) & np.isfinite(loc_all_reps)
             
             fr_clean  = fr_all_reps[nan_mask]
-            loc_clean = loc_all_reps[nan_mask].astype(int)  # back to int if you need integers
-    
+            loc_clean = loc_all_reps[nan_mask].astype(int)
+            dt_clean = np.ones_like(fr_clean, dtype=float)
+
+            # import pdb; pdb.set_trace()
             for loc in range(1, 10):
-                #if loc == 9:
-                    #import pdb; pdb.set_trace()
                 sel = (loc_clean == loc)
-                if np.sum(sel) < 25:
-                    # very short samples of the same location will yield imprecise firing rates.
-                    # better set to nan and ignore this location!
-                    # will be biased otherwise.
-                    mean_firing_rates_locs[loc-1, task_count] = np.nan
-                elif np.any(sel):
-                    # print(f"length of selection of loc {loc} is {np.sum(sel)} and mean is {fr_clean[sel].mean()} for shift {shift} and first bin is {np.where(sel)[0][0]}")
-                    mean_firing_rates_locs[loc-1, task_count] = fr_clean[sel].mean()
+                dwell_time_at_locs[loc-1, task_count] = dt_clean[sel].sum()
+                if weighted == True:
+                    if not np.any(sel):
+                        mean_firing_rates_locs[loc-1, task_count] = np.nan
+                        continue
+                    else:
+                        mean_firing_rates_locs[loc-1, task_count] = fr_clean[sel].mean()
                 else:
-                    mean_firing_rates_locs[loc-1, task_count] = np.nan
+                    if np.sum(sel) < 25:
+                        # very short samples of the same location will yield imprecise firing rates.
+                        # better set to nan and ignore this location!
+                        # will be biased otherwise.
+                        mean_firing_rates_locs[loc-1, task_count] = np.nan
+                    elif np.any(sel):
+                        # print(f"length of selection of loc {loc} is {np.sum(sel)} and mean is {fr_clean[sel].mean()} for shift {shift} and first bin is {np.where(sel)[0][0]}")
+                        mean_firing_rates_locs[loc-1, task_count] = fr_clean[sel].mean()
+                    else:
+                        mean_firing_rates_locs[loc-1, task_count] = np.nan
       
         fr_maps_by_shift.append(mean_firing_rates_locs)
+        dwell_by_shift.append(dwell_time_at_locs)
 
         # --- mean grid correlation for this shift ---
         if np.all(np.isnan(mean_firing_rates_locs)):
             mean_corr_per_shift.append(np.nan)
         else:
-            cm = pd.DataFrame(mean_firing_rates_locs).corr()              
-            upper = np.triu(np.ones(cm.shape, bool), k=1)
-            mean_corr_per_shift.append(np.nanmean(cm.values[upper]))
+            if weighted == True:
+                no_grids = mean_firing_rates_locs.shape[1]
+                vals = []
+                for i in range(no_grids):
+                    for j in range(i+1, no_grids):
+                        w_ij = dwell_time_at_locs[:, i] + dwell_time_at_locs[:, j]  # more trust where either grid spent more time
+                        vals.append(weighted_pearson(mean_firing_rates_locs[:, i], mean_firing_rates_locs[:, j], w_ij))
+                mean_corr_per_shift.append(np.nanmean(vals))
+            else:
+                cm = pd.DataFrame(mean_firing_rates_locs).corr()              
+                upper = np.triu(np.ones(cm.shape, bool), k=1)
+                mean_corr_per_shift.append(np.nanmean(cm.values[upper]))
 
     # pick best shift
     best_idx = np.nanargmax(mean_corr_per_shift) if np.any(np.isfinite(mean_corr_per_shift)) else None
     peak_shift = shifts[best_idx]
     best_map = fr_maps_by_shift[best_idx]
-    # import pdb; pdb.set_trace()
-    
-    # if cell_name == '07-07-mRF2Ca08-RACC':
-    #     import pdb; pdb.set_trace()
+    best_dwell = dwell_by_shift[best_idx]
         
     if plotting == True:
         # import pdb; pdb.set_trace()
@@ -206,13 +236,15 @@ def comp_peak_spatial_tuning(neurons, locs, beh, cell_name, idx_same_grids, plot
     # if np.isnan(best_map).any():
     #     import pdb; pdb.set_trace()
 
-    return peak_shift, best_map
+    return peak_shift, best_map, best_dwell
 
 
 
 def compute_fr_at_spatial_lag(best_shift, neurons, locs):
     # import pdb; pdb.set_trace()
     mean_firing_rates_locs = np.full((9), np.nan, dtype=float)
+    dwell_time_at_locs     = np.zeros((9), dtype=float)
+    
     locs_shifted = np.roll(locs, shift=-best_shift, axis=1)
     
     fr_all_reps  = neurons.reshape(-1).astype(float)
@@ -221,11 +253,12 @@ def compute_fr_at_spatial_lag(best_shift, neurons, locs):
     
     fr_clean  = fr_all_reps[nan_mask]
     loc_clean = loc_all_reps[nan_mask].astype(int)  # back to int if you need integers
-    
+    dwell_clean = np.ones_like(fr_clean, dtype=float)     
     # firing rate per location
     for loc in range(1, 10):
         sel = (loc_clean == loc)
-        if np.sum(sel) < 25:
+        dwell_time_at_locs[loc-1] = dwell_clean[sel].sum()
+        if dwell_time_at_locs[loc-1] < 25:
             # very short samples of the same location will yield imprecise firing rates.
             # better set to nan and ignore this location!
             # will be biased otherwise.
@@ -235,7 +268,7 @@ def compute_fr_at_spatial_lag(best_shift, neurons, locs):
         else:
             mean_firing_rates_locs[loc-1] = np.nan
     
-    return mean_firing_rates_locs
+    return mean_firing_rates_locs, dwell_time_at_locs
 
 
 # --- Helpers for stats ---
@@ -259,9 +292,10 @@ def stars(p):
 
     
 def plot_results_per_roi(df, title_string_add):
-
+    # import pdb; pdb.set_trace()
+    # --- Derive ROI labels (kept from your code) ---
     roi_label = []
-    for i, row in df.iterrows():
+    for _, row in df.iterrows():
         cell_label = row['neuron_id']
         if 'ACC' in cell_label or 'vCC' in cell_label or 'AMC' in cell_label:
             roi = 'ACC'
@@ -278,76 +312,96 @@ def plot_results_per_roi(df, title_string_add):
         else:
             roi = 'mixed'
         roi_label.append(roi)
+
+    df = df.copy()
     df['roi'] = roi_label
     
-    # next, plot per ROI
-    bins=20
-
-    rois = df['roi'].unique().tolist()
-    n_roi = len(rois)
-
-    results_dir = {}
-    results_dir['zero lag (330, 0, 30)'] = df[df["mode_peak_shift"].isin([0, 30, 330])]
-    results_dir['future lags'] = df[~df["mode_peak_shift"].isin([0, 30, 330])]
-    results_dir['future_reward_times'] = df[df["mode_peak_shift"].isin([90, 180, 240])]
-    results_dir['all lags'] = df
-
-
-    early_color = '#00BFC4'      # turquoise-blue
-    late_color = '#E07B39'       # terracotta-orange
-    all_color = 'lightcoral'
-    all_correct_color = 'teal'
-
-    for result_name in results_dir:
-        # Create subplots: one row, n_roi columns
-        fig, axes = plt.subplots(1, n_roi, figsize=(n_roi*5, 5), sharey=True)
-        # In case there is only one ROI, wrap axes in a list for consistency.
-        for ax, roi in zip(axes, rois):
-            corrs_allneurons = results_dir[result_name][results_dir[result_name]['roi'] == roi]['avg_consistency_at_peak']
-            nan_filter = np.isnan(corrs_allneurons)
-            # Remove any NaN values
-            valid_corrs = corrs_allneurons[~np.isnan(corrs_allneurons)]
-            mean_sample = np.mean(valid_corrs)
-            # Perform a two-tailed one-sample t-test
-            ttest_result = st.ttest_1samp(valid_corrs, 0)
-            t_stat = ttest_result.statistic
-            p_two = ttest_result.pvalue
-            
-            # Convert to a one-tailed p-value for H1: mean > 0.
-            if t_stat > 0:
-                p_value = p_two / 2
+    # --- rows  ---
+    results_list = [
+        ('zero lag (330, 0, 30)', df[df["mode_peak_shift"].isin([0, 30, 330])]),
+        ('future lags',            df[~df["mode_peak_shift"].isin([0, 30, 330,90,180,240])]),
+        ('future_reward_times',    df[df["mode_peak_shift"].isin([90, 180, 240])]),
+        ('all lags',               df),
+    ]
+    
+    rois   = df['roi'].unique().tolist()
+    n_rows = len(results_list)
+    n_cols = len(rois)
+    bins   = 20
+    title_string_add = title_string_add if 'title_string_add' in locals() else ''
+    
+    plt.rcParams.update({'font.size': 11})
+    
+    # Make rows closer: use small hspace. Don't share y → allow 2 different y-scales.
+    fig, axes = plt.subplots(
+        n_rows, n_cols,
+        figsize=(8.27, 12.0),     # keep big; height matters more than hspace for readability
+        sharex=True, sharey=False,
+        gridspec_kw={'hspace': 0.18, 'wspace': 0.3}  # <<< tighter vertical spacing
+    )
+    if n_cols == 1:
+        axes = axes.reshape(n_rows, 1)
+    
+    # Precompute per-row histogram maxima for two y-scales
+    row_max_top3, row_max_all = 0, 0
+    cache = [[None]*n_cols for _ in range(n_rows)]
+    for r, (result_name, df_res) in enumerate(results_list):
+        for c, roi in enumerate(rois):
+            vals = df_res.loc[df_res['roi'] == roi, 'avg_consistency_at_peak'].to_numpy(float)
+            vals = vals[np.isfinite(vals)]
+            counts, _ = np.histogram(vals, bins=bins)
+            cache[r][c] = (vals, counts)
+            mx = counts.max() if counts.size else 0
+            if result_name == 'all lags':
+                row_max_all = max(row_max_all, mx)
             else:
-                p_value = 1 - (p_two / 2)
-            # Determine significance level based on p-value
-            if p_value < 0.001:
-                significance = '***'
-            elif p_value < 0.01:
-                significance = '**'
-            elif p_value < 0.05:
-                significance = '*'
-            else:
-                significance = 'n.s.'
-            
-            # Plot the histogram
-            ax.hist(valid_corrs, bins=bins, color='teal', alpha = 0.5, edgecolor='teal')
-            ax.axvline(0, color='black', linestyle='dashed', linewidth=2)
-            
-            # Set subplot title and labels
-            ax.set_title(f"{roi} \n for {len(valid_corrs)} neurons \n {result_name} {title_string_add}", fontsize=12)
-            ax.set_xlabel("Correlation coefficient", fontsize=14)
-            ax.tick_params(axis='both', labelsize=12, width=2, length=6)
-            
-            # Only set y-label on the first subplot (or adjust as desired)
-            ax.set_ylabel("Frequency", fontsize=12)
-            
-            # Annotate with significance and p-value
-            ax.text(0.95, 0.95, f"Significance: {significance}\n(p = {p_value:.3e})\n mean = {mean_sample:.2f}",
-                    transform=ax.transAxes, fontsize=12,
-                    verticalalignment='top', horizontalalignment='right',
-                    bbox=dict(facecolor='white', edgecolor='black', boxstyle='round'))
-        
-        plt.tight_layout()
-        plt.show()
+                row_max_top3 = max(row_max_top3, mx)
+    
+    # Plot
+    for r, (result_name, df_res) in enumerate(results_list):
+        for c, roi in enumerate(rois):
+            ax = axes[r, c]
+            vals, counts = cache[r][c]
+    
+            ax.hist(vals, bins=bins, color='teal', alpha=0.5, edgecolor='teal')
+            ax.axvline(0, color='black', linestyle='dashed', linewidth=1.5)
+    
+            # stats box (use helpers)
+            t_stat, p_one, mval = one_tailed_ttest_greater_than_zero(vals)
+            sig = stars(p_one)
+            # keep inside but compact; doesn’t add row spacing
+            ax.text(0.98, 0.96,
+                    f"n={vals.size}\nmean={mval:.2f}\n{sig} (p={p_one:.1e})",
+                    transform=ax.transAxes, ha='right', va='top',
+                    bbox=dict(facecolor='white', edgecolor='black', boxstyle='round'),
+                    fontsize=11)
+    
+            # Column headers (top row only)
+            if r == 0:
+                ax.set_title(roi, fontsize=11, pad=4)  # smaller pad -> tighter rows
+    
+            # Row labels (first col only)
+            if c == 0:
+                ax.text(-0.16, 0.5, result_name, transform=ax.transAxes,
+                        ha='right', va='center', rotation=90, fontsize=11)
+    
+            # Apply the two y-scales
+            ylim_max = row_max_all if result_name == 'all lags' else row_max_top3
+            ax.set_ylim(0, max(1, int(ylim_max * 1.04)))  # slight squash
+    
+            ax.tick_params(axis='both', labelsize=11, width=1.1, length=4)
+    
+    # Shared labels (don’t repeat on each subplot)
+    fig.supxlabel("Correlation coefficient", fontsize=11)
+    fig.supylabel("Frequency", fontsize=11)
+    
+    # Tighten outer margins; keep headroom for the suptitle
+    fig.subplots_adjust(left=0.08, right=0.97, bottom=0.08, top=0.9, hspace=0.18, wspace=0.3)
+    fig.suptitle(f"Mean spatial consistency (cross val) at peak lag per cell, split by ROI \n {title_string_add}",
+                 fontsize=12, fontweight='bold', y=0.965)
+    
+    plt.show()
+
 
 
 
@@ -595,16 +649,6 @@ def extract_consistent_grids(neuron, cell_name, beh):
     
     
 def pair_grids_to_increase_spatial_coverage(locs, beh, cell_name, min_coverage=100, min_groups=3,max_groups=5):
-    """
-    Merge original grids into groups to maximize coverage per combo:
-      1) more locations with >= min_coverage
-      2) higher minimum per-location total
-    Returns a new index array (0..n_groups-1) aligned with same_grids.
-    (Optionally) filters rows by a consistent_FR_{cell_name} boolean column.
-    # Builds grid_cvg: for each original grid id, counts how often each location occurs.
-    # Greedily proposes pairs: for grid g, it finds a partner h that (1) fixes the most weak locations (< min_coverage) and (2) maximizes the weakest-location boost.
-    # Maps those pairs back to a new index per row (same_grid_idx_new) and writes it into beh[f'paired_grid_idx_{cell_name}'].
-    """
     # depending on what filertering happened before, use different grids_nos.
     # import pdb; pdb.set_trace()
     if f"consistent_FR_{cell_name}" in beh:
@@ -614,11 +658,18 @@ def pair_grids_to_increase_spatial_coverage(locs, beh, cell_name, min_coverage=1
         same_grids = beh['idx_same_grids'][beh[f'consistent_FR_{cell_name}'] == True].to_numpy()
     else:
         same_grids = beh['idx_same_grids'].to_numpy()
-        
+    
+    if cell_name == '05-05-mRF3cVPF04-RPvmPFC':
+        import pdb; pdb.set_trace()
+        # WHY DOES THIS CLUMP MORE THAN 3 GRIDS TOEGTEHR????
+    
+    unique_grids = np.unique(same_grids)
+    if len(unique_grids) < 4:
+        continue
     # --- 1) build coverage dict for each original grid ---
     grid_cvg = {}
     # import pdb; pdb.set_trace()
-    for grid_idx in np.unique(same_grids):
+    for grid_idx in unique_grids:
         grid_cvg[grid_idx] = {}
         all_locs_curr_grid = locs[same_grids == grid_idx]
         for loc in range(1,10):
@@ -631,6 +682,8 @@ def pair_grids_to_increase_spatial_coverage(locs, beh, cell_name, min_coverage=1
     if len(grid_cvg) < min_groups*2:
         best_cvg = []
         for g, loc_dict in grid_cvg.items():
+            if g in used_grids:
+                continue
             # 1. find the grid with best coverage
             # to do so, first count how many grids are below the cut-off per grid
             weak_counts = {g: sum(v < min_coverage for v in loc_dict.values())
@@ -730,7 +783,7 @@ def pair_grids_to_increase_spatial_coverage(locs, beh, cell_name, min_coverage=1
 
 
 
-def compute_fut_spatial_tunings(sessions, trials = 'all_correct', plotting = False, no_perms = None, combine_two_grids = False, sparsity_c = None, save_all = False):  
+def compute_fut_spatial_tunings(sessions, trials = 'all_correct', plotting = False, no_perms = None, combine_two_grids = False, sparsity_c = None, weighted = False, save_all = False):  
     # trials can be 'all', 'all_correct', 'early', 'late'
     
     # determine results table
@@ -780,22 +833,7 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', plotting = Fal
                 return_inverse=True,
                 return_counts=True
             )
-            
-            
-            if curr_neuron == '05-05-mLF3aOFC05-LOFC':
-                continue
-            #if curr_neuron in ['05-05-mRF2Ca03-RACC', '20-20-mRT2dHbEb08-REC', '22-22-mRT2dHbEb08-REC']:
-            # if curr_neuron in ['05-05-mRF2Ca03-RACC']:
-            #     import pdb; pdb.set_trace()
-            #     # 05-05-mRF2Ca03-RACC is supposed be be really inconsistent, but highly firing
-            #     # 20-20-mRT2dHbEb08-REC is supposed to be really consistent
-            #     # 22-22-mRT2dHbEb08-REC is supposed to be really consistent but very sparse
-            # # if curr_neuron in ['16-16-mRT2bHb03-RHC', '23-23-mRT2bHb05-RHC', '08-08-mRT2bHb01-RHC', '19-19-mRT2bHb04-RHC', '03-03-mRF3C07-RpgACC', '21-21-mRT2bHb04-RHC', '18-18-mRT2bHb04-RHC']:
-            # #     import pdb; pdb.set_trace()
-            # if curr_neuron in ['24-24-mRF2Ca06-RpgACC', '35-35-mRT2bHb07-RHC', '16-16-mLT2aHa07-LHC']:
-            #     plotting = True
-            # else:
-            #     plotting = False
+
             if perms > 1:
                 if curr_neuron not in include_these_cells:
                     continue
@@ -808,6 +846,14 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', plotting = Fal
             if sparsity_c:
                 beh_df = extract_consistent_grids(data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron].to_numpy(), curr_neuron, beh_df)
                 idx_same_grids = idx_same_grids[beh_df[f'consistent_FR_{curr_neuron}']]
+                # if after excluding inconsistent grids there aren't enough grids for CV left,
+                # kick this neuron.
+                unique_grids = np.unique(beh_df['idx_same_grids'][beh_df[f'consistent_FR_{curr_neuron}']])
+            
+            if sparsity_c and len(unique_grids) < 3:
+                print(f"excluding {curr_neuron} in sesh {sesh} because there were not enough grids with consistent FR!")
+                continue
+            
                 
             # instead of doing grid-by-grid, I will now do 2 grids combined
             # I am maximising spatial coverage in this pairing.
@@ -815,7 +861,8 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', plotting = Fal
             # there will be more locations that will have been covered.
             if combine_two_grids == True:
                 beh_df = pair_grids_to_increase_spatial_coverage(data[f"sub-{sesh:02}"]['locations'], beh_df, curr_neuron)
-                unique_grids = np.unique(beh_df[f'paired_grid_idx_{curr_neuron}'].to_numpy())
+                mask = beh_df[f'paired_grid_idx_{curr_neuron}'].map(lambda x: x is not False)
+                unique_grids = np.unique(beh_df[f'paired_grid_idx_{curr_neuron}'][mask].dropna().astype(int))
                 idx_same_grids = beh_df[f'paired_grid_idx_{curr_neuron}'].to_numpy()
             else:
                 if idx_same_grids:
@@ -847,25 +894,44 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', plotting = Fal
                     unique_idx_train = idx_same_grids[mask_train_task]
                     
                     # and compute the peak-spatial tuning rotation
-                    peak_task_lag_train, fr_maps_train_at_best_lag = comp_peak_spatial_tuning(neurons_train_task, locs_train_task, beh_train_task, curr_neuron, unique_idx_train, plotting=plotting, perm_no = no_perms)
-                    # careful: sometimes, in the fr_maps, there are nans because the locaitons
-                    # have not been visited. Account for that in the next correlatioN!
-                    
+                    peak_task_lag_train, fr_maps_train_at_best_lag, dwell_at_train_best_lag = comp_peak_spatial_tuning(neurons_train_task, locs_train_task, beh_train_task, curr_neuron, unique_idx_train, plotting=plotting, perm_no = no_perms, weighted=weighted)
+
+                    # import pdb; pdb.set_trace()
                     # validate: compute the correlation between rate-map of held-out task at this lag
-                    fr_map_test_at_best_lag = compute_fr_at_spatial_lag(peak_task_lag_train, neurons_test_task, locs_test_task)
+                    fr_map_test_at_best_lag, dwell_test_at_best_lag = compute_fr_at_spatial_lag(peak_task_lag_train, neurons_test_task, locs_test_task)
                     
                     # # ignore nans 
                     consistency_train_test = []
-                    for train_grid in fr_maps_train_at_best_lag.T:
-                        nan_mask = np.isfinite(train_grid) & np.isfinite(fr_map_test_at_best_lag)
-                        consistency_train_test.append(np.corrcoef(train_grid[nan_mask], fr_map_test_at_best_lag[nan_mask])[0][1])
-                    spatial_consistency_validation = np.nanmean(consistency_train_test)
-    
+                    eps = 1e-12
+                    if weighted == True:
+                        # Inverse-variance weights per location:
+                        # w = 1 / ( r_tr/T_tr + r_te/T_te )
+                        for i, train_grid in enumerate(fr_maps_train_at_best_lag.T):
+                            r_tr = np.asarray(train_grid, float)                 # (9,)
+                            r_te = np.asarray(fr_map_test_at_best_lag, float)    # (9,)
+                    
+                            T_tr = np.asarray(dwell_at_train_best_lag[:, i], float)   # (9,)
+                            T_te = np.asarray(dwell_test_at_best_lag, float)           # (9,)
+                    
+                            w = 1.0 / (r_tr/(T_tr + eps) + r_te/(T_te + eps) + eps)    # inverse-variance proxy
+                    
+                            # weighted Pearson over finite, positive-weight locations
+                            consistency_train_test.append(
+                                weighted_pearson(r_tr, r_te, w)
+                            )
+                        spatial_consistency_validation = np.nanmean(consistency_train_test)
+
+                    else:
+                        for train_grid in fr_maps_train_at_best_lag.T:
+                            nan_mask = np.isfinite(train_grid) & np.isfinite(fr_map_test_at_best_lag)
+                            consistency_train_test.append(np.corrcoef(train_grid[nan_mask], fr_map_test_at_best_lag[nan_mask])[0][1])
+                        spatial_consistency_validation = np.nanmean(consistency_train_test)
+        
                     # store the average correlation value for lag-rotation for current test-task
                     validate_peak_lag[count_test_task,0] = spatial_consistency_validation
                     validate_peak_lag[count_test_task,1] = peak_task_lag_train
-                    # consider storing this???
-                
+
+
                 m = mode(validate_peak_lag[:,1], keepdims=False)
                 peak_shift_validated, frequency_peak_shift_validated = m.mode, m.count
                 avg_consistency_at_peak = np.mean(validate_peak_lag[:,0])
@@ -911,7 +977,9 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', plotting = Fal
                 name_result = f"{group_dir_fut_spat}/spatial_consistency_{trials}_repeats_excl_{sparsity_c}_pct_neurons.csv"
                 print(f"included {len(included_neurons)} neurons.")
                 Path(f"{group_dir_fut_spat}/included_cells_{trials}_reps_{sparsity_c}_pct.txt").write_text("\n".join(included_neurons))
-              
+            if weighted == True and sparsity_c:
+                name_result = f"{group_dir_fut_spat}/spatial_consistency_{trials}_repeats_excl_{sparsity_c}_pct_neurons_weighted.csv"
+                 
         results_df.to_csv(name_result)
         print(f"saved cross-validated spatial tuning values in {name_result}")
     
@@ -931,9 +999,9 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', plotting = Fal
 if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     # trials can be 'all', 'all_correct', 'early', 'late'
-    compute_fut_spatial_tunings(sessions=[3], trials = 'all', plotting=True, no_perms = None, combine_two_grids = True, sparsity_c = 'gridwise_qc', save_all=False)
+    # compute_fut_spatial_tunings(sessions=[3], trials = 'all', plotting=False, no_perms = None, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=False)
 
-    # compute_fut_spatial_tunings(sessions=list(range(0,60)), trials = 'all', no_perms = None, combine_two_grids = True, sparsity_c = 'gridwise_qc', save_all=True)
+    compute_fut_spatial_tunings(sessions=list(range(0,60)), trials = 'late', no_perms = None, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=True)
     # compute_fut_spatial_tunings(sessions=list(range(0,60)), trials = 'all', no_perms = 200, combine_two_grids = True)
     # compute_fut_spatial_tunings(sessions=[31], trials = 'all', plotting = False, no_perms = None, combine_two_grids = True)
     

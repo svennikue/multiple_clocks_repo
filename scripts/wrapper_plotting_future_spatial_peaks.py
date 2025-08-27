@@ -498,7 +498,6 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', combine_two_gr
         # for each cell, cross-validate the peak task-lag shift for spatial consistency.
         for neuron_idx, curr_neuron in enumerate(data[f"sub-{sesh:02}"]['normalised_neurons']):
 
-                
             if curr_neuron not in ['07-07-chan104-LOFC', '16-16-chan118-LHC', '01-01-mLF2aCa07-LACC']:
                 continue    
             # if curr_neuron not in ['03-03-chan110-REC', '07-07-chan104-LOFC', '16-16-chan118-LHC', '01-01-mLF2aCa07-LACC']:
