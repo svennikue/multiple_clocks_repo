@@ -25,9 +25,11 @@ import pandas as pd
 import copy
 from pathlib import Path
 from matplotlib.patches import Patch
-       
-import itertools
-from collections import Counter
+import re 
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import binomtest, norm
+from scipy.stats import binomtest, norm
 
 # import pdb; pdb.set_trace()
 
@@ -291,28 +293,43 @@ def stars(p):
     
 
     
-def plot_results_per_roi(df, title_string_add):
+def plot_results_per_roi(df, title_string_add, plot_by_pfc = False):
     # import pdb; pdb.set_trace()
     # --- Derive ROI labels (kept from your code) ---
     roi_label = []
-    for _, row in df.iterrows():
-        cell_label = row['neuron_id']
-        if 'ACC' in cell_label or 'vCC' in cell_label or 'AMC' in cell_label:
-            roi = 'ACC'
-        elif 'PCC' in cell_label:
-            roi = 'PCC'
-        elif 'OFC' in cell_label:
-            roi = 'OFC'
-        elif 'MCC' in cell_label or 'HC' in cell_label:
-            roi = 'hippocampal'
-        elif 'EC' in cell_label:
-            roi = 'entorhinal'
-        elif 'AMYG' in cell_label:
-            roi = 'amygdala'
-        else:
-            roi = 'mixed'
-        roi_label.append(roi)
-
+    if plot_by_pfc == True:
+        for _, row in df.iterrows():
+            cell_label = row['neuron_id']
+            if 'ACC' in cell_label or 'vCC' in cell_label or 'AMC' in cell_label or 'vmPFC' in cell_label or 'OFC' in cell_label or 'PCC' in cell_label:
+                roi = 'PFC'
+            elif 'MCC' in cell_label or 'HC' in cell_label:
+                roi = 'hippocampal'
+            elif 'EC' in cell_label:
+                roi = 'entorhinal'
+            elif 'AMYG' in cell_label:
+                roi = 'amygdala'
+            else:
+                roi = 'mixed'
+            roi_label.append(roi)
+    else:
+        for _, row in df.iterrows():
+            cell_label = row['neuron_id']
+            if 'ACC' in cell_label or 'vCC' in cell_label or 'AMC' in cell_label or 'vmPFC' in cell_label:
+                roi = 'ACC'
+            elif 'PCC' in cell_label:
+                roi = 'PCC'
+            elif 'OFC' in cell_label:
+                roi = 'OFC'
+            elif 'MCC' in cell_label or 'HC' in cell_label:
+                roi = 'hippocampal'
+            elif 'EC' in cell_label:
+                roi = 'entorhinal'
+            elif 'AMYG' in cell_label:
+                roi = 'amygdala'
+            else:
+                roi = 'mixed'
+            roi_label.append(roi)
+    
     df = df.copy()
     df['roi'] = roi_label
     
@@ -435,7 +452,7 @@ def plot_results_per_roi_and_future_lag(df, title_string_add, bins=20):
     roi_label = []
     for _, row in df.iterrows():
         cell_label = row['neuron_id']
-        if 'ACC' in cell_label or 'vCC' in cell_label or 'AMC' in cell_label:
+        if 'ACC' in cell_label or 'vCC' in cell_label or 'AMC' in cell_label or 'vmPFC' in cell_label:
             roi = 'ACC'
         elif 'PCC' in cell_label:
             roi = 'PCC'
@@ -531,7 +548,64 @@ def permute_locations(locs, beh_df, no_perms):
     return permuted_locs
     
 
-def store_p_vals_perms(true_df, perm_df, out_path):
+def add_state_cell_vals(df, incl_trials):
+    results_path_state = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/cells_per_model-11-07-2025"
+    state_results = {}
+    for file in os.listdir(results_path_state):
+        if 'state_reg' in file:
+            print(file) 
+            if 'only_reps_1-5' in file:
+                state_results['early'] = file
+            if 'only_reps_1-10' in file:
+                state_results['all_correct'] = file
+            if 'only_reps_6-10' in file:
+                state_results['late'] = file
+    state_df = pd.read_csv(f"{results_path_state}/{state_results[incl_trials]}")
+      # out_df.neuron_id like: "02-02-chan101-LOFC" or "14-14-mLT2aHaE04-LEC"
+    def parse_out_neuron_id(s):
+        m = re.match(r'^\s*(\d+)-\d+-(.+)-([A-Za-z0-9][A-Za-z0-9_-]*)\s*$', str(s))
+        if m:
+            unit_no, unit, roi = m.group(1), m.group(2), m.group(3).upper()
+            return unit_no, unit, roi
+        return (np.nan, np.nan, np.nan)
+    
+    # state_df.cell like: "02-chan101_sesh_01_LOFC" or "14-mLT2aHaE04_sesh_12_LEC"
+    def parse_state_cell(s):
+        m = re.match(r'^\s*(\d+)-(.+?)_sesh_(\d+)_([A-Za-z0-9][A-Za-z0-9_-]*)\s*$', str(s))
+        if m:
+            unit_no, unit, sesh, roi = m.group(1), m.group(2), int(m.group(3)), m.group(4).upper()
+            return unit_no, unit, sesh, roi
+        return (np.nan, np.nan, np.nan, np.nan)
+    
+    out = df.copy()
+    st  = state_df.copy()
+
+    out[['unit_no','unit','region']] = out['neuron_id'].apply(lambda x: pd.Series(parse_out_neuron_id(x)))
+    out['session_id'] = out['session_id'].astype(int)
+
+    st[['unit_no','unit','session_id','region']] = st['cell'].apply(lambda x: pd.Series(parse_state_cell(x)))
+    st['session_id'] = st['session_id'].astype(int)
+
+    # drop duplicate rows in state (keep first) to get a 1–1 key
+    st_key = st.drop_duplicates(subset=['subj','unit','session_id','region'])
+
+    merged = out.merge(
+        st_key[['subj','unit','session_id','region','average_corr','p_val_time']],
+        on=['subj','unit','session_id','region'],
+        how='left',
+        validate='m:1'  # warn if state has duplicates for a key
+    )
+    # if you don’t want helper cols kept:
+    merged = merged.drop(columns=['subj','unit','region'])
+    merged['average_corr_state'] = merged['average_corr']
+    merged['p_val_time_state'] = merged['p_val_time']
+    return merged
+           
+        
+    
+
+
+def store_p_vals_perms(true_df, perm_df, out_path, trials):
     # merge obs with all its nulls, compute p for each group
     obs = true_df[["session_id","neuron_id","avg_consistency_at_peak"]].rename(columns={"avg_consistency_at_peak":"obs"})
     nulls = perm_df[["session_id","neuron_id","avg_consistency_at_peak"]].rename(columns={"avg_consistency_at_peak":"perm"})
@@ -549,7 +623,7 @@ def store_p_vals_perms(true_df, perm_df, out_path):
 
     # attach p-values back to the true table
     out = true_df.merge(stats, on=["session_id","neuron_id"], how="left")
-    
+    out_with_state = add_state_cell_vals(out, trials)
     # ---------- FDR (Benjamini–Hochberg) ----------
     def bh_reject(pvals, alpha=0.05):
         p = np.asarray(pvals, float)
@@ -563,13 +637,21 @@ def store_p_vals_perms(true_df, perm_df, out_path):
             cutoff = p_sorted[np.nonzero(passed)[0].max()]
             sig[mask] = p[mask] <= cutoff
         return sig
-
-    out["sig_FDR_all"] = bh_reject(out["p_perm"].values, alpha=0.05)
     
+    sig_state_mask = (out_with_state['p_val_time_state'] > 0.05) | (out_with_state['p_val_time_state'].isna())
+    bh_without_state = bh_reject(out_with_state.loc[sig_state_mask, 'p_perm'].to_numpy(), alpha=0.05)  # -> 1D bool array
+    
+    sig_series = pd.Series(pd.NA, index=out_with_state.index, dtype='boolean')
+    sig_series.loc[sig_state_mask] = bh_without_state  # fill only where we computed BH
+    
+    # 4) write back onto the original table (align by index; fill others with NA)
+    out['sig_FDR_all'] = bh_reject(out['p_perm'].to_numpy(), alpha=0.05).astype('boolean')
+    out['sig_FDR_without_state'] = sig_series.reindex(out.index).astype('boolean')
+
     # ---------- save ----------
     out.to_csv(out_path, index=False)
     print(f"saved: {out_path}")
-
+    return out
 
 
 
@@ -649,139 +731,320 @@ def extract_consistent_grids(neuron, cell_name, beh):
     
     
 def pair_grids_to_increase_spatial_coverage(locs, beh, cell_name, min_coverage=100, min_groups=3,max_groups=5):
-    # depending on what filertering happened before, use different grids_nos.
-    # import pdb; pdb.set_trace()
+    """
+    Merge original grids into groups to maximize spatial coverage.
+    Rules:
+      - <3 unique grids  -> discard neuron (output False).
+      - 3 -> keep as 3 singletons.
+      - 4 -> pair the two worst; others singleton (3 groups).
+      - 5 -> pair worst 4 (2 pairs), keep best alone (3 groups).
+      - 6 -> 3 pairs (maximize coverage).
+      - 7 -> 3 pairs + best alone (4 groups).
+      - 8 -> 4 pairs (maximize coverage).
+      - 9 -> 4 pairs + best alone (5 groups).
+      - 10 -> 5 pairs.
+      - >10 -> make 5 groups: start with 5 best pairs, then add the rest to
+               existing groups (triplets) maximizing coverage gain.
+    Writes integer labels to beh[f'paired_grid_idx_{cell_name}'].
+    """
+    # --- get same_grids (optionally filter by consistent_FR) ---
     if f"consistent_FR_{cell_name}" in beh:
         # first filter locations and same_grids for grids that are reliable.
         reliable_FR_mask = beh[f"consistent_FR_{cell_name}"].to_numpy()
-        locs = locs[reliable_FR_mask]
-        same_grids = beh['idx_same_grids'][beh[f'consistent_FR_{cell_name}'] == True].to_numpy()
+        locs_used = locs[reliable_FR_mask]
+        same_grids = beh['idx_same_grids'][reliable_FR_mask].to_numpy()
     else:
+        reliable_FR_mask = None
+        locs_used = locs
         same_grids = beh['idx_same_grids'].to_numpy()
     
-    if cell_name == '05-05-mRF3cVPF04-RPvmPFC':
-        import pdb; pdb.set_trace()
-        # WHY DOES THIS CLUMP MORE THAN 3 GRIDS TOEGTEHR????
+    # if cell_name == '05-05-mRF3cVPF04-RPvmPFC':
+    #     import pdb; pdb.set_trace()
+    #     # WHY DOES THIS CLUMP MORE THAN 3 GRIDS TOEGTEHR????
     
     unique_grids = np.unique(same_grids)
-    if len(unique_grids) < 4:
-        continue
+    
+
+    # discard if fewer than 3 unique grids (column = False)
+    if len(unique_grids) < 3:
+        col = f'paired_grid_idx_{cell_name}'
+        if reliable_FR_mask is not None:
+            out = np.full(reliable_FR_mask.shape, False, dtype=object)
+            beh[col] = out
+        else:
+            beh[col] = np.full(same_grids.shape, False, dtype=object)
+        return beh
+    
+
     # --- 1) build coverage dict for each original grid ---
     grid_cvg = {}
-    # import pdb; pdb.set_trace()
+    
     for grid_idx in unique_grids:
-        grid_cvg[grid_idx] = {}
-        all_locs_curr_grid = locs[same_grids == grid_idx]
+        grid_cvg_vec = np.zeros(9, dtype=int)
+        all_locs_curr_grid = locs_used[same_grids == grid_idx]
         for loc in range(1,10):
-            grid_cvg[grid_idx][loc] = np.count_nonzero(all_locs_curr_grid == loc)
-     
-    # first pass: test if there are enough grids to build 3 pairs. If not, 
-    # identify which grid has the best coverage and take that as a single grid.
-    pairs = {}
-    used_grids = []
-    if len(grid_cvg) < min_groups*2:
-        best_cvg = []
-        for g, loc_dict in grid_cvg.items():
-            if g in used_grids:
-                continue
-            # 1. find the grid with best coverage
-            # to do so, first count how many grids are below the cut-off per grid
-            weak_counts = {g: sum(v < min_coverage for v in loc_dict.values())
-                               for g, loc_dict in grid_cvg.items()}
-            # pick the grid with the smallest number of missing coverage
-            best_grid = min(weak_counts, key=weak_counts.get)
-            pairs[best_grid] = best_grid          # single grid acts as its own "pair"
-            used_grids.append(best_grid)
+            grid_cvg_vec[loc-1] = np.count_nonzero(all_locs_curr_grid == loc)
+        grid_cvg[grid_idx] = grid_cvg_vec
+        
+    
+    # --- helpers for scoring coverage and choosing pairs ---
+    def group_score(grids):
+        """
+        Score to maximize:
+          1) # of locations with coverage >= min_coverage (higher is better)
+          2) minimum coverage across locations (higher is better)
+        """
+        tot = sum((grid_cvg[g] for g in grids), np.zeros(9, dtype=int))
+        n_cov_good = int(np.sum(tot >= min_coverage)) 
+        min_cvg = int(np.min(tot)) if tot.size else 0
+        return (n_cov_good, min_cvg)
+    
+    def worst_sort_key(g):
+        """
+        Higher = worse:
+          1) more weak locations (< min_coverage)  -> worse
+          2) lower minimum coverage                -> worse
+        """
+        v = grid_cvg[g]
+        weak = int(np.sum(v < min_coverage))
+        minv = int(np.min(v))
+        return (weak, -minv)   # more weak first; for ties, lower min (i.e., -minv higher)
 
-    # next pass: only pairing grids that have bad spatial coverage somewhere.
-    for g, loc_dict in grid_cvg.items():
-        # 1. find weak locations
-        low_locs = [l for l, v in loc_dict.items() if v < min_coverage]
-        if not low_locs:
-            # import pdb; pdb.set_trace()
-            continue
-        if g in used_grids:
-            continue
+    def best_sort_key(g):
+        """
+        Higher = better:
+          1) fewer weak locations (< min_coverage) -> better
+          2) higher minimum coverage               -> better
+        """
+        v = grid_cvg[g]
+        weak = -int(np.sum(v < min_coverage))  # fewer weak -> larger value
+        minv = int(np.min(v))                  # higher min -> larger value
+        return (weak, minv)
+
+    def best_pair(rem):
+        """Pick (a,b) maximizing group_score({a,b}) with the above priority."""
+        rem = list(rem)
         best = None
-        for h, other in grid_cvg.items():
-            if h == g:
-                continue
-            if h in used_grids:
-                continue
-            # 2. combine coverage
-            combined = {l: loc_dict[l] + other[l] for l in loc_dict}
-            # 3. score: how many weak locations get fixed, then how much boost on the weakest one
-            fixed = sum(combined[l] >= min_coverage for l in low_locs)
-            boost = min(combined[l] for l in low_locs)   # worst case after merge
-            score = (fixed, boost)
-            if best is None or score > best[0]:
-                best = (score, h)
-                
-        if best:
-            pairs[g] = best[1]
-            # also include the vice-versa pair
-            used_grids.append(g)
-            used_grids.append(best[1])
+        for i in range(len(rem)):
+            for j in range(i+1, len(rem)):
+                a, b = rem[i], rem[j]
+                # Comparisons are lexicographic on (n_good, min_cvg), 
+                # so “passing the threshold” dominates, and “raising the floor” is second.
+                sc = group_score([a, b]) # (n_good, min_cvg)
+                if best is None or sc > best[0]:
+                    best = (sc, (a, b))
+        # best[1] = pair of best fitting grids.
+        return best[1] if best else None
+
+
+     # --- 2) build groups according to n and your rules ---
+    groups = []  # list of lists of grid ids
+    remaining = set(unique_grids.tolist())
+
+
+    # choose a single "best" to leave alone in cases 5,7,9
+    def pick_best_single(rem):
+        # builds scores out of neg 'passes coverage' and minimum coverage
+        # takes max(weak, minv) per grid
+        return max(rem, key=best_sort_key)
     
-    # next, pair the ones that have not been used (i.e. had good coverage)
-    left_over = []
-    for i in np.unique(same_grids):
-        if i not in used_grids:
-            left_over.append(i)
+    # choose k pairs greedily from remaining
+    def add_k_pairs(rem, k):
+        for _ in range(k):
+            if len(rem) < 2: break
+            a_b = best_pair(rem) # a_b = pair of best fitting grids.
+            if a_b is None: break
+            a, b = a_b
+            groups.append([a, b])
+            # then remove the pairs that have just been added
+            rem.remove(a); rem.remove(b)
     
-    if len(left_over)%2 == 1:
-        # if an uneven number is left, keep the best coverage one alone.
-        # best coverage defines as highest minimum coverage.
-        mins = {g: min(grid_cvg[g].values()) for g in left_over}
-        best_grid = np.random.default_rng().choice([g for g, m in mins.items() if m == max(mins.values())])
-        pairs[best_grid] = best_grid
-        used_grids.append(best_grid)
+    if len(unique_grids) == 3:
+        # 3 singles
+        groups = [[g] for g in unique_grids]
+        remaining.clear()
     
-    left_over = []
-    for i in np.unique(same_grids):
-        if i not in used_grids:
-            left_over.append(i)
+    elif len(unique_grids) == 4:
+        # pair worst 2; others singleton
+        worst2 = sorted(remaining, key=worst_sort_key, reverse=True)[:2]
+        groups.append(list(worst2))
+        for g in worst2: remaining.remove(g)
+        for g in sorted(remaining): groups.append([g])
+        remaining.clear()
 
-    # just pair randomly
-    for idx, unused_g in enumerate(left_over):
-        if unused_g in used_grids:
-            continue
-        pairs[unused_g] = left_over[idx+1]
-        used_grids.append(unused_g)
-        used_grids.append(left_over[idx+1])
-
-    # delete if this works
-    for i in np.unique(same_grids):
-        if i not in used_grids:
-            # IF THERE ARE STILL LEFT OVERS, SOMETHING IS WRONG!!
-            # next, test how many pairs have been built and how many grids go unused.
-            import pdb; pdb.set_trace()
-
-
-
-    # lastly, map the new grid indices back to the old unique grid index.
-    same_grid_idx_new = np.full(same_grids.shape, -1, dtype=int)
+        
+    elif len(unique_grids) in [5,7,9]:
+        # best alone; pair worst 4 (2 pairs)
+        best_single = pick_best_single(remaining)
+        remaining.remove(best_single)
+        # after removing the best grid, pair the remaining ones up as usual
+        add_k_pairs(remaining, int((len(unique_grids)-1)/2))
+        # in the end, add the single grid to the groups and delete all used grids
+        groups.append([best_single])
+        remaining.clear()
     
-    for new_same_grid, old_grid_idx in enumerate(pairs):
-        same_grid_idx_new[same_grids == old_grid_idx] = int(new_same_grid)
-        same_grid_idx_new[same_grids == pairs[old_grid_idx]] = int(new_same_grid)
+    elif len(unique_grids) in [6,8,10]:
+        add_k_pairs(remaining, int(len(unique_grids)/2))
     
+    else:
+        # n > 10  →  make exactly 5 groups max
+        add_k_pairs(remaining, max_groups)  # start with 5 best pairs
+        # add leftovers to existing groups to maximize coverage gain
+        while remaining:
+            g = remaining.pop()
+            best_gain, best_idx = None, None
+            for idx, grp in enumerate(groups):
+                # find out which group improves most if left-over is added
+                base = group_score(grp)
+                new  = group_score(grp + [g])
+                gain = tuple(np.array(new) - np.array(base))
+                if best_gain is None or gain > best_gain:
+                    best_gain, best_idx = gain, idx
+            groups[best_idx].append(g)
 
-    # # brief check if the coverage is better now
-    # new_grid_cvg = {}
-    # for grid_idx in np.unique(same_grid_idx_new):
-    #     new_grid_cvg[grid_idx] = {}
-    #     all_locs_curr_grid = locs[same_grid_idx_new == grid_idx]
-    #     for loc in np.unique(locs):
-    #         new_grid_cvg[grid_idx][loc] = np.count_nonzero(all_locs_curr_grid == loc)
-    if f"consistent_FR_{cell_name}" in beh:
-        beh[f'paired_grid_idx_{cell_name}'] = np.full(reliable_FR_mask.shape, False, dtype=object)
-        beh[f'paired_grid_idx_{cell_name}'][reliable_FR_mask] = same_grid_idx_new
+    # --- 3) map old -> new labels and scatter back to DataFrame ---
+    label = {}
+    for new_id, grp in enumerate(groups):
+        for g in grp:
+            label[int(g)] = int(new_id)
+
+    same_grid_idx_new = np.array([label[int(g)] for g in same_grids], dtype=int)
+
+    if reliable_FR_mask is not None:
+        # put back into shape with False for grids that have insufficient firing
+        out = np.full(reliable_FR_mask.shape, False, dtype=object)  
+        out[reliable_FR_mask] = same_grid_idx_new
+        beh[f'paired_grid_idx_{cell_name}'] = out
     else:
         beh[f'paired_grid_idx_{cell_name}'] = same_grid_idx_new
+        
     return beh
 
+def rename_rois(df, collapse_pfc = False):
+    roi_label = []
+    if collapse_pfc == True:
+        for _, row in df.iterrows():
+            cell_label = row['neuron_id']
+            if 'ACC' in cell_label or 'vCC' in cell_label or 'AMC' in cell_label or 'vmPFC' in cell_label or 'OFC' in cell_label or 'PCC' in cell_label:
+                roi = 'PFC'
+            elif 'MCC' in cell_label or 'HC' in cell_label:
+                roi = 'hippocampal'
+            elif 'EC' in cell_label:
+                roi = 'entorhinal'
+            elif 'AMYG' in cell_label:
+                roi = 'amygdala'
+            else:
+                roi = 'mixed'
+            roi_label.append(roi)
+    else:
+        for _, row in df.iterrows():
+            cell_label = row['neuron_id']
+            if 'ACC' in cell_label or 'vCC' in cell_label or 'AMC' in cell_label or 'vmPFC' in cell_label:
+                roi = 'ACC'
+            elif 'PCC' in cell_label:
+                roi = 'PCC'
+            elif 'OFC' in cell_label:
+                roi = 'OFC'
+            elif 'MCC' in cell_label or 'HC' in cell_label:
+                roi = 'hippocampal'
+            elif 'EC' in cell_label:
+                roi = 'entorhinal'
+            elif 'AMYG' in cell_label:
+                roi = 'amygdala'
+            else:
+                roi = 'mixed'
+            roi_label.append(roi)
+    return roi_label
 
+def plt_binomial_per_roi(out_df, title_string, alpha=0.05, cmap_name="tab20", collapse_pfc=False):
+
+    p_emp   = np.asarray(out_df['p_perm'].to_numpy(), float)
+    regions = np.asarray(rename_rois(out_df, collapse_pfc=collapse_pfc))
+
+    def stars(p):
+        if not np.isfinite(p): return "n/a"
+        return '***' if p < 1e-3 else '**' if p < 1e-2 else '*' if p < 5e-2 else 'n.s.'
+
+    def wilson_ci(k, n, conf=0.95):
+        if n == 0: return (np.nan, np.nan)
+        z = norm.ppf(1 - (1 - conf) / 2)
+        phat = k / n
+        denom = 1 + z**2 / n
+        center = (phat + z**2/(2*n)) / denom
+        half = z * np.sqrt((phat*(1-phat) + z**2/(4*n)) / n) / denom
+        return center - half, center + half
+
+    # --- summarize per region ---
+    rows = []
+    for r in np.unique(regions):
+        m = (regions == r)
+        x = p_emp[m]
+        x = x[np.isfinite(x)]
+        n = x.size
+        k = int((x <= alpha).sum())
+        p_binom = binomtest(k, n, p=alpha, alternative="greater").pvalue if n else np.nan
+        lo, hi  = wilson_ci(k, n, conf=0.95) if n else (np.nan, np.nan)
+        frac    = (k / n) if n else np.nan
+        rows.append((r, n, k, frac, lo, hi, p_binom))
+
+    if not rows:
+        print("No regions to plot.")
+        return
+
+    # sort by region frequency (n desc), tie-break by name
+    rows.sort(key=lambda t: (-t[1], t[0]))
+    labels, ns, ks, fracs, los, his, ps = map(list, zip(*rows))
+
+    # error bars from Wilson CI
+    fracs_arr = np.array(fracs, float)
+    los_arr   = np.array(los,   float)
+    his_arr   = np.array(his,   float)
+    yerr_low  = np.nan_to_num(fracs_arr - los_arr, nan=0.0, posinf=0.0, neginf=0.0)
+    yerr_high = np.nan_to_num(his_arr   - fracs_arr, nan=0.0, posinf=0.0, neginf=0.0)
+    yerr = np.vstack([yerr_low, yerr_high])
+
+    # --- dynamic y-limit with headroom for text ---
+    tops = fracs_arr + yerr_high
+    data_top = float(np.nanmax(tops)) if np.isfinite(tops).any() else 0.1
+    text_pad = 0.03  # vertical gap above error bar for the annotation
+    min_head = 0.06  # minimum headroom from highest top to y_max
+    y_max = min(1.0, max(0.15, data_top + max(text_pad + 0.01, min_head)))
+
+    # style
+    plt.rcParams.update({
+        'font.size': 13, 'axes.titlesize': 16, 'axes.labelsize': 14,
+        'xtick.labelsize': 12, 'ytick.labelsize': 12, 'legend.fontsize': 12
+    })
+
+    fig, ax = plt.subplots(figsize=(9.6, 5.6))
+    x = np.arange(len(labels))
+    cmap   = plt.get_cmap(cmap_name, max(3, len(labels)))
+    colors = cmap(range(len(labels)))
+
+    ax.bar(x, fracs_arr, width=0.65, color=colors, edgecolor='none', alpha=0.95)
+    ax.errorbar(x, fracs_arr, yerr=yerr, fmt='none', capsize=4, lw=1.6, color='black', zorder=3)
+
+    # reference line at alpha
+    ax.axhline(alpha, color='gray', lw=1.2, ls='--', label=f'Expected under null (α={alpha:g})')
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=0)
+    ax.set_ylim(0, y_max)  # <<< tight y-axis with headroom
+    ax.set_ylabel("Fraction significant")
+    ax.set_title(title_string)
+
+    # annotations placed above each bar’s error bar, with guaranteed padding
+    for i, (k, n, p) in enumerate(zip(ks, ns, ps)):
+        top_i = fracs_arr[i] + yerr_high[i]
+        y_i = min(y_max - 0.01, top_i + text_pad)  # never spill beyond y_max
+        ax.text(x[i], y_i, f"{k}/{n}\n{stars(p)} (p={p:.2g})",
+                ha='center', va='bottom', fontsize=12, zorder=4)
+
+    ax.legend(frameon=False, loc='upper right')
+    fig.tight_layout()
+    plt.show()
+
+    
 
 def compute_fut_spatial_tunings(sessions, trials = 'all_correct', plotting = False, no_perms = None, combine_two_grids = False, sparsity_c = None, weighted = False, save_all = False):  
     # trials can be 'all', 'all_correct', 'early', 'late'
@@ -865,16 +1128,8 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', plotting = Fal
                 unique_grids = np.unique(beh_df[f'paired_grid_idx_{curr_neuron}'][mask].dropna().astype(int))
                 idx_same_grids = beh_df[f'paired_grid_idx_{curr_neuron}'].to_numpy()
             else:
-                if idx_same_grids:
-                    continue
-                else:
+                if not idx_same_grids:
                     idx_same_grids = beh_df['idx_same_grids'].to_numpy()
-
-
-            # CONTINUE HERE:
-                # next, if the exclusion of bad grids and then the averaging of different grids works,
-                # work on weighting the different grids by how much they were visited.
-            #import pdb; pdb.set_trace()
 
 
             # loop through n-1 grids, respectively
@@ -962,13 +1217,21 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', plotting = Fal
             os.mkdir(group_dir_fut_spat)
         
         if perm_idx > 1:
-            name_result = f"{group_dir_fut_spat}/perms200_spatial_consistency_{trials}_repeats.csv"
-            # ADD SOME SORT OF PERM PLOTTING FUNCTION!!!
-            empirical_result = pd.read_csv(f"{group_dir_fut_spat}/spatial_consistency_{trials}_repeats.csv")
+            result_string = f"spatial_consistency_{trials}_repeats.csv"
+            if sparsity_c:
+                result_string = f"spatial_consistency_{trials}_repeats_excl_{sparsity_c}_pct_neurons.csv"
+            if weighted == True and sparsity_c:
+                result_string =f"spatial_consistency_{trials}_repeats_excl_{sparsity_c}_pct_neurons_weighted.csv"
+            empirical_result = pd.read_csv(f"{group_dir_fut_spat}/{result_string}")
+            perm_string = f"pval_for_perms200_{result_string}"
+            name_result_stats = f"{group_dir_fut_spat}/{perm_string}"
+            perm_pval_result = store_p_vals_perms(true_df = empirical_result, perm_df = results_df, out_path=name_result_stats, trials=trials)
+            mc.plotting.results.plot_perm_spatial_consistency(results_df, empirical_result, name_result_stats, group_dir_fut_spat)
+            title_string = f'Binomial test after single-cell permutations, {trials} repeats'
+            plt_binomial_per_roi(perm_pval_result, title_string)
+            
             import pdb; pdb.set_trace()
-            name_result_stats = f"{group_dir_fut_spat}/pval_for_perms200_spatial_consistency_{trials}_repeats.csv"
-            store_p_vals_perms(true_df = empirical_result, perm_df = results_df, out_path=name_result_stats)
-            mc.plotting.results.plot_perm_spatial_consistency(results_df, empirical_result, name_result_stats)
+
         else:
             name_result = f"{group_dir_fut_spat}/spatial_consistency_{trials}_repeats.csv"
             plot_results_per_roi(results_df, title_string_add = f'{trials}_repeats')
@@ -981,10 +1244,8 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', plotting = Fal
                 name_result = f"{group_dir_fut_spat}/spatial_consistency_{trials}_repeats_excl_{sparsity_c}_pct_neurons_weighted.csv"
                  
         results_df.to_csv(name_result)
-        print(f"saved cross-validated spatial tuning values in {name_result}")
-    
-      
-    import pdb; pdb.set_trace()
+        print(f"saved cross-validated spatial tuning values in {name_result}")  
+        import pdb; pdb.set_trace()
     
     
 
@@ -1001,7 +1262,7 @@ if __name__ == "__main__":
     # trials can be 'all', 'all_correct', 'early', 'late'
     # compute_fut_spatial_tunings(sessions=[3], trials = 'all', plotting=False, no_perms = None, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=False)
 
-    compute_fut_spatial_tunings(sessions=list(range(0,60)), trials = 'late', no_perms = None, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=True)
+    compute_fut_spatial_tunings(sessions=list(range(0,60)), trials = 'early', no_perms = 200, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=True)
     # compute_fut_spatial_tunings(sessions=list(range(0,60)), trials = 'all', no_perms = 200, combine_two_grids = True)
     # compute_fut_spatial_tunings(sessions=[31], trials = 'all', plotting = False, no_perms = None, combine_two_grids = True)
     

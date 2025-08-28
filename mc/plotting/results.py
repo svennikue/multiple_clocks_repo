@@ -21,166 +21,9 @@ from matplotlib.lines import Line2D
 
 
 
-def plot_perm_spatial_consistency(perm_df, true_df, out_dir, group_dir_fut_spat):
-#     # --- CONFIG ---
-#     alpha_fdr = 0.05                                     # FDR level
-#     NOW_SET = {330, 0, 30}
-#     FUTURE_REWARD_SET = {90, 180, 270}
+def plot_perm_spatial_consistency(perm_df, true_df, path_to_pval_table, group_results_path):
 
-#     out_dir.mkdir(parents=True, exist_ok=True)
-    
-#     # ---------- helpers ----------
-#     def bh_reject(pvals, alpha=0.05):
-#         p = np.asarray(pvals, float)
-#         mask = np.isfinite(p)
-#         m = mask.sum()
-#         out = np.zeros_like(p, dtype=bool)
-#         if m == 0:
-#             return out
-#         p_sub = p[mask]
-#         order = np.argsort(p_sub)
-#         p_sorted = p_sub[order]
-#         thresh = alpha * (np.arange(1, m+1) / m)
-#         passed = p_sorted <= thresh
-#         rej_sub = np.zeros_like(p_sub, dtype=bool)
-#         if passed.any():
-#             kmax = np.nonzero(passed)[0].max()
-#             cutoff = p_sorted[kmax]
-#             rej_sub = p_sub <= cutoff
-#         out[mask] = rej_sub
-#         return out
-    
-#     def roi_from_label(cell_label: str) -> str:
-#         # tweak to match your exact neuron_id strings
-#         if any(tag in cell_label for tag in ["ACC", "vCC", "AMC"]): return "ACC"
-#         if "PCC" in cell_label: return "PCC"
-#         if "OFC" in cell_label: return "OFC"
-#         if any(tag in cell_label for tag in ["MCC", "HC"]): return "hippocampal"
-#         if "EC" in cell_label: return "entorhinal"
-#         if "AMYG" in cell_label: return "amygdala"
-#         return "mixed"
-    
-#     def to_int_safe(x):
-#         try:
-#             return int(x)
-#         except Exception:
-#             try:
-#                 return int(float(x))
-#             except Exception:
-#                 return np.nan
-    
-#     def beeswarm_by_roi(df, title, outpath, rng=None):
-#         if rng is None:
-#             rng = np.random.default_rng(0)
-#         rois = sorted(df["roi"].unique())
-#         if len(rois) == 0:
-#             print(f"[warn] No data for plot: {title}")
-#             return
-#         xpos = {roi: i+1 for i, roi in enumerate(rois)}  # 1..N (nice spacing)
-    
-#         fig, ax = plt.subplots(figsize=(max(6, 1.2*len(rois)), 5))
-    
-#         # background violin 
-#         data_by_roi = [df.loc[df["roi"]==roi, "avg_consistency_at_peak"].to_numpy() for roi in rois]
-#         parts = ax.violinplot(data_by_roi, positions=list(xpos.values()),
-#                               showmeans=False, showmedians=False, showextrema=False)
-#         for body in parts['bodies']:
-#             body.set_facecolor('teal')   # default blue
-#             body.set_alpha(0.25)
-#             body.set_edgecolor('none')
-    
-#         # beeswarm: grey non-sig, orange sig
-#         def jitter(n, scale=0.08): return rng.normal(0, scale, size=n)
-#         for roi in rois:
-#             sub = df[df["roi"] == roi]
-#             x0 = xpos[roi]
-#             y = sub["avg_consistency_at_peak"].to_numpy()
-#             j = jitter(len(y))
-#             sig = sub["sig_FDR_all"].to_numpy()
-    
-#             ax.scatter(x0 + j[~sig], y[~sig], s=18, alpha=0.7,
-#                        edgecolors='none', c='#B0B0B0')          # grey
-#             ax.scatter(x0 + j[sig],  y[sig],  s=24, alpha=0.9,
-#                        edgecolors='k', linewidths=0.3, c='#E07B39')  # orange
-    
-#         ax.set_xticks(list(xpos.values()))
-#         ax.set_xticklabels(rois, rotation=20)
-#         ax.set_xlim(0.5, len(rois)+0.5)
-#         ax.set_ylabel("avg_consistency_at_peak")
-#         ax.set_title(title)
-    
-#         # legend
-#         handles = [
-#             Line2D([0],[0], marker='o', linestyle='', color='#B0B0B0', label='non-significant'),
-#             Line2D([0],[0], marker='o', linestyle='', markeredgecolor='k', markeredgewidth=0.3,
-#                    color='#FF8C00', label='significant')
-#         ]
-#         ax.legend(handles=handles, loc="upper left", frameon=False)
-#         plt.tight_layout()
-#         fig.savefig(outpath, dpi=200, bbox_inches='tight')
-#         plt.close(fig)
-#         print(f"saved: {outpath}")
-    
-
-#     # ---------- permutation p-values (one-sided: null >= observed) ----------
-#     perm_groups = (
-#         perm_df.groupby(["session_id","neuron_id"])["avg_consistency_at_peak"]
-#                .apply(lambda s: s.to_numpy())
-#                .to_dict()
-#     )
-    
-#     pvals, nperms = [], []
-#     for r in true_df.itertuples(index=False):
-#         key = (r.session_id, r.neuron_id)
-#         obs  = float(r.avg_consistency_at_peak)
-#         null = perm_groups.get(key, np.array([]))
-#         M = null.size
-#         nperms.append(M)
-#         if M == 0 or not np.isfinite(obs):
-#             pvals.append(np.nan)
-#         else:
-#             pvals.append((1 + np.sum(null >= obs)) / (M + 1))
-    
-#     true_df["p_perm"]  = pvals
-#     true_df["n_perms"] = nperms
-    
-#     # FDR across all neurons
-#     true_df["sig_FDR_all"] = bh_reject(true_df["p_perm"].values, alpha=alpha_fdr)
-    
-#     # ROI + class labels
-#     true_df["roi"] = true_df["neuron_id"].apply(roi_from_label)
-#     mode_shift_int = true_df["mode_peak_shift"].apply(to_int_safe)
-#     true_df["class_shift"] = np.where(mode_shift_int.isin(NOW_SET), "current", "future")
-    
-#     # ---------- make the four beeswarm plots ----------
-#     beeswarm_by_roi(true_df,
-#         title=f"Beeswarm by ROI — ALL lags (q<{alpha_fdr})",
-#         outpath=out_dir / f"beeswarm_all_q{alpha_fdr:.2f}.png")
-    
-#     beeswarm_by_roi(true_df[mode_shift_int.isin(NOW_SET)],
-#         title=f"Beeswarm by ROI — CURRENT lags {sorted(NOW_SET)} (q<{alpha_fdr})",
-#         outpath=out_dir / f"beeswarm_current_q{alpha_fdr:.2f}.png")
-    
-#     beeswarm_by_roi(true_df[~mode_shift_int.isin(NOW_SET)],
-#         title=f"Beeswarm by ROI — FUTURE (q<{alpha_fdr})",
-#         outpath=out_dir / f"beeswarm_future_q{alpha_fdr:.2f}.png")
-    
-#     beeswarm_by_roi(true_df[mode_shift_int.isin(FUTURE_REWARD_SET)],
-#         title=f"Beeswarm by ROI — FUTURE REWARDS {sorted(FUTURE_REWARD_SET)} (q<{alpha_fdr})",
-#         outpath=out_dir / f"beeswarm_future_rewards_q{alpha_fdr:.2f}.png")
-    
-#     # ---------- quick console summary ----------
-#     summary = (
-#         true_df.groupby(["roi","class_shift"])["sig_FDR_all"]
-#                .agg(n_sig="sum", n_total="count")
-#                .reset_index()
-#     )
-#     print("\nSummary by ROI & class:\n", summary)
-
-
-    # --- CONFIG: set these ---
-    table_path = f"{group_dir_fut_spat}/spatial_consistency_with_pvals_{trials}_repeats.csv"
-    out_dir    = f"{group_dir_fut_spat}/figs"   # where to save the PNGs
+    out_dir    = f"{group_results_path}/figs"   # where to save the PNGs
     alpha_fdr  = 0.05                           # FDR level
     
 
@@ -288,7 +131,7 @@ def plot_perm_spatial_consistency(perm_df, true_df, out_dir, group_dir_fut_spat)
         # print(f"saved: {outpath}")
     
     # --- load table + ensure needed cols ---
-    df = pd.read_csv(table_path)
+    df = pd.read_csv(path_to_pval_table)
     df = ensure_columns(df, alpha_fdr)
     
     # integer version of shift for filtering
