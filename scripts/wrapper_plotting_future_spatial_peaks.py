@@ -42,6 +42,38 @@ def get_data(sub):
     data_norm = mc.analyse.helpers_human_cells.load_norm_data(data_folder, [f"{sub:02}"])
     return data_norm, data_folder
 
+def normalize_maps(FR_maps, mode="zscore", qclip=98):
+    """
+    FR_maps: (n_shifts, 9, n_grids)
+    Returns: FR_maps_norm, (vmin, vmax)
+    """
+    FR_maps = np.asarray(FR_maps, float)
+    if mode == "zscore":
+        out = np.empty_like(FR_maps, dtype=float)
+        for s in range(FR_maps.shape[0]):
+            for g in range(FR_maps.shape[2]):
+                v = FR_maps[s, :, g]
+                m = np.nanmean(v)
+                sd = np.nanstd(v)
+                out[s, :, g] = (v - m) / (sd if sd > 1e-12 else 1.0)
+        lim = np.nanpercentile(np.abs(out), qclip)
+        return out, (-float(lim), float(lim))
+    elif mode == "global":
+        # one scale for all raw maps (keeps absolute magnitude)
+        vmin = np.nanpercentile(FR_maps, 2)
+        vmax = np.nanpercentile(FR_maps, 98)
+        return FR_maps, (float(vmin), float(vmax))
+    elif mode == "per_grid":
+        # per-grid row scales (list of (vmin,vmax) per grid)
+        clims = []
+        for g in range(FR_maps.shape[2]):
+            row_vals = FR_maps[:, :, g].ravel()
+            vmin = np.nanpercentile(row_vals, 2)
+            vmax = np.nanpercentile(row_vals, 98)
+            clims.append((float(vmin), float(vmax)))
+        return FR_maps, clims
+    else:
+        raise ValueError("mode must be 'zscore', 'global', or 'per_grid'")
 
     
 def filter_data(data, session, rep_filter):
@@ -162,6 +194,167 @@ def comp_peak_spatial_tuning(neurons, locs, beh, cell_name, idx_same_grids, plot
     return fr_maps_by_shift, mean_corr_per_shift, dwell_by_shift
 
 
+#
+#
+from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
+from matplotlib.patches import Rectangle
+import numpy as np
+import matplotlib.pyplot as plt
+
+def plot_neuron_overview(neuron_name, beh, neuron, locs, FR_maps_neuron,
+                         spatial_corr_per_shift, same_grids, title_string):
+
+    unique_grids = np.unique(same_grids)
+    print(f"{neuron_name} has {len(unique_grids)} grids.")
+
+    # ----- Build spatial coverage (grey column) -----
+    grid_cvg = {}
+    for g in unique_grids:
+        grid_cvg[g] = np.zeros(9, dtype=int)
+        glocs = locs[same_grids == g]
+        for loc in range(1, 10):
+            grid_cvg[g][loc-1] = np.count_nonzero(glocs == loc)
+
+    cov_min = min(np.min(v) for v in grid_cvg.values())
+    cov_max = max(np.max(v) for v in grid_cvg.values())
+
+    # ----- Collapsed coverage (sum across grids)  # NEW
+    cov_collapsed = sum(grid_cvg.values())
+    cov_max_all = max(cov_max, np.max(cov_collapsed))       # scale includes collapsed  # NEW
+
+    # # ----- Global FR map color limits -----
+    # rate_min = np.nanmin(FR_maps_neuron)
+    # rate_max = np.nanmax(FR_maps_neuron)
+    # ----- Collapsed FR maps (mean over grids)
+    FR_maps_collapsed = np.nanmean(FR_maps_neuron, axis=2)          # (n_shifts, 9)
+    
+    # ----- Z-score ALL maps (per 3x3), get one symmetric color scale for pattern comparison
+    # stack collapsed as an extra "grid" so limits include it too
+    FR_all = np.concatenate([FR_maps_neuron, FR_maps_collapsed[:, :, None]], axis=2)  # (S, 9, G+1)
+    FR_all_Z, (rate_min, rate_max) = normalize_maps(FR_all, qclip=98)
+    
+    # split back
+    n_grids = len(unique_grids)
+    FR_maps_Z = FR_all_Z[:, :, :n_grids]          # (S, 9, G)
+    FR_coll_Z = FR_all_Z[:, :, -1]                # (S, 9)
+
+    # ----- Rows to show -----
+    n_grids = len(unique_grids)
+    grid_order = sorted(grid_cvg.keys())[:n_grids]
+
+    # ----- Collapsed FR maps (mean over grids)  # NEW
+    # FR_maps_neuron: (n_shifts, 9, n_grids) -> (n_shifts, 9)
+    FR_maps_collapsed = np.nanmean(FR_maps_neuron, axis=2)
+
+    # ----- Best shift for outline -----
+    temporal_shift = 30
+    shifts = np.arange(0, 360, temporal_shift)
+    best_idx = np.nanargmax(spatial_corr_per_shift) if np.any(np.isfinite(spatial_corr_per_shift)) else None
+    best_shift = shifts[best_idx] if best_idx is not None else None
+
+    # ===== FIGURE LAYOUT =====
+    fig = plt.figure(figsize=(22, 14))
+    gs = GridSpec(nrows=3, ncols=1, height_ratios=[2.2, 1.8, 7.0], hspace=0.35, figure=fig)
+
+    # Row 1: firing rate
+    ax_fr = fig.add_subplot(gs[0, 0])
+    im_fr = ax_fr.imshow(neuron, aspect='auto', cmap='Reds')
+    ax_fr.vlines([90, 180, 270], 0, neuron.shape[0]-1, linestyles='dotted', linewidth=0.8, colors='black')
+    ax_fr.set_title('Firing rate per bin (x) and repeat (y)')
+    ax_fr.set_xlabel('Time (bins)')
+    ax_fr.set_ylabel('Repeats')
+    cbar_fr = fig.colorbar(im_fr, ax=ax_fr, fraction=0.025, pad=0.02)
+    cbar_fr.set_label("Rate (spike/s)")
+
+    # Row 2: spatial encoding vs shift
+    ax_cons = fig.add_subplot(gs[1, 0])
+    ax_cons.plot(shifts, spatial_corr_per_shift, marker='o', color='black', label=str(neuron_name))
+    ax_cons.hlines(0, shifts[0], shifts[-1], colors='k', linestyles='-')
+    ax_cons.set_xlabel('Temporal shift (bins of 30)')
+    ax_cons.set_ylabel('Mean grid correlation')
+    ax_cons.set_title(f"Neuron {neuron_name} — Spatial encoding consistency vs. temporal shift")
+    ax_cons.legend(loc='best', fontsize=8)
+    if best_shift is not None:
+        ax_cons.axvline(best_shift, color='tab:red', linestyle='--', linewidth=1)
+
+    # Bottom block: (n_grids + 1) rows  # CHANGED
+    ncols_bottom = 1 + len(shifts)  # 1 coverage + shifts
+    gs_bot = GridSpecFromSubplotSpec(
+        nrows=n_grids + 1, ncols=ncols_bottom, subplot_spec=gs[2, 0], wspace=0.05, hspace=0.08
+    )
+
+    axs = np.empty((n_grids + 1, ncols_bottom), dtype=object)
+
+    # Column headers placeholders (titles go on real axes)
+    for c in range(ncols_bottom):
+        ax_title = fig.add_subplot(gs_bot[0, c])
+        fig.delaxes(ax_title)
+
+    # --- Per-grid rows ---
+    for r, g in enumerate(grid_order):
+        # Coverage
+        ax_cov = fig.add_subplot(gs_bot[r, 0]); axs[r, 0] = ax_cov
+        spatial_cov = grid_cvg[g].reshape(3, 3)
+        im_cov = ax_cov.imshow(spatial_cov, cmap='Greys', vmin=cov_min, vmax=cov_max_all)  # CHANGED vmax
+        ax_cov.set_xticks([]); ax_cov.set_yticks([])
+        if r == 0: ax_cov.set_title("Coverage")
+        for (i, j), v in np.ndenumerate(spatial_cov):
+            ax_cov.text(j, i, f"{int(v)}", ha='center', va='center', color='black', fontsize=8)
+        ax_cov.text(-0.45, 0.5, f"Grid combo {r+1}", transform=ax_cov.transAxes,
+                    va='center', ha='right', fontsize=10)
+
+        # Shifts
+        for si, sh in enumerate(shifts):
+            ax = fig.add_subplot(gs_bot[r, si+1]); axs[r, si+1] = ax
+            #spatial = FR_maps_neuron[si][:, r].reshape(3, 3)
+            #im = ax.imshow(spatial, cmap='coolwarm', vmin=rate_min, vmax=rate_max)
+            spatial = FR_maps_Z[si][:, r].reshape(3, 3)   # z-scored map
+            im = ax.imshow(spatial, cmap='coolwarm', vmin=rate_min, vmax=rate_max)
+            ax.set_xticks([]); ax.set_yticks([])
+            if r == 0:
+                ax.set_title(f"{sh}°", fontsize=9)
+
+    # --- Collapsed row (last)  # NEW ---
+    r_coll = n_grids
+    ax_covC = fig.add_subplot(gs_bot[r_coll, 0]); axs[r_coll, 0] = ax_covC
+    im_covC = ax_covC.imshow(cov_collapsed.reshape(3, 3), cmap='Greys',
+                             vmin=cov_min, vmax=cov_max_all)
+    ax_covC.set_xticks([]); ax_covC.set_yticks([])
+    ax_covC.text(-0.45, 0.5, "Collapsed grids", transform=ax_covC.transAxes,
+                 va='center', ha='right', fontsize=10)
+    for (i, j), v in np.ndenumerate(cov_collapsed.reshape(3, 3)):
+        ax_covC.text(j, i, f"{int(v)}", ha='center', va='center', color='black', fontsize=8)
+
+    for si, sh in enumerate(shifts):
+        ax = fig.add_subplot(gs_bot[r_coll, si+1]); axs[r_coll, si+1] = ax
+        spatialC = FR_coll_Z[si].reshape(3, 3)        # z-scored collapsed map
+        im = ax.imshow(spatialC, cmap='coolwarm', vmin=rate_min, vmax=rate_max)
+
+        
+        #spatialC = FR_maps_collapsed[si].reshape(3, 3)
+        #im = ax.imshow(spatialC, cmap='coolwarm', vmin=rate_min, vmax=rate_max)
+        ax.set_xticks([]); ax.set_yticks([])
+        # (titles already on top row)
+
+    # Outline the best-shift column across all rows (including collapsed)  # CHANGED
+    if best_shift is not None and best_shift in shifts:
+        col_idx = 1 + int(np.where(shifts == best_shift)[0][0])
+        for r in range(n_grids + 1):
+            axs[r, col_idx].add_patch(Rectangle((0, 0), 1, 1,
+                               transform=axs[r, col_idx].transAxes, fill=False,
+                               linewidth=2.5, edgecolor='black', zorder=10))
+
+    # Shared colorbar for all rate maps (incl. collapsed)
+    cbar_rate = fig.colorbar(im, ax=axs[:, 1:].ravel().tolist(), fraction=0.02, pad=0.01)
+    cbar_rate.set_label("Avg. rate per field")
+
+    fig.suptitle(title_string, fontsize=18, fontweight="bold", y=0.995)
+    plt.show()
+
+
+
+#
+#
 
 
 
@@ -432,133 +625,133 @@ def pair_grids_to_increase_spatial_coverage(locs, beh, cell_name, min_coverage=1
 
 
 
-def plot_neuron_overview(neuron_name, beh, neuron, locs, FR_maps_neuron, spatial_corr_per_shift, same_grids, title_string):
-    # --- Inputs assumed already defined:
-    # neuron : 2D array (repeats x timebins)
-    # spatial_corr_per_shift : 1D array length = len(shifts)
-    # neuron_name : str
-    # shifts : e.g. np.arange(0,360,30)  # 12 values
-    # FR_maps_neuron : shape (len(shifts), 9, n_grids)  -> each map reshapes to (3,3)
-    # same_grids, locs : arrays to build grid_cvg (coverage)
-    # unique_grids : np.unique(same_grids)
+# def plot_neuron_overview(neuron_name, beh, neuron, locs, FR_maps_neuron, spatial_corr_per_shift, same_grids, title_string):
+#     # --- Inputs assumed already defined:
+#     # neuron : 2D array (repeats x timebins)
+#     # spatial_corr_per_shift : 1D array length = len(shifts)
+#     # neuron_name : str
+#     # shifts : e.g. np.arange(0,360,30)  # 12 values
+#     # FR_maps_neuron : shape (len(shifts), 9, n_grids)  -> each map reshapes to (3,3)
+#     # same_grids, locs : arrays to build grid_cvg (coverage)
+#     # unique_grids : np.unique(same_grids)
     
-    # import pdb; pdb.set_trace()
-    unique_grids = np.unique(same_grids)               # flexible number of grids
-    print(f"{neuron_name} has {len(unique_grids)} grids.")
-    # ----- Build spatial coverage (grey column) -----
-    grid_cvg = {}
-    for g in unique_grids:
-        grid_cvg[g] = np.zeros(9, dtype=int)
-        glocs = locs[same_grids == g]
-        for loc in range(1, 10):
-            grid_cvg[g][loc-1] = np.count_nonzero(glocs == loc)
+#     # import pdb; pdb.set_trace()
+#     unique_grids = np.unique(same_grids)               # flexible number of grids
+#     print(f"{neuron_name} has {len(unique_grids)} grids.")
+#     # ----- Build spatial coverage (grey column) -----
+#     grid_cvg = {}
+#     for g in unique_grids:
+#         grid_cvg[g] = np.zeros(9, dtype=int)
+#         glocs = locs[same_grids == g]
+#         for loc in range(1, 10):
+#             grid_cvg[g][loc-1] = np.count_nonzero(glocs == loc)
     
-    cov_min = min(np.min(v) for v in grid_cvg.values())
-    cov_max = max(np.max(v) for v in grid_cvg.values())
+#     cov_min = min(np.min(v) for v in grid_cvg.values())
+#     cov_max = max(np.max(v) for v in grid_cvg.values())
     
-    # ----- Global FR map color limits -----
-    rate_min = np.nanmin(FR_maps_neuron)
-    rate_max = np.nanmax(FR_maps_neuron)
+#     # ----- Global FR map color limits -----
+#     rate_min = np.nanmin(FR_maps_neuron)
+#     rate_max = np.nanmax(FR_maps_neuron)
     
-    # ----- Which grids to show as rows  -----
-    n_grids = len(unique_grids)
-    grid_order = sorted(grid_cvg.keys())[:n_grids]  # align to n grid rows
+#     # ----- Which grids to show as rows  -----
+#     n_grids = len(unique_grids)
+#     grid_order = sorted(grid_cvg.keys())[:n_grids]  # align to n grid rows
     
-    # ----- Find best shift for outline -----
-    temporal_shift = 30
-    shifts = np.arange(0, 360, temporal_shift)  # 12 shifts
-    best_idx = np.nanargmax(spatial_corr_per_shift) if np.any(np.isfinite(spatial_corr_per_shift)) else None
-    best_shift = shifts[best_idx] if best_idx is not None else None
+#     # ----- Find best shift for outline -----
+#     temporal_shift = 30
+#     shifts = np.arange(0, 360, temporal_shift)  # 12 shifts
+#     best_idx = np.nanargmax(spatial_corr_per_shift) if np.any(np.isfinite(spatial_corr_per_shift)) else None
+#     best_shift = shifts[best_idx] if best_idx is not None else None
     
-    # ===== FIGURE LAYOUT =====
-    fig = plt.figure(figsize=(22, 14))
-    gs = GridSpec(nrows=3, ncols=1, height_ratios=[2.2, 1.8, 7.0], hspace=0.35, figure=fig)
+#     # ===== FIGURE LAYOUT =====
+#     fig = plt.figure(figsize=(22, 14))
+#     gs = GridSpec(nrows=3, ncols=1, height_ratios=[2.2, 1.8, 7.0], hspace=0.35, figure=fig)
     
-    # --- Row 1: Firing rate (full width)
-    ax_fr = fig.add_subplot(gs[0, 0])
-    im_fr = ax_fr.imshow(neuron, aspect='auto', cmap='Reds')
-    ax_fr.vlines([90, 180, 270], 0, neuron.shape[0]-1, linestyles='dotted', linewidth=0.8, colors='black')
-    ax_fr.set_title('Firing rate per bin (x) and repeat (y)')
-    ax_fr.set_xlabel('Time (bins)')
-    ax_fr.set_ylabel('Repeats')
-    cbar_fr = fig.colorbar(im_fr, ax=ax_fr, fraction=0.025, pad=0.02)
-    cbar_fr.set_label("Rate (spike/s)")
+#     # --- Row 1: Firing rate (full width)
+#     ax_fr = fig.add_subplot(gs[0, 0])
+#     im_fr = ax_fr.imshow(neuron, aspect='auto', cmap='Reds')
+#     ax_fr.vlines([90, 180, 270], 0, neuron.shape[0]-1, linestyles='dotted', linewidth=0.8, colors='black')
+#     ax_fr.set_title('Firing rate per bin (x) and repeat (y)')
+#     ax_fr.set_xlabel('Time (bins)')
+#     ax_fr.set_ylabel('Repeats')
+#     cbar_fr = fig.colorbar(im_fr, ax=ax_fr, fraction=0.025, pad=0.02)
+#     cbar_fr.set_label("Rate (spike/s)")
     
-    # --- Row 2: Spatial encoding consistency vs temporal shift (full width)
-    ax_cons = fig.add_subplot(gs[1, 0])
-    ax_cons.plot(shifts, spatial_corr_per_shift, marker='o', color='black', label=str(neuron_name))
-    ax_cons.hlines(0, shifts[0], shifts[-1], colors='k', linestyles='-')
-    ax_cons.set_xlabel('Temporal shift (bins of 30)')
-    ax_cons.set_ylabel('Mean grid correlation')
-    ax_cons.set_title(f"Neuron {neuron_name} — Spatial encoding consistency vs. temporal shift")
-    ax_cons.legend(loc='best', fontsize=8)
-    if best_shift is not None:
-        ax_cons.axvline(best_shift, color='tab:red', linestyle='--', linewidth=1)
+#     # --- Row 2: Spatial encoding consistency vs temporal shift (full width)
+#     ax_cons = fig.add_subplot(gs[1, 0])
+#     ax_cons.plot(shifts, spatial_corr_per_shift, marker='o', color='black', label=str(neuron_name))
+#     ax_cons.hlines(0, shifts[0], shifts[-1], colors='k', linestyles='-')
+#     ax_cons.set_xlabel('Temporal shift (bins of 30)')
+#     ax_cons.set_ylabel('Mean grid correlation')
+#     ax_cons.set_title(f"Neuron {neuron_name} — Spatial encoding consistency vs. temporal shift")
+#     ax_cons.legend(loc='best', fontsize=8)
+#     if best_shift is not None:
+#         ax_cons.axvline(best_shift, color='tab:red', linestyle='--', linewidth=1)
     
-    # --- Rows 3–5: 3 rows × (1 coverage + len(shifts)) columns
-    ncols_bottom = 1 + len(shifts)  # 1 coverage col + shifts
-    gs_bot = GridSpecFromSubplotSpec(
-        nrows=n_grids, ncols=ncols_bottom, subplot_spec=gs[2, 0], wspace=0.05, hspace=0.08
-    )
+#     # --- Rows 3–5: 3 rows × (1 coverage + len(shifts)) columns
+#     ncols_bottom = 1 + len(shifts)  # 1 coverage col + shifts
+#     gs_bot = GridSpecFromSubplotSpec(
+#         nrows=n_grids, ncols=ncols_bottom, subplot_spec=gs[2, 0], wspace=0.05, hspace=0.08
+#     )
     
-    axs = np.empty((n_grids, ncols_bottom), dtype=object)
+#     axs = np.empty((n_grids, ncols_bottom), dtype=object)
     
-    # Column headers
-    for c in range(ncols_bottom):
-        ax_title = fig.add_subplot(gs_bot[0, c])
-        fig.delaxes(ax_title)  # we'll place real axes shortly; title texts go on real axes
-    # we’ll set titles on real axes below (top row only)
+#     # Column headers
+#     for c in range(ncols_bottom):
+#         ax_title = fig.add_subplot(gs_bot[0, c])
+#         fig.delaxes(ax_title)  # we'll place real axes shortly; title texts go on real axes
+#     # we’ll set titles on real axes below (top row only)
     
-    # Fill axes
-    for r, g in enumerate(grid_order):
-        # Coverage column (col 0)
-        ax_cov = fig.add_subplot(gs_bot[r, 0])
-        axs[r, 0] = ax_cov
-        spatial_cov = grid_cvg[g].reshape(3, 3)
-        im_cov = ax_cov.imshow(spatial_cov, cmap='Greys', vmin=cov_min, vmax=cov_max)
-        ax_cov.set_xticks([]); ax_cov.set_yticks([])
-        if r == 0:
-            ax_cov.set_title("Coverage")
-        # annotate coverage numbers
-        for (i, j), v in np.ndenumerate(spatial_cov):
-            ax_cov.text(j, i, f"{int(v)}", ha='center', va='center', color='black', fontsize=8)
+#     # Fill axes
+#     for r, g in enumerate(grid_order):
+#         # Coverage column (col 0)
+#         ax_cov = fig.add_subplot(gs_bot[r, 0])
+#         axs[r, 0] = ax_cov
+#         spatial_cov = grid_cvg[g].reshape(3, 3)
+#         im_cov = ax_cov.imshow(spatial_cov, cmap='Greys', vmin=cov_min, vmax=cov_max)
+#         ax_cov.set_xticks([]); ax_cov.set_yticks([])
+#         if r == 0:
+#             ax_cov.set_title("Coverage")
+#         # annotate coverage numbers
+#         for (i, j), v in np.ndenumerate(spatial_cov):
+#             ax_cov.text(j, i, f"{int(v)}", ha='center', va='center', color='black', fontsize=8)
     
-        # Row label (left of coverage cell)
-        ax_cov.text(-0.45, 0.5, f"Grid combo {r+1}",
-                    transform=ax_cov.transAxes, va='center', ha='right', fontsize=10)
+#         # Row label (left of coverage cell)
+#         ax_cov.text(-0.45, 0.5, f"Grid combo {r+1}",
+#                     transform=ax_cov.transAxes, va='center', ha='right', fontsize=10)
     
-        # Shift columns (1..len(shifts))
-        for si, sh in enumerate(shifts):
-            ax = fig.add_subplot(gs_bot[r, si+1])
-            axs[r, si+1] = ax
-            spatial = FR_maps_neuron[si][:, r].reshape(3, 3)
-            im = ax.imshow(spatial, cmap='coolwarm', vmin=rate_min, vmax=rate_max)
-            ax.set_xticks([]); ax.set_yticks([])
-            if r == 0:
-                ax.set_title(f"{sh}°", fontsize=9)
+#         # Shift columns (1..len(shifts))
+#         for si, sh in enumerate(shifts):
+#             ax = fig.add_subplot(gs_bot[r, si+1])
+#             axs[r, si+1] = ax
+#             spatial = FR_maps_neuron[si][:, r].reshape(3, 3)
+#             im = ax.imshow(spatial, cmap='coolwarm', vmin=rate_min, vmax=rate_max)
+#             ax.set_xticks([]); ax.set_yticks([])
+#             if r == 0:
+#                 ax.set_title(f"{sh}°", fontsize=9)
     
-    # Outline the best-shift column across all three rows
-    if best_shift is not None and best_shift in shifts:
-        col_idx = 1 + int(np.where(shifts == best_shift)[0][0])  # +1 because col 0 = coverage
-        for r in range(n_grids):
-            axs[r, col_idx].add_patch(Rectangle((0, 0), 1, 1,
-                               transform=axs[r, col_idx].transAxes, fill=False,
-                               linewidth=2.5, edgecolor='black', zorder=10))
+#     # Outline the best-shift column across all three rows
+#     if best_shift is not None and best_shift in shifts:
+#         col_idx = 1 + int(np.where(shifts == best_shift)[0][0])  # +1 because col 0 = coverage
+#         for r in range(n_grids):
+#             axs[r, col_idx].add_patch(Rectangle((0, 0), 1, 1,
+#                                transform=axs[r, col_idx].transAxes, fill=False,
+#                                linewidth=2.5, edgecolor='black', zorder=10))
     
-    # Shared colorbar for rate maps (all shift columns)
-    # Use the last 'im' as mappable (safe because vmin/vmax consistent)
-    cbar_rate = fig.colorbar(im, ax=axs[:, 1:].ravel().tolist(), fraction=0.02, pad=0.01)
-    cbar_rate.set_label("Avg. rate per field")
+#     # Shared colorbar for rate maps (all shift columns)
+#     # Use the last 'im' as mappable (safe because vmin/vmax consistent)
+#     cbar_rate = fig.colorbar(im, ax=axs[:, 1:].ravel().tolist(), fraction=0.02, pad=0.01)
+#     cbar_rate.set_label("Avg. rate per field")
     
-    # Optional colorbar for coverage column
-    # cbar_cov = fig.colorbar(im_cov, ax=axs[:, 0].ravel().tolist(), fraction=0.02, pad=0.04)
-    #cbar_cov.set_label("Coverage (samples)")
+#     # Optional colorbar for coverage column
+#     # cbar_cov = fig.colorbar(im_cov, ax=axs[:, 0].ravel().tolist(), fraction=0.02, pad=0.04)
+#     #cbar_cov.set_label("Coverage (samples)")
     
-    # Big y-label for bottom block
-    # fig.text(0.06, 0.21, "3×3 spatial maps", rotation=90, va='center', fontsize=11)
-    fig.suptitle(title_string, fontsize=18, fontweight="bold", y=0.995)
+#     # Big y-label for bottom block
+#     # fig.text(0.06, 0.21, "3×3 spatial maps", rotation=90, va='center', fontsize=11)
+#     fig.suptitle(title_string, fontsize=18, fontweight="bold", y=0.995)
 
-    plt.show()
+#     plt.show()
  
  
 
@@ -584,8 +777,10 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', combine_two_gr
 
             # if curr_neuron not in ['07-07-chan104-LOFC', '16-16-chan118-LHC', '01-01-mLF2aCa07-LACC']:
             #     continue  
-            if curr_neuron not in ['04-04-mLT2dHa03-LHC', '04-04-mRT2cHb07-RHC','03-03-mLAHIP1-LHC']:
+            if curr_neuron not in ['08-08-mLT1aIbHa06-LHC']:
                 continue
+            # if curr_neuron not in ['04-04-mLT2dHa03-LHC', '04-04-mRT2cHb07-RHC','03-03-mLAHIP1-LHC']:
+            #     continue
             # if curr_neuron not in ['03-03-chan110-REC', '07-07-chan104-LOFC', '16-16-chan118-LHC', '01-01-mLF2aCa07-LACC']:
             #     continue
             # resetting unique tasks for each neuron.
@@ -636,7 +831,7 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', combine_two_gr
     
 def loop_through_trial_combos(trial_list):
     for incl_trials in trial_list:
-        compute_fut_spatial_tunings(sessions=[46], trials = incl_trials, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=False)
+        compute_fut_spatial_tunings(sessions=[59], trials = incl_trials, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=False)
 
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@ def get_data(sub):
 
     
 def filter_data(data, session, rep_filter):
-    # filter can be 'all', 'all_correct', 'early', 'late'
+    # filter can be 'all', 'all_correct', 'early', 'late', 'all_minus_explore'
     filtered_data = copy.deepcopy(data)
     if rep_filter =='all_correct':
         filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['correct']==1].reset_index(drop = True)
@@ -68,6 +68,16 @@ def filter_data(data, session, rep_filter):
         filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([6,7,8,9,10])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
         for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
             filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([6,7,8,9,10])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)    
+
+    elif rep_filter == 'all_minus_explore':
+        # exclude aanything where both 'rep_correct' == 0 and 'correct' == 0
+        keep_mask = data[f"sub-{session:02}"]['beh'][['correct','rep_correct']].ne(0).any(axis=1)
+        
+        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][keep_mask]
+        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][keep_mask]
+        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][keep_mask]
+        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
+            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][keep_mask]
 
     #import pdb; pdb.set_trace()
     return filtered_data
@@ -293,51 +303,14 @@ def stars(p):
     
 
     
-def plot_results_per_roi(df, title_string_add, plot_by_pfc = False):
+def plot_results_per_roi(df, title_string_add, plot_by_pfc = False, plot_by_cingulate_and_MTL = False):
     # import pdb; pdb.set_trace()
-    # --- Derive ROI labels (kept from your code) ---
-    roi_label = []
-    if plot_by_pfc == True:
-        for _, row in df.iterrows():
-            cell_label = row['neuron_id']
-            if 'ACC' in cell_label or 'vCC' in cell_label or 'AMC' in cell_label or 'vmPFC' in cell_label or 'OFC' in cell_label or 'PCC' in cell_label:
-                roi = 'PFC'
-            elif 'MCC' in cell_label or 'HC' in cell_label:
-                roi = 'hippocampal'
-            elif 'EC' in cell_label:
-                roi = 'entorhinal'
-            elif 'AMYG' in cell_label:
-                roi = 'amygdala'
-            else:
-                roi = 'mixed'
-            roi_label.append(roi)
-    else:
-        for _, row in df.iterrows():
-            cell_label = row['neuron_id']
-            if 'ACC' in cell_label or 'vCC' in cell_label or 'AMC' in cell_label or 'vmPFC' in cell_label:
-                roi = 'ACC'
-            elif 'PCC' in cell_label:
-                roi = 'PCC'
-            elif 'OFC' in cell_label:
-                roi = 'OFC'
-            elif 'MCC' in cell_label or 'HC' in cell_label:
-                roi = 'hippocampal'
-            elif 'EC' in cell_label:
-                roi = 'entorhinal'
-            elif 'AMYG' in cell_label:
-                roi = 'amygdala'
-            else:
-                roi = 'mixed'
-            roi_label.append(roi)
-    
-    df = df.copy()
-    df['roi'] = roi_label
-    
+    df['roi'] = rename_rois(df, collapse_pfc = plot_by_pfc, plot_by_cingulate_and_MTL = plot_by_cingulate_and_MTL)
+
     # --- rows  ---
     results_list = [
         ('zero lag (330, 0, 30)', df[df["mode_peak_shift"].isin([0, 30, 330])]),
-        ('future lags',            df[~df["mode_peak_shift"].isin([0, 30, 330,90,180,240])]),
-        ('future_reward_times',    df[df["mode_peak_shift"].isin([90, 180, 240])]),
+        ('future lags',            df[~df["mode_peak_shift"].isin([0, 30, 330])]),
         ('all lags',               df),
     ]
     
@@ -448,36 +421,13 @@ def plot_results_per_roi(df, title_string_add, plot_by_pfc = False):
 
 
 def plot_results_per_roi_and_future_lag(df, title_string_add, bins=20):
-    # --- Derive ROI labels (kept from your code) ---
-    roi_label = []
-    for _, row in df.iterrows():
-        cell_label = row['neuron_id']
-        if 'ACC' in cell_label or 'vCC' in cell_label or 'AMC' in cell_label or 'vmPFC' in cell_label:
-            roi = 'ACC'
-        elif 'PCC' in cell_label:
-            roi = 'PCC'
-        elif 'OFC' in cell_label:
-            roi = 'OFC'
-        elif 'MCC' in cell_label or 'HC' in cell_label:
-            roi = 'hippocampal'
-        elif 'EC' in cell_label:
-            roi = 'entorhinal'
-        elif 'AMYG' in cell_label:
-            roi = 'amygdala'
-        else:
-            roi = 'mixed'
-        roi_label.append(roi)
-
-    df = df.copy()
-    df['roi'] = roi_label
-
+    df['roi'] = rename_rois(df, collapse_pfc = False)
     # --- Define mutually-exclusive groups ---
     mask_zero   = df["mode_peak_shift"].isin([0, 30, 330])
-    mask_reward = df["mode_peak_shift"].isin([90, 180, 240])
-    mask_future = (~mask_zero) & (~mask_reward)
+    mask_future = (~mask_zero)
 
     # Build global bin edges so all ROIs use the same binning
-    all_vals = df.loc[mask_zero | mask_reward | mask_future, "avg_consistency_at_peak"].dropna().to_numpy()
+    all_vals = df.loc[mask_zero | mask_future, "avg_consistency_at_peak"].dropna().to_numpy()
     if all_vals.size == 0:
         print("No data to plot.")
         return
@@ -506,27 +456,25 @@ def plot_results_per_roi_and_future_lag(df, title_string_add, bins=20):
         df_roi = df[df['roi'] == roi]
 
         x_zero   = df_roi.loc[mask_zero.loc[df_roi.index],   "avg_consistency_at_peak"].dropna().to_numpy()
-        x_reward = df_roi.loc[mask_reward.loc[df_roi.index], "avg_consistency_at_peak"].dropna().to_numpy()
         x_future = df_roi.loc[mask_future.loc[df_roi.index], "avg_consistency_at_peak"].dropna().to_numpy()
 
         # Stacked histogram for this ROI
-        data_list = [x_zero, x_reward, x_future]
+        data_list = [x_zero, x_future]
         labels = [
             f"zero lag (n={len(x_zero)})",
-            f"future reward lags (n={len(x_reward)})",
             f"future lags (n={len(x_future)})"
         ]
         ax.hist(
             data_list,
             bins=bin_edges,
             stacked=True,
-            color=[colors["zero lag"], colors["future reward lags"], colors["future lags"]],
+            color=[colors["zero lag"],colors["future lags"]],
             edgecolor='black',
             alpha=0.9
         )
         ax.axvline(0, color='black', linestyle='dashed', linewidth=2)
 
-        total_n = len(x_zero) + len(x_reward) + len(x_future)
+        total_n = len(x_zero)  + len(x_future)
         ax.set_title(f"{roi}\n(n={total_n}) {title_string_add}", fontsize=12)
         ax.set_xlabel("Correlation coefficient", fontsize=12)
         ax.tick_params(axis='both', labelsize=11, width=2, length=6)
@@ -920,7 +868,7 @@ def pair_grids_to_increase_spatial_coverage(locs, beh, cell_name, min_coverage=1
         
     return beh
 
-def rename_rois(df, collapse_pfc = False):
+def rename_rois(df, collapse_pfc = False, plot_by_cingulate_and_MTL = False):
     roi_label = []
     if collapse_pfc == True:
         for _, row in df.iterrows():
@@ -933,6 +881,18 @@ def rename_rois(df, collapse_pfc = False):
                 roi = 'entorhinal'
             elif 'AMYG' in cell_label:
                 roi = 'amygdala'
+            else:
+                roi = 'mixed'
+            roi_label.append(roi)
+    elif plot_by_cingulate_and_MTL == True:
+        for _, row in df.iterrows():
+            cell_label = row['neuron_id']
+            if 'ACC' in cell_label or 'vCC' in cell_label or 'AMC' in cell_label or 'vmPFC' in cell_label or 'PCC' in cell_label:
+                roi = 'Cingulate'
+            elif 'MCC' in cell_label or 'HC' in cell_label or 'EC' in cell_label or 'AMYG' in cell_label:
+                roi = 'MTL'
+            elif 'OFC' in cell_label:
+                roi = 'OFC'
             else:
                 roi = 'mixed'
             roi_label.append(roi)
@@ -1198,7 +1158,7 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', plotting = Fal
                 "avg_consistency_at_peak": avg_consistency_at_peak,
                 "count_mode_peak": f"{frequency_peak_shift_validated} out of {len(validate_peak_lag[:,1])}",
                 "perm_idx": perm_idx,
-                "mean_firing_rate": beh_df[f'mean_FR_{curr_neuron}'][0],
+                "mean_firing_rate": beh_df[f'mean_FR_{curr_neuron}'].to_numpy()[0],
                 "sparse_repeats": sum(~beh_df[f'consistent_FR_{curr_neuron}'])
                 })
                 
@@ -1234,7 +1194,7 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', plotting = Fal
 
         else:
             name_result = f"{group_dir_fut_spat}/spatial_consistency_{trials}_repeats.csv"
-            plot_results_per_roi(results_df, title_string_add = f'{trials}_repeats')
+            plot_results_per_roi(results_df, title_string_add = f'{trials}_repeats',plot_by_pfc=False,plot_by_cingulate_and_MTL=True)
             plot_results_per_roi_and_future_lag(results_df, title_string_add = f'{trials}_repeats')
             if sparsity_c:
                 name_result = f"{group_dir_fut_spat}/spatial_consistency_{trials}_repeats_excl_{sparsity_c}_pct_neurons.csv"
@@ -1259,10 +1219,9 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', plotting = Fal
 
 if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
-    # trials can be 'all', 'all_correct', 'early', 'late'
+    # trials can be 'all', 'all_correct', 'early', 'late', 'all_minus_explore'
     # compute_fut_spatial_tunings(sessions=[3], trials = 'all', plotting=False, no_perms = None, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=False)
-
-    compute_fut_spatial_tunings(sessions=list(range(0,60)), trials = 'early', no_perms = 200, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=True)
+    compute_fut_spatial_tunings(sessions=list(range(0,60)), trials = 'all_minus_explore', no_perms = None, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=True)
     # compute_fut_spatial_tunings(sessions=list(range(0,60)), trials = 'all', no_perms = 200, combine_two_grids = True)
     # compute_fut_spatial_tunings(sessions=[31], trials = 'all', plotting = False, no_perms = None, combine_two_grids = True)
     
