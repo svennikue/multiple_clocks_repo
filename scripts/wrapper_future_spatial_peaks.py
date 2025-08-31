@@ -26,9 +26,6 @@ import copy
 from pathlib import Path
 from matplotlib.patches import Patch
 import re 
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.stats import binomtest, norm
 from scipy.stats import binomtest, norm
 
 # import pdb; pdb.set_trace()
@@ -42,45 +39,6 @@ def get_data(sub):
         data_folder = "/ceph/behrens/svenja/human_ABCD_ephys/derivatives"
     data_norm = mc.analyse.helpers_human_cells.load_norm_data(data_folder, [f"{sub:02}"])
     return data_norm, data_folder
-
-
-    
-def filter_data(data, session, rep_filter):
-    # filter can be 'all', 'all_correct', 'early', 'late', 'all_minus_explore'
-    filtered_data = copy.deepcopy(data)
-    if rep_filter =='all_correct':
-        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['correct']==1].reset_index(drop = True)
-        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][data[f"sub-{session:02}"]['beh']['correct']==1].reset_index(drop = True)
-        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['correct']==1].reset_index(drop = True)
-        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
-            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['correct']==1].reset_index(drop = True)    
-    
-    elif rep_filter == 'early':
-        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([1,2,3,4,5]) & data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
-        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([1,2,3,4,5])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
-        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([1,2,3,4,5])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
-        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
-            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([1,2,3,4,5])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)    
-    
-    elif rep_filter == 'late':
-        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([6,7,8,9,10])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
-        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([6,7,8,9,10])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
-        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([6,7,8,9,10])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
-        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
-            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([6,7,8,9,10])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)    
-
-    elif rep_filter == 'all_minus_explore':
-        # exclude aanything where both 'rep_correct' == 0 and 'correct' == 0
-        keep_mask = data[f"sub-{session:02}"]['beh'][['correct','rep_correct']].ne(0).any(axis=1)
-        
-        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][keep_mask]
-        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][keep_mask]
-        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][keep_mask]
-        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
-            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][keep_mask]
-
-    #import pdb; pdb.set_trace()
-    return filtered_data
 
 
 
@@ -161,7 +119,7 @@ def comp_peak_spatial_tuning(neurons, locs, beh, cell_name, idx_same_grids, plot
     unique_grids = np.unique(idx_same_grids)
         
     mean_corr_per_shift,fr_maps_by_shift, dwell_by_shift = [], [], []
-    
+    import pdb; pdb.set_trace()
     for shift in shifts:
         mean_firing_rates_locs = np.full((9, len(unique_grids)), np.nan, dtype=float)
         dwell_time_at_locs = np.full((9, len(unique_grids)), np.nan, dtype=float)
@@ -253,7 +211,7 @@ def comp_peak_spatial_tuning(neurons, locs, beh, cell_name, idx_same_grids, plot
 
 
 def compute_fr_at_spatial_lag(best_shift, neurons, locs):
-    # import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
     mean_firing_rates_locs = np.full((9), np.nan, dtype=float)
     dwell_time_at_locs     = np.zeros((9), dtype=float)
     
@@ -604,76 +562,7 @@ def store_p_vals_perms(true_df, perm_df, out_path, trials):
 
 
 
-def extract_consistent_grids(neuron, cell_name, beh):
-    # DIFFERENCE BETWEEN grid-blocks AND unique grids
-    # goal: kick out grid-blocks that are unreliable.
-    
-    # per grid-block, identify firing rate
-    # exclude grid if firing rate lower than 20% of mean firing.
-    # also make sure to leave at least 3 unique grids.
 
-    beh[f'mean_FR_{cell_name}'] = np.nanmean(neuron)
-    # identify firing rate per grid-block.
-    grid_nos = np.unique(beh['grid_no'].to_numpy())
-    # FR per grid_no
-    grid_fr = {}
-    for g in grid_nos:
-        mask_g = (beh['grid_no'] == g)
-        grid_fr[g] = np.nanmean(neuron[mask_g])
-        
-    # attach column (row-wise) for convenience/inspection
-    beh[f'grid_FR_{cell_name}'] = beh['grid_no'].map(grid_fr)
-    
-
-    # --- tentative exclusion: FR < 20% of overall mean (treat NaN FR as low) ---
-    excluded_grid_nos = []
-    thresh = 0.2 * np.nanmean(neuron) if not np.isnan(np.nanmean(neuron)) else np.nan
-    for g in grid_nos:
-        fr = grid_fr[g]
-        if np.isnan(fr) or (not np.isnan(thresh) and fr < thresh):
-            excluded_grid_nos.append(g)
-    
-    # 3) Tentative keep-mask with low-rate grids removed
-    tentative_keep_mask = ~beh['grid_no'].isin(excluded_grid_nos)
-    # tentative_keep_mask = ~beh['new_grid_idx'].isin(excluded_grid_nos)
-
-    
-    # next test based on this new selection, how many UNIQUE GRIDS are left?
-    # at least 3 so cross-validation is possible.
-    kept_identities = beh['idx_same_grids'][tentative_keep_mask].to_numpy()
-    no_unique_good_grids = len(np.unique(kept_identities))
-    target_unique_min = 3
-    add_back_grids = []
-    if no_unique_good_grids < target_unique_min:
-        # stepwise add best bad grid in
-        # sort excluded grids by FR descending (NaN treated as -inf)
-        def fr_key(g):
-            fr = grid_fr[g]
-            return -np.inf if np.isnan(fr) else fr
-        excluded_sorted = sorted(excluded_grid_nos, key=fr_key, reverse=True)
-
-        # prefer adding grids that increase identity diversity
-        # ADD GRIDS THAT FIRE MOST BACK IN
-        for g in excluded_sorted:
-            if len(kept_identities) >= target_unique_min:
-                break
-            unique_id = np.unique(beh['idx_same_grids'][beh['grid_no'] == g].to_numpy())
-            if unique_id not in kept_identities:
-                kept_identities.add(unique_id)
-                add_back_grids.append(g)
-        # if still short (e.g., identity overlap), add best remaining anyway
-        if len(kept_identities) < target_unique_min:
-            for g in excluded_sorted:
-                if g not in add_back_grids:
-                    add_back_grids.append(g)
-
-
-    # final per-row keep decision (BUT DO NOT FILTER beh)
-    final_keep_mask = tentative_keep_mask | beh['grid_no'].isin(add_back_grids)
-    
-    beh[f'consistent_FR_{cell_name}'] = final_keep_mask
-   
-    return beh
 
 
     
@@ -1006,7 +895,7 @@ def plt_binomial_per_roi(out_df, title_string, alpha=0.05, cmap_name="tab20", co
 
     
 
-def compute_fut_spatial_tunings(sessions, trials = 'all_correct', plotting = False, no_perms = None, combine_two_grids = False, sparsity_c = None, weighted = False, save_all = False):  
+def compute_fut_spatial_tunings(sessions, trials = 'all_minus_explore', plotting = False, no_perms = None, combine_two_grids = False, sparsity_c = None, weighted = False, save_all = False):  
     # trials can be 'all', 'all_correct', 'early', 'late'
     
     # determine results table
@@ -1031,8 +920,8 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', plotting = Fal
             continue
     
         # filter data for only those repeats that were 1) correct and 2) not the first one
-        data = filter_data(data_raw, sesh, trials)
-        beh_df = data[f"sub-{sesh:02}"]['beh']
+        data = mc.analyse.helpers_human_cells.filter_data(data_raw, sesh, trials)
+        beh_df = data[f"sub-{sesh:02}"]['beh'].copy()
         # determine identical grids
         grid_cols = ['loc_A', 'loc_B', 'loc_C', 'loc_D']
 
@@ -1067,12 +956,11 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', plotting = Fal
             # with super low firing 
             idx_same_grids = beh_df['idx_same_grids'].to_numpy()
             if sparsity_c:
-                beh_df = extract_consistent_grids(data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron].to_numpy(), curr_neuron, beh_df)
-                idx_same_grids = idx_same_grids[beh_df[f'consistent_FR_{curr_neuron}']]
-                # if after excluding inconsistent grids there aren't enough grids for CV left,
-                # kick this neuron.
-                unique_grids = np.unique(beh_df['idx_same_grids'][beh_df[f'consistent_FR_{curr_neuron}']])
-            
+                beh_df = mc.analyse.helpers_human_cells.extract_consistent_grids(data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron].to_numpy(), curr_neuron, beh_df)
+                consistent_grids_mask = beh_df[f'consistent_FR_{curr_neuron}'].to_numpy()
+                # set grid indexes I want to ignore to -1
+                idx_same_grids[~consistent_grids_mask] = -1
+
             if sparsity_c and len(unique_grids) < 3:
                 print(f"excluding {curr_neuron} in sesh {sesh} because there were not enough grids with consistent FR!")
                 continue

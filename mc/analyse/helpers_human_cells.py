@@ -77,7 +77,168 @@ def button_change_indices(buttons):
     # Find the differences between consecutive elements
     changes = np.where(arr[:-1] != arr[1:])[0] + 1
     return changes
+
+
+
+def filter_data(data, session, rep_filter):
+    # filter can be 'all', 'all_correct', 'early', 'late', 'all_minus_explore'
+    filtered_data = copy.deepcopy(data)
+    if rep_filter =='all_correct':
+        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['correct']==1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][data[f"sub-{session:02}"]['beh']['correct']==1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['correct']==1].reset_index(drop = True)
+        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
+            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['correct']==1].reset_index(drop = True)    
     
+    elif rep_filter == 'early':
+        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([1,2,3,4,5]) & data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([1,2,3,4,5])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([1,2,3,4,5])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
+            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([1,2,3,4,5])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)    
+    
+    elif rep_filter == 'late':
+        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([6,7,8,9,10])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([6,7,8,9,10])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([6,7,8,9,10])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
+            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([6,7,8,9,10])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)    
+
+    elif rep_filter == 'all_minus_explore':
+        # exclude aanything where both 'rep_correct' == 0 and 'correct' == 0
+        keep_mask = data[f"sub-{session:02}"]['beh'][['correct','rep_correct']].ne(0).any(axis=1)
+        
+        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][keep_mask]
+        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][keep_mask]
+        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][keep_mask]
+        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
+            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][keep_mask]
+
+    #import pdb; pdb.set_trace()
+    return filtered_data
+
+
+def rename_rois(df, collapse_pfc = False, plot_by_cingulate_and_MTL = False):
+    roi_label = []
+    if collapse_pfc == True:
+        for _, row in df.iterrows():
+            cell_label = row['neuron_id']
+            if 'ACC' in cell_label or 'vCC' in cell_label or 'AMC' in cell_label or 'vmPFC' in cell_label or 'OFC' in cell_label or 'PCC' in cell_label:
+                roi = 'PFC'
+            elif 'MCC' in cell_label or 'HC' in cell_label:
+                roi = 'hippocampal'
+            elif 'EC' in cell_label:
+                roi = 'entorhinal'
+            elif 'AMYG' in cell_label:
+                roi = 'amygdala'
+            else:
+                roi = 'mixed'
+            roi_label.append(roi)
+    elif plot_by_cingulate_and_MTL == True:
+        for _, row in df.iterrows():
+            cell_label = row['neuron_id']
+            if 'ACC' in cell_label or 'vCC' in cell_label or 'AMC' in cell_label or 'vmPFC' in cell_label or 'PCC' in cell_label:
+                roi = 'Cingulate'
+            elif 'MCC' in cell_label or 'HC' in cell_label or 'EC' in cell_label or 'AMYG' in cell_label:
+                roi = 'MTL'
+            elif 'OFC' in cell_label:
+                roi = 'OFC'
+            else:
+                roi = 'mixed'
+            roi_label.append(roi)
+    else:
+        for _, row in df.iterrows():
+            cell_label = row['neuron_id']
+            if 'ACC' in cell_label or 'vCC' in cell_label or 'AMC' in cell_label or 'vmPFC' in cell_label:
+                roi = 'ACC'
+            elif 'PCC' in cell_label:
+                roi = 'PCC'
+            elif 'OFC' in cell_label:
+                roi = 'OFC'
+            elif 'MCC' in cell_label or 'HC' in cell_label:
+                roi = 'hippocampal'
+            elif 'EC' in cell_label:
+                roi = 'entorhinal'
+            elif 'AMYG' in cell_label:
+                roi = 'amygdala'
+            else:
+                roi = 'mixed'
+            roi_label.append(roi)
+    return roi_label
+
+
+def extract_consistent_grids(neuron, cell_name, beh):
+    # DIFFERENCE BETWEEN grid-blocks AND unique grids
+    # goal: kick out grid-blocks that are unreliable.
+    
+    # per grid-block, identify firing rate
+    # exclude grid if firing rate lower than 20% of mean firing.
+    # also make sure to leave at least 3 unique grids.
+
+    beh[f'mean_FR_{cell_name}'] = np.nanmean(neuron)
+    # identify firing rate per grid-block.
+    grid_nos = np.unique(beh['grid_no'].to_numpy())
+    # FR per grid_no
+    grid_fr = {}
+    for g in grid_nos:
+        mask_g = (beh['grid_no'] == g)
+        grid_fr[g] = np.nanmean(neuron[mask_g])
+        
+    # attach column (row-wise) for convenience/inspection
+    beh[f'grid_FR_{cell_name}'] = beh['grid_no'].map(grid_fr)
+    
+
+    # --- tentative exclusion: FR < 20% of overall mean (treat NaN FR as low) ---
+    excluded_grid_nos = []
+    thresh = 0.2 * np.nanmean(neuron) if not np.isnan(np.nanmean(neuron)) else np.nan
+    for g in grid_nos:
+        fr = grid_fr[g]
+        if np.isnan(fr) or (not np.isnan(thresh) and fr < thresh):
+            excluded_grid_nos.append(g)
+    
+    # 3) Tentative keep-mask with low-rate grids removed
+    tentative_keep_mask = ~beh['grid_no'].isin(excluded_grid_nos)
+    # tentative_keep_mask = ~beh['new_grid_idx'].isin(excluded_grid_nos)
+
+    
+    # next test based on this new selection, how many UNIQUE GRIDS are left?
+    # at least 3 so cross-validation is possible.
+    kept_identities = beh['idx_same_grids'][tentative_keep_mask].to_numpy()
+    no_unique_good_grids = len(np.unique(kept_identities))
+    target_unique_min = 3
+    add_back_grids = []
+    if no_unique_good_grids < target_unique_min:
+        # stepwise add best bad grid in
+        # sort excluded grids by FR descending (NaN treated as -inf)
+        def fr_key(g):
+            fr = grid_fr[g]
+            return -np.inf if np.isnan(fr) else fr
+        excluded_sorted = sorted(excluded_grid_nos, key=fr_key, reverse=True)
+
+        # prefer adding grids that increase identity diversity
+        # ADD GRIDS THAT FIRE MOST BACK IN
+        for g in excluded_sorted:
+            if len(kept_identities) >= target_unique_min:
+                break
+            unique_id = np.unique(beh['idx_same_grids'][beh['grid_no'] == g].to_numpy())
+            if unique_id not in kept_identities:
+                kept_identities.add(unique_id)
+                add_back_grids.append(g)
+        # if still short (e.g., identity overlap), add best remaining anyway
+        if len(kept_identities) < target_unique_min:
+            for g in excluded_sorted:
+                if g not in add_back_grids:
+                    add_back_grids.append(g)
+
+
+    # final per-row keep decision (BUT DO NOT FILTER beh)
+    final_keep_mask = tentative_keep_mask | beh['grid_no'].isin(add_back_grids)
+    
+    beh[f'consistent_FR_{cell_name}'] = final_keep_mask
+   
+    return beh
+
+
 def load_norm_data(source_folder, subject_list):
     # load all files I prepared with Matlab into a subject dictionary
     data_dict = {}
