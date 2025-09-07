@@ -3149,13 +3149,13 @@ def state_cells(empty_reg, grid_t_all, reward_locs):
     return state_regressors
 
 
-def test_timings_rew(subject, locations, grid_t_all, reward_locs, number_of_grid):  
+def test_timings_rew(subject, locations, grid_t_all, reward_locs):  
     for repeat_idx, grid_times in enumerate(grid_t_all):
         for state in range(0,4):
             if repeat_idx == len(grid_t_all)-1 and state == 3: #ignore the last state/ repeat
                 continue
             elif reward_locs[state] != locations[int(grid_times[state+1])]:
-                print(f"careful! timings don't match for {subject}, grid {number_of_grid}; location at state {state+1} and step {grid_times[state+1]} is {locations[int(grid_times[state+1])]}, and should be one of {reward_locs}!")
+                print(f"careful! timings don't match for {subject}, grid {reward_locs}; location at state {state+1} and step {grid_times[state+1]} is {locations[int(grid_times[state+1])]}, and should be one of {reward_locs}!")
                 import pdb; pdb.set_trace()
     # print(f"all timings matched with finding correct rewarded location for subject {subject} and grid {reward_locs}!")
 

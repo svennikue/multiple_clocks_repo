@@ -767,7 +767,7 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', combine_two_gr
             continue
     
         # filter data for only those repeats that were 1) correct and 2) not the first one
-        data = filter_data(data_raw, sesh, trials)
+        data = mc.analyse.helpers_human_cells.filter_data(data_raw, sesh, trials)
         beh_df = data[f"sub-{sesh:02}"]['beh']
         # determine identical grids
         grid_cols = ['loc_A', 'loc_B', 'loc_C', 'loc_D']
@@ -777,7 +777,7 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', combine_two_gr
 
             # if curr_neuron not in ['07-07-chan104-LOFC', '16-16-chan118-LHC', '01-01-mLF2aCa07-LACC']:
             #     continue  
-            if curr_neuron not in ['08-08-mLT1aIbHa06-LHC']:
+            if curr_neuron not in ['11-11-mLP2Cb07-LPCC', '07-07-mLP2Cb02-LPCC', '10-10-mLP2Cb07-LPCC', '09-09-mLP2Cb05-LPCC']:
                 continue
             # if curr_neuron not in ['04-04-mLT2dHa03-LHC', '04-04-mRT2cHb07-RHC','03-03-mLAHIP1-LHC']:
             #     continue
@@ -822,23 +822,28 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', combine_two_gr
 
             file_name = f"spatial_consistency_{trials}_repeats_excl_{sparsity_c}_pct_neurons_weighted.csv"
             df = pd.read_csv(f"{group_dir_fut_spat}/{file_name}")
-            cross_val = df['avg_consistency_at_peak'][df['neuron_id'] == curr_neuron].to_list()
+            cross_val = df['avg_consistency_at_peak'][df['neuron_id'] == curr_neuron][df['session_id']== sesh].to_list()
 
             title = f"overview for {curr_neuron} \n including {trials} repeats. \n cross-val value: {round(cross_val[0], 3)}"
+            import pdb; pdb.set_trace()
             plot_neuron_overview(curr_neuron, beh_df, data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron], data[f"sub-{sesh:02}"]['locations'], fr_by_shift, corr_per_shift, idx_same_grids, title)
             
             
     
 def loop_through_trial_combos(trial_list):
     for incl_trials in trial_list:
-        compute_fut_spatial_tunings(sessions=[59], trials = incl_trials, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=False)
+        compute_fut_spatial_tunings(sessions=[44], trials = incl_trials, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=False)
 
 
 if __name__ == "__main__":
     # trials can be 'all', 'all_correct', 'early', 'late'
     # loop through these different trials to compare a single cell.
-    loop_through_trial_combos(trial_list = ['all_correct', 'early', 'late'])
+    loop_through_trial_combos(trial_list = ['all_minus_explore'])
     #loop_through_trial_combos(trial_list = ['all', 'all_correct', 'early', 'late'])
-
     
+
+# 44 11-11-mLP2Cb07-LPCC
+# 44 07-07-mLP2Cb02-LPCC
+# 44 10-10-mLP2Cb07-LPCC (but state)
+# 43 09-09-mLP2Cb05-LPCC
     

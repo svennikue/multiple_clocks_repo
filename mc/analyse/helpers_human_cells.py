@@ -90,14 +90,14 @@ def filter_data(data, session, rep_filter):
         for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
             filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['correct']==1].reset_index(drop = True)    
     
-    elif rep_filter == 'early':
+    elif rep_filter == 'early_correct':
         filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([1,2,3,4,5]) & data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
         filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([1,2,3,4,5])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
         filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([1,2,3,4,5])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
         for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
             filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([1,2,3,4,5])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)    
     
-    elif rep_filter == 'late':
+    elif rep_filter == 'late_correct':
         filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([6,7,8,9,10])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
         filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([6,7,8,9,10])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
         filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([6,7,8,9,10])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
@@ -108,13 +108,28 @@ def filter_data(data, session, rep_filter):
         # exclude aanything where both 'rep_correct' == 0 and 'correct' == 0
         keep_mask = data[f"sub-{session:02}"]['beh'][['correct','rep_correct']].ne(0).any(axis=1)
         
-        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][keep_mask]
-        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][keep_mask]
-        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][keep_mask]
+        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][keep_mask].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][keep_mask].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][keep_mask].reset_index(drop = True)
         for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
-            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][keep_mask]
+            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][keep_mask].reset_index(drop = True)
 
-    #import pdb; pdb.set_trace()
+    elif rep_filter == 'late':
+        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['rep_correct'] > 4].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][data[f"sub-{session:02}"]['beh']['rep_correct'] > 4].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['rep_correct'] > 4].reset_index(drop = True)
+        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
+            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['rep_correct'] > 4].reset_index(drop = True)
+     
+    elif rep_filter == 'early':
+        keep_mask = ((data[f"sub-{session:02}"]['beh']['rep_correct'] > 0) & (data[f"sub-{session:02}"]['beh']['rep_correct'] < 5))
+        filtered_data[f"sub-{session:02}"]['beh'] = (data[f"sub-{session:02}"]['beh'].loc[keep_mask].reset_index(drop=True))
+        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'].loc[keep_mask].reset_index(drop=True)
+        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'].loc[keep_mask].reset_index(drop=True)
+        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
+            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron].loc[keep_mask].reset_index(drop=True)
+            
+    # import pdb; pdb.set_trace()
     return filtered_data
 
 
@@ -1174,6 +1189,314 @@ def generate_circular_timepoint_permutations_neurons(neurons, n_perms = 10):
     return permuted_neurons
 
 
+def pair_grids_to_increase_spatial_coverage(locs, beh, cell_name, min_coverage=100, min_groups=3,max_groups=5):
+    """
+    Merge original grids into groups to maximize spatial coverage.
+    Rules:
+      - <3 unique grids  -> discard neuron (output False).
+      - 3 -> keep as 3 singletons.
+      - 4 -> pair the two worst; others singleton (3 groups).
+      - 5 -> pair worst 4 (2 pairs), keep best alone (3 groups).
+      - 6 -> 3 pairs (maximize coverage).
+      - 7 -> 3 pairs + best alone (4 groups).
+      - 8 -> 4 pairs (maximize coverage).
+      - 9 -> 4 pairs + best alone (5 groups).
+      - 10 -> 5 pairs.
+      - >10 -> make 5 groups: start with 5 best pairs, then add the rest to
+               existing groups (triplets) maximizing coverage gain.
+    Writes integer labels to beh[f'paired_grid_idx_{cell_name}'].
+    """
+    # --- get same_grids (optionally filter by consistent_FR) ---
+    if f"consistent_FR_{cell_name}" in beh:
+        # first filter locations and same_grids for grids that are reliable.
+        reliable_FR_mask = beh[f"consistent_FR_{cell_name}"].to_numpy()
+        locs_used = locs[reliable_FR_mask]
+        same_grids = beh['idx_same_grids'][reliable_FR_mask].to_numpy()
+    else:
+        reliable_FR_mask = None
+        locs_used = locs
+        same_grids = beh['idx_same_grids'].to_numpy()
+    
+    # if cell_name == '05-05-mRF3cVPF04-RPvmPFC':
+    #     import pdb; pdb.set_trace()
+    #     # WHY DOES THIS CLUMP MORE THAN 3 GRIDS TOEGTEHR????
+    
+    unique_grids = np.unique(same_grids)
+    
+
+    # discard if fewer than 3 unique grids (column = False)
+    if len(unique_grids) < 3:
+        col = f'paired_grid_idx_{cell_name}'
+        if reliable_FR_mask is not None:
+            out = np.full(reliable_FR_mask.shape, False, dtype=object)
+            beh[col] = out
+        else:
+            beh[col] = np.full(same_grids.shape, False, dtype=object)
+        return beh
+    
+
+    # --- 1) build coverage dict for each original grid ---
+    grid_cvg = {}
+    
+    for grid_idx in unique_grids:
+        grid_cvg_vec = np.zeros(9, dtype=int)
+        all_locs_curr_grid = locs_used[same_grids == grid_idx]
+        for loc in range(1,10):
+            grid_cvg_vec[loc-1] = np.count_nonzero(all_locs_curr_grid == loc)
+        grid_cvg[grid_idx] = grid_cvg_vec
+        
+    
+    # --- helpers for scoring coverage and choosing pairs ---
+    def group_score(grids):
+        """
+        Score to maximize:
+          1) # of locations with coverage >= min_coverage (higher is better)
+          2) minimum coverage across locations (higher is better)
+        """
+        tot = sum((grid_cvg[g] for g in grids), np.zeros(9, dtype=int))
+        n_cov_good = int(np.sum(tot >= min_coverage)) 
+        min_cvg = int(np.min(tot)) if tot.size else 0
+        return (n_cov_good, min_cvg)
+    
+    def worst_sort_key(g):
+        """
+        Higher = worse:
+          1) more weak locations (< min_coverage)  -> worse
+          2) lower minimum coverage                -> worse
+        """
+        v = grid_cvg[g]
+        weak = int(np.sum(v < min_coverage))
+        minv = int(np.min(v))
+        return (weak, -minv)   # more weak first; for ties, lower min (i.e., -minv higher)
+
+    def best_sort_key(g):
+        """
+        Higher = better:
+          1) fewer weak locations (< min_coverage) -> better
+          2) higher minimum coverage               -> better
+        """
+        v = grid_cvg[g]
+        weak = -int(np.sum(v < min_coverage))  # fewer weak -> larger value
+        minv = int(np.min(v))                  # higher min -> larger value
+        return (weak, minv)
+
+    def best_pair(rem):
+        """Pick (a,b) maximizing group_score({a,b}) with the above priority."""
+        rem = list(rem)
+        best = None
+        for i in range(len(rem)):
+            for j in range(i+1, len(rem)):
+                a, b = rem[i], rem[j]
+                # Comparisons are lexicographic on (n_good, min_cvg), 
+                # so “passing the threshold” dominates, and “raising the floor” is second.
+                sc = group_score([a, b]) # (n_good, min_cvg)
+                if best is None or sc > best[0]:
+                    best = (sc, (a, b))
+        # best[1] = pair of best fitting grids.
+        return best[1] if best else None
+
+
+     # --- 2) build groups according to n and your rules ---
+    groups = []  # list of lists of grid ids
+    remaining = set(unique_grids.tolist())
+
+
+    # choose a single "best" to leave alone in cases 5,7,9
+    def pick_best_single(rem):
+        # builds scores out of neg 'passes coverage' and minimum coverage
+        # takes max(weak, minv) per grid
+        return max(rem, key=best_sort_key)
+    
+    # choose k pairs greedily from remaining
+    def add_k_pairs(rem, k):
+        for _ in range(k):
+            if len(rem) < 2: break
+            a_b = best_pair(rem) # a_b = pair of best fitting grids.
+            if a_b is None: break
+            a, b = a_b
+            groups.append([a, b])
+            # then remove the pairs that have just been added
+            rem.remove(a); rem.remove(b)
+    
+    if len(unique_grids) == 3:
+        # 3 singles
+        groups = [[g] for g in unique_grids]
+        remaining.clear()
+    
+    elif len(unique_grids) == 4:
+        # pair worst 2; others singleton
+        worst2 = sorted(remaining, key=worst_sort_key, reverse=True)[:2]
+        groups.append(list(worst2))
+        for g in worst2: remaining.remove(g)
+        for g in sorted(remaining): groups.append([g])
+        remaining.clear()
+
+        
+    elif len(unique_grids) in [5,7,9]:
+        # best alone; pair worst 4 (2 pairs)
+        best_single = pick_best_single(remaining)
+        remaining.remove(best_single)
+        # after removing the best grid, pair the remaining ones up as usual
+        add_k_pairs(remaining, int((len(unique_grids)-1)/2))
+        # in the end, add the single grid to the groups and delete all used grids
+        groups.append([best_single])
+        remaining.clear()
+    
+    elif len(unique_grids) in [6,8,10]:
+        add_k_pairs(remaining, int(len(unique_grids)/2))
+    
+    else:
+        # n > 10  →  make exactly 5 groups max
+        add_k_pairs(remaining, max_groups)  # start with 5 best pairs
+        # add leftovers to existing groups to maximize coverage gain
+        while remaining:
+            g = remaining.pop()
+            best_gain, best_idx = None, None
+            for idx, grp in enumerate(groups):
+                # find out which group improves most if left-over is added
+                base = group_score(grp)
+                new  = group_score(grp + [g])
+                gain = tuple(np.array(new) - np.array(base))
+                if best_gain is None or gain > best_gain:
+                    best_gain, best_idx = gain, idx
+            groups[best_idx].append(g)
+
+    # --- 3) map old -> new labels and scatter back to DataFrame ---
+    label = {}
+    for new_id, grp in enumerate(groups):
+        for g in grp:
+            label[int(g)] = int(new_id)
+
+    same_grid_idx_new = np.array([label[int(g)] for g in same_grids], dtype=int)
+
+    if reliable_FR_mask is not None:
+        # put back into shape with False for grids that have insufficient firing
+        out = np.full(reliable_FR_mask.shape, False, dtype=object)  
+        out[reliable_FR_mask] = same_grid_idx_new
+        beh[f'paired_grid_idx_{cell_name}'] = out
+    else:
+        beh[f'paired_grid_idx_{cell_name}'] = same_grid_idx_new
+        
+    return beh
+
+#
+#
+#
+# new 06.09.2025
+# adjusted such that it matches spatial consistency analysis
+
+def prep_regressors_for_neurons_360(data_dict):
+    no_state = 4
+    state_width = 90
+    no_locations = 9
+    no_phase = 3
+    phase_width = 30
+        
+    models = ['state_model', 'phase_model', 'phase_state_model', 'location_model', 'reward_loc_model', 'future_location_x_phase_model', 'future_reward_x_state_model']   
+    # clean subjects that messed up certain grids 
+    for sub in data_dict:
+        print(f"now starting to process data from subject {sub}")
+
+    data_prep = copy.deepcopy(data_dict)
+
+    for sub in data_dict:
+        print(f"now starting to process data from subject {sub}")
+        for m in models:
+            if m == 'state_model':
+                data_prep[sub][m]= np.zeros((len(data_dict[sub]['beh']), no_state, 360))
+            elif m == 'phase_model':
+                data_prep[sub][m]= np.zeros((len(data_dict[sub]['beh']), no_phase, 360))
+            elif m == 'phase_state_model':
+                data_prep[sub][m]= np.zeros((len(data_dict[sub]['beh']), no_phase*no_state, 360))
+            elif m == 'location_model':
+                data_prep[sub][m]= np.zeros((len(data_dict[sub]['beh']), no_locations, 360))
+            elif m == 'reward_loc_model':
+                data_prep[sub][m]= np.zeros((len(data_dict[sub]['beh']), no_locations, 360))
+            elif m == 'future_location_x_phase_model':
+                data_prep[sub][m]= np.zeros((len(data_dict[sub]['beh']), no_locations*no_phase*no_state, 360))
+            elif m == 'future_reward_x_state_model':
+                data_prep[sub][m]= np.zeros((len(data_dict[sub]['beh']), no_locations*no_state, 360))
+        
+        # reward_configurations = data_dict[sub]['reward_configs'].copy()
+        # unique_grids = np.unique(data_dict[sub]['beh_clean']['grid_no'].to_numpy())
+        
+        # ok new attempt 07.09.2025.
+        # just model whatever is in each row.
+        # the indices should align with the location data.
+        # state + phase is easy to define.
+        # locations are just a read out.
+        # model neurons for each row!
+        for idx, row in data_dict[sub]['beh'].iterrows():
+            for m in models:
+                if m == 'state_model':
+                    for s in range(no_state):
+                        data_prep[sub][m][idx, s, state_width*s:state_width*(s+1)] = 1
+
+                elif m == 'phase_model':
+                    mask = ((np.arange(360)//phase_width) % 3)[None, :] == np.arange(3)[:, None]
+                    # assign to the first three rows for this idx
+                    data_prep[sub][m][idx, :3, :] = mask.astype(data_prep[sub][m].dtype)
+                    
+                elif m == 'phase_state_model':
+                    for s in range(no_state):       # state 0..3
+                       for p in range(no_phase):   # phase 0..2
+                           r = s*3 + p
+                           start = s*state_width + p*phase_width
+                           data_prep[sub][m][idx, r, start:start+phase_width] = 1
+                           
+                elif m == 'reward_loc_model':
+                    data_prep[sub][m][idx, int(row['loc_A']-1), 0:90] = 1
+                    data_prep[sub][m][idx, int(row['loc_B']-1), 90:180] = 1
+                    data_prep[sub][m][idx, int(row['loc_C']-1), 180:270] = 1
+                    data_prep[sub][m][idx, int(row['loc_D']-1), 270:] = 1
+                    
+                elif m == 'future_reward_x_state_model':
+                    # First write the base pattern into the FIRST 9 ROWS (NOW)
+                    data_prep[sub][m][idx, int(row['loc_A']-1), 0:90] = 1
+                    data_prep[sub][m][idx, int(row['loc_B']-1), 90:180] = 1
+                    data_prep[sub][m][idx, int(row['loc_C']-1), 180:270] = 1
+                    data_prep[sub][m][idx, int(row['loc_D']-1), 270:] = 1
+                    
+                    # Use the first 9 rows as the source
+                    src = data_prep[sub][m][idx, :no_locations, :]
+                    
+                    # Fill the remaining blocks by circularly shifting columns by 90° per state
+                    # (future rewards)
+                    for s in range(1, no_state):  # skip s=0; it's already written
+                        r0 = s * no_locations
+                        r1 = r0 + no_locations
+                        data_prep[sub][m][idx, r0:r1, :] = np.roll(src, s*state_width, axis=1)
+                
+                elif m == 'location_model':
+                    curr_locs = data_dict[sub]['locations'].iloc[idx].to_list()
+                    for l_idx, l in enumerate(curr_locs):
+                        data_prep[sub][m][idx, int(l-1), l_idx] = 1
+                        
+                elif m == 'future_location_x_phase_model':
+                    # --- current block (state 0, phase 0) in the FIRST 9 ROWS ---
+                    curr_locs = data_dict[sub]['locations'].iloc[idx].tolist()
+                    for l_idx, l in enumerate(curr_locs):
+                        data_prep[sub][m][idx, int(l) - 1, l_idx] = 1
+                
+                    # Use the first 9 rows as the source (copy to avoid accidental in-place coupling)
+                    src = data_prep[sub][m][idx, :no_locations, :].copy()
+                
+                    # Fill all state×phase blocks by circularly shifting columns
+                    for s in range(no_state):          # states 0..3
+                        for p in range(no_phase):      # phases 0..2
+                            shift = s*state_width + p*phase_width
+                            r0 = (s*no_phase + p) * no_locations
+                            r1 = r0 + no_locations
+                            block = np.roll(src, shift, axis=1)
+                            data_prep[sub][m][idx, r0:r1, :] = block
+                            
+    # import pdb; pdb.set_trace()                           
+    return data_prep
+
+
+#
+#
+#
 
 def prep_regressors_for_neurons(data_dict, models_I_want = None, only_repeats_included = None, randomised_reward_locations = False, avg_across_runs = False, comp_circular_perms = None):
     no_state = 4
@@ -1199,7 +1522,7 @@ def prep_regressors_for_neurons(data_dict, models_I_want = None, only_repeats_in
         print(f"now starting to process data from subject {sub}")
         for m in all_models:
             data_prep[sub][m]=[]
-
+        import pdb; pdb.set_trace()
         if models_I_want:
             if models_I_want[0] == 'only':
                 # data_prep[sub] = {k: v for k, v in data_prep[sub].items() if not (k in ['state_reg', 'complete_musicbox_reg', 'reward_musicbox_reg', 'buttonbox_reg', 'location_reg'] and v == [])}
