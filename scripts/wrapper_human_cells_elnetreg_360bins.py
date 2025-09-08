@@ -22,6 +22,7 @@ from joblib import Parallel, delayed
 import sys
 from itertools import permutations, islice
 import time
+import pandas as pd
 
 
 print("ARGS:", sys.argv)
@@ -214,10 +215,10 @@ def generate_unique_timepoint_permutations_neurons(data_dict, n_permutations=10,
 
 
 
-def run_elnetreg_cellwise(data, cleaned_beh, curr_cell, circular_perms=None):
+def run_elnetreg_cellwise(data, cleaned_beh, curr_cell, circular_perms=None, avg_across_runs=False):
     print(f"...fitting and testing cell {curr_cell}")
     # parameters that seem to work, can be set flexibly
-    alpha=0.00001 ##0.01 used in El-gaby paper
+    alpha=0.001 ##0.01 used in El-gaby paper
     # l1_ratio= 0.01
     # cell_idx = int(curr_cell.split('-')[0])-1
     corr_dict, coefs_per_model = {}, {}
@@ -256,40 +257,73 @@ def run_elnetreg_cellwise(data, cleaned_beh, curr_cell, circular_perms=None):
         start_perms = time.time()
         unique_grid_idx = np.unique(cleaned_beh['curr_neurons_idx_same_grids'].to_numpy())
         
+        if avg_across_runs == True:
+            curr_cell_df = data['normalised_neurons'][curr_cell]
+            # 1) average all rows with the same grid id
+            if circular_perms:
+                rng = np.random.default_rng(123)
+                R, T = curr_cell_df.shape
+                arr = curr_cell_df.to_numpy().copy()
+                for i in range(R):
+                    k = int(rng.integers(0, T))
+                    arr[i] = np.roll(arr[i], -k)      # left shift row i by k
+                curr_cell_df = pd.DataFrame(arr, index=curr_cell_df.index, columns=curr_cell_df.columns)
+            curr_cell_df_avg_by_grid = curr_cell_df.groupby(cleaned_beh['curr_neurons_idx_same_grids'], sort=False).mean()               # index = unique grid ids
+            
         for left_out_grid_idx in unique_grid_idx:
             train_grid_mask = cleaned_beh['curr_neurons_idx_same_grids'] != left_out_grid_idx
-            curr_neuron_training_tasks = data['normalised_neurons'][curr_cell].loc[train_grid_mask].to_numpy()
-            curr_neuron_training_tasks_flat = curr_neuron_training_tasks.reshape(-1).astype(float)
-            
             test_grid_mask = cleaned_beh['curr_neurons_idx_same_grids'] == left_out_grid_idx
-            curr_neuron_heldouttask = data['normalised_neurons'][curr_cell].loc[test_grid_mask].to_numpy()
-            # permuting the cells
-            if circular_perms:
-                rng = np.random.default_rng(123)  
-                # circular shift of neurons time series by random bins along time_axis
-                T = curr_neuron_heldouttask.shape[1]
-                for i_r, repeat in enumerate(curr_neuron_heldouttask):
-                    k = int(rng.integers(0, T))     # uniform in {0, 1, ..., T-1}
-                    curr_neuron_heldouttask[i_r] = np.roll(repeat, -k)  # left shift by k
-            curr_neuron_heldouttasks_flat = curr_neuron_heldouttask.reshape(-1).astype(float)
+            if avg_across_runs == True:
+                curr_neuron_training_tasks = curr_cell_df_avg_by_grid.drop(left_out_grid_idx, errors='ignore').to_numpy()
+                # pick the one that is already averaged by grids
+                curr_neuron_training_tasks_flat = curr_neuron_training_tasks.reshape(-1).astype(float)
+                curr_neuron_heldouttasks_flat = curr_cell_df_avg_by_grid.loc[left_out_grid_idx].to_numpy()   
+            
+            else:
+                curr_neuron_training_tasks = data['normalised_neurons'][curr_cell].loc[train_grid_mask].to_numpy()
+                curr_neuron_training_tasks_flat = curr_neuron_training_tasks.reshape(-1).astype(float)
+                curr_neuron_heldouttask = data['normalised_neurons'][curr_cell].loc[test_grid_mask].to_numpy()
+                
+                # permuting the cells
+                # only if not averaged, in this case that happens befre
+                if circular_perms:
+                    rng = np.random.default_rng(123)  
+                    # circular shift of neurons time series by random bins along time_axis
+                    T = curr_neuron_heldouttask.shape[1]
+                    for i_r, repeat in enumerate(curr_neuron_heldouttask):
+                        k = int(rng.integers(0, T))     # uniform in {0, 1, ..., T-1}
+                        curr_neuron_heldouttask[i_r] = np.roll(repeat, -k)  # left shift by k
+                
+                curr_neuron_heldouttasks_flat = curr_neuron_heldouttask.reshape(-1).astype(float)
 
 
             for entry in model_string:
-                # define train regressors
-                sel_train = data[entry][train_grid_mask.to_numpy()]         # select along axis 0
-                sim_neurons_training_tasks_flat = (
-                    np.moveaxis(sel_train, 1, 0)                            # bring axis 1 to front
-                      .reshape(sel_train.shape[1], -1)                      # keep axis 1, flatten the rest
-                      .astype(float)
-                )
+                # define test and train regressors
+                modelled_neurons = data[entry]  # numpy array, shape: (N_trials, C, *S)
+                curr_neurons_idx_same_grids = cleaned_beh['curr_neurons_idx_same_grids'].to_numpy()
                 
-                # and test regressors
-                sel_test = data[entry][test_grid_mask.to_numpy()]         # select along axis 0
-                sim_neurons_test_tasks_flat = (
-                    np.moveaxis(sel_test, 1, 0)                            # bring axis 1 to front
-                      .reshape(sel_test.shape[1], -1)                      # keep axis 1, flatten the rest
-                      .astype(float)
-                )
+                def flatten_keep_axis(x, keep_axis=1, dtype=float):
+                    keep_axis %= x.ndim
+                    return np.moveaxis(x, keep_axis, 0).reshape(x.shape[keep_axis], -1).astype(dtype)
+                
+                if avg_across_runs== True:
+                    # --- TRAIN: average within each grid except the left-out one ---
+                    # (uses sorted unique grids; if you need original order, use pandas.unique)
+                    train_grids = np.unique(curr_neurons_idx_same_grids[curr_neurons_idx_same_grids != left_out_grid_idx])
+                    # (G, C, *S): mean across trials within each grid
+                    sel_train = np.stack([modelled_neurons[curr_neurons_idx_same_grids == g].mean(axis=0) for g in train_grids], axis=0)
+                
+                    # --- TEST: average all repetitions of the left-out grid ---
+                    # (1, C, *S): keepdims=True so the next step can keep axis=1 consistently
+                    sel_test = modelled_neurons[curr_neurons_idx_same_grids == left_out_grid_idx].mean(axis=0, keepdims=True)
+                else:
+                    # original selection without averaging
+                    sel_train = modelled_neurons[curr_neurons_idx_same_grids != left_out_grid_idx]          # (N_train, C, *S)
+                    sel_test  = modelled_neurons[curr_neurons_idx_same_grids == left_out_grid_idx]          # (N_test,  C, *S)
+                
+                # Flatten while keeping the channel axis (C) as rows
+                sim_neurons_training_tasks_flat = flatten_keep_axis(sel_train, keep_axis=1)
+                sim_neurons_test_tasks_flat     = flatten_keep_axis(sel_test,  keep_axis=1)
 
                 reg = ElasticNet(alpha=alpha, positive=True).fit(sim_neurons_training_tasks_flat.T, curr_neuron_training_tasks_flat)
 
@@ -297,7 +331,7 @@ def run_elnetreg_cellwise(data, cleaned_beh, curr_cell, circular_perms=None):
                 coeffs_flat=reg.coef_
                 coefs_per_model[entry].append(coeffs_flat)
                 # next, create the predicted activity neuron.
-                predicted_activity_curr_neuron = np.sum((coeffs_flat*sim_neurons_test_tasks_flat), axis = 1)
+                predicted_activity_curr_neuron = np.sum((coeffs_flat*sim_neurons_test_tasks_flat.T), axis = 1)
                 Predicted_Actual_correlation=nan_safe_pearsonr(curr_neuron_heldouttasks_flat,predicted_activity_curr_neuron)
 
                 corr_dict[entry][curr_cell][left_out_grid_idx,p_idx] = Predicted_Actual_correlation
@@ -317,7 +351,7 @@ def compute_one_subject(sub,trials, save_regs=False, avg_across_runs = False, co
     # load data
     data_raw, source_dir, subj_reg_file = get_data(sub)
     group_dir_corrs = f"{source_dir}/group/corrs"
-    if not os.isdir(group_dir_corrs):
+    if not os.path.isdir(group_dir_corrs):
         os.mkdir(group_dir_corrs)
         
     # filter data for only those repeats that were 1) correct and 2) not the first one
@@ -345,11 +379,11 @@ def compute_one_subject(sub,trials, save_regs=False, avg_across_runs = False, co
     
     # run the analysis cell-wise.
     for cell_idx, cell in enumerate(cells):
-         parallel_results = run_elnetreg_cellwise(simulated_regs[f"sub-{sub:02}"],beh_clean, cell, circular_perms=comp_circular_perms)    
-         import pdb; pdb.set_trace()
+         parallel_results = run_elnetreg_cellwise(simulated_regs[f"sub-{sub:02}"],beh_clean, cell, circular_perms=comp_circular_perms, avg_across_runs=avg_across_runs)    
+    import pdb; pdb.set_trace()
          
     # or parallalised.
-    #parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(simulated_regs[f"sub-{sub:02}"],beh_clean, cell, circular_perms=comp_circular_perms) for cell_idx, cell in enumerate(cells))
+    #parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(simulated_regs[f"sub-{sub:02}"],beh_clean, cell, circular_perms=comp_circular_perms, avg_across_runs=avg_across_runs) for cell_idx, cell in enumerate(cells))
     
     result_dir = {}
     result_dir['raw']= {}
