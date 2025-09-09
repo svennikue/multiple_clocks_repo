@@ -19,11 +19,14 @@ if ~exist(source_dir, 'dir')
     
 else
     %abcd_data = load(sprintf("%s/abcd_data_FIXED_19-Feb-2025.mat", source_dir));
-    abcd_data = load(sprintf("%s/abcd_data_10-Jul-2025.mat", source_dir));
+    %abcd_data = load(sprintf("%s/abcd_data_10-Jul-2025.mat", source_dir));
+    %abcd_data = load(sprintf("%s/derivatives/abcd_passed.mat", source_dir));
+    abcd_data = load(sprintf("%s/abcd_data_08-Sep-2025.mat", source_dir));
 end
 
 deriv_dir = sprintf("%s/derivatives/", source_dir);
 
+%subject_list = 1:length(abcd_data.abcd_passed.abcd_data);
 subject_list = 1:length(abcd_data.abcd_data);
 % subject_list = 1:4;
 
@@ -93,7 +96,12 @@ for sub = 1:length(subject_list)
         edges = 0:bin_size:end_time_behaviour;
         % counting how many spikes are within 
         [firing_rate_curr_cell, edges] = histcounts(curr_spike_times, edges);
-        region_labels_cells{c} = subj.neural_data(c).regionLabel;
+
+        if isempty(subj.neural_data(c).roi) || isempty(subj.neural_data(c).roi{1})
+            region_labels_cells{c} = subj.neural_data(c).regionLabel;
+        else
+            region_labels_cells{c} = subj.neural_data(c).roi{1};
+        end
         og_labels_cells{c} = subj.neural_data(c).electrodeLabel;
         all_cells = [all_cells; firing_rate_curr_cell];
     end

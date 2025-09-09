@@ -10,7 +10,7 @@ source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_huma
 if ~exist(source_dir, 'dir')
     source_dir = '/ceph/behrens/svenja/human_ABCD_ephys'
     %abcd_data = load(sprintf("%s/beh_cells/abcd_data_FIXED_19-Feb-2025.mat", source_dir));
-    abcd_data = load(sprintf("%s/beh_cells/abcd_data_04-Sep-2025.mat", source_dir));
+    abcd_data = load(sprintf("%s/beh_cells/abcd_data_08-Sep-2025.mat", source_dir));
     
 else
     %abcd_data = load(sprintf("%s/abcd_data_FIXED_19-Feb-2025.mat", source_dir));
@@ -48,9 +48,12 @@ for sub = 1:length(subject_list)
     % LOOP THROUGH NEURONS
     for cell_idx = 1:length(subj.neural_data)
         curr_cell_label = subj.neural_data(cell_idx).electrodeLabel;
-        curr_region_label = subj.neural_data(cell_idx).regionLabel;
-        combo_cell_label = sprintf('%02d-%s-%s', cell_idx, curr_cell_label, curr_region_label);
-      
+        if isempty(subj.neural_data(cell_idx).roi) || isempty(subj.neural_data(cell_idx).roi{1})
+            curr_roi_label = subj.neural_data(cell_idx).regionLabel;
+        else
+            curr_roi_label = subj.neural_data(cell_idx).roi{1};
+        end
+        combo_cell_label = sprintf('%02d-%s-%s', cell_idx, curr_cell_label, curr_roi_label);
         curr_spike_times = subj.neural_data(cell_idx).spikeTimes;
         all_reps_curr_cell = [];
 

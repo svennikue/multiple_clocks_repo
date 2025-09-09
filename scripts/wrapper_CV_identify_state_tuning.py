@@ -181,7 +181,7 @@ def store_p_vals_perms(true_df, perm_df, out_path, trials):
         return sig
         
     # 4) write back onto the original table (align by index; fill others with NA)
-    out['sig_FDR_all'] = bh_reject(out['p_perm'].to_numpy(), alpha=0.05).astype('boolean')
+    out['sig_FDR_all'] = bh_reject(out['p_perm'].to_numpy(), alpha=0.05)
     # ---------- save ----------
     out.to_csv(out_path, index=False)
     print(f"saved: {out_path}")
@@ -209,6 +209,7 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
         # import pdb; pdb.set_trace()
         # if this session doesn't exist, skip
         if not data_raw:
+            print(f"no raw data found for {sesh}, so skipping")
             continue
     
         # filter data for only those repeats that were 1) correct and 2) not the first one
@@ -309,7 +310,7 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
             if sparsity_c:
                 result_string = f"state_consistency_{trials}_repeats_excl_{sparsity_c}_pct_neurons.csv"
                 
-            empirical_result = pd.read_csv(f"{group_dir_state}/{result_string}")
+            empirical_result = pd.read_csv(f"{group_dir_state}/{result_string }")
             perm_string = f"pval_for_perms200_{result_string}"
             name_result_stats = f"{group_dir_state}/{perm_string}"
             import pdb; pdb.set_trace()
@@ -323,6 +324,9 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
         else:
             name_result = f"{group_dir_state}/state_consistency_{trials}_repeats.csv"
             plot_results_per_roi(results_df, title_string_add = f'{trials}_repeats',plot_by_pfc=False,plot_by_cingulate_and_MTL=True)
+            plot_results_per_roi(results_df, title_string_add = f'{trials}_repeats',plot_by_pfc=False,plot_by_cingulate_and_MTL=False)
+            plot_results_per_roi(results_df, title_string_add = f'{trials}_repeats',plot_by_pfc=True,plot_by_cingulate_and_MTL=False)
+            
             if sparsity_c:
                 name_result = f"{group_dir_state}/state_consistency_{trials}_repeats_excl_{sparsity_c}_pct_neurons.csv"
                 print(f"included {len(included_neurons)} neurons.")
@@ -337,7 +341,7 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
     
 if __name__ == "__main__":
     # trials can be 'all', 'all_correct', 'early', 'late', 'all_minus_explore'
-    compute_state_tunings(sessions=list(range(0,60)), trials = 'all_minus_explore', no_perms = 10, sparsity_c = 'gridwise_qc', save_all=True)
+    compute_state_tunings(sessions=list(range(0,64)), trials = 'late', no_perms = 200, sparsity_c = 'gridwise_qc', save_all=True)
 
     
     

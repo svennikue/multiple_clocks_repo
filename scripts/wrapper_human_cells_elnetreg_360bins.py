@@ -229,17 +229,16 @@ def run_elnetreg_cellwise(data, cleaned_beh, curr_cell, circular_perms=None, avg
             model_string.append(model)
             corr_dict[model] = {}
 
-    # first, for the current cell, select the relevant behaviour.
+
     mask = cleaned_beh[f"consistent_FR_{curr_cell}"]
-    # next, use this one to mask out what simulations I don't want/ what 
+    c_FR_beh = cleaned_beh.loc[mask].copy()  
     
     grid_cols = ['loc_A', 'loc_B', 'loc_C', 'loc_D']
-    # prepare the held-out task order and the permutations with the current mask.
-    unique_grids, idx_unique_grid, cleaned_beh['curr_neurons_idx_same_grids'], counts = np.unique(cleaned_beh[grid_cols][mask].to_numpy(),
-                                                     axis=0,
-                                                     return_index=True,
-                                                     return_inverse=True,
-                                                     return_counts=True)
+    unique_grids, idx_unique_grid, c_FR_beh['curr_neurons_idx_same_grids'], counts = np.unique(
+        c_FR_beh[grid_cols].to_numpy(),
+        axis=0, return_index=True, return_inverse=True, return_counts=True
+    )
+    
    
     perms  = 1
     if circular_perms:
@@ -255,10 +254,10 @@ def run_elnetreg_cellwise(data, cleaned_beh, curr_cell, circular_perms=None, avg
       
     for p_idx in range(0,perms):
         start_perms = time.time()
-        unique_grid_idx = np.unique(cleaned_beh['curr_neurons_idx_same_grids'].to_numpy())
+        unique_grid_idx = np.unique(c_FR_beh['curr_neurons_idx_same_grids'].to_numpy())
         
         if avg_across_runs == True:
-            curr_cell_df = data['normalised_neurons'][curr_cell]
+            curr_cell_df = data['normalised_neurons'][curr_cell][mask]
             # 1) average all rows with the same grid id
             if circular_perms:
                 rng = np.random.default_rng(123)
@@ -268,11 +267,11 @@ def run_elnetreg_cellwise(data, cleaned_beh, curr_cell, circular_perms=None, avg
                     k = int(rng.integers(0, T))
                     arr[i] = np.roll(arr[i], -k)      # left shift row i by k
                 curr_cell_df = pd.DataFrame(arr, index=curr_cell_df.index, columns=curr_cell_df.columns)
-            curr_cell_df_avg_by_grid = curr_cell_df.groupby(cleaned_beh['curr_neurons_idx_same_grids'], sort=False).mean()               # index = unique grid ids
+            curr_cell_df_avg_by_grid = curr_cell_df.groupby(c_FR_beh['curr_neurons_idx_same_grids'], sort=False).mean()               # index = unique grid ids
             
         for left_out_grid_idx in unique_grid_idx:
-            train_grid_mask = cleaned_beh['curr_neurons_idx_same_grids'] != left_out_grid_idx
-            test_grid_mask = cleaned_beh['curr_neurons_idx_same_grids'] == left_out_grid_idx
+            train_grid_mask = c_FR_beh['curr_neurons_idx_same_grids'] != left_out_grid_idx
+            test_grid_mask = c_FR_beh['curr_neurons_idx_same_grids'] == left_out_grid_idx
             if avg_across_runs == True:
                 curr_neuron_training_tasks = curr_cell_df_avg_by_grid.drop(left_out_grid_idx, errors='ignore').to_numpy()
                 # pick the one that is already averaged by grids
@@ -280,9 +279,9 @@ def run_elnetreg_cellwise(data, cleaned_beh, curr_cell, circular_perms=None, avg
                 curr_neuron_heldouttasks_flat = curr_cell_df_avg_by_grid.loc[left_out_grid_idx].to_numpy()   
             
             else:
-                curr_neuron_training_tasks = data['normalised_neurons'][curr_cell].loc[train_grid_mask].to_numpy()
+                curr_neuron_training_tasks = curr_cell_df.loc[train_grid_mask].to_numpy()
                 curr_neuron_training_tasks_flat = curr_neuron_training_tasks.reshape(-1).astype(float)
-                curr_neuron_heldouttask = data['normalised_neurons'][curr_cell].loc[test_grid_mask].to_numpy()
+                curr_neuron_heldouttask = curr_cell_df.loc[test_grid_mask].to_numpy()
                 
                 # permuting the cells
                 # only if not averaged, in this case that happens befre
@@ -299,8 +298,8 @@ def run_elnetreg_cellwise(data, cleaned_beh, curr_cell, circular_perms=None, avg
 
             for entry in model_string:
                 # define test and train regressors
-                modelled_neurons = data[entry]  # numpy array, shape: (N_trials, C, *S)
-                curr_neurons_idx_same_grids = cleaned_beh['curr_neurons_idx_same_grids'].to_numpy()
+                modelled_neurons = data[entry][mask]  # numpy array, shape: (N_trials, C, *S)
+                curr_neurons_idx_same_grids = c_FR_beh['curr_neurons_idx_same_grids'].to_numpy()
                 
                 def flatten_keep_axis(x, keep_axis=1, dtype=float):
                     keep_axis %= x.ndim
@@ -378,12 +377,12 @@ def compute_one_subject(sub,trials, save_regs=False, avg_across_runs = False, co
     cells = list(data[f"sub-{sub:02}"]['normalised_neurons'])
     
     # run the analysis cell-wise.
-    for cell_idx, cell in enumerate(cells):
-         parallel_results = run_elnetreg_cellwise(simulated_regs[f"sub-{sub:02}"],beh_clean, cell, circular_perms=comp_circular_perms, avg_across_runs=avg_across_runs)    
-    import pdb; pdb.set_trace()
+    # for cell_idx, cell in enumerate(cells):
+    #      parallel_results = run_elnetreg_cellwise(simulated_regs[f"sub-{sub:02}"],beh_clean, cell, circular_perms=comp_circular_perms, avg_across_runs=avg_across_runs)    
+    # import pdb; pdb.set_trace()
          
     # or parallalised.
-    #parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(simulated_regs[f"sub-{sub:02}"],beh_clean, cell, circular_perms=comp_circular_perms, avg_across_runs=avg_across_runs) for cell_idx, cell in enumerate(cells))
+    parallel_results = Parallel(n_jobs=-1)(delayed(run_elnetreg_cellwise)(simulated_regs[f"sub-{sub:02}"],beh_clean, cell, circular_perms=comp_circular_perms, avg_across_runs=avg_across_runs) for cell_idx, cell in enumerate(cells))
     
     result_dir = {}
     result_dir['raw']= {}
@@ -392,36 +391,36 @@ def compute_one_subject(sub,trials, save_regs=False, avg_across_runs = False, co
         result_dir['raw'][curr_cell] = cell_idx['corr']
 
     # define the basename
-    result_file_name  = f"sub-{sub}_corrs_360bins"
+    result_file_name  = f"sub-{sub}_corrs_360bins_{trials}"
     
     # first, save the basic result
     with open(os.path.join(group_dir_corrs,result_file_name), 'wb') as f:
         pickle.dump(result_dir['raw'], f)
-
+    
+    # import pdb; pdb.set_trace()
     print(f"saved the modelled data as {group_dir_corrs}/{result_file_name}")
 
  
     
  
-# # # # if running from command line, use this one!   
-# if __name__ == "__main__":
-#     #print(f"starting regression for subject {sub}")
-#     fire.Fire(compute_one_subject)
-#     # call this script like
-#     # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
-
-# ['withoutnow', 'only2and3future','onlynowandnext', 'onlynowand3future', 'onlynextand2future']
-# ['only','onlynowand3future', 'onlynextand2future']
-
+# # # if running from command line, use this one!   
 if __name__ == "__main__":
-    # For debugging, bypass Fire and call compute_one_subject directly.
-    compute_one_subject(
-        sub=15,
-        trials = 'early',
-        save_regs=True,
-        avg_across_runs=True,
-        # comp_circular_perms=100
-    )
+    #print(f"starting regression for subject {sub}")
+    fire.Fire(compute_one_subject)
+    # call this script like
+    # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
+
+# trials can be 'early', 'late', 'all_minus_explore'
+
+# if __name__ == "__main__":
+#     # For debugging, bypass Fire and call compute_one_subject directly.
+#     compute_one_subject(
+#         sub=15,
+#         trials = 'early',
+#         save_regs=True,
+#         avg_across_runs=True,
+#         # comp_circular_perms=100
+#     )
 
 
 # these are hard-coded right now, so include them in the 'only' + models list 'state_reg', 'complete_musicbox_reg', 'reward_musicbox_reg', 'location_reg'

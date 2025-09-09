@@ -265,7 +265,7 @@ def load_norm_data(source_folder, subject_list):
             continue
         
         data_dict[f"sub-{sub}"] = {}
-        data_dict[f"sub-{sub}"]["reward_configs"] = np.genfromtxt(f"{sub_folder}/all_configs_sub{sub}.csv", delimiter=',')
+        #data_dict[f"sub-{sub}"]["reward_configs"] = np.genfromtxt(f"{sub_folder}/all_configs_sub{sub}.csv", delimiter=',')
         with open(f"{sub_folder}/all_cells_region_labels_sub{sub}.txt", 'r') as file:
             data_dict[f"sub-{sub}"]["cell_labels"] = [line.strip() for line in file]
                                                       
@@ -281,14 +281,14 @@ def load_norm_data(source_folder, subject_list):
         data_dict[f"sub-{sub}"]['beh'].columns = column_names
         # Use glob to find all matching CSV files
         # file_pattern = os.path.join(sub_folder, "cell-*-360_bins.csv")
-        file_pattern = os.path.join(sub_folder, "cell-*-360_bins_passed.csv")
+        file_pattern = os.path.join(sub_folder, "cell*360_bins_passed.csv")
         cell_files = glob.glob(file_pattern)
         for cell_file_path in cell_files:
             file_name = os.path.basename(cell_file_path)
             # cell_name = file_name[len("cell_"):-len("-360_bins.csv")]
-            cell_name = file_name[len("cell_"):-len("-360_bins_passed.csv")]
+            cell_name = file_name[len("cell-"):-len("-360_bins_passed.csv")]
             data_dict[f"sub-{sub}"]["normalised_neurons"][cell_name] = pd.read_csv(cell_file_path, header=None)
-
+    # import pdb; pdb.set_trace()
     return data_dict
 
 

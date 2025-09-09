@@ -901,6 +901,8 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_minus_explore', plotting
         else:
             name_result = f"{group_dir_fut_spat}/spatial_consistency_{trials}_repeats.csv"
             plot_results_per_roi(results_df, title_string_add = f'{trials}_repeats',plot_by_pfc=False,plot_by_cingulate_and_MTL=True)
+            plot_results_per_roi(results_df, title_string_add = f'{trials}_repeats',plot_by_pfc=True,plot_by_cingulate_and_MTL=False)
+            plot_results_per_roi(results_df, title_string_add = f'{trials}_repeats',plot_by_pfc=False,plot_by_cingulate_and_MTL=False)
             plot_results_per_roi_and_future_lag(results_df, title_string_add = f'{trials}_repeats')
             if sparsity_c:
                 name_result = f"{group_dir_fut_spat}/spatial_consistency_{trials}_repeats_excl_{sparsity_c}_pct_neurons.csv"
@@ -931,7 +933,7 @@ if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     # trials can be 'all', 'all_correct', 'early', 'late', 'all_minus_explore'
     # compute_fut_spatial_tunings(sessions=[3], trials = 'all', plotting=False, no_perms = None, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=False)
-    compute_fut_spatial_tunings(sessions=list(range(0,61)), trials = 'all_minus_explore', no_perms = 200, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=True)
+    compute_fut_spatial_tunings(sessions=list(range(0,64)), trials = 'late', no_perms = 200, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=True)
     # compute_fut_spatial_tunings(sessions=list(range(0,60)), trials = 'all', no_perms = 200, combine_two_grids = True)
     # compute_fut_spatial_tunings(sessions=[31], trials = 'all', plotting = False, no_perms = None, combine_two_grids = True)
     

@@ -612,12 +612,14 @@ def plot_perms_per_cell_and_roi(df_results, n_perms, corr_thresh=0.05, save=Fals
         # Determine common x-axis range for centering
         if 'task_perm_0' in df_strong_curr_model.columns:
             all_values = df_strong_curr_model[[f'task_perm_{i}' for i in range(n_perms)]].values.flatten()
-        if 'time_perm_0' in df_strong_curr_model.columns:
-            all_values = df_strong_curr_model[[f'time_perm_{i}' for i in range(n_perms)]].values.flatten()
+            
         if 'task_perm_0' in df_strong_curr_model.columns and 'time_perm_0' in df_strong_curr_model.columns:
             values_task = df_strong_curr_model[[f'task_perm_{i}' for i in range(n_perms)]].values.flatten()
             values_time = df_strong_curr_model[[f'time_perm_{i}' for i in range(n_perms)]].values.flatten()
             all_values = np.concatenate((values_task, values_time))
+
+        else:
+            all_values = df_strong_curr_model['average_corr'].values.flatten()
 
         xlim = max(abs(np.nanmin(all_values)), abs(np.nanmax(all_values)))  # Symmetric about 0
     

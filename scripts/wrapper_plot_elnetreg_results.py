@@ -21,7 +21,7 @@ def load_result_dirs(file_name_list):
     # import pdb; pdb.set_trace()
     for file_name in file_name_list:
         result_dir = {"binned": {}, "raw":{}}
-        results_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/elastic_net_reg/corrs"
+        results_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/corrs"
         
         # utah_and_UCLA_cells = [1,2,4,6,17,23,24,29,30,39,41,42,47,48, 52, 53, 54, 55, 3, 40, 50, 51, 56]
         # subjects = [f"sub-{i}" for i in utah_and_UCLA_cells]
@@ -54,18 +54,18 @@ def load_result_dirs(file_name_list):
                                 result_dir['raw'][sub][model] = {}
                             for inner_neuron, values in inner.items():
                                 result_dir['raw'][sub][model][inner_neuron] = values
-    
-                with open(f"{path_to_subfile}_fit_binned_by_state", 'rb') as f:
-                    sub_dir = pickle.load(f)
-                    result_dir['binned'][sub] = {}
-                    for neuron, model in sub_dir.items():
-                        for model, inner in model.items():
-                            if model not in result_dir['binned'][sub]:
-                                result_dir['binned'][sub][model] = {}
-                            for inner_neuron, values in inner.items():
-                                result_dir['binned'][sub][model][inner_neuron] = values
+                if os.path.isdir(f"{path_to_subfile}_fit_binned_by_state"):
+                    with open(f"{path_to_subfile}_fit_binned_by_state", 'rb') as f:
+                        sub_dir = pickle.load(f)
+                        result_dir['binned'][sub] = {}
+                        for neuron, model in sub_dir.items():
+                            for model, inner in model.items():
+                                if model not in result_dir['binned'][sub]:
+                                    result_dir['binned'][sub][model] = {}
+                                for inner_neuron, values in inner.items():
+                                    result_dir['binned'][sub][model][inner_neuron] = values
         several_results[file_name] = result_dir
-        import pdb; pdb.set_trace()
+        #import pdb; pdb.set_trace()
     return several_results, actual_subjects
 
 
@@ -92,10 +92,12 @@ def load_data(subs):
 
 
 
-def plot_all(model_name_string_list, define_somehow_what_to_plot=None):
+def plot_all(model_name_string_list, define_somehow_what_to_plot=None, remove_state=False):
     results, subjects = load_result_dirs(model_name_string_list)
     
-    result_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/elastic_net_reg/corrs/sig_cells_per_model_ceph_12-06-2025/"
+    #result_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/elastic_net_reg/corrs/sig_cells_per_model_ceph_12-06-2025/"
+    result_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/corrs/"
+    
     # check if on server or local
     if not os.path.isdir(result_folder):
         print("running on ceph")
@@ -146,26 +148,29 @@ def plot_all(model_name_string_list, define_somehow_what_to_plot=None):
         # /Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/elastic_net_reg/curr_rings_split_clock_model_w_partial_musicboxes_only_reps_6-10_avg_in_20_bins_across_runs_sig_after_temp_perms.csv
         
         path_to_file_state = f"{result_folder}stat_model_{results_for_version}_sig_after_temp_perms.csv"
-        results_rem_sig_state[results_for_version], cell_overview_rem_sig_state[results_for_version] = mc.analyse.helpers_human_cells.remove_certain_cells_for_x_model(all_results[results_for_version], path_to_file_state)
-        results_rem_sig_state_big_rois[results_for_version], _ = mc.analyse.helpers_human_cells.remove_certain_cells_for_x_model(all_results_big_rois[results_for_version], path_to_file_state)
         
         
+        if remove_state == True:
+            results_rem_sig_state[results_for_version], cell_overview_rem_sig_state[results_for_version] = mc.analyse.helpers_human_cells.remove_certain_cells_for_x_model(all_results[results_for_version], path_to_file_state)
+            results_rem_sig_state_big_rois[results_for_version], _ = mc.analyse.helpers_human_cells.remove_certain_cells_for_x_model(all_results_big_rois[results_for_version], path_to_file_state)
+            
+            
+            
+            
+            path_to_file_phase = f"{result_folder}phas_model_{results_for_version}_sig_after_temp_perms.csv"
+            results_rem_sig_state_and_phase[results_for_version], cell_overview_rem_sig_state_and_phase[results_for_version] = mc.analyse.helpers_human_cells.remove_certain_cells_for_x_model(results_rem_sig_state[results_for_version], path_to_file_phase)
+            
+            # next step: remove the top x_percent of state cells
+           
+            cleaned_results_only_state[results_for_version], cell_overview_only_state[results_for_version] = mc.analyse.helpers_human_cells.remove_top_x_percent_of_x_model(all_results[results_for_version], delete_from_model= 'stat_model', x_percent=x_percent_to_remove_state)
+            # remove top x_percent % of state cells inn binned data.
+            cleaned_results_binned_only_state[results_for_version], cell_overview_binned_only_state[results_for_version] = mc.analyse.helpers_human_cells.remove_top_x_percent_of_x_model(all_results_binned[results_for_version], delete_from_model= 'stat_model', x_percent=x_percent_to_remove_state)
+            
         
-        
-        path_to_file_phase = f"{result_folder}phas_model_{results_for_version}_sig_after_temp_perms.csv"
-        results_rem_sig_state_and_phase[results_for_version], cell_overview_rem_sig_state_and_phase[results_for_version] = mc.analyse.helpers_human_cells.remove_certain_cells_for_x_model(results_rem_sig_state[results_for_version], path_to_file_phase)
-        
-        # next step: remove the top x_percent of state cells
-       
-        cleaned_results_only_state[results_for_version], cell_overview_only_state[results_for_version] = mc.analyse.helpers_human_cells.remove_top_x_percent_of_x_model(all_results[results_for_version], delete_from_model= 'stat_model', x_percent=x_percent_to_remove_state)
-        # remove top x_percent % of state cells inn binned data.
-        cleaned_results_binned_only_state[results_for_version], cell_overview_binned_only_state[results_for_version] = mc.analyse.helpers_human_cells.remove_top_x_percent_of_x_model(all_results_binned[results_for_version], delete_from_model= 'stat_model', x_percent=x_percent_to_remove_state)
-        
-        
-        cleaned_results[results_for_version], cell_overview[results_for_version] = mc.analyse.helpers_human_cells.remove_top_x_percent_of_x_model(cleaned_results_only_state[results_for_version], delete_from_model= 'phas_model', x_percent=x_percent_to_remove_phase)
-        # remove top x_percent % of state cells inn binned data.
-        cleaned_results_binned[results_for_version], cell_overview_binned[results_for_version] = mc.analyse.helpers_human_cells.remove_top_x_percent_of_x_model(cleaned_results_binned_only_state[results_for_version], delete_from_model= 'phas_model', x_percent=x_percent_to_remove_phase)
-        
+            cleaned_results[results_for_version], cell_overview[results_for_version] = mc.analyse.helpers_human_cells.remove_top_x_percent_of_x_model(cleaned_results_only_state[results_for_version], delete_from_model= 'phas_model', x_percent=x_percent_to_remove_phase)
+            # remove top x_percent % of state cells inn binned data.
+            cleaned_results_binned[results_for_version], cell_overview_binned[results_for_version] = mc.analyse.helpers_human_cells.remove_top_x_percent_of_x_model(cleaned_results_binned_only_state[results_for_version], delete_from_model= 'phas_model', x_percent=x_percent_to_remove_phase)
+            
         
         
         # title_addition = f"raw correlation, excl.{x_percent_to_remove}% best state"
@@ -202,6 +207,12 @@ def plot_all(model_name_string_list, define_somehow_what_to_plot=None):
     #                                                                 df_late = cleaned_results_only_state['w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'], 
     #                                                                 title_string_add = f"overlap early - late cells \n excl. {x_percent_to_remove_state}% best state")
 
+    
+    mc.plotting.results.slope_plot_early_late_per_roi(df_early= all_results[results_for_version],
+                                                                    df_late = all_results[results_for_version], 
+                                                                    title_string_add = f"overlap early - late cells")
+    
+    
     
     # only state removed
     mc.plotting.results.slope_plot_early_late_per_roi(df_early= results_rem_sig_state['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'],
@@ -355,8 +366,9 @@ def plot_all(model_name_string_list, define_somehow_what_to_plot=None):
 if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     plot_all(
-        model_name_string_list=['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs',
-                           'w_partial_musicboxes_only_reps_6-10_avg_in_20_bins_across_runs']
+        model_name_string_list=['360bins_all_minus_explore'], remove_state=False
+        # model_name_string_list=['w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs',
+        #                    'w_partial_musicboxes_only_reps_6-10_avg_in_20_bins_across_runs']
         # model_name_string='w_partial_musicboxes_only_reps_0-1_avg_in_20_bins_across_runs'
         # model_name_string='w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs'
         # model_name_string='w_partial_musicboxes_only_reps_5-max_avg_in_20_bins_across_runs'

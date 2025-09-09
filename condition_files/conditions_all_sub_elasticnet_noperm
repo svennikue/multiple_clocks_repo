@@ -1,3 +1,9 @@
+
+
+
+python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
+
+
 --sub=1 --models_I_want="['onlynowand3future', 'onlynextand2future']" --only_repeats_included="[1,2,3,4,5,6,7,8,9,10]" --randomised_reward_locations=False --save_regs=True --fit_binned='by_state' --fit_residuals=False --avg_across_runs=True
 --sub=2 --models_I_want="['onlynowand3future', 'onlynextand2future']" --only_repeats_included="[1,2,3,4,5,6,7,8,9,10]" --randomised_reward_locations=False --save_regs=True --fit_binned='by_state' --fit_residuals=False --avg_across_runs=True
 --sub=3 --models_I_want="['onlynowand3future', 'onlynextand2future']" --only_repeats_included="[1,2,3,4,5,6,7,8,9,10]" --randomised_reward_locations=False --save_regs=True --fit_binned='by_state' --fit_residuals=False --avg_across_runs=True

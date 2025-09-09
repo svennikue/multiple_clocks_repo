@@ -28,7 +28,7 @@ def load_result_dirs(file_name, subs, perms_locs=None, perms_time=None):
     if perms_locs and perms_time:
         result_dir = {"binned": {}, "raw":{}, "perm_time":{}, "perm_locs":{}}
             
-    results_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/elastic_net_reg/corrs"
+    results_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/corrs"
     
     # subjects = [f"sub-{i}" for i in range(1, 65)]
     subjects = [f"sub-{i}" for i in subs]
@@ -119,7 +119,7 @@ def load_data(subs):
 
 def plot_all(model_name_string, sub_list, perms_locs=None, perms_time=None, plot_cells_corr_higher_than=0.05, save=False):
     results, subjects = load_result_dirs(model_name_string, subs=sub_list, perms_locs=perms_locs, perms_time=perms_time)
-    
+    # import pdb; pdb.set_trace()
     if perms_locs:
         task_perm_results=results['perm_locs']
     else:
@@ -161,15 +161,18 @@ if __name__ == "__main__":
         #model_name_string='w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs',
         #sub_list = [i for i in range(60)],
         # for all, 28,52 doesnt exist
-        model_name_string='w_partial_musicboxes_only_reps_1-10_avg_in_20_bins_across_runs',
-        sub_list = [i for i in range(60) if i not in [28, 52]],
-        perms_time = '500perms_circular_shuffle',
+        model_name_string='360bins_early',
+        sub_list = [i for i in range(60) if i not in [2]],
+        #perms_time = '500perms_circular_shuffle',
+        perms_time = None,
         plot_cells_corr_higher_than=0.05,
         save=True
         # sub-1_corrs_w_partial_musicboxes_excl_rep1-2_avg_in_20_bins_across_runs_fit_binned_by_state
     )
     
     
+#sub-18_corrs_360bins
+
 
 # if __name__ == "__main__":
 #     # For debugging, bypass Fire and call compute_one_subject directly.
