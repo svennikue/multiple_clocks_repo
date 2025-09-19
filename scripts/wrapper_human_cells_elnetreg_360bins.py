@@ -403,24 +403,24 @@ def compute_one_subject(sub,trials, save_regs=False, avg_across_runs = False, co
  
     
  
-# # # if running from command line, use this one!   
-if __name__ == "__main__":
-    #print(f"starting regression for subject {sub}")
-    fire.Fire(compute_one_subject)
-    # call this script like
-    # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
+# # # # if running from command line, use this one!   
+# if __name__ == "__main__":
+#     #print(f"starting regression for subject {sub}")
+#     fire.Fire(compute_one_subject)
+#     # call this script like
+#     # python wrapper_human_cells_elnetreg.py 5 --models_I_want='['withoutnow', 'onlynowand3future', 'onlynextand2future']' --exclude_x_repeats='[1,2,3]' --randomised_reward_locations=False --save_regs=True
 
 # trials can be 'early', 'late', 'all_minus_explore'
 
-# if __name__ == "__main__":
-#     # For debugging, bypass Fire and call compute_one_subject directly.
-#     compute_one_subject(
-#         sub=15,
-#         trials = 'early',
-#         save_regs=True,
-#         avg_across_runs=True,
-#         # comp_circular_perms=100
-#     )
+if __name__ == "__main__":
+    # For debugging, bypass Fire and call compute_one_subject directly.
+    compute_one_subject(
+        sub=63,
+        trials = 'all_minus_explore',
+        save_regs=True,
+        avg_across_runs=True,
+        # comp_circular_perms=100
+    )
 
 
 # these are hard-coded right now, so include them in the 'only' + models list 'state_reg', 'complete_musicbox_reg', 'reward_musicbox_reg', 'location_reg'

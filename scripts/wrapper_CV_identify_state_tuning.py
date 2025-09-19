@@ -24,28 +24,42 @@ def get_data(sub):
     data_norm = mc.analyse.helpers_human_cells.load_norm_data(data_folder, [f"{sub:02}"])
     return data_norm, data_folder
 
-def comp_state_tuning(neurons, perms = None):
-    # import pdb; pdb.set_trace()
+def comp_state_tuning(neurons, perms = None, random_data = False):
+    # import pdb; pdb.set_trace() 
+    if random_data == True:
+        n_rows = neurons.shape[0]
+        n_cols =neurons.shape[1]
+        neurons = np.random.randint(1,100, size = (n_rows, n_cols))
+        
     mean_firing_rates_states = np.full((4), np.nan, dtype=float)
     states = np.repeat((0,1,2,3), 90)
     states = np.tile(states, len(neurons))
     
+    # z-score each repeat across time (axis=1) to remove task-wide gain
+    for i_r, rep in enumerate(neurons):
+        m = np.nanmean(rep)
+        s = np.nanstd(rep, ddof=0)
+        neurons[i_r] = (rep - m) / s if s and np.isfinite(s) else (rep - m)
+
+            
     if perms:
         for i_r, rep in enumerate(neurons):
             # import pdb; pdb.set_trace()
             # circular shift of location time series by random bins along time_axis
             T = neurons.shape[1]
-            k = int(perms.integers(1, T)) if T > 1 else 0
+            k = np.random.randint(0, T)
+            #k = int(perms.integers(1, T)) if T > 1 else 0
             neurons[i_r] = np.roll(rep, -k)
             
     fr_all_reps  = neurons.reshape(-1).astype(float)
     nan_mask = np.isfinite(fr_all_reps)
     fr_clean = fr_all_reps[nan_mask]
     state_clean = states[nan_mask]
+    
     for state in range(0,4):
-        # print(f'state is now {state}')
         sel = (state_clean == state)
-        mean_firing_rates_states[state] = fr_clean[sel].mean()    
+        mean_firing_rates_states[state] = fr_clean[sel].mean()
+        
     return mean_firing_rates_states
     
 
@@ -188,7 +202,7 @@ def store_p_vals_perms(true_df, perm_df, out_path, trials):
     return out
 
 
-def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = None, sparsity_c = None, save_all = False):
+def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = None, sparsity_c = None, save_all = False, random_data = False):
     # determine results table
     COLUMNS = [
     "session_id", "neuron_id",
@@ -218,16 +232,16 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
 
 
         if no_perms:
-            no_perms = np.random.default_rng(123)
+            perms = no_perms
+            #no_perms = np.random.default_rng(123)
             # perms = permute_locations(data[f"sub-{sesh:02}"]['locations'], data[f"sub-{sesh:02}"]['beh'], no_perms = no_perms)
-            perms = 200
+            
             include_these_cells = Path(f"{group_dir_state}/included_cells_{trials}_reps_{sparsity_c}_pct.txt").read_text().splitlines()
         else:
             perms = 1
      
         # for each cell, cross-validate the peak task-lag shift for spatial consistency.
         for neuron_idx, curr_neuron in enumerate(data[f"sub-{sesh:02}"]['normalised_neurons']):
-            consistency_train_test = []
             # resetting unique tasks for each neuron.
             # determine identical grids
             grid_cols = ['loc_A', 'loc_B', 'loc_C', 'loc_D']
@@ -264,6 +278,7 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
             
             # loop through n-1 grids, respectively
             for perm_idx in range(0,perms):
+                consistency_train_test = []
                 for count_test_task, test_task_id in enumerate(unique_grids):
                     mask_test_task = (idx_same_grids == test_task_id)
                     neurons_test_task = data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron].loc[mask_test_task].to_numpy()
@@ -273,10 +288,10 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
                     neurons_train_task = data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron].loc[mask_train_task].to_numpy()
                     
                     # and compute the state-tuning in the train-tasks
-                    fr_state_train_tasks = comp_state_tuning(neurons_train_task)
+                    fr_state_train_tasks = comp_state_tuning(neurons_train_task, random_data=random_data)
 
                     # validate: compute the correlation with state-rate-map of held-out task
-                    fr_state_test_task = comp_state_tuning(neurons_test_task, perms = no_perms)
+                    fr_state_test_task = comp_state_tuning(neurons_test_task, perms = no_perms, random_data=random_data)
                     
                     consistency_train_test.append(np.corrcoef(fr_state_test_task, fr_state_train_tasks)[1][0])
                 
@@ -313,7 +328,15 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
             empirical_result = pd.read_csv(f"{group_dir_state}/{result_string }")
             perm_string = f"pval_for_perms200_{result_string}"
             name_result_stats = f"{group_dir_state}/{perm_string}"
-            import pdb; pdb.set_trace()
+            # DELETE THIS
+            cells = results_df['neuron_id'].unique()
+            for cell in cells:
+                perm_vals = results_df[results_df['neuron_id']==cell]['state_cv_consistency'].to_numpy()
+                plt.figure()
+                plt.hist(perm_vals, bins = 50)
+                plt.title(f"{cell} mean = {np.mean(perm_vals)}")
+                
+            # import pdb; pdb.set_trace()
             perm_pval_result = store_p_vals_perms(true_df = empirical_result, perm_df = results_df, out_path=name_result_stats, trials=trials)
             #mc.plotting.results.plot_perm_spatial_consistency(results_df, empirical_result, name_result_stats, group_dir_fut_spat)
             title_string = f'Binomial test after single-cell permutations, {trials} repeats'
@@ -341,7 +364,8 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
     
 if __name__ == "__main__":
     # trials can be 'all', 'all_correct', 'early', 'late', 'all_minus_explore'
-    compute_state_tunings(sessions=list(range(0,64)), trials = 'late', no_perms = 200, sparsity_c = 'gridwise_qc', save_all=True)
+    compute_state_tunings(sessions=list(range(0,64)), trials = 'all_minus_explore', no_perms = 300, sparsity_c = 'gridwise_qc', save_all=True)
+    # compute_state_tunings(sessions=[4], trials = 'all_minus_explore', no_perms = 500, sparsity_c = 'gridwise_qc', save_all=False, random_data=False)
 
     
     

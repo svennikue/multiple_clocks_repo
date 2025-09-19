@@ -28,7 +28,7 @@ def plot_perm_spatial_consistency(perm_df, true_df, path_to_pval_table, group_re
     
 
     NOW_SET = {330, 0, 30}
-    FUTURE_REWARD_SET = {90, 180, 270}
+    #FUTURE_REWARD_SET = {90, 180, 270}
 
     
     def to_int_safe(x):
@@ -150,9 +150,9 @@ def plot_perm_spatial_consistency(perm_df, true_df, path_to_pval_table, group_re
         title=f"Beeswarm by ROI — FUTURE (q<{alpha_fdr})",
         outpath=os.path.join(out_dir, f"beeswarm_future_q{alpha_fdr:.2f}.png"))
     
-    beeswarm_by_roi(df[shift_int.isin(FUTURE_REWARD_SET)],
-        title=f"Beeswarm by ROI — FUTURE REWARDS {sorted(FUTURE_REWARD_SET)} (q<{alpha_fdr})",
-        outpath=os.path.join(out_dir, f"beeswarm_future_rewards_q{alpha_fdr:.2f}.png"))
+    # beeswarm_by_roi(df[shift_int.isin(FUTURE_REWARD_SET)],
+    #     title=f"Beeswarm by ROI — FUTURE REWARDS {sorted(FUTURE_REWARD_SET)} (q<{alpha_fdr})",
+    #     outpath=os.path.join(out_dir, f"beeswarm_future_rewards_q{alpha_fdr:.2f}.png"))
 
     
     

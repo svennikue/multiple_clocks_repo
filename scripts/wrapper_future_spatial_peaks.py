@@ -623,7 +623,27 @@ def rename_rois(df, collapse_pfc = False, plot_by_cingulate_and_MTL = False):
             roi_label.append(roi)
     return roi_label
 
-def plt_binomial_per_roi(out_df, title_string, alpha=0.05, cmap_name="tab20", collapse_pfc=False):
+
+def bh_fdr(pvals):
+    """Benjamini–Hochberg adjusted p-values (q-values). NaNs stay NaN."""
+    p = np.asarray(pvals, float)
+    m = np.sum(~np.isnan(p))
+    adj = np.full_like(p, np.nan, dtype=float)
+    if m == 0:
+        return adj
+    # ranks among finite p
+    order = np.argsort(np.where(np.isnan(p), np.inf, p))
+    ranks = np.arange(1, len(p) + 1, dtype=float)
+    # monotone BH
+    p_ord = p[order]
+    with np.errstate(invalid="ignore"):
+        running = np.minimum.accumulate((m / ranks[order]) * p_ord[::-1])[::-1]
+    adj[order] = np.clip(running, 0, 1)
+    return adj
+
+
+def plt_binomial_per_roi(out_df, title_string, alpha=0.05, cmap_name="tab20",
+                         collapse_pfc=False, use_fdr=True, fdr_q=0.05):
 
     p_emp   = np.asarray(out_df['p_perm'].to_numpy(), float)
     regions = np.asarray(rename_rois(out_df, collapse_pfc=collapse_pfc))
@@ -640,7 +660,7 @@ def plt_binomial_per_roi(out_df, title_string, alpha=0.05, cmap_name="tab20", co
         center = (phat + z**2/(2*n)) / denom
         half = z * np.sqrt((phat*(1-phat) + z**2/(4*n)) / n) / denom
         return center - half, center + half
-
+ 
     # --- summarize per region ---
     rows = []
     for r in np.unique(regions):
@@ -656,12 +676,17 @@ def plt_binomial_per_roi(out_df, title_string, alpha=0.05, cmap_name="tab20", co
 
     if not rows:
         print("No regions to plot.")
-        return
+        return pd.DataFrame(columns=["roi","n","k","frac","ci_lo","ci_hi","p_raw","p_adj"])
+        
 
     # sort by region frequency (n desc), tie-break by name
     rows.sort(key=lambda t: (-t[1], t[0]))
     labels, ns, ks, fracs, los, his, ps = map(list, zip(*rows))
-
+    
+    # FDR across these ROIs (this panel)
+    ps = np.array(ps, float)
+    p_adj = bh_fdr(ps) if use_fdr else np.full_like(ps, np.nan)
+    
     # error bars from Wilson CI
     fracs_arr = np.array(fracs, float)
     los_arr   = np.array(los,   float)
@@ -669,47 +694,122 @@ def plt_binomial_per_roi(out_df, title_string, alpha=0.05, cmap_name="tab20", co
     yerr_low  = np.nan_to_num(fracs_arr - los_arr, nan=0.0, posinf=0.0, neginf=0.0)
     yerr_high = np.nan_to_num(his_arr   - fracs_arr, nan=0.0, posinf=0.0, neginf=0.0)
     yerr = np.vstack([yerr_low, yerr_high])
-
+    
     # --- dynamic y-limit with headroom for text ---
     tops = fracs_arr + yerr_high
     data_top = float(np.nanmax(tops)) if np.isfinite(tops).any() else 0.1
-    text_pad = 0.03  # vertical gap above error bar for the annotation
-    min_head = 0.06  # minimum headroom from highest top to y_max
+    text_pad = 0.03
+    min_head = 0.06
     y_max = min(1.0, max(0.15, data_top + max(text_pad + 0.01, min_head)))
-
+    
     # style
     plt.rcParams.update({
         'font.size': 13, 'axes.titlesize': 16, 'axes.labelsize': 14,
         'xtick.labelsize': 12, 'ytick.labelsize': 12, 'legend.fontsize': 12
     })
-
+    
     fig, ax = plt.subplots(figsize=(9.6, 5.6))
     x = np.arange(len(labels))
     cmap   = plt.get_cmap(cmap_name, max(3, len(labels)))
     colors = cmap(range(len(labels)))
-
+    
     ax.bar(x, fracs_arr, width=0.65, color=colors, edgecolor='none', alpha=0.95)
     ax.errorbar(x, fracs_arr, yerr=yerr, fmt='none', capsize=4, lw=1.6, color='black', zorder=3)
-
+    
     # reference line at alpha
     ax.axhline(alpha, color='gray', lw=1.2, ls='--', label=f'Expected under null (α={alpha:g})')
-
+    
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=0)
-    ax.set_ylim(0, y_max)  # <<< tight y-axis with headroom
+    ax.set_ylim(0, y_max)
     ax.set_ylabel("Fraction significant")
-    ax.set_title(title_string)
-
-    # annotations placed above each bar’s error bar, with guaranteed padding
-    for i, (k, n, p) in enumerate(zip(ks, ns, ps)):
+    title_note = " (stars = FDR-adjusted q)" if use_fdr else " (stars = raw p)"
+    ax.set_title(title_string + title_note)
+    
+    # annotate each bar. use adjusted p for stars if requested
+    p_for_stars = p_adj if use_fdr else ps
+    for i, (k, n, p_raw, q) in enumerate(zip(ks, ns, ps, p_adj)):
         top_i = fracs_arr[i] + yerr_high[i]
-        y_i = min(y_max - 0.01, top_i + text_pad)  # never spill beyond y_max
-        ax.text(x[i], y_i, f"{k}/{n}\n{stars(p)} (p={p:.2g})",
-                ha='center', va='bottom', fontsize=12, zorder=4)
-
-    ax.legend(frameon=False, loc='upper right')
+        y_i = min(y_max - 0.01, top_i + text_pad)
+        if use_fdr:
+            ax.text(x[i], y_i, f"{k}/{n}\n{stars(p_for_stars[i])} (q={q:.2g}, p={p_raw:.2g})",
+                    ha='center', va='bottom', fontsize=12, zorder=4)
+        else:
+            ax.text(x[i], y_i, f"{k}/{n}\n{stars(p_for_stars[i])} (p={p_raw:.2g})",
+                    ha='center', va='bottom', fontsize=12, zorder=4)
+    
+    # show FDR threshold line in legend text only
+    if use_fdr:
+        ax.legend(frameon=False, loc='upper right',
+                  title=f"BH-FDR across ROIs (q={fdr_q:g})", title_fontsize=11)
+    else:
+        ax.legend(frameon=False, loc='upper right')
+    
     fig.tight_layout()
     plt.show()
+    
+    # return a tidy summary for programmatic use
+    return pd.DataFrame({
+        "roi": labels, "n": ns, "k": ks, "frac": fracs_arr,
+        "ci_lo": los_arr, "ci_hi": his_arr,
+        "p_raw": ps, "p_adj": p_adj
+    })
+
+
+
+
+    # # sort by region frequency (n desc), tie-break by name
+    # rows.sort(key=lambda t: (-t[1], t[0]))
+    # labels, ns, ks, fracs, los, his, ps = map(list, zip(*rows))
+
+    # # error bars from Wilson CI
+    # fracs_arr = np.array(fracs, float)
+    # los_arr   = np.array(los,   float)
+    # his_arr   = np.array(his,   float)
+    # yerr_low  = np.nan_to_num(fracs_arr - los_arr, nan=0.0, posinf=0.0, neginf=0.0)
+    # yerr_high = np.nan_to_num(his_arr   - fracs_arr, nan=0.0, posinf=0.0, neginf=0.0)
+    # yerr = np.vstack([yerr_low, yerr_high])
+
+    # # --- dynamic y-limit with headroom for text ---
+    # tops = fracs_arr + yerr_high
+    # data_top = float(np.nanmax(tops)) if np.isfinite(tops).any() else 0.1
+    # text_pad = 0.03  # vertical gap above error bar for the annotation
+    # min_head = 0.06  # minimum headroom from highest top to y_max
+    # y_max = min(1.0, max(0.15, data_top + max(text_pad + 0.01, min_head)))
+
+    # # style
+    # plt.rcParams.update({
+    #     'font.size': 13, 'axes.titlesize': 16, 'axes.labelsize': 14,
+    #     'xtick.labelsize': 12, 'ytick.labelsize': 12, 'legend.fontsize': 12
+    # })
+
+    # fig, ax = plt.subplots(figsize=(9.6, 5.6))
+    # x = np.arange(len(labels))
+    # cmap   = plt.get_cmap(cmap_name, max(3, len(labels)))
+    # colors = cmap(range(len(labels)))
+
+    # ax.bar(x, fracs_arr, width=0.65, color=colors, edgecolor='none', alpha=0.95)
+    # ax.errorbar(x, fracs_arr, yerr=yerr, fmt='none', capsize=4, lw=1.6, color='black', zorder=3)
+
+    # # reference line at alpha
+    # ax.axhline(alpha, color='gray', lw=1.2, ls='--', label=f'Expected under null (α={alpha:g})')
+
+    # ax.set_xticks(x)
+    # ax.set_xticklabels(labels, rotation=0)
+    # ax.set_ylim(0, y_max)  # <<< tight y-axis with headroom
+    # ax.set_ylabel("Fraction significant")
+    # ax.set_title(title_string)
+
+    # # annotations placed above each bar’s error bar, with guaranteed padding
+    # for i, (k, n, p) in enumerate(zip(ks, ns, ps)):
+    #     top_i = fracs_arr[i] + yerr_high[i]
+    #     y_i = min(y_max - 0.01, top_i + text_pad)  # never spill beyond y_max
+    #     ax.text(x[i], y_i, f"{k}/{n}\n{stars(p)} (p={p:.2g})",
+    #             ha='center', va='bottom', fontsize=12, zorder=4)
+
+    # ax.legend(frameon=False, loc='upper right')
+    # fig.tight_layout()
+    # plt.show()
 
     
 
@@ -893,8 +993,34 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_minus_explore', plotting
             name_result_stats = f"{group_dir_fut_spat}/{perm_string}"
             perm_pval_result = store_p_vals_perms(true_df = empirical_result, perm_df = results_df, out_path=name_result_stats, trials=trials, consider_state=False)
             mc.plotting.results.plot_perm_spatial_consistency(results_df, empirical_result, name_result_stats, group_dir_fut_spat)
-            title_string = f'Binomial test after single-cell permutations, {trials} repeats'
-            plt_binomial_per_roi(perm_pval_result, title_string)
+
+            
+            # define what counts as "now"
+            NOW_SET = {330, 0, 30}
+            # masks
+            shift_int   = perm_pval_result["mode_peak_shift"]
+            mask_now    = shift_int.isin(NOW_SET)
+            mask_future = shift_int.notna() & ~mask_now
+            
+            # run your existing binomial-per-ROI plot twice
+            title_string_now = f'Binomial test after single-cell permutations, current location, {trials} repeats'
+            tbl_now = plt_binomial_per_roi(perm_pval_result[mask_now],
+                                 title_string_now,
+                                 alpha=0.05, use_fdr=True, fdr_q=0.05)
+            
+            title_string_future = f'Binomial test after single-cell permutations, only future peaks, {trials} repeats'
+            tbl_future = plt_binomial_per_roi(perm_pval_result[mask_future],
+                                 title_string_future,
+                                 alpha=0.05, use_fdr=True, fdr_q=0.05)
+
+            title_string_all = f'Binomial test after single-cell permutations, {trials} repeats'
+            plt_binomial_per_roi(perm_pval_result, title_string_all)
+
+            # If you want to adjust across BOTH panels together (recommended if you interpret them jointly):
+            both = pd.concat([tbl_now.assign(group="NOW"), tbl_future.assign(group="FUTURE")], ignore_index=True)
+            both["p_adj_all"] = bh_fdr(both["p_raw"].values)
+
+
             
             import pdb; pdb.set_trace()
 
@@ -933,7 +1059,7 @@ if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     # trials can be 'all', 'all_correct', 'early', 'late', 'all_minus_explore'
     # compute_fut_spatial_tunings(sessions=[3], trials = 'all', plotting=False, no_perms = None, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=False)
-    compute_fut_spatial_tunings(sessions=list(range(0,64)), trials = 'late', no_perms = 200, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=True)
+    compute_fut_spatial_tunings(sessions=list(range(0,64)), trials = 'early', no_perms = 200, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=True)
     # compute_fut_spatial_tunings(sessions=list(range(0,60)), trials = 'all', no_perms = 200, combine_two_grids = True)
     # compute_fut_spatial_tunings(sessions=[31], trials = 'all', plotting = False, no_perms = None, combine_two_grids = True)
     

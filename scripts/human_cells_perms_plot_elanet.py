@@ -119,7 +119,7 @@ def load_data(subs):
 
 def plot_all(model_name_string, sub_list, perms_locs=None, perms_time=None, plot_cells_corr_higher_than=0.05, save=False):
     results, subjects = load_result_dirs(model_name_string, subs=sub_list, perms_locs=perms_locs, perms_time=perms_time)
-    # import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
     if perms_locs:
         task_perm_results=results['perm_locs']
     else:
@@ -161,8 +161,8 @@ if __name__ == "__main__":
         #model_name_string='w_partial_musicboxes_only_reps_1-5_avg_in_20_bins_across_runs',
         #sub_list = [i for i in range(60)],
         # for all, 28,52 doesnt exist
-        model_name_string='360bins_early',
-        sub_list = [i for i in range(60) if i not in [2]],
+        model_name_string=['360bins_early','360bins_late', '360bins_all_minus_explore'],
+        sub_list = [i for i in range(64) if i not in [2]],
         #perms_time = '500perms_circular_shuffle',
         perms_time = None,
         plot_cells_corr_higher_than=0.05,
