@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Created on Fri Sep 19 16:18:47 2025
 
@@ -35,12 +33,32 @@ def regress_out_repeat(neuron_data, repeats):
     # Repeat labels: expand so each timepoint has the trial's repeat index
     X_repeat = np.repeat(repeats, n_time)
     X = sm.add_constant(X_repeat)
+    
+    # clean nans
+    neuron_nan_mask = np.isfinite(y) & np.isfinite(X_repeat)
+    
+    model = sm.OLS(y[neuron_nan_mask], X[neuron_nan_mask]).fit()
+    # resid_masked = model.resid
 
-    model = sm.OLS(y, X).fit()
-    resid = model.resid
+    
+    # # Put residuals back to original shape, keeping NaNs where y was NaN
+    # resid_full = np.full_like(y, np.nan, dtype=float)
+    # resid_full[neuron_nan_mask] = resid_masked
+
+    # Params
+    alpha = model.params[0]
+    beta  = model.params[1]
+
+    # Build cleaned = y - beta*repeat  (i.e., remove only repeat term)
+    y_clean = np.full_like(y, np.nan, dtype=float)
+    y_clean[neuron_nan_mask] = y[neuron_nan_mask] - beta * X_repeat[neuron_nan_mask]
+    
+    cleaned = y_clean.reshape(n_trials, n_time)
+
+    
 
     # Reshape back
-    cleaned = resid.reshape(n_trials, n_time)
+    # cleaned = resid_full.reshape(n_trials, n_time)
 
     effect_strength = model.rsquared
     beta = model.params[1]
@@ -50,10 +68,18 @@ def regress_out_repeat(neuron_data, repeats):
     
 
 def residualise_by_repeat_no(sessions, save_all = False):
+    # determine results table
+    COLUMNS = [
+    "session_id", "neuron_id",
+    "mean_effect_reps",
+    ]
+    results = []
     for sesh in sessions:
         # load data
         data, source_dir = get_data(sesh)
-        out_dir = f"source_dir/{s{sesh:02}}/cells_and_beh/cleaned_from_reps"
+        out_dir = f"{source_dir}/s{sesh:02}/cells_and_beh/cleaned_from_reps"
+        if not data:
+            continue
         if not os.path.isdir(out_dir):
             os.mkdir(out_dir)
             
@@ -66,18 +92,28 @@ def residualise_by_repeat_no(sessions, save_all = False):
             raw_neural_data = data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron].to_numpy()
             repeats = beh_df['rep_correct'].to_numpy()
             cleaned, effect_strength, betas = regress_out_repeat(raw_neural_data, repeats)
-            print(f"effect strengt for {curr_neuron} is {effect_strength}")
+            print(f"effect strength for {curr_neuron} is {effect_strength}")
+            results.append({
+                "session_id": sesh,
+                "neuron_id": curr_neuron,
+                "mean_effect_reps": effect_strength
+                })
+            
             if save_all == True:
-                # CONTINUE HERE!
-                # this needs to eb in the same format as the one I loaded in the beginniong
-                # also collect a results table as for state such that I can plot the effect by cell.
-                import pdb; pdb.set_trace()
+                out_name = f"cell-{curr_neuron}-360_bins_residualised.csv"
+                np.savetxt(f"{out_dir}/{out_name}", cleaned, delimiter=",")
+           
+                
+    results_df = pd.DataFrame(results, columns = COLUMNS)    
+    plt.figure()
+    plt.hist(results_df['mean_effect_reps'].to_numpy(), bins = 50)
+    import pdb; pdb.set_trace()
 
     
 
     
 if __name__ == "__main__":
     # trials can be 'all', 'all_correct', 'early', 'late', 'all_minus_explore'
-    residualise_by_repeat_no(sessions=list(range(0,64)), save_all=True)
-    residualise_by_repeat_no(sessions=[4], save_all=True)
+    residualise_by_repeat_no(sessions=list(range(2,64)), save_all=True)
+    # residualise_by_repeat_no(sessions=[4], save_all=True)
         

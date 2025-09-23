@@ -16,12 +16,16 @@ from matplotlib import pyplot as plt
 import scipy.stats as st
 
 
-def get_data(sub):
+def get_data(sub, trials):
     data_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives"
     if not os.path.isdir(data_folder):
         print("running on ceph")
         data_folder = "/ceph/behrens/svenja/human_ABCD_ephys/derivatives"
-    data_norm = mc.analyse.helpers_human_cells.load_norm_data(data_folder, [f"{sub:02}"])
+    if trials == 'residualised':
+        res_data = True
+    else:
+        res_data = False
+    data_norm = mc.analyse.helpers_human_cells.load_norm_data(data_folder, [f"{sub:02}"], res_data = res_data)
     return data_norm, data_folder
 
 def comp_state_tuning(neurons, perms = None, random_data = False):
@@ -82,83 +86,197 @@ def stars(p):
     return 'n.s.'
     
 
-    
-def plot_results_per_roi(df, title_string_add, plot_by_pfc = False, plot_by_cingulate_and_MTL = False):
 
+def plot_results_per_roi(df, title_string_add, plot_by_pfc=False, plot_by_cingulate_and_MTL=False):
     # --- inputs ---
     metric_col = 'state_cv_consistency'
+    p_col = 'p_perm'   # optional column
+    alpha_sig = 0.05
     bins = 20
-    title_string_add = title_string_add if 'title_string_add' in locals() else ''
-    plot_by_pfc = locals().get('plot_by_pfc', False)
-    plot_by_cingulate_and_MTL = locals().get('plot_by_cingulate_and_MTL', False)
-    
+
     # ROI labels
+    df = df.copy()
     df['roi'] = mc.analyse.helpers_human_cells.rename_rois(
         df,
         collapse_pfc=plot_by_pfc,
         plot_by_cingulate_and_MTL=plot_by_cingulate_and_MTL
     )
-    
+
     rois = df['roi'].dropna().unique().tolist()
     n_cols = len(rois)
-    
+
     plt.rcParams.update({'font.size': 11})
-    
+
     # single row, n_cols columns
     fig, axes = plt.subplots(
         1, n_cols,
-        figsize=(max(6.5, 2.2*n_cols), 4.0),
+        figsize=(max(6.5, 2.2 * n_cols), 4.0),
         sharex=True, sharey=True,
         gridspec_kw={'wspace': 0.3}
     )
-    
-    # make axes iterable even when n_cols == 1
     if n_cols == 1:
         axes = np.array([axes])
-    
-    # precompute max y across all ROIs for consistent scaling
+
+    # Precompute common bin edges
+    all_vals = df[metric_col].to_numpy(dtype=float)
+    all_vals = all_vals[np.isfinite(all_vals)]
+    bin_edges = np.histogram_bin_edges(all_vals, bins=bins)
+
     ylim_max = 0
-    vals_per_roi = []
-    
+    per_roi_data = []
     for roi in rois:
-        vals = df.loc[df['roi'] == roi, metric_col].to_numpy(dtype=float)
-        vals = vals[np.isfinite(vals)]
-        counts, _ = np.histogram(vals, bins=bins)
+        sub = df.loc[df['roi'] == roi]
+        vals = sub[metric_col].to_numpy(dtype=float)
+        mask_valid = np.isfinite(vals)
+
+        # If p_perm exists, split into significant vs. not
+        if p_col in sub.columns:
+            pvals = sub[p_col].to_numpy(dtype=float)
+            mask_valid &= np.isfinite(pvals)
+            vals = vals[mask_valid]
+            pvals = pvals[mask_valid]
+
+            sig_mask = pvals < alpha_sig
+            vals_sig = vals[sig_mask]
+            vals_nonsig = vals[~sig_mask]
+
+            c_sig, _ = np.histogram(vals_sig, bins=bin_edges)
+            c_nonsig, _ = np.histogram(vals_nonsig, bins=bin_edges)
+            counts = c_sig + c_nonsig
+            per_roi_data.append((vals, vals_sig, vals_nonsig))
+        else:
+            vals = vals[mask_valid]
+            counts, _ = np.histogram(vals, bins=bin_edges)
+            per_roi_data.append((vals, None, None))
+
         ylim_max = max(ylim_max, counts.max() if counts.size else 0)
-        vals_per_roi.append(vals)
-    
+
     # plotting
-    for ax, roi, vals in zip(axes, rois, vals_per_roi):
-        ax.hist(vals, bins=bins)
-        ax.axvline(0, linestyle='dashed', linewidth=1.3)
-    
-        # stats box
-        t_stat, p_one, mval = one_tailed_ttest_greater_than_zero(vals)
+    for ax, roi, vals_tuple in zip(axes, rois, per_roi_data):
+        vals_all, vals_sig, vals_nonsig = vals_tuple
+
+        if vals_sig is not None:  # p_perm available
+            ax.hist(vals_nonsig, bins=bin_edges,
+                    color='lightgray', edgecolor='black', alpha=1.0, label='n.s.')
+            ax.hist(vals_sig, bins=bin_edges,
+                    color='salmon', edgecolor='black', alpha=0.95, label=f'p<{alpha_sig:.2f}')
+        else:  # no p_perm
+            ax.hist(vals_all, bins=bin_edges,
+                    color='lightgray', edgecolor='black')
+
+        # zero line
+        ax.axvline(0, color='k', linestyle='dashed', linewidth=1.3)
+
+        # stats box (based on all vals)
+        t_stat, p_one, mval = one_tailed_ttest_greater_than_zero(vals_all)
         sig = stars(p_one)
         ax.text(
             0.98, 0.96,
-            f"n={vals.size}\nmean={mval:.2f}\n{sig} (p={p_one:.1e})",
+            f"n={vals_all.size}\nmean={mval:.2f}\n{sig} (p={p_one:.1e})",
             transform=ax.transAxes, ha='right', va='top',
             bbox=dict(facecolor='white', edgecolor='black', boxstyle='round'),
             fontsize=10
         )
-    
+
         ax.set_title(str(roi), pad=4)
         ax.tick_params(axis='both', labelsize=10, width=1.0, length=4)
-    
-    # consistent y-axis across ROIs (+4% headroom)
+
+    # consistent y-axis
     axes[0].set_ylim(0, max(1, int(ylim_max * 1.04)))
-    
+
     # shared labels + title
-    fig.supxlabel("state_cv_consistency")
+    fig.supxlabel(metric_col)
     fig.supylabel("Frequency")
     fig.suptitle(
         f"Cross-validated state consistency per cell, split by ROI\n{title_string_add}",
         fontsize=12, fontweight='bold', y=0.98
     )
-    
+
+    # add legend only if p_perm was present
+    if p_col in df.columns:
+        axes[-1].legend(frameon=False, fontsize=9, loc='upper left')
+
     fig.subplots_adjust(left=0.07, right=0.98, bottom=0.18, top=0.85, wspace=0.3)
     plt.show()
+
+
+
+# def plot_results_per_roi(df, title_string_add, plot_by_pfc = False, plot_by_cingulate_and_MTL = False):
+
+#     # --- inputs ---
+#     metric_col = 'state_cv_consistency'
+#     bins = 20
+#     title_string_add = title_string_add if 'title_string_add' in locals() else ''
+#     plot_by_pfc = locals().get('plot_by_pfc', False)
+#     plot_by_cingulate_and_MTL = locals().get('plot_by_cingulate_and_MTL', False)
+    
+#     # ROI labels
+#     df['roi'] = mc.analyse.helpers_human_cells.rename_rois(
+#         df,
+#         collapse_pfc=plot_by_pfc,
+#         plot_by_cingulate_and_MTL=plot_by_cingulate_and_MTL
+#     )
+    
+#     rois = df['roi'].dropna().unique().tolist()
+#     n_cols = len(rois)
+    
+#     plt.rcParams.update({'font.size': 11})
+    
+#     # single row, n_cols columns
+#     fig, axes = plt.subplots(
+#         1, n_cols,
+#         figsize=(max(6.5, 2.2*n_cols), 4.0),
+#         sharex=True, sharey=True,
+#         gridspec_kw={'wspace': 0.3}
+#     )
+    
+#     # make axes iterable even when n_cols == 1
+#     if n_cols == 1:
+#         axes = np.array([axes])
+    
+#     # precompute max y across all ROIs for consistent scaling
+#     ylim_max = 0
+#     vals_per_roi = []
+    
+#     for roi in rois:
+#         vals = df.loc[df['roi'] == roi, metric_col].to_numpy(dtype=float)
+#         vals = vals[np.isfinite(vals)]
+#         counts, _ = np.histogram(vals, bins=bins)
+#         ylim_max = max(ylim_max, counts.max() if counts.size else 0)
+#         vals_per_roi.append(vals)
+    
+#     # plotting
+#     for ax, roi, vals in zip(axes, rois, vals_per_roi):
+#         ax.hist(vals, bins=bins)
+#         ax.axvline(0, linestyle='dashed', linewidth=1.3)
+    
+#         # stats box
+#         t_stat, p_one, mval = one_tailed_ttest_greater_than_zero(vals)
+#         sig = stars(p_one)
+#         ax.text(
+#             0.98, 0.96,
+#             f"n={vals.size}\nmean={mval:.2f}\n{sig} (p={p_one:.1e})",
+#             transform=ax.transAxes, ha='right', va='top',
+#             bbox=dict(facecolor='white', edgecolor='black', boxstyle='round'),
+#             fontsize=10
+#         )
+    
+#         ax.set_title(str(roi), pad=4)
+#         ax.tick_params(axis='both', labelsize=10, width=1.0, length=4)
+    
+#     # consistent y-axis across ROIs (+4% headroom)
+#     axes[0].set_ylim(0, max(1, int(ylim_max * 1.04)))
+    
+#     # shared labels + title
+#     fig.supxlabel("state_cv_consistency")
+#     fig.supylabel("Frequency")
+#     fig.suptitle(
+#         f"Cross-validated state consistency per cell, split by ROI\n{title_string_add}",
+#         fontsize=12, fontweight='bold', y=0.98
+#     )
+    
+#     fig.subplots_adjust(left=0.07, right=0.98, bottom=0.18, top=0.85, wspace=0.3)
+#     plt.show()
 
 
 
@@ -218,7 +336,7 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
     
     for sesh in sessions:
         # load data
-        data_raw, source_dir = get_data(sesh)
+        data_raw, source_dir = get_data(sesh, trials=trials)
         group_dir_state = f"{source_dir}/group/state_tuning"
         # import pdb; pdb.set_trace()
         # if this session doesn't exist, skip
@@ -316,6 +434,7 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
     
     # import pdb; pdb.set_trace()
     results_df = pd.DataFrame(results, columns = COLUMNS)
+    #import pdb; pdb.set_trace()
     if save_all == True:
         if not os.path.isdir(group_dir_state):
             os.mkdir(group_dir_state)
@@ -329,12 +448,12 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
             perm_string = f"pval_for_perms200_{result_string}"
             name_result_stats = f"{group_dir_state}/{perm_string}"
             # DELETE THIS
-            cells = results_df['neuron_id'].unique()
-            for cell in cells:
-                perm_vals = results_df[results_df['neuron_id']==cell]['state_cv_consistency'].to_numpy()
-                plt.figure()
-                plt.hist(perm_vals, bins = 50)
-                plt.title(f"{cell} mean = {np.mean(perm_vals)}")
+            # cells = results_df['neuron_id'].unique()
+            # for cell in cells:
+            #     perm_vals = results_df[results_df['neuron_id']==cell]['state_cv_consistency'].to_numpy()
+            #     plt.figure()
+            #     plt.hist(perm_vals, bins = 50)
+            #     plt.title(f"{cell} mean = {np.mean(perm_vals)}")
                 
             # import pdb; pdb.set_trace()
             perm_pval_result = store_p_vals_perms(true_df = empirical_result, perm_df = results_df, out_path=name_result_stats, trials=trials)
@@ -358,14 +477,14 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
 
         results_df.to_csv(name_result)
         print(f"saved cross-validated state tuning values in {name_result}")  
-        import pdb; pdb.set_trace()
+        
     
       
     
 if __name__ == "__main__":
-    # trials can be 'all', 'all_correct', 'early', 'late', 'all_minus_explore'
-    compute_state_tunings(sessions=list(range(0,64)), trials = 'all_minus_explore', no_perms = 300, sparsity_c = 'gridwise_qc', save_all=True)
-    # compute_state_tunings(sessions=[4], trials = 'all_minus_explore', no_perms = 500, sparsity_c = 'gridwise_qc', save_all=False, random_data=False)
+    # trials can be 'all', 'all_correct', 'early', 'late', 'all_minus_explore', 'residualised'
+    compute_state_tunings(sessions=list(range(0,64)), trials = 'residualised', no_perms = 300, sparsity_c = 'gridwise_qc', save_all=True)
+    #compute_state_tunings(sessions=[4], trials = 'residualised', no_perms = None, sparsity_c = 'gridwise_qc', save_all=False, random_data=False)
 
     
     

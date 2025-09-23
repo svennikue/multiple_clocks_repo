@@ -32,12 +32,16 @@ from scipy.stats import binomtest, norm
 
 
 
-def get_data(sub):
+def get_data(sub, trials):
     data_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives"
     if not os.path.isdir(data_folder):
         print("running on ceph")
         data_folder = "/ceph/behrens/svenja/human_ABCD_ephys/derivatives"
-    data_norm = mc.analyse.helpers_human_cells.load_norm_data(data_folder, [f"{sub:02}"])
+    if trials == 'residualised':
+        res_data = True
+    else:
+        res_data = False
+    data_norm = mc.analyse.helpers_human_cells.load_norm_data(data_folder, [f"{sub:02}"], res_data = res_data)
     return data_norm, data_folder
 
 
@@ -830,7 +834,7 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_minus_explore', plotting
     included_neurons = []
     for sesh in sessions:
         # load data
-        data_raw, source_dir = get_data(sesh)
+        data_raw, source_dir = get_data(sesh, trials=trials)
         group_dir_fut_spat = f"{source_dir}/group/spatial_peaks"
         # import pdb; pdb.set_trace()
         # if this session doesn't exist, skip
@@ -839,6 +843,7 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_minus_explore', plotting
     
         # filter data for only those repeats that were 1) correct and 2) not the first one
         data = mc.analyse.helpers_human_cells.filter_data(data_raw, sesh, trials)
+        
         beh_df = data[f"sub-{sesh:02}"]['beh'].copy()
         # determine identical grids
         grid_cols = ['loc_A', 'loc_B', 'loc_C', 'loc_D']
@@ -1057,9 +1062,9 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_minus_explore', plotting
 
 if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
-    # trials can be 'all', 'all_correct', 'early', 'late', 'all_minus_explore'
+    # trials can be 'all', 'all_correct', 'early', 'late', 'all_minus_explore', 'residualised'
     # compute_fut_spatial_tunings(sessions=[3], trials = 'all', plotting=False, no_perms = None, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=False)
-    compute_fut_spatial_tunings(sessions=list(range(0,64)), trials = 'early', no_perms = 200, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=True)
+    compute_fut_spatial_tunings(sessions=list(range(0,64)), trials = 'residualised', no_perms = None, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=True)
     # compute_fut_spatial_tunings(sessions=list(range(0,60)), trials = 'all', no_perms = 200, combine_two_grids = True)
     # compute_fut_spatial_tunings(sessions=[31], trials = 'all', plotting = False, no_perms = None, combine_two_grids = True)
     

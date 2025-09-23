@@ -104,7 +104,7 @@ def filter_data(data, session, rep_filter):
         for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
             filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([6,7,8,9,10])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)    
 
-    elif rep_filter == 'all_minus_explore':
+    elif rep_filter == 'all_minus_explore' or rep_filter == 'residualised':
         # exclude aanything where both 'rep_correct' == 0 and 'correct' == 0
         keep_mask = data[f"sub-{session:02}"]['beh'][['correct','rep_correct']].ne(0).any(axis=1)
         
@@ -254,7 +254,7 @@ def extract_consistent_grids(neuron, cell_name, beh):
     return beh
 
 
-def load_norm_data(source_folder, subject_list):
+def load_norm_data(source_folder, subject_list, res_data = False):
     # load all files I prepared with Matlab into a subject dictionary
     data_dict = {}
     for sub in subject_list:
@@ -279,14 +279,23 @@ def load_norm_data(source_folder, subject_list):
         data_dict[f"sub-{sub}"]['beh'] = pd.read_csv(f'{sub_folder}/all_trial_times_{sub}.csv', header = None)
         column_names = ['rep_correct', 't_A', 't_B', 't_C', 't_D', 'loc_A', 'loc_B', 'loc_C', 'loc_D', 'rep_overall', 'new_grid_onset', 'session_no', 'grid_no', 'correct']
         data_dict[f"sub-{sub}"]['beh'].columns = column_names
-        # Use glob to find all matching CSV files
-        # file_pattern = os.path.join(sub_folder, "cell-*-360_bins.csv")
-        file_pattern = os.path.join(sub_folder, "cell*360_bins_passed.csv")
+        if res_data == True:
+            file_pattern = os.path.join(sub_folder,'cleaned_from_reps', "cell*360_bins_residualised.csv")
+        else:
+            file_pattern = os.path.join(sub_folder, "cell*360_bins_passed.csv")
+            
+        # # Use glob to find all matching CSV files
+        # # file_pattern = os.path.join(sub_folder, "cell-*-360_bins.csv")
+        # file_pattern = os.path.join(sub_folder,'cleaned_from_reps', "*360_bins_residualised.csv")
+        # #file_pattern = os.path.join(sub_folder, "cell*360_bins_passed.csv")
         cell_files = glob.glob(file_pattern)
         for cell_file_path in cell_files:
             file_name = os.path.basename(cell_file_path)
             # cell_name = file_name[len("cell_"):-len("-360_bins.csv")]
-            cell_name = file_name[len("cell-"):-len("-360_bins_passed.csv")]
+            if res_data == True:
+                cell_name = file_name[len("cell-"):-len("-360_bins_residualised.csv")]
+            else:
+                cell_name = file_name[len("cell-"):-len("-360_bins_passed.csv")]
             data_dict[f"sub-{sub}"]["normalised_neurons"][cell_name] = pd.read_csv(cell_file_path, header=None)
     # import pdb; pdb.set_trace()
     return data_dict

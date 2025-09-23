@@ -30,12 +30,12 @@ from matplotlib.patches import Patch
 
 #####
 # SETTINGS
-plot_state = False
+plot_state = True
 plot_spatial_corr = False
 plot_future_spatial_corr = False
 plot_goal_progress_tuning = False
 plot_goal_progress_tuning_half_split = False
-plot_firing_rate_per_incl_reps = True
+plot_firing_rate_per_incl_reps = False
 
 #import pdb; pdb.set_trace()
 # 
