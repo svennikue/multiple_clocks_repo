@@ -30,7 +30,7 @@ import pandas as pd
 import copy
 from matplotlib.patches import Rectangle
 from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
-        
+
 
 # import pdb; pdb.set_trace()
 
@@ -194,12 +194,6 @@ def comp_peak_spatial_tuning(neurons, locs, beh, cell_name, idx_same_grids, plot
     return fr_maps_by_shift, mean_corr_per_shift, dwell_by_shift
 
 
-#
-#
-from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
-from matplotlib.patches import Rectangle
-import numpy as np
-import matplotlib.pyplot as plt
 
 def plot_neuron_overview(neuron_name, beh, neuron, locs, FR_maps_neuron,
                          spatial_corr_per_shift, same_grids, title_string):

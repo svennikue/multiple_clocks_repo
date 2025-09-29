@@ -27,6 +27,9 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter1d
 from scipy.interpolate import interp1d
 from matplotlib.patches import Patch
+from matplotlib.ticker import PercentFormatter
+
+
 
 #####
 # SETTINGS
@@ -61,15 +64,19 @@ def smooth_circular(arr, sigma=2):
     return smoothed[len(arr):2*len(arr)]  # return center part
 
 
-def plot_state_polar(firing_across_states, title_string):
+def plot_state_polar(firing_across_states, title_string, ax=None, rlim=None):
     # Colors for quadrants A, B, C, D
     colors = ['#F15A29', '#F7931E', '#C7C6E2', '#6B60AA']
     quadrants = ['A', 'B', 'C', 'D']
     n_bins = len(firing_across_states)
     quarter_size = n_bins // 4
+    
+    created_fig = False                     
+    if ax is None:                           
+        fig = plt.figure(figsize=(6, 6))     # (only make a fig if none passed)
+        ax = fig.add_subplot(1, 1, 1, projection='polar')
+        created_fig = True
 
-    fig = plt.figure(figsize=(6, 6))
-    ax = fig.add_subplot(1, 1, 1, projection='polar')
     theta = np.linspace(0, 2 * np.pi, 360, endpoint=False)
 
     # Plot each colored quadrant
@@ -78,22 +85,47 @@ def plot_state_polar(firing_across_states, title_string):
         idx_end = (i + 1) * quarter_size
         ax.plot(theta[idx_start:idx_end], firing_across_states[idx_start:idx_end], color=colors[i], linewidth=2)
 
-    # Overlay full outline
-    ax.plot(theta, firing_across_states, color='black', linewidth=1.5, alpha=0.5)
-
-    # Add quadrant labels
-    label_r = ax.get_rmax() * 1.1
+    # --- shared r-limits  ---
+    if rlim is None:
+        rmin = float(np.nanmin(firing_across_states))
+        rmax = float(np.nanmax(firing_across_states))
+    else:
+        rmin, rmax = rlim
+    ax.set_ylim(rmin, rmax)
+    
+    # Shaded wedges up to quadrant mean (same logic, but with rmin/rmax)
+    means = firing_across_states.reshape(4, 90).mean(axis=1)
+    centers = np.linspace(0, 2*np.pi, 4, endpoint=False) + (np.pi / 4)
+    for i, m in enumerate(means):
+        ax.bar(centers[i],
+               m - rmin,   
+               width=np.pi/2,
+               bottom=rmin,
+               color=colors[i],
+               alpha=0.25,
+               edgecolor='none',
+               zorder=0,
+               align='center')
+    
+    # A/B/C/D quadrant labels only (hide numeric ticks
+    ax.set_xticks([])
+    #ax.set_yticks([])
+    
+    label_r = rmax
     for i, label in enumerate(quadrants):
         angle = (i + 0.5) * (np.pi / 2)
-        ax.text(angle, label_r, label,
-                ha='center', va='center',
+        ax.text(angle, label_r, label, ha='center', va='bottom',
                 fontsize=14, fontweight='bold', color=colors[i])
-
+    
     ax.set_title(title_string, va='bottom', fontsize=14)
     ax.grid(True)
-    plt.tight_layout()
-    plt.show()
-                
+    
+    if created_fig:
+        plt.tight_layout()
+        plt.show()
+        
+
+
 def scale_per_neuron(mat, method="minmax", eps=1e-9):
     """
     Scale each row independently.
@@ -174,8 +206,378 @@ if plot_firing_rate_per_incl_reps == True:
     plt.legend(handles=legend_patches, loc='upper center', frameon=False)   
     
     
+def pref_counts_per_roi(df_sig, df_all, roi_col='roi', state_col='pref_state', states=('A','B','C','D')):
+     d_s = df_sig[[roi_col, state_col]].dropna().copy()
+     d_a = df_all[[roi_col, state_col]].dropna().copy()
+     # keep ROI display order as they first appear
+     roi_order = d_s[roi_col].dropna().unique().tolist()
+     d_s[state_col] = pd.Categorical(d_s[state_col], categories=list(states), ordered=True)
+     counts_sig = (d_s.groupby([roi_col, state_col]).size()
+                 .unstack(fill_value=0)
+                 .reindex(index=roi_order, columns=states, fill_value=0))
+     counts_all = (d_a.groupby([roi_col, state_col]).size()
+                 .unstack(fill_value=0)
+                 .reindex(index=roi_order, columns=states, fill_value=0))
+     return counts_sig, counts_all
+ 
     
+ 
+def plot_pref_counts_per_roi(counts, title="Preferred-state counts per ROI", stacked=False):
+    rois = counts.index.astype(str).tolist()
+    states = counts.columns.tolist()
+    x = np.arange(len(rois))
+    fig, ax = plt.subplots(figsize=(max(7, 1.1*len(rois)), 5))
+
+    if stacked:
+        # stacked bars (one bar per ROI with A–D stacked)
+        bottom = np.zeros(len(rois))
+        for s in states:
+            ax.bar(x, counts[s].values, bottom=bottom, label=f"State {s}", edgecolor='black')
+            bottom += counts[s].values
+    else:
+        # grouped bars (four bars per ROI: A–D)
+        width = 0.8 / max(1, len(states))
+        offsets = (np.arange(len(states)) - (len(states)-1)/2) * width
+        for off, s in zip(offsets, states):
+            ax.bar(x + off, counts[s].values, width=width, label=f"State {s}", edgecolor='black')
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(rois, rotation=45, ha='right')
+    ax.set_ylabel("Number of cells")
+    ax.set_xlabel("ROI")
+    ax.set_title(title)
+    ax.legend(frameon=False, ncol=min(4, len(states)))
+    ax.spines[['top','right']].set_visible(False)
+    fig.tight_layout()
+    plt.show()
+    return fig, ax
+
+
+
+def normalize_counts(counts, mode='within_roi'):
+    """
+    mode:
+      - 'within_roi': divide each row by its row-sum → per-ROI proportions (sum to 1 per ROI)
+      - 'global': divide entire table by grand total → share of all cells (sums to 1 over all cells)
+    """
+    counts = counts.copy()
+    if mode == 'within_roi':
+        denom = counts.sum(axis=1).replace(0, np.nan)
+        props = counts.div(denom, axis=0).fillna(0.0)
+    elif mode == 'global':
+        total = counts.values.sum()
+        props = counts / total if total > 0 else counts*0.0
+    else:
+        raise ValueError("mode must be 'within_roi' or 'global'")
+    return props
+
+
+
+def plot_pref_props_per_roi(counts, normalize='within_roi', grouped=False, title=None):
+    """
+    counts: DataFrame from pref_counts_per_roi (ROIs × states)
+    normalize: 'within_roi' (default) or 'global'
+    grouped: if True → grouped bars; else → stacked bars
+    """
+    data = normalize_counts(counts, mode=normalize)
+    rois   = data.index.astype(str).tolist()
+    states = data.columns.tolist()
+
+    x = np.arange(len(rois))
+    fig, ax = plt.subplots(figsize=(max(7, 1.1*len(rois)), 5))
+
+    if grouped:
+        # grouped bars (proportions for each state side-by-side per ROI)
+        width = 0.8 / max(1, len(states))
+        offsets = (np.arange(len(states)) - (len(states)-1)/2) * width
+        for off, s in zip(offsets, states):
+            ax.bar(x + off, data[s].values, width=width, label=f"State {s}", edgecolor='black')
+    else:
+        # stacked bars
+        bottom = np.zeros(len(rois))
+        for s in states:
+            ax.bar(x, data[s].values, bottom=bottom, label=f"State {s}", edgecolor='black')
+            bottom += data[s].values
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(rois, rotation=45, ha='right')
+    ax.set_xlabel("ROI")
+
+    if normalize == 'within_roi':
+        ax.set_ylabel("Proportion within ROI")
+        ax.yaxis.set_major_formatter(PercentFormatter(1.0))
+        ax.set_ylim(0, 1)
+        if not grouped:
+            ax.set_title(title or "Preferred-state proportions per ROI (100% stacked)")
+        else:
+            ax.set_title(title or "Preferred-state proportions per ROI (grouped)")
+    else:  # global
+        ax.set_ylabel("Share of all cells")
+        ax.yaxis.set_major_formatter(PercentFormatter(1.0))
+        if not grouped:
+            ax.set_title(title or "Share of all cells by ROI × preferred state (stacked)")
+        else:
+            ax.set_title(title or "Share of all cells by ROI × preferred state (grouped)")
+
+    ax.legend(frameon=False, ncol=min(4, len(states)))
+    ax.spines[['top','right']].set_visible(False)
+    fig.tight_layout()
+    plt.show()
+    return fig, ax
+
+
+def plot_state_polar_clock(firing_across_states, title_string, ax=None, rlim=None):
+    """
+    Plot a polar curve like a clock:
+      - 0° at 12 o'clock, clockwise (90°=3, 180°=6, 270°=9).
+      - Colors the four equal angular quarters.
+      - Places A,B,C,D at 3,6,9,12 o'clock respectively.
+    """
+    # Colors for quadrants A, B, C, D
+    colors = ['#F15A29', '#F7931E', '#C7C6E2', '#6B60AA']
+    letters = ['A', 'B', 'C', 'D']  # map to 3,6,9,12 o'clock
+
+    vals = np.asarray(firing_across_states, dtype=float)
+    n_bins = len(vals)
+    if n_bins < 4:
+        raise ValueError("Need at least 4 bins to define quadrants.")
+
+    # Create or reuse axis
+    created_fig = False
+    if ax is None:
+        fig = plt.figure(figsize=(6, 6))
+        ax = fig.add_subplot(1, 1, 1, projection='polar')
+        created_fig = True
+
+    # --- Clock orientation ---
+    ax.set_theta_zero_location('N')   # 0° at 12 o'clock
+    ax.set_theta_direction(-1)        # clockwise
+
+    # One angle per sample
+    theta = np.linspace(0, 2*np.pi, n_bins, endpoint=False)
+
+    # --- Plot each colored quadrant (use exact bin splits; no assumption about 360 bins) ---
+    # 4 equal segments across n_bins
+    edges = np.linspace(0, n_bins, 5, dtype=int)
+    for i in range(4):
+        s, e = edges[i], edges[i+1]
+        if e > s:
+            ax.plot(theta[s:e], vals[s:e], color=colors[i], linewidth=2)
+
+    # --- r-limits ---
+    if rlim is None:
+        rmin = float(np.nanmin(vals))
+        rmax = float(np.nanmax(vals))
+    else:
+        rmin, rmax = rlim
+    ax.set_ylim(rmin, rmax)
+
+    # --- Shaded wedges up to quadrant mean ---
+    quad_means = []
+    for i in range(4):
+        s, e = edges[i], edges[i+1]
+        quad_means.append(np.nanmean(vals[s:e]) if e > s else np.nan)
+    quad_means = np.asarray(quad_means)
+
+    # Center angle and width per quadrant (exact, even if bins not divisible by 4)
+    for i in range(4):
+        s, e = edges[i], edges[i+1]
+        if e <= s: 
+            continue
+        center_idx = (s + e) / 2.0
+        center_ang = (center_idx / n_bins) * 2*np.pi
+        width = ((e - s) / n_bins) * 2*np.pi
+        m = quad_means[i]
+        if np.isfinite(m):
+            ax.bar(center_ang,
+                   max(0, m - rmin),
+                   width=width,
+                   bottom=rmin,
+                   color=colors[i],
+                   alpha=0.25,
+                   edgecolor='none',
+                   zorder=0,
+                   align='center')
+
+    # --- Labels at 3,6,9,12 o'clock: A,B,C,D ---
+    # Angles in radians: 3→90°, 6→180°, 9→270°, 12→0°
+    label_angles = np.deg2rad([90, 180, 270, 0])
+    label_r = rmax
+    for lab, ang, col in zip(letters, label_angles, colors):
+        ax.text(ang, label_r, lab, ha='center', va='bottom',
+                fontsize=14, fontweight='bold', color=col)
+
+    # Hide numeric theta ticks (keep grid if you like)
+    ax.set_xticks([])
+
+    ax.set_title(title_string, va='bottom', fontsize=14)
+    ax.grid(True)
+
+    if created_fig:
+        plt.tight_layout()
+        plt.show()
+        
+def plot_sig_props(props, grouped=False, drop_zero_state_cols=True, title=None, pad=0.08):
+    """
+    props: DataFrame (ROIs × states) with values in [0,1].
+    grouped=False -> stacked bars; grouped=True -> side-by-side bars per ROI.
+    drop_zero_state_cols=True removes states that are zero everywhere (e.g., 'A' in your tables).
+    pad controls headroom above max (fraction of max).
+    """
+    data = props.copy()
+    if drop_zero_state_cols:
+        data = data.loc[:, (data.sum(axis=0) > 0)]
+
+    rois   = data.index.astype(str).tolist()
+    states = data.columns.tolist()
+    x = np.arange(len(rois))
+
+    fig, ax = plt.subplots(figsize=(max(7, 1.1*len(rois)), 5))
+
+    if grouped:
+        width = 0.8 / max(1, len(states))
+        offsets = (np.arange(len(states)) - (len(states)-1)/2) * width
+        for off, s in zip(offsets, states):
+            ax.bar(x + off, data[s].values, width=width, label=f"State {s}", edgecolor='black')
+    else:
+        bottom = np.zeros(len(rois))
+        for s in states:
+            ax.bar(x, data[s].values, bottom=bottom, label=f"State {s}", edgecolor='black')
+            bottom += data[s].values
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(rois, rotation=45, ha='right')
+    ax.set_xlabel("ROI")
+    ax.set_ylabel("Proportion of recorded cells (significant)")
+    ax.yaxis.set_major_formatter(PercentFormatter(1.0))
+
+    # 🔎 Zoom to max significant proportion (not to 100%)
+    ymax = float(data.values.max()) if data.size else 0.0
+    ax.set_ylim(0, min(1.0, (1.0 + pad) * ymax))
+
+    ax.set_title(title or "Proportion of recorded cells that are significant (by preferred state)")
+    ax.legend(frameon=False, ncol=min(4, len(states)))
+    ax.spines[['top','right']].set_visible(False)
+    fig.tight_layout()
+    plt.show()
+    return fig, ax
+
+
+
 if plot_state == True:
+    
+    path = '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/state_tuning'
+    #file = 'pval_for_perms200_state_consistency_residualised_repeats_excl_gridwise_qc_pct_neurons.csv'
+    file = 'pval_for_perms200_state_consistency_late_repeats_excl_gridwise_qc_pct_neurons.csv'
+    pval_df = pd.read_csv(f"{path}/{file}")
+    
+    sig_state_cells = pval_df[pval_df['p_perm']<0.05]
+    top_sig_state_cells = sig_state_cells.sort_values(by="state_cv_consistency", ascending=False).head(20)
+    sessions_to_load = top_sig_state_cells['session_id'].unique()
+    
+
+    # 1) Build counts table for significant cells and all cells for proportions
+    counts_sig_cells, counts_all_cells = pref_counts_per_roi(sig_state_cells, df_all = pval_df, roi_col='roi', state_col='pref_state')
+    # 2 plot cell count significant per roi and state 
+    plot_pref_counts_per_roi(counts_sig_cells, stacked=False)   # set stacked=True for stacked bars
+    # 2a) See composition per ROI (each ROI sums to 100%) — best for comparing ROIs
+    plot_pref_props_per_roi(counts_sig_cells, normalize='within_roi', grouped=False)   # 100% stacked
+    
+    # denominator = total recorded per ROI (sum over A–D)
+    denom = counts_all_cells.sum(axis=1).replace(0, np.nan)
+    # proportions of recorded cells that are significant (per ROI × state)
+    props = counts_sig_cells.div(denom, axis=0).fillna(0.0)
+    
+    plot_sig_props(props, grouped=False)   # stacked
+    # or:
+    plot_sig_props(props, grouped=True)    # side-by-side
+        
+
+    for s in sessions_to_load:
+        sesh = f"{s:02}"
+        target_cells = top_sig_state_cells[top_sig_state_cells['session_id']==s]['neuron_id'].to_list()
+        avg_corr_target_cells = top_sig_state_cells[top_sig_state_cells['session_id']==s]['state_cv_consistency'].to_list()
+        rois = top_sig_state_cells[top_sig_state_cells['session_id']==s]['roi'].to_list()
+        print(target_cells)
+        
+        data_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives"
+        subjects = [sesh]
+        data = mc.analyse.helpers_human_cells.load_cell_data(data_folder, subjects)
+        
+        data_norm = mc.analyse.helpers_human_cells.load_norm_data(data_folder, subjects)
+        
+        
+        # the same script but for data norm
+        target_idx = [
+            idx for idx, label_cell in enumerate(data_norm[f"sub-{sesh}"]['electrode_labels'])
+            if any(target in label_cell or label_cell in target for target in target_cells)
+        ]
+
+        # import pdb; pdb.set_trace()
+        # find out which grids are unique
+        grid_cols = ['loc_A', 'loc_B', 'loc_C', 'loc_D']
+        unique_grids, idx_unique_grid, idx_same_grids, counts = np.unique(
+            data_norm[f"sub-{sesh}"]['beh'][grid_cols].to_numpy(),
+            axis=0,
+            return_index=True,
+            return_inverse=True,
+            return_counts=True
+        )
+            
+        # AVERAGE OVER THE SAME GRIDS!!
+        # for i, unique_task_idx in enumerate(idx_unique_grid): 
+        for t_idx, target_cell in enumerate(target_cells):
+            avg_corr = avg_corr_target_cells[t_idx]
+            for curr_neuron in data_norm[f"sub-{sesh}"]['normalised_neurons']:
+                if target_cell.startswith(curr_neuron):
+                    neurons_z_scored_per_rep = np.zeros(data_norm[f"sub-{sesh}"]['normalised_neurons'][curr_neuron].shape)
+                    for i_r, rep in enumerate(data_norm[f"sub-{sesh}"]['normalised_neurons'][curr_neuron].to_numpy()):
+                        m = np.nanmean(rep)
+                        s = np.nanstd(rep, ddof=0)
+                        neurons_z_scored_per_rep[i_r] = (rep - m) / s if s and np.isfinite(s) else (rep - m)
+                    avg_corr_across_tasks = list(np.mean(neurons_z_scored_per_rep, axis=0))
+                    
+                    smoothed_corr_across_tasks = smooth_circular(avg_corr_across_tasks, sigma=4) 
+                    #plot_state_polar(smoothed_corr_across_tasks, f"across all tasks, {target_cell} \n average corr = {avg_corr}")
+                    panels = [smoothed_corr_across_tasks]
+                    titles = [f"TASK AVG"]
+
+
+                    for task_id, grid_config in enumerate(unique_grids):
+                        mask_test_task = (idx_same_grids == task_id)
+                        neurons_curr_task = neurons_z_scored_per_rep[mask_test_task]
+                        avg_corr_curr_grid = list(np.mean(neurons_curr_task, axis = 0))
+                        smoothed_corr = smooth_circular(avg_corr_curr_grid, sigma=4)  # tweak sigma as needed
+                        #plot_state_polar(smoothed_corr, f"task {grid_config}, {target_cell} \n average corr = {avg_corr}")
+                        panels.append(smoothed_corr)
+                        titles.append(f"task {grid_config}")
+                    
+                    # 3) make ONE figure with N polar subplots and shared r-limits (tiny addition)
+                    n_panels = len(panels)
+                    fig, axes = plt.subplots(1, n_panels, subplot_kw=dict(projection='polar'),
+                                             figsize=(6*n_panels, 6))
+                    if n_panels == 1:
+                        axes = np.array([axes])
+                    
+                    # shared radial limits for fair comparison (NEW but minimal)
+                    rmin = float(np.nanmin([np.nanmin(p) for p in panels]))
+                    rmax = float(np.nanmax([np.nanmax(p) for p in panels]))
+                    rlim = (rmin, rmax)
+                    
+                    # 4) draw each panel using your SAME plotting function
+                    # for ax, series, title in zip(axes, panels, titles):
+                    #     plot_state_polar(series, title, ax=ax, rlim=rlim)
+                    for ax, series, title in zip(axes, panels, titles):
+                        plot_state_polar_clock(series, title, ax=ax, rlim=rlim)
+                
+                    
+                    fig.suptitle(f"sub {sesh}; in {rois[t_idx]} {target_cell} \n average corr = {avg_corr:0.04}", y=0.98, fontsize=13)
+                    plt.tight_layout()
+                    plt.show()
+    import pdb; pdb.set_trace()
+
+                       
+
     state_results = []
     # List all files and print their basenames
     for file in os.listdir(results_path):

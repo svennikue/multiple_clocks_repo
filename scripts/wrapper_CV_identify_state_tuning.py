@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 from matplotlib import pyplot as plt
 import scipy.stats as st
+from joblib import Parallel, delayed
 
 
 def get_data(sub, trials):
@@ -28,14 +29,17 @@ def get_data(sub, trials):
     data_norm = mc.analyse.helpers_human_cells.load_norm_data(data_folder, [f"{sub:02}"], res_data = res_data)
     return data_norm, data_folder
 
-def comp_state_tuning(neurons, perms = None, random_data = False):
+def comp_state_tuning(neurons, perms = None, random_data = False, only_BCD = False):
     # import pdb; pdb.set_trace() 
     if random_data == True:
         n_rows = neurons.shape[0]
         n_cols =neurons.shape[1]
         neurons = np.random.randint(1,100, size = (n_rows, n_cols))
-        
-    mean_firing_rates_states = np.full((4), np.nan, dtype=float)
+    
+    if only_BCD:
+        mean_firing_rates_states = np.full((3), np.nan, dtype=float)
+    else:
+        mean_firing_rates_states = np.full((4), np.nan, dtype=float)
     states = np.repeat((0,1,2,3), 90)
     states = np.tile(states, len(neurons))
     
@@ -60,11 +64,21 @@ def comp_state_tuning(neurons, perms = None, random_data = False):
     fr_clean = fr_all_reps[nan_mask]
     state_clean = states[nan_mask]
     
-    for state in range(0,4):
-        sel = (state_clean == state)
-        mean_firing_rates_states[state] = fr_clean[sel].mean()
+    #import pdb; pdb.set_trace()
+    if only_BCD:
+        for state in range(1,4):
+            sel = (state_clean == state)
+            mean_firing_rates_states[state-1] = fr_clean[sel].mean()
+        idx = max(range(3), key=mean_firing_rates_states.__getitem__)
+        pref_state = "BCD"[idx]
+    else:
+        for state in range(0,4):
+            sel = (state_clean == state)
+            mean_firing_rates_states[state] = fr_clean[sel].mean()
+        idx = max(range(4), key=mean_firing_rates_states.__getitem__)
+        pref_state = "ABCD"[idx]
         
-    return mean_firing_rates_states
+    return mean_firing_rates_states, pref_state
     
 
 # --- Helpers for stats ---
@@ -320,14 +334,228 @@ def store_p_vals_perms(true_df, perm_df, out_path, trials):
     return out
 
 
-def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = None, sparsity_c = None, save_all = False, random_data = False):
+
+
+
+
+def plot_results_per_roi_and_prefstate(
+    df,
+    title_string_add,
+    plot_by_pfc=False,
+    plot_by_cingulate_and_MTL=False,
+    metric_col='state_cv_consistency',
+    p_col='p_perm',
+    alpha_sig=0.05,
+    bins=20):
+    """
+    Plot histograms of `metric_col` split by ROI (columns) and pref_state (rows).
+    Rows: pref_state A, B, C, D (only those present in df are plotted, in A-D order).
+    Columns: ROIs after renaming/collapsing per provided flags.
+    """
+
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    # --- prepare dataframe & ROI labels ---
+    df = df.copy()
+    df['roi'] = mc.analyse.helpers_human_cells.rename_rois(
+        df,
+        collapse_pfc=plot_by_pfc,
+        plot_by_cingulate_and_MTL=plot_by_cingulate_and_MTL
+    )
+
+    # Order ROI columns as they appear (or customize as needed)
+    rois = [r for r in df['roi'].dropna().unique().tolist() if isinstance(r, (str, int, float))]
+    n_cols = max(1, len(rois))
+
+    # Which pref_states to show (A-D order, but include only those present)
+    desired_states = ['A', 'B', 'C', 'D']
+    states_present = [s for s in desired_states if s in df.get('pref_state', []).unique().tolist()] \
+                     if 'pref_state' in df.columns else []
+    if not states_present:
+        # Fallback: single row if no pref_state column or empty
+        states_present = ['All']
+        df['pref_state'] = 'All'
+    n_rows = len(states_present)
+
+    # --- common bin edges across all data for comparability ---
+    all_vals = df[metric_col].to_numpy(dtype=float)
+    all_vals = all_vals[np.isfinite(all_vals)]
+    if all_vals.size == 0:
+        raise ValueError(f"No finite values found in column '{metric_col}'.")
+    bin_edges = np.histogram_bin_edges(all_vals, bins=bins)
+
+    # --- precompute counts to get a global y-limit ---
+    ylim_max = 0
+    precomp = {}  # (state, roi) -> (vals_all, vals_sig, vals_nonsig)
+    has_p = (p_col in df.columns)
+
+    for s in states_present:
+        df_s = df.loc[df['pref_state'] == s]
+        for roi in rois:
+            sub = df_s.loc[df_s['roi'] == roi]
+            vals = sub[metric_col].to_numpy(dtype=float)
+            mask_valid = np.isfinite(vals)
+
+            if has_p:
+                pvals = sub[p_col].to_numpy(dtype=float)
+                mask_valid &= np.isfinite(pvals)
+
+                vals = vals[mask_valid]
+                pvals = pvals[mask_valid]
+
+                sig_mask = pvals < alpha_sig
+                vals_sig = vals[sig_mask]
+                vals_nonsig = vals[~sig_mask]
+
+                c_sig, _ = np.histogram(vals_sig, bins=bin_edges)
+                c_nonsig, _ = np.histogram(vals_nonsig, bins=bin_edges)
+                counts = c_sig + c_nonsig
+
+                precomp[(s, roi)] = (vals, vals_sig, vals_nonsig)
+            else:
+                vals = vals[mask_valid]
+                counts, _ = np.histogram(vals, bins=bin_edges)
+                precomp[(s, roi)] = (vals, None, None)
+
+            if counts.size:
+                ylim_max = max(ylim_max, int(counts.max()))
+
+    # --- figure/axes ---
+    plt.rcParams.update({'font.size': 11})
+    fig, axes = plt.subplots(
+        n_rows, n_cols,
+        figsize=(max(6.5, 2.2 * n_cols), max(4.5, 2.1 * n_rows + 2.0)),
+        sharex=True, sharey=True,
+        gridspec_kw={'wspace': 0.3, 'hspace': 0.35}
+    )
+
+    # Normalize axes to 2D array
+    if n_rows == 1 and n_cols == 1:
+        axes = np.array([[axes]])
+    elif n_rows == 1:
+        axes = np.array([axes])
+    elif n_cols == 1:
+        axes = np.array([[ax] for ax in axes])
+
+    # --- plotting ---
+    for ri, s in enumerate(states_present):
+        for ci, roi in enumerate(rois):
+            ax = axes[ri, ci]
+            vals_all, vals_sig, vals_nonsig = precomp.get((s, roi), (np.array([]), None, None))
+
+            # Plot histograms
+            if vals_sig is not None:  # with p-values split
+                if vals_nonsig.size:
+                    ax.hist(vals_nonsig, bins=bin_edges,
+                            color='lightgray', edgecolor='black', alpha=1.0, label='n.s.')
+                if vals_sig.size:
+                    ax.hist(vals_sig, bins=bin_edges,
+                            color='salmon', edgecolor='black', alpha=0.95, label=f'p<{alpha_sig:.2f}')
+            else:  # no p-values available
+                if vals_all.size:
+                    ax.hist(vals_all, bins=bin_edges,
+                            color='lightgray', edgecolor='black')
+
+            # zero line
+            ax.axvline(0, color='k', linestyle='dashed', linewidth=1.2)
+
+            # Stats box (if any data)
+            if vals_all.size:
+                try:
+                    t_stat, p_one, mval = one_tailed_ttest_greater_than_zero(vals_all)
+                    sig = stars(p_one)
+                    txt = f"n={vals_all.size}\nmean={mval:.2f}\n{sig} (p={p_one:.1e})"
+                except Exception:
+                    txt = f"n={vals_all.size}\nmean={np.nanmean(vals_all):.2f}"
+            else:
+                txt = "n=0\nNo data"
+
+            ax.text(
+                0.98, 0.96, txt,
+                transform=ax.transAxes, ha='right', va='top',
+                bbox=dict(facecolor='white', edgecolor='black', boxstyle='round'),
+                fontsize=9.5
+            )
+
+            # Column titles: ROI names on the top row
+            if ri == 0:
+                ax.set_title(str(roi), pad=6)
+
+            # Row labels on the leftmost column
+            if ci == 0:
+                ax.set_ylabel(f"pref_state = {s}\nFrequency", fontsize=10.5)
+
+            ax.tick_params(axis='both', labelsize=10, width=1.0, length=4)
+
+    # --- consistent y-axis ---
+    for ri in range(n_rows):
+        axes[ri, 0].set_ylim(0, max(1, int(ylim_max * 1.04)))
+
+    # --- shared labels + title ---
+    fig.supxlabel(metric_col)
+    fig.suptitle(
+        f"Cross-validated state consistency per cell, split by ROI (columns) and pref_state (rows)\n{title_string_add}",
+        fontsize=12, fontweight='bold', y=0.99
+    )
+
+    # --- legend: only if p-values are present; put it in the last axis ---
+    if has_p:
+        axes[-1, -1].legend(frameon=False, fontsize=9, loc='upper left')
+
+    fig.subplots_adjust(left=0.08, right=0.98, bottom=0.12, top=0.90, wspace=0.3, hspace=0.35)
+    plt.show()
+
+def run_state_corr_perm_wise(perm_idx, unique_grids, idx_same_grids, data, beh_df, sesh, curr_neuron, no_perms=None, random_data=False, only_BCD=False):
+    consistency_train_test = []
+    pref_states = []
+    for count_test_task, test_task_id in enumerate(unique_grids):
+        mask_test_task = (idx_same_grids == test_task_id)
+        neurons_test_task = data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron].loc[mask_test_task].to_numpy()
+
+        mask_train_task = (idx_same_grids != test_task_id)
+        # create subset of df and neurons.
+        neurons_train_task = data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron].loc[mask_train_task].to_numpy()
+        
+        # and compute the state-tuning in the train-tasks
+        fr_state_train_tasks, _ = comp_state_tuning(neurons_train_task, random_data=random_data, only_BCD=only_BCD)
+
+        # validate: compute the correlation with state-rate-map of held-out task
+        fr_state_test_task, pref_state_curr_train = comp_state_tuning(neurons_test_task, perms = no_perms, random_data=random_data, only_BCD=only_BCD)
+        
+        consistency_train_test.append(np.corrcoef(fr_state_test_task, fr_state_train_tasks)[1][0])
+        # import pdb; pdb.set_trace()
+        pref_states.append(pref_state_curr_train)
+    mean_state_consistency = np.mean(consistency_train_test)
+    # import pdb; pdb.set_trace()
+    states, counts_state = np.unique(pref_states, return_counts=True)
+    pref_state = states[np.argmax(counts_state)]
+    
+    results_one_perm = {
+    "session_id": sesh,
+    "neuron_id": curr_neuron,
+    "state_cv_consistency": mean_state_consistency,
+    "perm_idx": perm_idx,
+    "mean_firing_rate": beh_df[f'mean_FR_{curr_neuron}'].to_numpy()[0],
+    "sparse_repeats": sum(~beh_df[f'consistent_FR_{curr_neuron}']),
+    "pref_states": pref_states,
+    "pref_state": pref_state
+    }
+    
+    return results_one_perm
+
+    
+
+def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = None, sparsity_c = None, save_all = False, random_data = False, only_BCD=False):
     # determine results table
     COLUMNS = [
     "session_id", "neuron_id",
     "state_cv_consistency",
     "perm_idx", 
     "mean_firing_rate",
-    "sparse_repeats"
+    "sparse_repeats",
+    "pref_states",
+    "pref_state"
     ]
 
     
@@ -395,56 +623,82 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
                 continue
             
             # loop through n-1 grids, respectively
-            for perm_idx in range(0,perms):
-                consistency_train_test = []
-                for count_test_task, test_task_id in enumerate(unique_grids):
-                    mask_test_task = (idx_same_grids == test_task_id)
-                    neurons_test_task = data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron].loc[mask_test_task].to_numpy()
-
-                    mask_train_task = (idx_same_grids != test_task_id)
-                    # create subset of df and neurons.
-                    neurons_train_task = data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron].loc[mask_train_task].to_numpy()
+            
+            # parallelise this
+            results_curr_neuron = Parallel(n_jobs = -1)(delayed(run_state_corr_perm_wise)(perm_idx, unique_grids, idx_same_grids, data, beh_df, sesh, curr_neuron, no_perms=no_perms, random_data=random_data, only_BCD=only_BCD) for perm_idx in range(0,perms))
+            results.extend(results_curr_neuron)
+            if not no_perms:
+                print(f"average state consistency for neuron {curr_neuron} is {results[-1]['mean_firing_rate']}")
+            if no_perms:
+                print(f"now done computing {no_perms} permutations for neuron {curr_neuron}...")
+            
                     
-                    # and compute the state-tuning in the train-tasks
-                    fr_state_train_tasks = comp_state_tuning(neurons_train_task, random_data=random_data)
+            # for perm_idx in range(0,perms):
+            #     consistency_train_test = []
+            #     pref_states = []
+            #     for count_test_task, test_task_id in enumerate(unique_grids):
+            #         mask_test_task = (idx_same_grids == test_task_id)
+            #         neurons_test_task = data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron].loc[mask_test_task].to_numpy()
 
-                    # validate: compute the correlation with state-rate-map of held-out task
-                    fr_state_test_task = comp_state_tuning(neurons_test_task, perms = no_perms, random_data=random_data)
+            #         mask_train_task = (idx_same_grids != test_task_id)
+            #         # create subset of df and neurons.
+            #         neurons_train_task = data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron].loc[mask_train_task].to_numpy()
                     
-                    consistency_train_test.append(np.corrcoef(fr_state_test_task, fr_state_train_tasks)[1][0])
+            #         # and compute the state-tuning in the train-tasks
+            #         fr_state_train_tasks, _ = comp_state_tuning(neurons_train_task, random_data=random_data, only_BCD=only_BCD)
+
+            #         # validate: compute the correlation with state-rate-map of held-out task
+            #         fr_state_test_task, pref_state_curr_train = comp_state_tuning(neurons_test_task, perms = no_perms, random_data=random_data, only_BCD=only_BCD)
+                    
+            #         consistency_train_test.append(np.corrcoef(fr_state_test_task, fr_state_train_tasks)[1][0])
+            #         # import pdb; pdb.set_trace()
+            #         pref_states.append(pref_state_curr_train)
+            #     mean_state_consistency = np.mean(consistency_train_test)
+            #     # import pdb; pdb.set_trace()
+            #     states, counts_state = np.unique(pref_states, return_counts=True)
+            #     pref_state = states[np.argmax(counts_state)]
+            #     results.append({
+            #     "session_id": sesh,
+            #     "neuron_id": curr_neuron,
+            #     "state_cv_consistency": mean_state_consistency,
+            #     "perm_idx": perm_idx,
+            #     "mean_firing_rate": beh_df[f'mean_FR_{curr_neuron}'].to_numpy()[0],
+            #     "sparse_repeats": sum(~beh_df[f'consistent_FR_{curr_neuron}']),
+            #     "pref_states": pref_states,
+            #     "pref_state": pref_state
+            #     })
                 
-                mean_state_consistency = np.mean(consistency_train_test)
-                results.append({
-                "session_id": sesh,
-                "neuron_id": curr_neuron,
-                "state_cv_consistency": mean_state_consistency,
-                "perm_idx": perm_idx,
-                "mean_firing_rate": beh_df[f'mean_FR_{curr_neuron}'].to_numpy()[0],
-                "sparse_repeats": sum(~beh_df[f'consistent_FR_{curr_neuron}'])
-                })
-                
-                if not no_perms:
-                    print(f"average state consistency for neuron {curr_neuron} is {mean_state_consistency}")
-                if no_perms:
-                    if perm_idx % 100 == 0:
-                        print(f"now computing permutation {perm_idx} for neuron {curr_neuron}...")
+            #     if not no_perms:
+            #         print(f"average state consistency for neuron {curr_neuron} is {mean_state_consistency}")
+            #     if no_perms:
+            #         if perm_idx % 100 == 0:
+            #             print(f"now computing permutation {perm_idx} for neuron {curr_neuron}...")
 
         
                 
     
-    # import pdb; pdb.set_trace()
+    
     results_df = pd.DataFrame(results, columns = COLUMNS)
-    #import pdb; pdb.set_trace()
+    results_df['roi'] = mc.analyse.helpers_human_cells.rename_rois(
+        results_df,
+        collapse_pfc=False,
+        plot_by_cingulate_and_MTL=False
+    )
+    # import pdb; pdb.set_trace()
     if save_all == True:
         if not os.path.isdir(group_dir_state):
             os.mkdir(group_dir_state)
         
-        if perm_idx > 1:
+        if perms > 1:
+
             result_string = f"state_consistency_{trials}_repeats.csv"
-            if sparsity_c:
+            if only_BCD == True:
+                result_string = f"state_consistency_{trials}_repeats_only_BCD.csv"
+                
+            elif sparsity_c:
                 result_string = f"state_consistency_{trials}_repeats_excl_{sparsity_c}_pct_neurons.csv"
                 
-            empirical_result = pd.read_csv(f"{group_dir_state}/{result_string }")
+            empirical_result = pd.read_csv(f"{group_dir_state}/{result_string}")
             perm_string = f"pval_for_perms200_{result_string}"
             name_result_stats = f"{group_dir_state}/{perm_string}"
             # DELETE THIS
@@ -459,8 +713,8 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
             perm_pval_result = store_p_vals_perms(true_df = empirical_result, perm_df = results_df, out_path=name_result_stats, trials=trials)
             #mc.plotting.results.plot_perm_spatial_consistency(results_df, empirical_result, name_result_stats, group_dir_fut_spat)
             title_string = f'Binomial test after single-cell permutations, {trials} repeats'
-           # plt_binomial_per_roi(perm_pval_result, title_string)
-            
+            # plt_binomial_per_roi(perm_pval_result, title_string)
+            results_df.to_csv(f"{group_dir_state}/perms_{result_string}")
             
 
         else:
@@ -469,21 +723,28 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
             plot_results_per_roi(results_df, title_string_add = f'{trials}_repeats',plot_by_pfc=False,plot_by_cingulate_and_MTL=False)
             plot_results_per_roi(results_df, title_string_add = f'{trials}_repeats',plot_by_pfc=True,plot_by_cingulate_and_MTL=False)
             
-            if sparsity_c:
+ 
+            if only_BCD == True:
+                name_result = f"{group_dir_state}/state_consistency_{trials}_repeats_only_BCD.csv"
+                
+            elif sparsity_c:
                 name_result = f"{group_dir_state}/state_consistency_{trials}_repeats_excl_{sparsity_c}_pct_neurons.csv"
                 print(f"included {len(included_neurons)} neurons.")
                 Path(f"{group_dir_state}/included_cells_{trials}_reps_{sparsity_c}_pct.txt").write_text("\n".join(included_neurons))
+            
 
-
-        results_df.to_csv(name_result)
+            results_df.to_csv(name_result)
+        
+        # results_df = pd.read_csv('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/state_tuning/perms_state_consistency_all_minus_explore_repeats_excl_gridwise_qc_pct_neurons.csv')
+        pval_df = pd.read_csv('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/state_tuning/pval_for_perms200_state_consistency_late_repeats_excl_gridwise_qc_pct_neurons.csv')
+        
+        import pdb; pdb.set_trace()
         print(f"saved cross-validated state tuning values in {name_result}")  
         
-    
-      
-    
+  
 if __name__ == "__main__":
     # trials can be 'all', 'all_correct', 'early', 'late', 'all_minus_explore', 'residualised'
-    compute_state_tunings(sessions=list(range(0,64)), trials = 'residualised', no_perms = 300, sparsity_c = 'gridwise_qc', save_all=True)
+    compute_state_tunings(sessions=list(range(0,64)), trials = 'all_minus_explore', no_perms = 200, sparsity_c = 'gridwise_qc', save_all=True, only_BCD = False)
     #compute_state_tunings(sessions=[4], trials = 'residualised', no_perms = None, sparsity_c = 'gridwise_qc', save_all=False, random_data=False)
 
     
