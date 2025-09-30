@@ -25,9 +25,7 @@ easily read out the relevant behavioural details (combine pt 1 and 2!):
 """
 
 import pandas as pd
-import numpy as np
 import os
-import mc
 import sys
 
 
@@ -38,7 +36,6 @@ else:
 
 
 #subjects = [f"sub-{subj_no}"]
-#subjects = subs_list = [f'sub-{i:02}' for i in range(1, 35) if i not in (21, 29)]
 subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36)]
 # import pdb; pdb.set_trace()
         

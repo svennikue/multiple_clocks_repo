@@ -3,6 +3,7 @@
 """
 Created on Mon Oct 30 15:34:17 2023
 
+
 extract behaviour such that I can create my model RDMs for the fMRI data.
 
 
