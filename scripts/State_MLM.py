@@ -9,6 +9,19 @@ Created on Mon Sep 29 16:28:15 2025
 run a linear mixed effects model to test for the preferred states vs. the
 effect of repeats per region.
 
+1. first step: create a long table of all neurons, that contains what I want to model:  
+    subject (ID)
+    neuron (unique ID; e.g., "S12_N034")
+    ROI (hippocampus / EC / ACC / …)
+    task (label)
+    repeat (1–10)
+    state (A/B/C/D)
+    y (the response you want to model)
+
+2. fit an MLM 
+y ~ ROI * state * repeat_c
+
+
 """
 
 import os
@@ -16,8 +29,8 @@ import mc
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
-import scipy.stats as st
-from joblib import Parallel, delayed
+import statsmodels.api as sm
+from patsy import dmatrices, build_design_matrices
 
 
 
@@ -26,6 +39,21 @@ trials = 'all_minus_explore'
 sparsity_c = 'gridwise_qc'
 save_all=True
 only_BCD = False
+
+
+
+# first step: create a long table of all neurons, that contains what I want to model:
+    
+# subject (ID)
+# neuron (unique ID; e.g., "S12_N034")
+# ROI (hippocampus / EC / ACC / …)
+# task (label)
+# repeat (1–10)
+# state (A/B/C/D)
+# y (the response you want to model)
+
+# boundaries for A,B,C,D within 360 timepoints
+state_bins = {"A": slice(0, 90), "B": slice(90, 180), "C": slice(180, 270), "D": slice(270, 360)}
 
 
 def get_data(sub, trials):
@@ -41,60 +69,9 @@ def get_data(sub, trials):
     return data_norm, data_folder
 
 
-#
-#
-# chat is proposing this:
-
-# fr: numpy array with shape (N_neurons, N_repeats, 360)
-# neuron_ids, repeat_ids are optional labels (otherwise 0..N-1 etc.)
-
-def make_long_state_means(fr, neuron_ids=None, repeat_ids=None):
-    N, R, B = fr.shape
-    assert B == 360, "Expecting 360 bins."
-    if neuron_ids is None: neuron_ids = np.arange(N)
-    if repeat_ids is None: repeat_ids = np.arange(R)
-
-    # Masks for states
-    A_mask = np.arange(360) < 90
-    B_mask = (np.arange(360) >= 90) & (np.arange(360) < 180)
-    C_mask = (np.arange(360) >= 180) & (np.arange(360) < 270)
-    D_mask = np.arange(360) >= 270
-
-    # Mean over bins within each state (axis=2)
-    mA = fr[:, :, A_mask].mean(axis=2)
-    mB = fr[:, :, B_mask].mean(axis=2)
-    mC = fr[:, :, C_mask].mean(axis=2)
-    mD = fr[:, :, D_mask].mean(axis=2)
-
-    # Stack into long format: one row per neuron × repeat × state
-    rows = []
-    for i, nid in enumerate(neuron_ids):
-        for r, rid in enumerate(repeat_ids):
-            rows.append((nid, rid, 'A', mA[i, r]))
-            rows.append((nid, rid, 'B', mB[i, r]))
-            rows.append((nid, rid, 'C', mC[i, r]))
-            rows.append((nid, rid, 'D', mD[i, r]))
-
-    df = pd.DataFrame(rows, columns=['neuron', 'repeat', 'state', 'fr'])
-    # Early vs late: split repeats in half (customize if you need a different rule)
-    half = int(np.floor(fr.shape[1] / 2))
-    df['epoch'] = np.where(df['repeat'] < half, 'early', 'late')
-
-    # Categorical ordering
-    df['state'] = pd.Categorical(df['state'], categories=['A','B','C','D'], ordered=True)
-    df['epoch'] = pd.Categorical(df['epoch'], categories=['early','late'], ordered=True)
-    return df
 
 
-import statsmodels.formula.api as smf
-import numpy as np
-
-
-
-#
-#
-#
-
+rows = []
 for sesh in sessions:
     # load data
     data_raw, source_dir = get_data(sesh, trials=trials)
@@ -108,12 +85,10 @@ for sesh in sessions:
     # filter data for only those repeats that were 1) correct and 2) not the first one
     data = mc.analyse.helpers_human_cells.filter_data(data_raw, sesh, trials)
     beh_df = data[f"sub-{sesh:02}"]['beh'].copy()
-
-
-    perms = 1
- 
-    # for each cell, cross-validate the peak task-lag shift for spatial consistency.
+    
+    # clean each neuron such that you only consider the repeats that are reliable
     for neuron_idx, curr_neuron in enumerate(data[f"sub-{sesh:02}"]['normalised_neurons']):
+        print(f"adding neuron {curr_neuron}")
         # resetting unique tasks for each neuron.
         # determine identical grids
         grid_cols = ['loc_A', 'loc_B', 'loc_C', 'loc_D']
@@ -143,32 +118,211 @@ for sesh in sessions:
             print(f"excluding {curr_neuron} in sesh {sesh} because there were not enough grids with consistent FR!")
             continue
         
+        # based on the cleaned behaviour, store the average value per state.
+        for count_task, task_id in enumerate(unique_grids):
+            mask_task = (idx_same_grids == task_id)
+            neuron_curr_task = data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron].loc[mask_task].to_numpy()
+            # first z-score the neuron within task
+            neuron_curr_task = (neuron_curr_task - neuron_curr_task.mean()) / neuron_curr_task.std(ddof=1)
+            beh_curr_task = beh_df[mask_task]
+            
+            for corr_rep in range(0,10):
+                mask_rep = (beh_curr_task['rep_correct'] == corr_rep)
+                neuron_curr_task_curr_rep = np.mean(neuron_curr_task[mask_rep], axis =0)
+                #roi
+                for s, st_bins in state_bins.items():
+                    rows.append({
+                        "subject": sesh,
+                        "neuron_id": f"{sesh}_{curr_neuron}",
+                        "task": f"task_{task_id}",
+                        "repeat": corr_rep,
+                        "state": s,
+                        "y": float(np.mean(neuron_curr_task_curr_rep[st_bins]))
+                    })
         
-        # collect one big df with all neurons.
-    
-    
-# make the big dataset
-# df_long = make_long_state_means(fr, neuron_ids, repeat_ids)
 
+        
 
-# then test for interaction and main effect
-# do this per ROI!!
+df = pd.DataFrame(rows)
 
-# Mixed model: random intercept per neuron (you can add random slopes if needed)
-m = smf.mixedlm("fr ~ C(state) * C(epoch)", data=df_long,
-                groups=df_long["neuron"])  # re_formula="~C(state)" is possible but optional
-res = m.fit(method="lbfgs")
-print(res.summary())
-# Collect all parameter names that are interaction terms
-pnames = res.params.index
-ix = [i for i, name in enumerate(pnames) if "C(state)" in name and "C(epoch)" in name]
-L = np.zeros((len(ix), len(pnames)))
-for r, i in enumerate(ix):
-    L[r, i] = 1.0
-print(res.f_test(L))  # F-stat (Wald) for the interaction
+df["state"] = pd.Categorical(df["state"], ["A","B","C","D"], ordered=True)
+df["repeat_c"] = df["repeat"] - df["repeat"].mean()
+df['roi']= mc.analyse.helpers_human_cells.rename_rois(df,collapse_pfc=False,plot_by_cingulate_and_MTL=False)
+df["roi"] = df["roi"].astype("category")
+            
+# store the df so you don't always need to regenerate.
+df.to_csv(f"{group_dir_state}/avg_state_long_table.csv")         
+  
 
-
-
-
+              
  
-    
+
+results = []
+roi_list = list(df["roi"].cat.categories)
+for roi, d in df.groupby("roi"):
+    d = d.dropna(subset=["y","state","repeat","neuron_id"]).copy()
+    d["repeat_c"] = d["repeat"] - d["repeat"].mean()
+
+    # Build design explicitly so we know exactly which rows are used
+    y, X = dmatrices("y ~ C(state) * repeat_c", d, return_type="dataframe")
+
+    # Cluster ids aligned to those rows
+    groups = d.loc[y.index, "neuron_id"].to_numpy()
+
+    # Fit OLS with cluster-robust SEs (no get_robustcov_results needed)
+    res = sm.OLS(y, X).fit(cov_type="cluster", cov_kwds={"groups": groups})
+
+    # Tests
+    f_state = res.f_test("C(state)[T.B] = 0, C(state)[T.C] = 0, C(state)[T.D] = 0")
+    f_inter = res.f_test(
+        "C(state)[T.B]:repeat_c = 0, C(state)[T.C]:repeat_c = 0, C(state)[T.D]:repeat_c = 0"
+    )
+
+    print(f"\nROI: {roi}")
+    print(f"State main effect:      F={float(f_state.fvalue):.2f}, p={float(f_state.pvalue):.3g}")
+    print(f"State × Repeat effect:  F={float(f_inter.fvalue):.2f}, p={float(f_inter.pvalue):.3g}")
+
+
+def plot_roi_state_repeat_estimate(d_roi, roi_name):
+    d_roi = d_roi.dropna(subset=["y","state","repeat","neuron_id"]).copy()
+    d_roi["state"] = pd.Categorical(d_roi["state"], ["A","B","C","D"], ordered=True)
+    d_roi["repeat_c"] = d_roi["repeat"] - d_roi["repeat"].mean()
+
+    # Build design so rows used are explicit
+    y, X = dmatrices("y ~ C(state) * repeat_c", d_roi, return_type="dataframe")
+    groups = d_roi.loc[y.index, "neuron_id"].to_numpy()
+
+    # OLS with cluster-robust SEs (by neuron)
+    res = sm.OLS(y, X).fit(cov_type="cluster", cov_kwds={"groups": groups})
+
+    # Prediction grid (1..10 repeats, all states), with same design columns
+    reps = np.arange(1, 11)
+    grid = pd.DataFrame([(s, r, r - d_roi["repeat"].mean())
+                         for s in ["A","B","C","D"] for r in reps],
+                        columns=["state","repeat","repeat_c"])
+    Xg = build_design_matrices([X.design_info], grid)[0]
+    Xg = np.asarray(Xg)
+    beta = res.params.values
+    cov  = res.cov_params().values
+
+    yhat = Xg @ beta
+    se   = np.sqrt(np.einsum("ij,jk,ik->i", Xg, cov, Xg))   # diag(Xg cov Xg^T)
+    grid["y_hat"] = yhat
+    grid["lo"] = yhat - 1.96*se
+    grid["hi"] = yhat + 1.96*se
+
+    # Plot
+    plt.figure(figsize=(7,4))
+    for s in ["A","B","C","D"]:
+        g = grid[grid["state"] == s]
+        plt.plot(g["repeat"], g["y_hat"], marker="o", label=s)
+        plt.fill_between(g["repeat"], g["lo"], g["hi"], alpha=0.15)
+    plt.axhline(0, ls="--", lw=1)
+    plt.title(f"{roi_name}: modelled state profiles across repeats")
+    plt.xlabel("Repeat"); plt.ylabel("Predicted response")
+    plt.legend(title="State"); plt.tight_layout(); plt.show()
+
+    # Strongest state per repeat (based on model predictions)
+    wide = grid.pivot(index="repeat", columns="state", values="y_hat")
+    strongest = wide.idxmax(axis=1)
+    print(f"\n{roi_name} — strongest state per repeat (model predictions):")
+    print(strongest.to_string())
+    return res, grid
+
+
+
+
+def plot_wta_proportions(d_roi, roi_name):
+    d = d_roi.dropna(subset=["y","state","repeat","neuron_id"]).copy()
+    d["state"] = pd.Categorical(d["state"], ["A","B","C","D"], ordered=True)
+
+    # neuron-level means per state×repeat
+    dn = d.groupby(["neuron_id","state","repeat"])["y"].mean().reset_index()
+    # pivot to states as columns; some neurons may miss a state→dropna row-wise
+    mat = dn.pivot_table(index=["neuron_id","repeat"], columns="state", values="y")
+    mat = mat.dropna(how="any")  # keep rows with all 4 states present
+
+    winner = mat.idxmax(axis=1)   # state label per (neuron, repeat)
+    prop = (winner.groupby(level="repeat")
+                  .value_counts(normalize=True)
+                  .unstack(fill_value=0)
+                  .reindex(columns=["A","B","C","D"], fill_value=0))
+
+    plt.figure(figsize=(7,4))
+    for s in ["A","B","C","D"]:
+        plt.plot(prop.index, prop[s], marker="o", label=s)
+    plt.ylim(0,1)
+    plt.title(f"{roi_name}: proportion of neurons preferring each state")
+    plt.xlabel("Repeat"); plt.ylabel("Proportion of neurons")
+    plt.legend(title="State"); plt.tight_layout(); plt.show()
+
+    print(f"\n{roi_name} — WTA proportions (head):")
+    print(prop.head())
+
+
+
+def plot_fit_vs_raw_for_roi(d_roi, roi_name):
+    # tidy + center
+    d = d_roi.dropna(subset=["y","state","repeat","neuron_id"]).copy()
+    d["state"]  = pd.Categorical(d["state"], ["A","B","C","D"], ordered=True)
+    d["repeat_c"] = d["repeat"] - d["repeat"].mean()
+
+    # design + cluster ids
+    y, X = dmatrices("y ~ C(state) * repeat_c", d, return_type="dataframe")
+    groups = d.loc[y.index, "neuron_id"].to_numpy()
+
+    # fit once (cluster-robust by neuron)
+    res = sm.OLS(y, X).fit(cov_type="cluster", cov_kwds={"groups": groups})
+
+    # --- MODEL PREDICTIONS + CIs ---
+    reps = np.arange(0,10)
+    grid = pd.DataFrame([(s, r, r - d["repeat"].mean())
+                         for s in ["A","B","C","D"] for r in reps],
+                        columns=["state","repeat","repeat_c"])
+    Xg = np.asarray(build_design_matrices([X.design_info], grid)[0])
+    beta = res.params.values
+    cov  = res.cov_params().values
+    yhat = Xg @ beta
+    se   = np.sqrt(np.einsum("ij,jk,ik->i", Xg, cov, Xg))
+
+    grid["y_hat"] = yhat
+    grid["lo"]    = yhat - 1.96*se
+    grid["hi"]    = yhat + 1.96*se
+
+    # --- RAW: neuron-level means then mean±SEM across neurons ---
+    # collapse to one value per neuron x state x repeat
+    dn = (d.groupby(["neuron_id","state","repeat"])["y"]
+            .mean().reset_index())
+    raw_mean = dn.groupby(["state","repeat"])["y"].mean().reset_index(name="raw_mean")
+    raw_sem  = dn.groupby(["state","repeat"])["y"].sem().reset_index(name="raw_sem")
+    raw = pd.merge(raw_mean, raw_sem, on=["state","repeat"], how="left")
+
+    # --- PLOT ---
+    plt.figure(figsize=(7,4))
+    for s in ["A","B","C","D"]:
+        g = grid[grid["state"]==s]
+        r = raw [raw ["state"]==s]
+        # model line + 95% CI
+        plt.plot(g["repeat"], g["y_hat"], marker="o", label=f"{s} (model)")
+        plt.fill_between(g["repeat"], g["lo"], g["hi"], alpha=0.15)
+        # raw mean±SEM as ribbon only (or change to errorbars if you prefer)
+        plt.fill_between(r["repeat"], r["raw_mean"]-r["raw_sem"], r["raw_mean"]+r["raw_sem"], alpha=0.30)
+    plt.axhline(0, ls="--", lw=1)
+    plt.title(f"{roi_name}: model vs raw")
+    plt.xlabel("Repeat"); plt.ylabel("Response")
+    plt.legend(title="State"); plt.tight_layout(); plt.show()
+
+    return res, grid, raw
+
+
+
+
+# use per ROI
+for roi, d_roi in df.groupby("roi"):
+    plot_wta_proportions(d_roi, roi)
+    res, grid, raw = plot_fit_vs_raw_for_roi(d_roi, roi)
+    res_e, grid_e = plot_roi_state_repeat_estimate(d_roi, roi)
+
+import pdb; pdb.set_trace()  
+x = 1
+

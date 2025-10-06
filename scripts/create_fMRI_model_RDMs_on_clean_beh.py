@@ -23,6 +23,7 @@ I want to end with regressors that go like: '{model}_A1_backw_A_reward.txt'
 import pandas as pd
 import numpy as np
 import os
+import pickle
 import mc
 import sys
 import matplotlib.pyplot as plt
@@ -39,31 +40,35 @@ subjects = [f"sub-{subj_no}"]
 #
 # SETTINGS
 #
-regression_version = '03-4' 
-RDM_version = '03-1'
-no_phase_neurons = 3
-fmriplotting = True 
-fmri_save = True
-models_I_want = mc.analyse.analyse_MRI_behav.select_models_I_want(RDM_version)
+#regression_version = '03-4' 
+#RDM_version = '03-1'
+# no_phase_neurons = 3
+plot_RDMs = True 
+save_RDMs = True
+EV_string = 'simple-clean_loc-fut-rews-state'
+#models_I_want = mc.analyse.analyse_MRI_behav.select_models_I_want(RDM_version)
    
 # import pdb; pdb.set_trace()
         
 for sub in subjects:
     # load the cleaned behavioural table.
     beh_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/pilot/{sub}/beh"
+    RDM_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/beh/modelled_EVs"
     if os.path.isdir(beh_dir):
         print(f"Running on laptop, now subject {sub}")
     else:
         beh_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}/beh"
+        RDM_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}/beh/modelled_EVs"
         print(f"Running on Cluster, setting {beh_dir} as data directory")
-        
+            
+                 
     beh_df = pd.read_csv(f"{beh_dir}/{sub}_beh_fmri_clean.csv")
     tasks = beh_df['task_config_ex'].unique()
     states = beh_df['state'].unique()
     bin_type = beh_df['time_bin_type'].unique()
     
-    locations = beh_df['curr_loc'].unique()
-    loc_to_row = {loc: i for i, loc in enumerate(sorted(locations))}
+    locations = sorted(beh_df['curr_loc'].unique())
+    loc_to_row = {loc: i for i, loc in enumerate(locations)}
     
     
     # define regressors.
@@ -127,18 +132,48 @@ for sub in subjects:
                 # Note I don't include an intercept by default.
                 # this is because the way I use ithem, the regressors would be a linear combination of the intercept ([11111] vector)
                 EVs[model][reg][index] = LinearRegression(fit_intercept=False).fit(regressors[reg].reshape(-1,1), row.reshape(-1,1)).coef_
-        ev_array = np.zeros((int(len(EVs[model])/2), len(models[model])))
-        idx = -1
-        for ev in EVs[model]:
-            if ev.endswith('reward'):
-                idx = idx +1
-                ev_array[idx] = EVs[model][ev]
         
-        plt.figure(); plt.imshow(np.corrcoef(ev_array, ev_array), aspect = 'auto')
-        plt.title(model)
+        
+        if plot_RDMs == True:
+            ev_array = np.zeros((int(len(EVs[model])/2), len(models[model])))
+            idx = -1
+            y_labels = []
+            for ev in EVs[model]:
+                if ev.endswith('reward'):
+                    idx = idx +1
+                    y_labels.append(ev)
+                    ev_array[idx] = EVs[model][ev]
+            
+            ev_array_all = np.zeros((int(len(EVs[model])), len(models[model])))
+            y_labels_all = []
+            for idx, ev in enumerate(EVs[model]):
+                y_labels_all.append(ev)
+                ev_array_all[idx] = EVs[model][ev]
+                    
+                   
+            plt.figure(); plt.imshow(np.corrcoef(ev_array), aspect = 'auto')
+            plt.yticks(ticks=range(len(y_labels)), labels=y_labels)
+            # plt.xticks(ticks=range(len(y_labels)), labels=y_labels)
+            intervalline = 4
+            for interval in range(0, len(ev_array), intervalline):
+                plt.axvline(interval-0.5, color='white', ls='dashed')
+                plt.axhline(interval-0.5, color='white', ls='dashed')
+            plt.title(model)
             
     
         
-    import pdb; pdb.set_trace()        
+    # import pdb; pdb.set_trace()        
     # next, only figure out how to store everything.
+    
+    if save_RDMs: 
+        # then save these matrices.
+        if not os.path.exists(RDM_dir):
+            os.makedirs(RDM_dir)
+        
+        with open(f"{RDM_dir}/{sub}_modelled_EVs_{EV_string}_.pkl", 'wb') as file:
+            pickle.dump(EVs, file)
+            
+        print(f"saved EV dictionary as {RDM_dir}/{sub}_modelled_EVs_{EV_string}.pkl")
+    
+    
     

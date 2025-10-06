@@ -43,11 +43,18 @@ def comp_state_tuning(neurons, perms = None, random_data = False, only_BCD = Fal
     states = np.repeat((0,1,2,3), 90)
     states = np.tile(states, len(neurons))
     
-    # z-score each repeat across time (axis=1) to remove task-wide gain
-    for i_r, rep in enumerate(neurons):
-        m = np.nanmean(rep)
-        s = np.nanstd(rep, ddof=0)
-        neurons[i_r] = (rep - m) / s if s and np.isfinite(s) else (rep - m)
+    #2025 6th of October: this is BAD!
+    # Removes repeat main effects. Within each neuron×repeat you subtract that repeat’s mean (across states), 
+    # so any genuine baseline drift or learning-related gain change over repeats is forced to 0. 
+    # Interaction can look bigger because only relative differences between states remain.
+    # Rescales each repeat differently. Dividing by that repeat’s SD means repeats with low 
+    # variance get blown up and high-variance repeats get shrunk. Averages across repeats/tasks no longer live in a single, comparable unit.
+    
+    # # z-score each repeat across time (axis=1) to remove task-wide gain
+    # for i_r, rep in enumerate(neurons):
+    #     m = np.nanmean(rep)
+    #     s = np.nanstd(rep, ddof=0)
+    #     neurons[i_r] = (rep - m) / s if s and np.isfinite(s) else (rep - m)
 
             
     if perms:
@@ -506,7 +513,9 @@ def plot_results_per_roi_and_prefstate(
     fig.subplots_adjust(left=0.08, right=0.98, bottom=0.12, top=0.90, wspace=0.3, hspace=0.35)
     plt.show()
 
-def run_state_corr_perm_wise(perm_idx, unique_grids, idx_same_grids, data, beh_df, sesh, curr_neuron, no_perms=None, random_data=False, only_BCD=False):
+
+
+def run_state_corr_perm_wise(perm_idx, unique_grids, idx_same_grids, data, beh_df, sesh, curr_neuron, no_perms=None, random_data=False, only_BCD=False, sparsity_c=None):
     consistency_train_test = []
     pref_states = []
     for count_test_task, test_task_id in enumerate(unique_grids):
@@ -516,31 +525,55 @@ def run_state_corr_perm_wise(perm_idx, unique_grids, idx_same_grids, data, beh_d
         mask_train_task = (idx_same_grids != test_task_id)
         # create subset of df and neurons.
         neurons_train_task = data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron].loc[mask_train_task].to_numpy()
+
+
+        # z-score both test and train neurons with estimated mean and std of train tasks.
+        # this is necessary because I'd artificially get rid of any task-effects, while this is exactly
+        # what I want to test here!
+        
+        mean_train_tasks = np.mean(neurons_train_task)
+        std_train_tasks = np.mean(neurons_train_task)
+        
+        z_scored_neuron_train_tasks = (neurons_train_task - mean_train_tasks)/ std_train_tasks
+        z_scored_neuron_test_tasks = (neurons_test_task - mean_train_tasks)/ std_train_tasks
         
         # and compute the state-tuning in the train-tasks
-        fr_state_train_tasks, _ = comp_state_tuning(neurons_train_task, random_data=random_data, only_BCD=only_BCD)
+        fr_state_train_tasks, _ = comp_state_tuning(z_scored_neuron_train_tasks, random_data=random_data, only_BCD=only_BCD)
 
         # validate: compute the correlation with state-rate-map of held-out task
-        fr_state_test_task, pref_state_curr_train = comp_state_tuning(neurons_test_task, perms = no_perms, random_data=random_data, only_BCD=only_BCD)
+        fr_state_test_task, pref_state_curr_train = comp_state_tuning(z_scored_neuron_test_tasks, perms = no_perms, random_data=random_data, only_BCD=only_BCD)
         
         consistency_train_test.append(np.corrcoef(fr_state_test_task, fr_state_train_tasks)[1][0])
-        # import pdb; pdb.set_trace()
+        # 
         pref_states.append(pref_state_curr_train)
+        
+        
     mean_state_consistency = np.mean(consistency_train_test)
     # import pdb; pdb.set_trace()
     states, counts_state = np.unique(pref_states, return_counts=True)
     pref_state = states[np.argmax(counts_state)]
     
-    results_one_perm = {
-    "session_id": sesh,
-    "neuron_id": curr_neuron,
-    "state_cv_consistency": mean_state_consistency,
-    "perm_idx": perm_idx,
-    "mean_firing_rate": beh_df[f'mean_FR_{curr_neuron}'].to_numpy()[0],
-    "sparse_repeats": sum(~beh_df[f'consistent_FR_{curr_neuron}']),
-    "pref_states": pref_states,
-    "pref_state": pref_state
-    }
+    if sparsity_c:
+        results_one_perm = {
+        "session_id": sesh,
+        "neuron_id": curr_neuron,
+        "state_cv_consistency": mean_state_consistency,
+        "perm_idx": perm_idx,
+        "mean_firing_rate": beh_df[f'mean_FR_{curr_neuron}'].to_numpy()[0],
+        "sparse_repeats": sum(~beh_df[f'consistent_FR_{curr_neuron}']),
+        "pref_states": pref_states,
+        "pref_state": pref_state
+        }
+    else:
+        results_one_perm = {
+        "session_id": sesh,
+        "neuron_id": curr_neuron,
+        "state_cv_consistency": mean_state_consistency,
+        "perm_idx": perm_idx,
+        "mean_firing_rate": beh_df[f'mean_FR_{curr_neuron}'].to_numpy()[0],
+        "pref_states": pref_states,
+        "pref_state": pref_state
+        }
     
     return results_one_perm
 
@@ -548,15 +581,26 @@ def run_state_corr_perm_wise(perm_idx, unique_grids, idx_same_grids, data, beh_d
 
 def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = None, sparsity_c = None, save_all = False, random_data = False, only_BCD=False):
     # determine results table
-    COLUMNS = [
-    "session_id", "neuron_id",
-    "state_cv_consistency",
-    "perm_idx", 
-    "mean_firing_rate",
-    "sparse_repeats",
-    "pref_states",
-    "pref_state"
-    ]
+    
+    if sparsity_c:
+        COLUMNS = [
+        "session_id", "neuron_id",
+        "state_cv_consistency",
+        "perm_idx", 
+        "mean_firing_rate",
+        "sparse_repeats",
+        "pref_states",
+        "pref_state"
+        ]
+    else:
+        COLUMNS = [
+        "session_id", "neuron_id",
+        "state_cv_consistency",
+        "perm_idx", 
+        "mean_firing_rate",
+        "pref_states",
+        "pref_state"
+        ]
 
     
     results = []
@@ -581,8 +625,9 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
             perms = no_perms
             #no_perms = np.random.default_rng(123)
             # perms = permute_locations(data[f"sub-{sesh:02}"]['locations'], data[f"sub-{sesh:02}"]['beh'], no_perms = no_perms)
-            
-            include_these_cells = Path(f"{group_dir_state}/included_cells_{trials}_reps_{sparsity_c}_pct.txt").read_text().splitlines()
+            if sparsity_c:
+                include_these_cells = Path(f"{group_dir_state}/included_cells_{trials}_reps_{sparsity_c}_pct.txt").read_text().splitlines()
+
         else:
             perms = 1
      
@@ -600,15 +645,20 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
             )
         
             beh_df['idx_same_grids'] = idx_same_grids
-            if perms > 1:
-                if curr_neuron not in include_these_cells:
-                    continue
-            else: 
-                included_neurons.append(curr_neuron)
+            if sparsity_c:
+                if perms > 1:
+                    if curr_neuron not in include_these_cells:
+                        continue
+                else: 
+                    included_neurons.append(curr_neuron)
             
             # clean the data such that I don't consider 'bad' blocks of repeats
             # with super low firing 
+            # import pdb; pdb.set_trace()
+            beh_df[f'mean_FR_{curr_neuron}'] = np.nanmean(data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron].to_numpy())
+            
             if sparsity_c:
+                # print("defining tasks where neuron fires too sparsly (less than 20% of mean firing)")
                 beh_df = mc.analyse.helpers_human_cells.extract_consistent_grids(data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron].to_numpy(), curr_neuron, beh_df)
                 consistent_grids_mask = beh_df[f'consistent_FR_{curr_neuron}'].to_numpy()
                 # set grid indexes I want to ignore to -1
@@ -617,64 +667,26 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
                 # if after excluding inconsistent grids there aren't enough grids for CV left,
                 # kick this neuron.
                 unique_grids = np.unique(beh_df['idx_same_grids'][beh_df[f'consistent_FR_{curr_neuron}']])
+            else:
+                unique_grids = np.unique(beh_df['idx_same_grids'])
             
             if sparsity_c and len(unique_grids) < 3:
                 print(f"excluding {curr_neuron} in sesh {sesh} because there were not enough grids with consistent FR!")
                 continue
             
-            # loop through n-1 grids, respectively
+            # # debug loop
+            # for perm_idx in range(0,perms):
+            #     results_curr_neuron = run_state_corr_perm_wise(perm_idx, unique_grids, idx_same_grids, data, beh_df, sesh, curr_neuron, no_perms=no_perms, random_data=random_data, only_BCD=only_BCD, sparsity_c=sparsity_c)
+            # import pdb; pdb.set_trace()
             
             # parallelise this
-            results_curr_neuron = Parallel(n_jobs = -1)(delayed(run_state_corr_perm_wise)(perm_idx, unique_grids, idx_same_grids, data, beh_df, sesh, curr_neuron, no_perms=no_perms, random_data=random_data, only_BCD=only_BCD) for perm_idx in range(0,perms))
+            results_curr_neuron = Parallel(n_jobs = -1)(delayed(run_state_corr_perm_wise)(perm_idx, unique_grids, idx_same_grids, data, beh_df, sesh, curr_neuron, no_perms=no_perms, random_data=random_data, only_BCD=only_BCD, sparsity_c=sparsity_c) for perm_idx in range(0,perms))
             results.extend(results_curr_neuron)
             if not no_perms:
                 print(f"average state consistency for neuron {curr_neuron} is {results[-1]['mean_firing_rate']}")
             if no_perms:
                 print(f"now done computing {no_perms} permutations for neuron {curr_neuron}...")
             
-                    
-            # for perm_idx in range(0,perms):
-            #     consistency_train_test = []
-            #     pref_states = []
-            #     for count_test_task, test_task_id in enumerate(unique_grids):
-            #         mask_test_task = (idx_same_grids == test_task_id)
-            #         neurons_test_task = data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron].loc[mask_test_task].to_numpy()
-
-            #         mask_train_task = (idx_same_grids != test_task_id)
-            #         # create subset of df and neurons.
-            #         neurons_train_task = data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron].loc[mask_train_task].to_numpy()
-                    
-            #         # and compute the state-tuning in the train-tasks
-            #         fr_state_train_tasks, _ = comp_state_tuning(neurons_train_task, random_data=random_data, only_BCD=only_BCD)
-
-            #         # validate: compute the correlation with state-rate-map of held-out task
-            #         fr_state_test_task, pref_state_curr_train = comp_state_tuning(neurons_test_task, perms = no_perms, random_data=random_data, only_BCD=only_BCD)
-                    
-            #         consistency_train_test.append(np.corrcoef(fr_state_test_task, fr_state_train_tasks)[1][0])
-            #         # import pdb; pdb.set_trace()
-            #         pref_states.append(pref_state_curr_train)
-            #     mean_state_consistency = np.mean(consistency_train_test)
-            #     # import pdb; pdb.set_trace()
-            #     states, counts_state = np.unique(pref_states, return_counts=True)
-            #     pref_state = states[np.argmax(counts_state)]
-            #     results.append({
-            #     "session_id": sesh,
-            #     "neuron_id": curr_neuron,
-            #     "state_cv_consistency": mean_state_consistency,
-            #     "perm_idx": perm_idx,
-            #     "mean_firing_rate": beh_df[f'mean_FR_{curr_neuron}'].to_numpy()[0],
-            #     "sparse_repeats": sum(~beh_df[f'consistent_FR_{curr_neuron}']),
-            #     "pref_states": pref_states,
-            #     "pref_state": pref_state
-            #     })
-                
-            #     if not no_perms:
-            #         print(f"average state consistency for neuron {curr_neuron} is {mean_state_consistency}")
-            #     if no_perms:
-            #         if perm_idx % 100 == 0:
-            #             print(f"now computing permutation {perm_idx} for neuron {curr_neuron}...")
-
-        
                 
     
     
@@ -736,7 +748,7 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
             results_df.to_csv(name_result)
         
         # results_df = pd.read_csv('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/state_tuning/perms_state_consistency_all_minus_explore_repeats_excl_gridwise_qc_pct_neurons.csv')
-        pval_df = pd.read_csv('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/state_tuning/pval_for_perms200_state_consistency_late_repeats_excl_gridwise_qc_pct_neurons.csv')
+        # pval_df = pd.read_csv('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/state_tuning/pval_for_perms200_state_consistency_late_repeats_excl_gridwise_qc_pct_neurons.csv')
         
         import pdb; pdb.set_trace()
         print(f"saved cross-validated state tuning values in {name_result}")  
@@ -744,7 +756,12 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
   
 if __name__ == "__main__":
     # trials can be 'all', 'all_correct', 'early', 'late', 'all_minus_explore', 'residualised'
-    compute_state_tunings(sessions=list(range(0,64)), trials = 'all_minus_explore', no_perms = 200, sparsity_c = 'gridwise_qc', save_all=True, only_BCD = False)
+    # they can also be: 'first_correct', 'one_correct', ... 'nine_correct'
+    # NOTE: if you do per-repeat estimates, use every grid! grid mean will be super unreliable anyways
+    compute_state_tunings(sessions=list(range(0,64)), trials = 'one_correct', no_perms = 150, sparsity_c = None, save_all=True, only_BCD = False)
+    
+    
+    # compute_state_tunings(sessions=list(range(0,64)), trials = 'all_minus_explore', no_perms = None, sparsity_c = 'gridwise_qc', save_all=True, only_BCD = False)
     #compute_state_tunings(sessions=[4], trials = 'residualised', no_perms = None, sparsity_c = 'gridwise_qc', save_all=False, random_data=False)
 
     

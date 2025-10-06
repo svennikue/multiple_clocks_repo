@@ -40,7 +40,7 @@ plot_goal_progress_tuning = False
 plot_goal_progress_tuning_half_split = False
 plot_firing_rate_per_incl_reps = False
 
-#import pdb; pdb.set_trace()
+# 
 # 
 
 ####
@@ -468,7 +468,8 @@ if plot_state == True:
     
     path = '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/state_tuning'
     #file = 'pval_for_perms200_state_consistency_residualised_repeats_excl_gridwise_qc_pct_neurons.csv'
-    file = 'pval_for_perms200_state_consistency_late_repeats_excl_gridwise_qc_pct_neurons.csv'
+    file = 'pval_for_perms200_state_consistency_all_minus_explore_repeats_excl_gridwise_qc_pct_neurons.csv'
+            
     pval_df = pd.read_csv(f"{path}/{file}")
     
     sig_state_cells = pval_df[pval_df['p_perm']<0.05]
@@ -529,27 +530,29 @@ if plot_state == True:
         for t_idx, target_cell in enumerate(target_cells):
             avg_corr = avg_corr_target_cells[t_idx]
             for curr_neuron in data_norm[f"sub-{sesh}"]['normalised_neurons']:
-                if target_cell.startswith(curr_neuron):
-                    neurons_z_scored_per_rep = np.zeros(data_norm[f"sub-{sesh}"]['normalised_neurons'][curr_neuron].shape)
-                    for i_r, rep in enumerate(data_norm[f"sub-{sesh}"]['normalised_neurons'][curr_neuron].to_numpy()):
-                        m = np.nanmean(rep)
-                        s = np.nanstd(rep, ddof=0)
-                        neurons_z_scored_per_rep[i_r] = (rep - m) / s if s and np.isfinite(s) else (rep - m)
-                    avg_corr_across_tasks = list(np.mean(neurons_z_scored_per_rep, axis=0))
-                    
-                    smoothed_corr_across_tasks = smooth_circular(avg_corr_across_tasks, sigma=4) 
+                if target_cell in curr_neuron:
+                    # DONT DO THIS! 06th of october 2025.
+                    # this gets rid of any potential per-repeat effects, and blows up small variances.
+                    # neurons_z_scored_per_rep = np.zeros(data_norm[f"sub-{sesh}"]['normalised_neurons'][curr_neuron].shape)
+                    # for i_r, rep in enumerate(data_norm[f"sub-{sesh}"]['normalised_neurons'][curr_neuron].to_numpy()):
+                    #     m = np.nanmean(rep)
+                    #     s = np.nanstd(rep, ddof=0)
+                    #     neurons_z_scored_per_rep[i_r] = (rep - m) / s if s and np.isfinite(s) else (rep - m)
+                    # avg_firing_across_tasks = list(np.mean(neurons_z_scored_per_rep, axis=0))
+                    #import pdb; pdb.set_trace()
+                    smoothed_firing_across_tasks = smooth_circular(np.mean(data_norm[f"sub-{sesh}"]['normalised_neurons'][curr_neuron].to_numpy(), axis = 0), sigma=4) 
                     #plot_state_polar(smoothed_corr_across_tasks, f"across all tasks, {target_cell} \n average corr = {avg_corr}")
-                    panels = [smoothed_corr_across_tasks]
-                    titles = [f"TASK AVG"]
-
+                    panels = [smoothed_firing_across_tasks]
+                    titles = ["TASK AVG"]
 
                     for task_id, grid_config in enumerate(unique_grids):
-                        mask_test_task = (idx_same_grids == task_id)
-                        neurons_curr_task = neurons_z_scored_per_rep[mask_test_task]
-                        avg_corr_curr_grid = list(np.mean(neurons_curr_task, axis = 0))
-                        smoothed_corr = smooth_circular(avg_corr_curr_grid, sigma=4)  # tweak sigma as needed
+                        mask_curr_task = (idx_same_grids == task_id)
+                        #neurons_curr_task = neurons_z_scored_per_rep[mask_curr_task]
+                        neurons_curr_task = data_norm[f"sub-{sesh}"]['normalised_neurons'][curr_neuron].to_numpy()[mask_curr_task]
+                        avg_firing_curr_grid = list(np.mean(neurons_curr_task, axis = 0))
+                        smoothed_firing_curr_task = smooth_circular(avg_firing_curr_grid, sigma=4)  # tweak sigma as needed
                         #plot_state_polar(smoothed_corr, f"task {grid_config}, {target_cell} \n average corr = {avg_corr}")
-                        panels.append(smoothed_corr)
+                        panels.append(smoothed_firing_curr_task)
                         titles.append(f"task {grid_config}")
                     
                     # 3) make ONE figure with N polar subplots and shared r-limits (tiny addition)
@@ -574,6 +577,7 @@ if plot_state == True:
                     fig.suptitle(f"sub {sesh}; in {rois[t_idx]} {target_cell} \n average corr = {avg_corr:0.04}", y=0.98, fontsize=13)
                     plt.tight_layout()
                     plt.show()
+                    
     import pdb; pdb.set_trace()
 
                        

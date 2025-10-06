@@ -129,6 +129,77 @@ def filter_data(data, session, rep_filter):
         for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
             filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron].loc[keep_mask].reset_index(drop=True)
             
+    elif rep_filter == 'first_correct':
+        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([0]) & data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([0])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([0])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
+            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([0])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)    
+    
+        
+    elif rep_filter == 'one_correct':
+        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([1]) & data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([1])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([1])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
+            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([1])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)    
+    
+    elif rep_filter == 'two_correct':
+        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([2]) & data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([2])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([2])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
+            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([2])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)    
+    
+    elif rep_filter == 'three_correct':
+        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([3]) & data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([3])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([3])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
+            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([3])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)    
+    
+    elif rep_filter == 'four_correct':
+        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([4]) & data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([4])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([4])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
+            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([4])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)    
+    
+    elif rep_filter == 'five_correct':
+        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([5]) & data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([5])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([5])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
+            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([5])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)    
+    
+    elif rep_filter == 'six_correct':
+        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([6]) & data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([6])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([6])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
+            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([6])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)    
+    
+    elif rep_filter == 'seven_correct':
+        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([7]) & data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([7])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([7])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
+            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([7])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)    
+    
+    elif rep_filter == 'eight_correct':
+        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([8]) & data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([8])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([8])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
+            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([8])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)    
+    
+    elif rep_filter == 'nine_correct':
+        filtered_data[f"sub-{session:02}"]['beh'] = data[f"sub-{session:02}"]['beh'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([9]) & data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['timings'] = data[f"sub-{session:02}"]['timings'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([9])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        filtered_data[f"sub-{session:02}"]['locations'] = data[f"sub-{session:02}"]['locations'][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([9])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)
+        for neuron in data[f"sub-{session:02}"]['normalised_neurons']:
+            filtered_data[f"sub-{session:02}"]['normalised_neurons'][neuron] = data[f"sub-{session:02}"]['normalised_neurons'][neuron][data[f"sub-{session:02}"]['beh']['rep_correct'].isin([9])& data[f"sub-{session:02}"]['beh']['correct']== 1].reset_index(drop = True)    
+
     # import pdb; pdb.set_trace()
     return filtered_data
 
@@ -190,7 +261,7 @@ def extract_consistent_grids(neuron, cell_name, beh):
     # exclude grid if firing rate lower than 20% of mean firing.
     # also make sure to leave at least 3 unique grids.
 
-    beh[f'mean_FR_{cell_name}'] = np.nanmean(neuron)
+    # beh[f'mean_FR_{cell_name}'] = np.nanmean(neuron)
     # identify firing rate per grid-block.
     grid_nos = np.unique(beh['grid_no'].to_numpy())
     # FR per grid_no
@@ -296,6 +367,7 @@ def load_norm_data(source_folder, subject_list, res_data = False):
                 cell_name = file_name[len("cell-"):-len("-360_bins_residualised.csv")]
             else:
                 cell_name = file_name[len("cell-"):-len("-360_bins_passed.csv")]
+            cell_name = f"{sub}_{cell_name}"
             data_dict[f"sub-{sub}"]["normalised_neurons"][cell_name] = pd.read_csv(cell_file_path, header=None)
     # import pdb; pdb.set_trace()
     return data_dict
