@@ -162,7 +162,7 @@ for sub in subjects:
             
     
         
-    # import pdb; pdb.set_trace()        
+    import pdb; pdb.set_trace()        
     # next, only figure out how to store everything.
     
     if save_RDMs: 
@@ -174,6 +174,9 @@ for sub in subjects:
             pickle.dump(EVs, file)
             
         print(f"saved EV dictionary as {RDM_dir}/{sub}_modelled_EVs_{EV_string}.pkl")
+    
+    
+
     
     
     

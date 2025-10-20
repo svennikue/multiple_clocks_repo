@@ -619,139 +619,11 @@ def pair_grids_to_increase_spatial_coverage(locs, beh, cell_name, min_coverage=1
 
 
 
-# def plot_neuron_overview(neuron_name, beh, neuron, locs, FR_maps_neuron, spatial_corr_per_shift, same_grids, title_string):
-#     # --- Inputs assumed already defined:
-#     # neuron : 2D array (repeats x timebins)
-#     # spatial_corr_per_shift : 1D array length = len(shifts)
-#     # neuron_name : str
-#     # shifts : e.g. np.arange(0,360,30)  # 12 values
-#     # FR_maps_neuron : shape (len(shifts), 9, n_grids)  -> each map reshapes to (3,3)
-#     # same_grids, locs : arrays to build grid_cvg (coverage)
-#     # unique_grids : np.unique(same_grids)
-    
-#     # import pdb; pdb.set_trace()
-#     unique_grids = np.unique(same_grids)               # flexible number of grids
-#     print(f"{neuron_name} has {len(unique_grids)} grids.")
-#     # ----- Build spatial coverage (grey column) -----
-#     grid_cvg = {}
-#     for g in unique_grids:
-#         grid_cvg[g] = np.zeros(9, dtype=int)
-#         glocs = locs[same_grids == g]
-#         for loc in range(1, 10):
-#             grid_cvg[g][loc-1] = np.count_nonzero(glocs == loc)
-    
-#     cov_min = min(np.min(v) for v in grid_cvg.values())
-#     cov_max = max(np.max(v) for v in grid_cvg.values())
-    
-#     # ----- Global FR map color limits -----
-#     rate_min = np.nanmin(FR_maps_neuron)
-#     rate_max = np.nanmax(FR_maps_neuron)
-    
-#     # ----- Which grids to show as rows  -----
-#     n_grids = len(unique_grids)
-#     grid_order = sorted(grid_cvg.keys())[:n_grids]  # align to n grid rows
-    
-#     # ----- Find best shift for outline -----
-#     temporal_shift = 30
-#     shifts = np.arange(0, 360, temporal_shift)  # 12 shifts
-#     best_idx = np.nanargmax(spatial_corr_per_shift) if np.any(np.isfinite(spatial_corr_per_shift)) else None
-#     best_shift = shifts[best_idx] if best_idx is not None else None
-    
-#     # ===== FIGURE LAYOUT =====
-#     fig = plt.figure(figsize=(22, 14))
-#     gs = GridSpec(nrows=3, ncols=1, height_ratios=[2.2, 1.8, 7.0], hspace=0.35, figure=fig)
-    
-#     # --- Row 1: Firing rate (full width)
-#     ax_fr = fig.add_subplot(gs[0, 0])
-#     im_fr = ax_fr.imshow(neuron, aspect='auto', cmap='Reds')
-#     ax_fr.vlines([90, 180, 270], 0, neuron.shape[0]-1, linestyles='dotted', linewidth=0.8, colors='black')
-#     ax_fr.set_title('Firing rate per bin (x) and repeat (y)')
-#     ax_fr.set_xlabel('Time (bins)')
-#     ax_fr.set_ylabel('Repeats')
-#     cbar_fr = fig.colorbar(im_fr, ax=ax_fr, fraction=0.025, pad=0.02)
-#     cbar_fr.set_label("Rate (spike/s)")
-    
-#     # --- Row 2: Spatial encoding consistency vs temporal shift (full width)
-#     ax_cons = fig.add_subplot(gs[1, 0])
-#     ax_cons.plot(shifts, spatial_corr_per_shift, marker='o', color='black', label=str(neuron_name))
-#     ax_cons.hlines(0, shifts[0], shifts[-1], colors='k', linestyles='-')
-#     ax_cons.set_xlabel('Temporal shift (bins of 30)')
-#     ax_cons.set_ylabel('Mean grid correlation')
-#     ax_cons.set_title(f"Neuron {neuron_name} — Spatial encoding consistency vs. temporal shift")
-#     ax_cons.legend(loc='best', fontsize=8)
-#     if best_shift is not None:
-#         ax_cons.axvline(best_shift, color='tab:red', linestyle='--', linewidth=1)
-    
-#     # --- Rows 3–5: 3 rows × (1 coverage + len(shifts)) columns
-#     ncols_bottom = 1 + len(shifts)  # 1 coverage col + shifts
-#     gs_bot = GridSpecFromSubplotSpec(
-#         nrows=n_grids, ncols=ncols_bottom, subplot_spec=gs[2, 0], wspace=0.05, hspace=0.08
-#     )
-    
-#     axs = np.empty((n_grids, ncols_bottom), dtype=object)
-    
-#     # Column headers
-#     for c in range(ncols_bottom):
-#         ax_title = fig.add_subplot(gs_bot[0, c])
-#         fig.delaxes(ax_title)  # we'll place real axes shortly; title texts go on real axes
-#     # we’ll set titles on real axes below (top row only)
-    
-#     # Fill axes
-#     for r, g in enumerate(grid_order):
-#         # Coverage column (col 0)
-#         ax_cov = fig.add_subplot(gs_bot[r, 0])
-#         axs[r, 0] = ax_cov
-#         spatial_cov = grid_cvg[g].reshape(3, 3)
-#         im_cov = ax_cov.imshow(spatial_cov, cmap='Greys', vmin=cov_min, vmax=cov_max)
-#         ax_cov.set_xticks([]); ax_cov.set_yticks([])
-#         if r == 0:
-#             ax_cov.set_title("Coverage")
-#         # annotate coverage numbers
-#         for (i, j), v in np.ndenumerate(spatial_cov):
-#             ax_cov.text(j, i, f"{int(v)}", ha='center', va='center', color='black', fontsize=8)
-    
-#         # Row label (left of coverage cell)
-#         ax_cov.text(-0.45, 0.5, f"Grid combo {r+1}",
-#                     transform=ax_cov.transAxes, va='center', ha='right', fontsize=10)
-    
-#         # Shift columns (1..len(shifts))
-#         for si, sh in enumerate(shifts):
-#             ax = fig.add_subplot(gs_bot[r, si+1])
-#             axs[r, si+1] = ax
-#             spatial = FR_maps_neuron[si][:, r].reshape(3, 3)
-#             im = ax.imshow(spatial, cmap='coolwarm', vmin=rate_min, vmax=rate_max)
-#             ax.set_xticks([]); ax.set_yticks([])
-#             if r == 0:
-#                 ax.set_title(f"{sh}°", fontsize=9)
-    
-#     # Outline the best-shift column across all three rows
-#     if best_shift is not None and best_shift in shifts:
-#         col_idx = 1 + int(np.where(shifts == best_shift)[0][0])  # +1 because col 0 = coverage
-#         for r in range(n_grids):
-#             axs[r, col_idx].add_patch(Rectangle((0, 0), 1, 1,
-#                                transform=axs[r, col_idx].transAxes, fill=False,
-#                                linewidth=2.5, edgecolor='black', zorder=10))
-    
-#     # Shared colorbar for rate maps (all shift columns)
-#     # Use the last 'im' as mappable (safe because vmin/vmax consistent)
-#     cbar_rate = fig.colorbar(im, ax=axs[:, 1:].ravel().tolist(), fraction=0.02, pad=0.01)
-#     cbar_rate.set_label("Avg. rate per field")
-    
-#     # Optional colorbar for coverage column
-#     # cbar_cov = fig.colorbar(im_cov, ax=axs[:, 0].ravel().tolist(), fraction=0.02, pad=0.04)
-#     #cbar_cov.set_label("Coverage (samples)")
-    
-#     # Big y-label for bottom block
-#     # fig.text(0.06, 0.21, "3×3 spatial maps", rotation=90, va='center', fontsize=11)
-#     fig.suptitle(title_string, fontsize=18, fontweight="bold", y=0.995)
-
-#     plt.show()
- 
- 
 
 def compute_fut_spatial_tunings(sessions, trials = 'all_correct', combine_two_grids = False, sparsity_c = None, weighted = True, save_all = False):  
     # trials can be 'all', 'all_correct', 'early', 'late'
     for sesh in sessions:
+        print(sesh)
         # load data
         data_raw, source_dir = get_data(sesh)
         group_dir_fut_spat = f"{source_dir}/group/spatial_peaks"
@@ -765,14 +637,24 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', combine_two_gr
         beh_df = data[f"sub-{sesh:02}"]['beh']
         # determine identical grids
         grid_cols = ['loc_A', 'loc_B', 'loc_C', 'loc_D']
-            
+        
+        file_name = f"spatial_consistency_{trials}_repeats_excl_{sparsity_c}_pct_neurons_weighted.csv"
+        df = pd.read_csv(f"{group_dir_fut_spat}/{file_name}")
+        
+        neurons = np.unique(df[df['session_id'] == sesh]['neuron_id'].to_numpy())
+        
         # for each cell, cross-validate the peak task-lag shift for spatial consistency.
         for neuron_idx, curr_neuron in enumerate(data[f"sub-{sesh:02}"]['normalised_neurons']):
+            print(curr_neuron)
+            if curr_neuron not in [f'{sesh}_20-20-mRF2aC04-ACC', f'{sesh}_23-23-mRF2aC03-ACC', f'{sesh}_24-24-mRF2aC03-ACC', f'{sesh}_07-07-mRACC5-ACC', 
+                       f'{sesh}_12-12-mRAMCC5-RAMC', f'{sesh}_13-13-mRAMCC6-RAMC', f'{sesh}_20-20-mRAMCC8-RAMC', f'{sesh}_02-02-mRF3C07-ACC', f'{sesh}_09-09-chan105-ACC',
+                       f'{sesh}_02-02-mRF3cVPF01-RPvmPFC', f'{sesh}_23-23-mRF2Ca05-ACC', f'{sesh}_25-25-mRF2Ca06-ACC', f'{sesh}_08-08-mLF2Ca03-ACC', f'{sesh:02}_01-01-GA1-RAC1-ACC']:
+                continue
 
             # if curr_neuron not in ['07-07-chan104-LOFC', '16-16-chan118-LHC', '01-01-mLF2aCa07-LACC']:
             #     continue  
-            if curr_neuron not in ['11-11-mLP2Cb07-LPCC', '07-07-mLP2Cb02-LPCC', '10-10-mLP2Cb07-LPCC', '09-09-mLP2Cb05-LPCC']:
-                continue
+            # if curr_neuron not in ['11-11-mLP2Cb07-LPCC', '07-07-mLP2Cb02-LPCC', '10-10-mLP2Cb07-LPCC', '09-09-mLP2Cb05-LPCC']:
+            #     continue
             # if curr_neuron not in ['04-04-mLT2dHa03-LHC', '04-04-mRT2cHb07-RHC','03-03-mLAHIP1-LHC']:
             #     continue
             # if curr_neuron not in ['03-03-chan110-REC', '07-07-chan104-LOFC', '16-16-chan118-LHC', '01-01-mLF2aCa07-LACC']:
@@ -814,19 +696,23 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_correct', combine_two_gr
             fr_by_shift, corr_per_shift, dwell = comp_peak_spatial_tuning(neuron_data, locations, behaviour, curr_neuron, idx_same_grids, weighted = weighted)
 
 
-            file_name = f"spatial_consistency_{trials}_repeats_excl_{sparsity_c}_pct_neurons_weighted.csv"
-            df = pd.read_csv(f"{group_dir_fut_spat}/{file_name}")
-            cross_val = df['avg_consistency_at_peak'][df['neuron_id'] == curr_neuron][df['session_id']== sesh].to_list()
+            # file_name = f"spatial_consistency_{trials}_repeats_excl_{sparsity_c}_pct_neurons_weighted.csv"
+            # df = pd.read_csv(f"{group_dir_fut_spat}/{file_name}")
+            for n in neurons:
+                if curr_neuron.endswith(n):
+                    curr_neuron_label = n
+            
+            cross_val = df['avg_consistency_at_peak'][df['neuron_id'] == curr_neuron_label][df['session_id']== sesh].to_list()
 
             title = f"overview for {curr_neuron} \n including {trials} repeats. \n cross-val value: {round(cross_val[0], 3)}"
-            import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()
             plot_neuron_overview(curr_neuron, beh_df, data[f"sub-{sesh:02}"]['normalised_neurons'][curr_neuron], data[f"sub-{sesh:02}"]['locations'], fr_by_shift, corr_per_shift, idx_same_grids, title)
             
             
     
 def loop_through_trial_combos(trial_list):
     for incl_trials in trial_list:
-        compute_fut_spatial_tunings(sessions=[44], trials = incl_trials, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=False)
+        compute_fut_spatial_tunings(sessions=[27], trials = incl_trials, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=False)
 
 
 if __name__ == "__main__":
@@ -835,6 +721,8 @@ if __name__ == "__main__":
     loop_through_trial_combos(trial_list = ['all_minus_explore'])
     #loop_through_trial_combos(trial_list = ['all', 'all_correct', 'early', 'late'])
     
+
+# 03 01-01-GA1-RAC1-ACC
 
 # 44 11-11-mLP2Cb07-LPCC
 # 44 07-07-mLP2Cb02-LPCC

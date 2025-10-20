@@ -209,8 +209,8 @@ if plot_firing_rate_per_incl_reps == True:
 def pref_counts_per_roi(df_sig, df_all, roi_col='roi', state_col='pref_state', states=('A','B','C','D')):
      d_s = df_sig[[roi_col, state_col]].dropna().copy()
      d_a = df_all[[roi_col, state_col]].dropna().copy()
-     # keep ROI display order as they first appear
-     roi_order = d_s[roi_col].dropna().unique().tolist()
+     # sort ROI order to always keep alphabetical order
+     roi_order = sorted(d_s[roi_col].dropna().unique().tolist())
      d_s[state_col] = pd.Categorical(d_s[state_col], categories=list(states), ordered=True)
      counts_sig = (d_s.groupby([roi_col, state_col]).size()
                  .unstack(fill_value=0)
@@ -223,8 +223,8 @@ def pref_counts_per_roi(df_sig, df_all, roi_col='roi', state_col='pref_state', s
     
  
 def plot_pref_counts_per_roi(counts, title="Preferred-state counts per ROI", stacked=False):
-    rois = counts.index.astype(str).tolist()
-    states = counts.columns.tolist()
+    rois = sorted(counts.index.astype(str).tolist())
+    states = sorted(counts.columns.tolist())
     x = np.arange(len(rois))
     fig, ax = plt.subplots(figsize=(max(7, 1.1*len(rois)), 5))
 
@@ -280,8 +280,8 @@ def plot_pref_props_per_roi(counts, normalize='within_roi', grouped=False, title
     grouped: if True → grouped bars; else → stacked bars
     """
     data = normalize_counts(counts, mode=normalize)
-    rois   = data.index.astype(str).tolist()
-    states = data.columns.tolist()
+    rois   = sorted(data.index.astype(str).tolist())
+    states = sorted(data.columns.tolist())
 
     x = np.arange(len(rois))
     fig, ax = plt.subplots(figsize=(max(7, 1.1*len(rois)), 5))
@@ -362,7 +362,7 @@ def plot_state_polar_clock(firing_across_states, title_string, ax=None, rlim=Non
     for i in range(4):
         s, e = edges[i], edges[i+1]
         if e > s:
-            ax.plot(theta[s:e], vals[s:e], color=colors[i], linewidth=2)
+            ax.plot(theta[s:e], vals[s:e], color=colors[i], linewidth=3)
 
     # --- r-limits ---
     if rlim is None:
@@ -401,20 +401,45 @@ def plot_state_polar_clock(firing_across_states, title_string, ax=None, rlim=Non
 
     # --- Labels at 3,6,9,12 o'clock: A,B,C,D ---
     # Angles in radians: 3→90°, 6→180°, 9→270°, 12→0°
-    label_angles = np.deg2rad([90, 180, 270, 0])
-    label_r = rmax
-    for lab, ang, col in zip(letters, label_angles, colors):
-        ax.text(ang, label_r, lab, ha='center', va='bottom',
-                fontsize=14, fontweight='bold', color=col)
+    # label_angles = np.deg2rad([90, 180, 270, 0])
+    # label_r = rmax*1.3
+    # for lab, ang, col in zip(letters, label_angles, colors):
+    #     ax.text(ang, label_r, lab, ha='center', va='bottom',
+    #             fontsize=22, fontweight='bold', color=col)
 
+    label_angles = np.deg2rad([0, 90, 180, 270])   # A(3), B(6), C(9), D(12)
+    letters      = ['A', 'B', 'C', 'D']
+    colors       = ['#F15A29', '#F7931E', '#C7C6E2', '#6B60AA']
+
+    # Put labels a constant radial padding outside the data circle
+    pad = 0.12 * (rmax - rmin) if np.isfinite(rmin) and np.isfinite(rmax) else 0.1
+    label_r = rmax + pad
+    
+    for lab, ang, col in zip(letters, label_angles, colors):
+        # Choose alignment by quadrant so text sits outside the circle:
+        if np.isclose(ang, 0):            # 12 o'clock (D)
+            ha, va = 'center', 'bottom'
+        elif np.isclose(ang, np.pi/2):    # 3 o'clock (A)
+            ha, va = 'left',   'center'
+        elif np.isclose(ang, np.pi):      # 6 o'clock (B)
+            ha, va = 'center', 'top'
+        elif np.isclose(ang, 3*np.pi/2):  # 9 o'clock (C)
+            ha, va = 'right',  'center'
+        else:
+            ha, va = 'center', 'center'
+    
+        ax.text(ang, label_r, lab,
+                ha=ha, va=va, fontsize=28, fontweight='bold', color=col,
+                clip_on=False)  # don't clip at axes boundary
+        
     # Hide numeric theta ticks (keep grid if you like)
     ax.set_xticks([])
 
-    ax.set_title(title_string, va='bottom', fontsize=14)
+    # ax.set_title(title_string, va='bottom', fontsize=22)
     ax.grid(True)
 
     if created_fig:
-        plt.tight_layout()
+        #plt.tight_layout()
         plt.show()
         
 def plot_sig_props(props, grouped=False, drop_zero_state_cols=True, title=None, pad=0.08):
@@ -428,8 +453,8 @@ def plot_sig_props(props, grouped=False, drop_zero_state_cols=True, title=None, 
     if drop_zero_state_cols:
         data = data.loc[:, (data.sum(axis=0) > 0)]
 
-    rois   = data.index.astype(str).tolist()
-    states = data.columns.tolist()
+    rois   = sorted(data.index.astype(str).tolist())
+    states = sorted(data.columns.tolist())
     x = np.arange(len(rois))
 
     fig, ax = plt.subplots(figsize=(max(7, 1.1*len(rois)), 5))
@@ -468,14 +493,23 @@ if plot_state == True:
     
     path = '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/state_tuning'
     #file = 'pval_for_perms200_state_consistency_residualised_repeats_excl_gridwise_qc_pct_neurons.csv'
-    file = 'pval_for_perms200_state_consistency_all_minus_explore_repeats_excl_gridwise_qc_pct_neurons.csv'
+    file = 'pval_for_perms200_state_consistency_late_repeats_excl_gridwise_qc_pct_neurons.csv'
             
     pval_df = pd.read_csv(f"{path}/{file}")
+    
+    title = 'late repeats'
+    mc.plotting.results.plot_results_per_roi_and_prefstate(pval_df, title)
     
     sig_state_cells = pval_df[pval_df['p_perm']<0.05]
     top_sig_state_cells = sig_state_cells.sort_values(by="state_cv_consistency", ascending=False).head(20)
     sessions_to_load = top_sig_state_cells['session_id'].unique()
     
+
+    n_cells_EC = len(pval_df[pval_df['roi']=='entorhinal'])
+    n_cells_ACC = len(pval_df[pval_df['roi']=='ACC'])
+    
+    
+
 
     # 1) Build counts table for significant cells and all cells for proportions
     counts_sig_cells, counts_all_cells = pref_counts_per_roi(sig_state_cells, df_all = pval_df, roi_col='roi', state_col='pref_state')
@@ -492,9 +526,14 @@ if plot_state == True:
     plot_sig_props(props, grouped=False)   # stacked
     # or:
     plot_sig_props(props, grouped=True)    # side-by-side
-        
+    
+    
+    
 
-    for s in sessions_to_load:
+    #for s in sessions_to_load:
+    import pdb; pdb.set_trace()
+
+    for s in [1]:
         sesh = f"{s:02}"
         target_cells = top_sig_state_cells[top_sig_state_cells['session_id']==s]['neuron_id'].to_list()
         avg_corr_target_cells = top_sig_state_cells[top_sig_state_cells['session_id']==s]['state_cv_consistency'].to_list()
@@ -527,6 +566,7 @@ if plot_state == True:
             
         # AVERAGE OVER THE SAME GRIDS!!
         # for i, unique_task_idx in enumerate(idx_unique_grid): 
+        #import pdb; pdb.set_trace()
         for t_idx, target_cell in enumerate(target_cells):
             avg_corr = avg_corr_target_cells[t_idx]
             for curr_neuron in data_norm[f"sub-{sesh}"]['normalised_neurons']:
@@ -578,8 +618,7 @@ if plot_state == True:
                     plt.tight_layout()
                     plt.show()
                     
-    import pdb; pdb.set_trace()
-
+    
                        
 
     state_results = []

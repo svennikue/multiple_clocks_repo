@@ -193,6 +193,10 @@ def get_conditions_list(RDM_dir):
 
 
 def read_in_RDM_conds(regression_version, RDM_version, data_dir, RDM_dir, no_RDM_conditions, ref_img = None, sort_as = 'dict-two-halves'):
+    # NOTE 17.10.2025
+    # this is way too long and complicated.
+    # the new one is in analyse > my_RSA> load_Data_EVs and is VERY simple.
+    
     # sort_as can be 'dict-two-halves' (for volumetric data) or 'concat-surface' (for surface)
     # load the file which defines the order of the model RDMs, and hence the data RDMs
     

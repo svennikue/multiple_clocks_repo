@@ -36,6 +36,7 @@ def pref_counts_per_roi(df_sig, df_all, roi_col='roi', state_col='pref_state', s
 path = '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/state_tuning'
 #file = 'pval_for_perms200_state_consistency_residualised_repeats_excl_gridwise_qc_pct_neurons.csv'
 file = 'pval_for_perms200_state_consistency_late_repeats_excl_gridwise_qc_pct_neurons.csv'
+# file = 'pval_for_perms200_spatial_consistency_all_minus_explore_repeats_excl_gridwise_qc_pct_neurons_weighted.csv'
 pval_df = pd.read_csv(f"{path}/{file}")
 
 sig_state_cells = pval_df[pval_df['p_perm']<0.05]

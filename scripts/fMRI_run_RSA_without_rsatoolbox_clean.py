@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on 17th of October 2025.
+
+Running the RSA [mainly] wihtout RSA toolbox,
+based on 
+1. clean_fmri_behaviour
+2. create_fMRI_model_RDMs_on_clean_beh
+
+RDM settings (creating the representations):
+    03-1 -> modelling only reward rings + split ‘clocks model’ = just rotating the reward location around. 
+
+GLM ('regression') settings (creating the 'bins'):
+    03-4 - 24 regressors; for the tasks where every reward is at a different location (A,C,E), only the rewards are modelled (stick function)
+    
+@author: Svenja Küchenhoff, 2025
+"""
+
+
+from tqdm import tqdm
+import numpy as np
+import os
+from nilearn.image import load_img
+from rsatoolbox.util.searchlight import get_volume_searchlight
+from joblib import Parallel, delayed
+import matplotlib.pyplot as plt
+import mc
+import pickle
+import sys
+from datetime import date
+
+def pair_correct_tasks(data_dict, keys_list):
+    """
+    data_dict: dict with keys like 'A1_forw_A_reward'
+    keys_list: ordered list of keys you want to include and in what order
+    Returns two matrices: one for the first element of each pair, one for its match.
+    """
+    # Define task pairing relationships
+    task_pairs = {'1_forw': '2_backw', '1_backw': '2_forw'}
+    th_1, th_2, paired_list_control  = [], [], []
+    # Loop through keys in the *specified order*
+    for key in keys_list:
+        if key not in data_dict:
+            continue  # skip if missing in dict
+        task, direction, state, phase = key.split('_')  # e.g. ['A1', 'forw', 'A', 'reward']
+        # Create the pairing suffix (e.g. from '1_forw' → '2_backw')
+        pair_suffix = task_pairs.get(f"{task[-1]}_{direction}")
+        if not pair_suffix:
+            continue  # skip if not in pairing
+
+        # Build the paired key (e.g. 'A2_backw_A_reward')
+        pair_key = f"{task[0]}{pair_suffix}_{state}_{phase}"
+        # Only add if both keys exist
+        if pair_key in data_dict:
+            th_1.append(np.asarray(data_dict[key]))
+            th_2.append(np.asarray(data_dict[pair_key]))
+            paired_list_control.append(f"{key} with {pair_key}")
+            
+    if not th_1:
+        raise ValueError("No valid key pairs found!")
+        
+    th_1 = np.vstack(th_1)
+    th_2 = np.vstack(th_2)
+    # print(paired_list_control)
+    return th_1, th_2
+
+
+#
+#
+# SETTINGS
+#
+#
+# import pdb; pdb.set_trace() 
+if len (sys.argv) > 1:
+    subj_no = sys.argv[1]
+else:
+    subj_no = '02'
+
+subjects = [f"sub-{subj_no}"]
+EV_string = 'simple-clean_loc-fut-rews-state'
+regression_version = '03-4' 
+
+# add some condition strings.
+# e.g. don't include A's, don't include tasks with double-locations, ...
+# could also add the combo-model definitions here
+
+today_str = date.today().strftime("%d-%m-%Y")
+RDM_version = f'{EV_string}_{today_str}'
+
+smoothing = True
+fwhm = 5
+load_searchlights = True # this refers to the searchlight coordinates
+visualise_RDMs = False
+
+
+print(f"Now running RSA based on subj GLM {regression_version} for subj {subj_no}")
+
+
+for sub in subjects:
+    data_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}"
+    if os.path.isdir(data_dir):
+        print("Running on laptop.")
+    else:
+        data_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}"
+        print(f"Running on Cluster, setting {data_dir} as data directory")
+      
+    RDM_dir = f"{data_dir}/beh/modelled_EVs"
+    data_rdm_dir = f"{data_dir}/func/data_RDMs_glmbase_{regression_version}"
+
+    results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}" 
+    if smoothing == True:
+       results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}_smooth{fwhm}/results" 
+    os.makedirs(results_dir, exist_ok=True)
+
+
+    # get a reference image to later project the results onto. This is usually
+    # example_func from half 1, as this is where the data is corrected to.
+    ref_img = load_img(f"{data_dir}/func/preproc_clean_01.feat/example_func.nii.gz")
+    
+    
+    # Step 1: creating the searchlights
+    # mask will define the searchlight positions, in pt01 space because that is 
+    # where the functional files have been registered to.
+    mask_file = load_img(f"{data_dir}/anat/{sub}_T1w_noCSF_brain_mask_bin_func_01.nii.gz")
+    mask = mask_file.get_fdata()  
+    # save this file to save time
+    if load_searchlights:
+        with open(f"{data_dir}/func/searchlight_centers.pkl", 'rb') as file:
+            centers = pickle.load(file)
+        with open(f"{data_dir}/func/searchlight_neighbors.pkl", 'rb') as file:
+            neighbors = pickle.load(file)
+    else:
+        # creating the searchlights
+        centers, neighbors = get_volume_searchlight(mask, radius=3, threshold=0.5) # Found 175.483 searchlights
+        # if I use the grey matter mask, then I find 144.905 searchlights
+        # save this structure
+        with open(f"{data_dir}/func/searchlight_centers.pkl", 'wb') as file:
+            pickle.dump(centers, file)
+            print("stored searchlight centres")
+        with open(f"{data_dir}/func/searchlight_neighbors.pkl", 'wb') as file:
+            pickle.dump(neighbors, file)   
+            print("stored searchlight neighbors")
+
+    #
+    # Step 2: loading conditions for model and data RDMs
+    #
+    # loading the model EVs into dict
+    with open(f"{RDM_dir}/{sub}_modelled_EVs_{EV_string}_.pkl", 'rb') as file:
+        model_EVs = pickle.load(file)
+
+    # loading the data EVs into dict
+    data_EVs, all_EV_keys = mc.analyse.my_RSA.load_data_EVs(data_dir, regression_version=regression_version)
+
+    # if you don't want all, exclude some EVs here!
+    EV_keys = []
+    for ev in sorted(all_EV_keys):
+        if ev[0] in (['A', 'B', 'C', 'D', 'E']):
+            EV_keys.append(ev)
+            
+    data_th1, data_th2 = pair_correct_tasks(data_EVs, EV_keys)
+    data_concat = np.concatenate((data_th1, data_th2), axis = 0)
+    # 
+    # Step 3: compute the model and data RDMs.
+    models_concat = {}
+    model_RDM_dir = {}
+    #import pdb; pdb.set_trace() 
+    for model in model_EVs:
+        model_th1, model_th2 = pair_correct_tasks(model_EVs[model], EV_keys)
+        # finally, concatenate th1 and th2 to do the cross-correlation after
+        models_concat[model] = np.concatenate((model_th1, model_th2), axis = 0)
+        model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr(models_concat[model], plotting= False)
+   
+    if not os.path.exists(f"{data_rdm_dir}/data_RDM.npy"): 
+         # and searchlight-wise for data RDMs
+         data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr')
+         mc.analyse.handle_MRI_files.save_data_RDM_as_nifti(data_RDMs, data_rdm_dir, "data_RDM.nii.gz", ref_img, centers) 
+    else:
+         data_RDMs = np.load(f"{data_rdm_dir}/data_RDM.npy")
+
+    if smoothing == True:
+        if not os.path.exists(f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}-pkl"):
+            path_to_save_smooth = f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}.nii.gz"
+            print(f"now smoothing the RDM and saving it here: {path_to_save_smooth}")
+            data_RDMs = mc.analyse.handle_MRI_files.smooth_RDMs(data_RDMs, ref_img, fwhm,use_rsa_toolbox = False, path_to_save=path_to_save_smooth,centers=centers)
+        else:
+            data_RDMs = np.load(f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}.npy")
+           
+    if visualise_RDMs == True:
+        # note that data_RDM_file_2d this is now equivalent to half (first 40) of data_RDMs.
+        # adjust!
+        # ACC [54, 63, 41]
+        mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [54, 63, 41], ref_img, condition_names)
+        mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDMs, [54, 63, 41], ref_img, condition_names, centers = centers, no_rsa_toolbox=True)
+        
+        # visual cortex [72, 17, 9]
+        mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [72, 17, 9], ref_img, condition_names)
+        mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDMs, [72, 17, 9], ref_img, condition_names, centers = centers, no_rsa_toolbox=True)
+        
+        # hippocampus [43, 50, 17]
+        mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [43, 50, 17], ref_img, condition_names)
+        mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDMs, [43, 50, 17], ref_img, condition_names, centers = centers, no_rsa_toolbox=True)
+        
+        
+    #
+    # STEP 4: evaluate the model fit between model and data RDMs.
+    #
+    RSA_results = {}
+    for model in model_RDM_dir:
+        print(model)
+        # first, compute similarity esitmate for each model separately.
+        # ACTUAL RSA - single regressors
+        #
+        RSA_results[model] = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(model_RDM_dir[model], d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {model}"))
+        mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=RSA_results[model], centers=centers, file_path = results_dir, file_name= f"{model}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+
+    
+    # SECOND RSA: combo models (put several models in one regression to control for one another)
+    # is there a separate representation of current and future reward location representations in mPFC?
+    # combo clocks and controls
+    combo_model_name = 'split_clock'
+    models_to_combine = ['curr_rew', 'next_rew', 'two_next_rew', 'three_next_rew']
+    stacked_model_RDMs = np.stack([model_RDM_dir[m] for m in models_to_combine], axis=1)
+    estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs, d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name}"))
+    for i, model in enumerate(models_to_combine):
+        mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+    
+    # do SMBs predict mPFC beyond simple current location/state representations?
+    # -> ['curr_rew', 'next_rew', 'two_next_rew', 'three_next_rew', 'state']
+    combo_model_name = 'split-clock-state'
+    models_to_combine = ['curr_rew', 'next_rew', 'two_next_rew', 'three_next_rew', 'state']
+    stacked_model_RDMs = np.stack([model_RDM_dir[m][0] for m in models_to_combine], axis=1)
+    estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs, d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name}"))
+    for i, model in enumerate(models_to_combine):
+        mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+    
+
+

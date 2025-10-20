@@ -15,13 +15,39 @@ import numpy as np
 from tqdm import tqdm
 from matplotlib import pyplot as plt
 import statsmodels.api as sm
+import os
+import nibabel as nib
+
+
+def load_data_EVs(data_dir, regression_version):
+    EV_dict = {}
+    # names need to be 'A1_backw_A_path' etc.
+    list_loaded = []
+    for th in [1,2]:
+        pe_path = f"{data_dir}/func/glm_{regression_version[0:2]}_pt0{th}.feat/stats"
+        # order from FSL processed EVs to names is stored here:
+        with open(f"{data_dir}/func/EVs_{regression_version[0:2]}_pt0{th}/task-to-EV.txt", 'r') as file:
+            for line in file:
+                index, name_ev = line.strip().split(' ', 1)
+                name = name_ev.replace('ev_', '')
+                EV_path = os.path.join(pe_path, f"pe{int(index)+1}.nii.gz")
+                EV_dict[name] = np.array(nib.load(EV_path).get_fdata()).flatten()
+                # reshape data so we have 1 x n_voxels
+                # import pdb; pdb.set_trace()
+                list_loaded.append(name)
+    print(f"loaded the following data EVs in dict: {list_loaded}")
+    return EV_dict, list_loaded
+    
+
 
 def get_RDM_per_searchlight(fmri_data, centers, neighbors, method = 'crosscorr'):
     # import pdb; pdb.set_trace()
+    data_2d = fmri_data
     if method == 'crosscorr':
-        data_2d = np.concatenate((fmri_data['1'], fmri_data['2']),0)
+        #data_2d = np.concatenate((fmri_data['1'], fmri_data['2']),0)
         centers = np.array(centers)
-        n_conds = fmri_data['1'].shape[0]
+        #n_conds = fmri_data['1'].shape[0]
+        n_conds = int(data_2d.shape[0]/2)
     
     # first step: parallelise centers/neighbors.
     n_centers = centers.shape[0]
@@ -55,9 +81,9 @@ def get_RDM_per_searchlight(fmri_data, centers, neighbors, method = 'crosscorr')
     return sl_rdms
         
         
-def compute_crosscorr(data_chunk):  
+def compute_crosscorr(data_chunk, plotting = False):  
     RDM = []
-    # import pdb; pdb.set_trace()
+    #import pdb; pdb.set_trace()
     if not isinstance(data_chunk, (list, tuple)):
         data_chunk = [data_chunk]
     
@@ -77,9 +103,15 @@ def compute_crosscorr(data_chunk):
         
         # lastly, only store the part of the RDM I am actually interested in 
         # i.e. the lower triangle, including the diagonal.
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         n = rdm.shape[1]
         RDM.append(rdm[np.triu_indices(n, k=0)]) 
+        if plotting == True:
+            plt.figure()
+            plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm')
+            plt.figure()
+            plt.imshow(rdm_both_halves, aspect = 'auto', cmap = 'coolwarm')
+            
     return RDM
 
 

@@ -31,8 +31,8 @@ n_bins_total = bins_per_state * n_states;
 
 
 % LOOP THROUGH SUBJECTS
-for sub = 1:length(subject_list)
- %for sub = 59
+%for sub = 1:length(subject_list)
+for sub = 59
     subj = abcd_data.abcd_passed.abcd_data(sub);
     %subj = abcd_data.abcd_data(sub);
     subject_folder = sprintf("%ss%02d/cells_and_beh", deriv_dir, sub);
