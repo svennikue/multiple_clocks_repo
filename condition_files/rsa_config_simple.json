@@ -1,5 +1,6 @@
 {
   "name_of_RSA": "simple-clean_loc-fut-rews-state",
+  "load_EVs_from": "simple-clean_loc-fut-rews-state",
   "regression_version": "03-4",
   "EV_condition_selection": { "parts": { "task": {}, "direction": {}, "state": {}, "phase": {} } },
   "smoothing": true,

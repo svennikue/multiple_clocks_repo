@@ -1,5 +1,6 @@
 {
   "name_of_RSA": "state-only_excluding_rewA",
+  "load_EVs_from": "simple-clean_loc-fut-rews-state",
   "regression_version": "03-4",
   "EV_condition_selection": {
     "parts": {
@@ -7,14 +8,14 @@
       "direction": { "include": [],          "exclude": [] },
       "state":     { "include": [], "exclude": ["A"] },
       "phase":     { "include": [],   "exclude": [] }
-    },
+    }
   },
   "models": ["state"],
   "smoothing": true,
   "fwhm": 5,
   "load_searchlights": true,
   "visualise_RDMs": false,
-  "run_combo_models": false,
+  "run_combo_models": false
 }
 
 

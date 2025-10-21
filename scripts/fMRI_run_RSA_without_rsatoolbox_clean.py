@@ -87,9 +87,10 @@ with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
 # SETTINGS
-EV_string = config.get("name_of_RSA")
+EV_string = config.get("load_EVs_from")
 regression_version = config.get("regression_version")
 today_str = date.today().strftime("%d-%m-%Y")
+name_RSA = config.get("name_of_RSA")
 RDM_version = f"{EV_string}_{today_str}"
 
 
@@ -231,20 +232,20 @@ for sub in subjects:
         else:
             data_RDMs = np.load(f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}.npy")
            
-    if visualise_RDMs == True:
-        # note that data_RDM_file_2d this is now equivalent to half (first 40) of data_RDMs.
-        # adjust!
-        # ACC [54, 63, 41]
-        mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [54, 63, 41], ref_img, condition_names)
-        mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDMs, [54, 63, 41], ref_img, condition_names, centers = centers, no_rsa_toolbox=True)
+    # if visualise_RDMs == True:
+    #     # note that data_RDM_file_2d this is now equivalent to half (first 40) of data_RDMs.
+    #     # adjust!
+    #     # ACC [54, 63, 41]
+    #     mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [54, 63, 41], ref_img, condition_names)
+    #     mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDMs, [54, 63, 41], ref_img, condition_names, centers = centers, no_rsa_toolbox=True)
         
-        # visual cortex [72, 17, 9]
-        mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [72, 17, 9], ref_img, condition_names)
-        mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDMs, [72, 17, 9], ref_img, condition_names, centers = centers, no_rsa_toolbox=True)
+    #     # visual cortex [72, 17, 9]
+    #     mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [72, 17, 9], ref_img, condition_names)
+    #     mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDMs, [72, 17, 9], ref_img, condition_names, centers = centers, no_rsa_toolbox=True)
         
-        # hippocampus [43, 50, 17]
-        mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [43, 50, 17], ref_img, condition_names)
-        mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDMs, [43, 50, 17], ref_img, condition_names, centers = centers, no_rsa_toolbox=True)
+    #     # hippocampus [43, 50, 17]
+    #     mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [43, 50, 17], ref_img, condition_names)
+    #     mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDMs, [43, 50, 17], ref_img, condition_names, centers = centers, no_rsa_toolbox=True)
         
         
     #
@@ -265,6 +266,7 @@ for sub in subjects:
         combo_list = config["combo_models"]
         for combo in combo_list:
             combo_model_name = combo["name"]
+            print(f"running combo model {name}")
             models_to_combine = combo["regressors"]
             # check if these models have been computed in model_EVs
             missing = [m for m in models_to_combine if m not in model_EVs]
@@ -275,6 +277,32 @@ for sub in subjects:
             for i, model in enumerate(models_to_combine):
                 mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
             
+    # --- SETTINGS SUMMARY (per subject) ---
+    summary = {
+        "subject": sub,
+        "EV_string": EV_string,
+        "regression_version": regression_version,
+        "RDM_version": RDM_version,
+        "smoothing": smoothing,
+        "fwhm": fwhm,
+        "load_searchlights": load_searchlights,
+        "n_all_EVs": len(all_EV_keys),
+        "n_selected_EVs": len(EV_keys),
+        "models_evaluated": selected_models,
+        "run_combo_models": run_combo_models,
+        "combo_model_names": [c["name"] for c in config.get("combo_models", [])] if run_combo_models else [],
+        "data_dir": data_dir,
+        "results_dir": results_dir,
+    }
+    
+    print("\n=== SETTINGS SUMMARY ===")
+    for k, v in summary.items():
+        print(f"{k:>20}: {v}")
+    
+    # Save a copy alongside results for provenance
+    with open(os.path.join(results_dir, f"{sub}_settings_summary.json"), "w") as f:
+        json.dump(summary, f, indent=2)
+    print(f"(Saved summary → {os.path.join(results_dir, f'{sub}_settings_summary.json')})\n")
             
     # # SECOND RSA: combo models (put several models in one regression to control for one another)
     # # is there a separate representation of current and future reward location representations in mPFC?
