@@ -34,7 +34,8 @@ def load_data_EVs(data_dir, regression_version):
                 EV_dict[name] = np.array(nib.load(EV_path).get_fdata()).flatten()
                 # reshape data so we have 1 x n_voxels
                 # import pdb; pdb.set_trace()
-                list_loaded.append(name)
+                if name not in ['press_EV']:
+                    list_loaded.append(name)
     print(f"loaded the following data EVs in dict: {list_loaded}")
     return EV_dict, list_loaded
     

@@ -3,7 +3,7 @@
 """
 Created on 17th of October 2025.
 
-Running the RSA [mainly] wihtout RSA toolbox,
+Running the RSA [mainly] without RSA toolbox,
 based on 
 1. clean_fmri_behaviour
 2. create_fMRI_model_RDMs_on_clean_beh
@@ -29,6 +29,8 @@ import mc
 import pickle
 import sys
 from datetime import date
+import json
+from fnmatch import fnmatch
 
 def pair_correct_tasks(data_dict, keys_list):
     """
@@ -65,33 +67,49 @@ def pair_correct_tasks(data_dict, keys_list):
     # print(paired_list_control)
     return th_1, th_2
 
-
-#
-#
-# SETTINGS
 #
 #
 # import pdb; pdb.set_trace() 
+source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks"
+if os.path.isdir(source_dir):
+    config_path = f"{source_dir}/multiple_clocks_repo/condition_files"
+    print("Running on laptop.")
+    
+else:
+    source_dir = "/home/fs0/xpsy1114/scratch"
+    config_path = f"{source_dir}/analysis/multiple_clocks_repo/condition_files"
+    print(f"Running on Cluster, setting {source_dir} as data directory")
+       
+      
+# --- Load configuration ---
+config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
+with open(f"{config_path}/{config_file}", "r") as f:
+    config = json.load(f)
+
+# SETTINGS
+EV_string = config.get("name_of_RSA")
+regression_version = config.get("regression_version")
+today_str = date.today().strftime("%d-%m-%Y")
+RDM_version = f"{EV_string}_{today_str}"
+
+
+# Subjects
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '02'
-
+    subj_no = '02'  
 subjects = [f"sub-{subj_no}"]
-EV_string = 'simple-clean_loc-fut-rews-state'
-regression_version = '03-4' 
 
-# add some condition strings.
-# e.g. don't include A's, don't include tasks with double-locations, ...
-# could also add the combo-model definitions here
+# Flags
+smoothing = config.get("smoothing", True)
+fwhm = config.get("fwhm", 5)
+load_searchlights = config.get("load_searchlights", False)
 
-today_str = date.today().strftime("%d-%m-%Y")
-RDM_version = f'{EV_string}_{today_str}'
+# conditions selection
+conditions = config.get("EV_condition_selection")
+parts_to_use = conditions["parts"]
 
-smoothing = True
-fwhm = 5
-load_searchlights = True # this refers to the searchlight coordinates
-visualise_RDMs = False
+# model selection happens later in script
 
 
 print(f"Now running RSA based on subj GLM {regression_version} for subj {subj_no}")
@@ -148,15 +166,42 @@ for sub in subjects:
     # loading the model EVs into dict
     with open(f"{RDM_dir}/{sub}_modelled_EVs_{EV_string}_.pkl", 'rb') as file:
         model_EVs = pickle.load(file)
-
+    selected_models = config.get("models", list(model_EVs.keys()))
     # loading the data EVs into dict
     data_EVs, all_EV_keys = mc.analyse.my_RSA.load_data_EVs(data_dir, regression_version=regression_version)
+    
+    # # if you don't want all, exclude some EVs here!
 
-    # if you don't want all, exclude some EVs here!
-    EV_keys = []
+
+    # for ev in sorted(all_EV_keys):
+    #     if ev[0] in (['A', 'B', 'C', 'D', 'E']):
+    #         EV_keys.append(ev)
+    # instead, based on config file:
+    # Ensure all four parts exist in config
+    for _p in ("task", "direction", "state", "phase"):
+        if _p not in parts_to_use:
+            raise ValueError(f"Missing selection.parts['{_p}'] in config.")
+            
+    EV_keys = []        
     for ev in sorted(all_EV_keys):
-        if ev[0] in (['A', 'B', 'C', 'D', 'E']):
+        task, direction, state, phase = ev.split('_')
+        # simple include/exclude logic (no regex, no optional fallbacks)
+        for name, value in zip(["task", "direction", "state", "phase"], [task, direction, state, phase]):
+            part = parts_to_use[name]
+            includes = part.get("include", [])
+            excludes = part.get("exclude", [])
+            # Exclude first
+            if any(fnmatch(value, pat) for pat in excludes):
+                break  # skip this ev
+            # If include list non-empty → must match at least one
+            if includes and not any(fnmatch(value, pat) for pat in includes):
+                break
+        else:
+            # only append if none of the 4 parts triggered 'break'
             EV_keys.append(ev)
+        
+            
+            
             
     data_th1, data_th2 = pair_correct_tasks(data_EVs, EV_keys)
     data_concat = np.concatenate((data_th1, data_th2), axis = 0)
@@ -179,7 +224,7 @@ for sub in subjects:
          data_RDMs = np.load(f"{data_rdm_dir}/data_RDM.npy")
 
     if smoothing == True:
-        if not os.path.exists(f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}-pkl"):
+        if not os.path.exists(f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}.npy"):
             path_to_save_smooth = f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}.nii.gz"
             print(f"now smoothing the RDM and saving it here: {path_to_save_smooth}")
             data_RDMs = mc.analyse.handle_MRI_files.smooth_RDMs(data_RDMs, ref_img, fwhm,use_rsa_toolbox = False, path_to_save=path_to_save_smooth,centers=centers)
@@ -206,33 +251,49 @@ for sub in subjects:
     # STEP 4: evaluate the model fit between model and data RDMs.
     #
     RSA_results = {}
-    for model in model_RDM_dir:
+    for model in selected_models:
         print(model)
         # first, compute similarity esitmate for each model separately.
         # ACTUAL RSA - single regressors
         #
-        RSA_results[model] = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(model_RDM_dir[model], d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {model}"))
+        RSA_results[model] = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(model_RDM_dir[model][0], d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {model}"))
         mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=RSA_results[model], centers=centers, file_path = results_dir, file_name= f"{model}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
 
     
-    # SECOND RSA: combo models (put several models in one regression to control for one another)
-    # is there a separate representation of current and future reward location representations in mPFC?
-    # combo clocks and controls
-    combo_model_name = 'split_clock'
-    models_to_combine = ['curr_rew', 'next_rew', 'two_next_rew', 'three_next_rew']
-    stacked_model_RDMs = np.stack([model_RDM_dir[m] for m in models_to_combine], axis=1)
-    estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs, d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name}"))
-    for i, model in enumerate(models_to_combine):
-        mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+    run_combo_models = config.get("run_combo_models", bool(config.get("combo_models")))
+    if run_combo_models:
+        combo_list = config["combo_models"]
+        for combo in combo_list:
+            combo_model_name = combo["name"]
+            models_to_combine = combo["regressors"]
+            # check if these models have been computed in model_EVs
+            missing = [m for m in models_to_combine if m not in model_EVs]
+            if missing:
+                raise ValueError(f"Combo model {combo_model_name} not possible, as {missing} not computed")
+            stacked_model_RDMs = np.stack([model_RDM_dir[m][0] for m in models_to_combine], axis=1)
+            estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs, d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name}"))
+            for i, model in enumerate(models_to_combine):
+                mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+            
+            
+    # # SECOND RSA: combo models (put several models in one regression to control for one another)
+    # # is there a separate representation of current and future reward location representations in mPFC?
+    # # combo clocks and controls
+    # combo_model_name = 'split_clock'
+    # models_to_combine = ['curr_rew', 'next_rew', 'two_next_rew', 'three_next_rew']
+    # stacked_model_RDMs = np.stack([model_RDM_dir[m] for m in models_to_combine], axis=1)
+    # estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs, d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name}"))
+    # for i, model in enumerate(models_to_combine):
+    #     mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
     
-    # do SMBs predict mPFC beyond simple current location/state representations?
-    # -> ['curr_rew', 'next_rew', 'two_next_rew', 'three_next_rew', 'state']
-    combo_model_name = 'split-clock-state'
-    models_to_combine = ['curr_rew', 'next_rew', 'two_next_rew', 'three_next_rew', 'state']
-    stacked_model_RDMs = np.stack([model_RDM_dir[m][0] for m in models_to_combine], axis=1)
-    estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs, d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name}"))
-    for i, model in enumerate(models_to_combine):
-        mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+    # # do SMBs predict mPFC beyond simple current location/state representations?
+    # # -> ['curr_rew', 'next_rew', 'two_next_rew', 'three_next_rew', 'state']
+    # combo_model_name = 'split-clock-state'
+    # models_to_combine = ['curr_rew', 'next_rew', 'two_next_rew', 'three_next_rew', 'state']
+    # stacked_model_RDMs = np.stack([model_RDM_dir[m][0] for m in models_to_combine], axis=1)
+    # estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs, d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name}"))
+    # for i, model in enumerate(models_to_combine):
+    #     mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
     
 
 

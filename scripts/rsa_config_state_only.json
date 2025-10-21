@@ -1,0 +1,22 @@
+{
+  "subjects": ["sub-02"],
+  "EV_string": "simple-clean_loc-fut-rews-state",
+  "regression_version": "03-4",
+  "selection": {
+    "ev_prefixes": ["A", "B", "C", "D", "E"],
+    "include_regex": "state$",
+    "exclude_regex": "",
+    "exclude_evs": []
+  },
+  "models": ["state"],
+  "smoothing": true,
+  "fwhm": 5,
+  "load_searchlights": true,
+  "visualise_RDMs": false,
+  "combo_models": [],
+  "rdm_version_suffix": "state-only_noA",
+  "paths": {
+    "laptop_root": "",
+    "cluster_root": ""
+  }
+}
