@@ -82,7 +82,8 @@ else:
        
       
 # --- Load configuration ---
-config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
+# config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_state_only.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
@@ -203,7 +204,7 @@ for sub in subjects:
         
             
             
-            
+    # import pdb; pdb.set_trace()         
     data_th1, data_th2 = pair_correct_tasks(data_EVs, EV_keys)
     data_concat = np.concatenate((data_th1, data_th2), axis = 0)
     # 
