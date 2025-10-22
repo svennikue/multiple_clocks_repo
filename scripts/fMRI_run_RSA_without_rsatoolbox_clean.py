@@ -8,9 +8,6 @@ based on
 1. clean_fmri_behaviour
 2. create_fMRI_model_RDMs_on_clean_beh
 
-RDM settings (creating the representations):
-    03-1 -> modelling only reward rings + split ‘clocks model’ = just rotating the reward location around. 
-
 GLM ('regression') settings (creating the 'bins'):
     03-4 - 24 regressors; for the tasks where every reward is at a different location (A,C,E), only the rewards are modelled (stick function)
     
@@ -172,13 +169,8 @@ for sub in subjects:
     # loading the data EVs into dict
     data_EVs, all_EV_keys = mc.analyse.my_RSA.load_data_EVs(data_dir, regression_version=regression_version)
     
-    # # if you don't want all, exclude some EVs here!
-
-
-    # for ev in sorted(all_EV_keys):
-    #     if ev[0] in (['A', 'B', 'C', 'D', 'E']):
-    #         EV_keys.append(ev)
-    # instead, based on config file:
+    # if you don't want all conditions created through FSL, exclude some here!
+    # based on config file:
     # Ensure all four parts exist in config
     for _p in ("task", "direction", "state", "phase"):
         if _p not in parts_to_use:
@@ -187,24 +179,21 @@ for sub in subjects:
     EV_keys = []        
     for ev in sorted(all_EV_keys):
         task, direction, state, phase = ev.split('_')
-        # simple include/exclude logic (no regex, no optional fallbacks)
+        # simple include/exclude logic
         for name, value in zip(["task", "direction", "state", "phase"], [task, direction, state, phase]):
             part = parts_to_use[name]
             includes = part.get("include", [])
             excludes = part.get("exclude", [])
             # Exclude first
             if any(fnmatch(value, pat) for pat in excludes):
-                break  # skip this ev
+                break  
             # If include list non-empty → must match at least one
             if includes and not any(fnmatch(value, pat) for pat in includes):
                 break
         else:
             # only append if none of the 4 parts triggered 'break'
             EV_keys.append(ev)
-        
-            
-            
-    # import pdb; pdb.set_trace()         
+       
     data_th1, data_th2 = pair_correct_tasks(data_EVs, EV_keys)
     data_concat = np.concatenate((data_th1, data_th2), axis = 0)
     # 
@@ -257,7 +246,6 @@ for sub in subjects:
         print(model)
         # first, compute similarity esitmate for each model separately.
         # ACTUAL RSA - single regressors
-        #
         RSA_results[model] = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(model_RDM_dir[model][0], d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {model}"))
         mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=RSA_results[model], centers=centers, file_path = results_dir, file_name= f"{model}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
 
@@ -305,24 +293,4 @@ for sub in subjects:
         json.dump(summary, f, indent=2)
     print(f"(Saved summary → {os.path.join(results_dir, f'{sub}_settings_summary.json')})\n")
             
-    # # SECOND RSA: combo models (put several models in one regression to control for one another)
-    # # is there a separate representation of current and future reward location representations in mPFC?
-    # # combo clocks and controls
-    # combo_model_name = 'split_clock'
-    # models_to_combine = ['curr_rew', 'next_rew', 'two_next_rew', 'three_next_rew']
-    # stacked_model_RDMs = np.stack([model_RDM_dir[m] for m in models_to_combine], axis=1)
-    # estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs, d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name}"))
-    # for i, model in enumerate(models_to_combine):
-    #     mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
-    
-    # # do SMBs predict mPFC beyond simple current location/state representations?
-    # # -> ['curr_rew', 'next_rew', 'two_next_rew', 'three_next_rew', 'state']
-    # combo_model_name = 'split-clock-state'
-    # models_to_combine = ['curr_rew', 'next_rew', 'two_next_rew', 'three_next_rew', 'state']
-    # stacked_model_RDMs = np.stack([model_RDM_dir[m][0] for m in models_to_combine], axis=1)
-    # estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs, d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name}"))
-    # for i, model in enumerate(models_to_combine):
-    #     mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
-    
-
 

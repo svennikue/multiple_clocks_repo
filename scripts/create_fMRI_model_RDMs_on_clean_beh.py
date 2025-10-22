@@ -17,6 +17,8 @@ create regressors based on 'path' or 'reward' also in time = 'steps'
 regress each model into the same binned dimension the fMRI is in.
 I want to end with regressors that go like: '{model}_A1_backw_A_reward.txt'
 
+note: needs clean_fmri_behaviour.py to have run first.
+
 @author: Svenja Küchenhoff
 """
 
@@ -162,9 +164,7 @@ for sub in subjects:
             
     
         
-    import pdb; pdb.set_trace()        
-    # next, only figure out how to store everything.
-    
+    # import pdb; pdb.set_trace()          
     if save_RDMs: 
         # then save these matrices.
         if not os.path.exists(RDM_dir):
