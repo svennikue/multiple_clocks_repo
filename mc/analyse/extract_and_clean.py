@@ -15,6 +15,35 @@ import matplotlib.pyplot as plt
 import scipy.special as sps  
 
 
+
+
+
+def define_futsteps_x_locs_regressors(beh_df):
+    # import pdb; pdb.set_trace()
+    unique_tasks = beh_df['task_config_ex'].unique()
+    beh = beh_df.copy()
+    
+    # defining whenever a new reward is found within a task.
+    beh['rew_no'] = beh_df.groupby('task_config_ex')['curr_rew'].apply(lambda s: s.ne(s.shift()).cumsum())
+    
+    # 2) One row per run + future runs (curr, +1, +2, +3)
+    r = (beh.drop_duplicates(['task_config_ex','rew_no'])[['task_config_ex','rew_no','curr_rew']].rename(columns={'curr_rew':'curr'}))
+    r['one_fut']   = r.groupby('task_config_ex')['curr'].shift(-1)
+    r['two_fut']   = r.groupby('task_config_ex')['curr'].shift(-2)
+    r['three_fut'] = r.groupby('task_config_ex')['curr'].shift(-3)
+
+    
+    # 3) Broadcast back to all rows in that run
+    beh = beh.merge(r, on=['task_config_ex','rew_no'], how='left')
+    
+    # 4) Make the 36 one-hot columns (locations 1..9 × {curr, +1, +2, +3})
+    for step in ['curr','one_fut','two_fut','three_fut']:
+        for loc in range(1, 10):
+            beh[f'loc_{loc}_{step}'] = (beh[step] == loc).astype('int8')
+
+    return beh
+
+
 def print_stuff(string_input):
     print(string_input)
    

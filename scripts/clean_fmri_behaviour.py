@@ -27,6 +27,8 @@ easily read out the relevant behavioural details (combine pt 1 and 2!):
 import pandas as pd
 import os
 import sys
+import mc
+import numpy as np
 
 
 if len (sys.argv) > 1:
@@ -34,7 +36,7 @@ if len (sys.argv) > 1:
 else:
     subj_no = '02'
 
-
+alternative_regs = False
 #subjects = [f"sub-{subj_no}"]
 subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36)]
 # import pdb; pdb.set_trace()
@@ -89,8 +91,9 @@ for sub in subjects:
         )
         
         
-        # 6) time start reward
+        # 6) time start reward and length
         beh_clean['t_curr_rew'] = beh_raw['t_reward_start']
+        beh_clean['reward_delay'] = beh_raw['reward_delay']
         
         # 7) curr_loc [location 1-9]
         beh_clean['curr_loc'] = beh_raw.apply(
@@ -108,7 +111,11 @@ for sub in subjects:
         #timings = beh_clean[beh_clean['repeat'] == 1][beh_clean['task_config_ex']=='B1_backw']['t_curr_loc'].to_numpy()
         #import ast; press_timings_local = ast.literal_eval(x['nav_key_task.rt'][x['nav_key_task.rt'].notna()].iloc[0])
         
+        # for now just keep the relevant rows.
+        beh_clean['button_rts'] = beh_raw['nav_key_task.rt']
+        beh_clean['button_keys'] = beh_raw['nav_key_task.keys']
         
+
         # 10) state
         beh_clean['state'] = beh_raw['state'].fillna('A')
         
@@ -126,7 +133,15 @@ for sub in subjects:
         # 13) session [1/2]
         beh_clean['task_half'] = task_half
         
-    
+        # if wanted, you can analyse Brooke's alternative regressors here.
+        if alternative_regs == True:
+            # beh_clean['task_half'] = mc.analyse.extract_and_clean.define_futsteps_x_locs_regressors(beh_clean)
+            df = mc.analyse.extract_and_clean.define_futsteps_x_locs_regressors(beh_clean)
+            for step in ['curr','one_fut','two_fut','three_fut']:
+                for loc in range(1, 10):
+                    row_name = f'loc_{loc}_{step}'
+                    print(f"{step} {loc} has {np.sum(df[row_name])} occurances")
+
         both_halves.append(beh_clean)
     
     # concatenate both halves and save

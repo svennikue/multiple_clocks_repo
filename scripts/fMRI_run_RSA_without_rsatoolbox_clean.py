@@ -89,7 +89,7 @@ EV_string = config.get("load_EVs_from")
 regression_version = config.get("regression_version")
 today_str = date.today().strftime("%d-%m-%Y")
 name_RSA = config.get("name_of_RSA")
-RDM_version = f"{EV_string}_{today_str}"
+RDM_version = f"{name_RSA}_{today_str}"
 
 
 # Subjects
@@ -122,8 +122,8 @@ for sub in subjects:
         data_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}"
         print(f"Running on Cluster, setting {data_dir} as data directory")
       
-    RDM_dir = f"{data_dir}/beh/modelled_EVs"
-    data_rdm_dir = f"{data_dir}/func/data_RDMs_glmbase_{regression_version}"
+    modelled_conditions_dir = f"{data_dir}/beh/modelled_EVs"
+    data_rdm_dir = f"{data_dir}/func/data_RDMs_{RDM_version}_glmbase_{regression_version}"
 
     results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}" 
     if smoothing == True:
@@ -163,7 +163,7 @@ for sub in subjects:
     # Step 2: loading conditions for model and data RDMs
     #
     # loading the model EVs into dict
-    with open(f"{RDM_dir}/{sub}_modelled_EVs_{EV_string}_.pkl", 'rb') as file:
+    with open(f"{modelled_conditions_dir}/{sub}_modelled_EVs_{EV_string}_.pkl", 'rb') as file:
         model_EVs = pickle.load(file)
     selected_models = config.get("models", list(model_EVs.keys()))
     # loading the data EVs into dict
@@ -207,6 +207,7 @@ for sub in subjects:
         models_concat[model] = np.concatenate((model_th1, model_th2), axis = 0)
         model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr(models_concat[model], plotting= False)
    
+    
     if not os.path.exists(f"{data_rdm_dir}/data_RDM.npy"): 
          # and searchlight-wise for data RDMs
          data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr')
