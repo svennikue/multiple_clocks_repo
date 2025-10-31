@@ -1,14 +1,14 @@
 {
-  "name": "all_paths-rews-split_buttons",
+  "name": "fut-steps_states_split-buttons",
   "split_buttons": true,
   "repeats_included": [0, 1, 2, 3, 4],
-  "regress_rewards": true,
+  "regress_rewards": false,
   "rewards_as_stick_function": false,
-  "regress_subpaths": true,
+  "regress_subpaths": false,
   "tasks_included": ["A", "B", "C", "D", "E"],
   "states_included": ["A", "B", "C", "D"],
-  "fut_step_x_loc_regs": false,
-  "state_regs": false,
+  "fut_step_x_loc_regs": true,
+  "state_regs": true,
   "duration_state": "full_path"
 }
 

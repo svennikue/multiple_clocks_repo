@@ -1,10 +1,10 @@
 {
-  "name": "all_paths-rews-split_buttons",
+  "name": "all-rews-split_buttons",
   "split_buttons": true,
   "repeats_included": [0, 1, 2, 3, 4],
   "regress_rewards": true,
   "rewards_as_stick_function": false,
-  "regress_subpaths": true,
+  "regress_subpaths": false,
   "tasks_included": ["A", "B", "C", "D", "E"],
   "states_included": ["A", "B", "C", "D"],
   "fut_step_x_loc_regs": false,
