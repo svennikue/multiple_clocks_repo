@@ -26,13 +26,15 @@ import shutil
 source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks"
 if os.path.isdir(source_dir):
     config_path = f"{source_dir}/multiple_clocks_repo/condition_files"
+    data_dir_deriv = f"{source_dir}/data/derivatives"
     data_dir = f"{source_dir}/data/pilot"
     analysis_dir = f"{source_dir}/multiple_clocks_repo/mc/fmri_analysis"  
     print("Running on laptop.")
     
 else:
     source_dir = "/home/fs0/xpsy1114/scratch"
-    data_dir = f"{source_dir}/data/derivatives"
+    data_dir_deriv = f"{source_dir}/data/derivatives"
+    data_dir = f"{source_dir}/data/pilot"
     config_path = f"{source_dir}/analysis/multiple_clocks_repo/condition_files"
     analysis_dir = f"{source_dir}/scratch/analysis"  
     print(f"Running on Cluster, setting {source_dir} as data directory")
@@ -59,6 +61,8 @@ states_included = config.get("states_included", ['A', 'B', 'C', 'D'])
 duration_state = config.get("duration_state", False)
 state_regs = config.get("state_regs", False)
 
+
+
 # Subjects
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
@@ -68,8 +72,7 @@ subjects = [f"sub-{subj_no}"]
 
 for sub in subjects:
     # load the cleaned behavioural table.
-    beh_dir = f"{data_dir}/{sub}/beh"
-    beh_df = pd.read_csv(f"{beh_dir}/{sub}_beh_fmri_clean.csv")
+    beh_df = pd.read_csv(f"{data_dir_deriv}/{sub}/beh/{sub}_beh_fmri_clean.csv")
     
     # define and make paths
     for th in [1,2]:
@@ -85,7 +88,7 @@ for sub in subjects:
         file_all = f"{sub}_fmri_pt{th}_all.csv"
         
         # load behavioural file
-        df_all = pd.read_csv(beh_dir+'/'+file_all)
+        df_all = pd.read_csv(f"{data_dir}/{sub}/beh/"+file_all)
         first_TR_at = df_all['TR_received_no0'].dropna().unique().tolist()[0]
         beh_th = beh_df[beh_df['task_half'] == th].copy()
 

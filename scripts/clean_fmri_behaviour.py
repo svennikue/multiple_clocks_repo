@@ -45,7 +45,7 @@ for sub in subjects:
     both_halves = []   # collect cleaned tables for both halves
     for task_half in [1,2]:
         data_dir_beh = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/pilot/{sub}/beh/"
-        out_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/pilot/{sub}/beh/"
+        out_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}/beh/"
         if os.path.isdir(data_dir_beh):
             print(f"Running on laptop, now subject {sub}")
         else:
