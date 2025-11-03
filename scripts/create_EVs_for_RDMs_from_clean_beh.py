@@ -77,7 +77,7 @@ for sub in subjects:
     # define and make paths
     for th in [1,2]:
         print(f"Now creating EVs for fmri file {th} and {sub}")
-        EV_folder = f'{data_dir}/{sub}/func/EVs_{version}_half0{th}/'
+        EV_folder = f'{data_dir_deriv}/{sub}/func/EVs_{version}_half0{th}/'
         if os.path.exists(EV_folder):
             print("careful, the EV folder does exist- there might be other EVs and thus not all files will be output correctly! Deleting dir.")
             shutil.rmtree(EV_folder)
@@ -257,11 +257,14 @@ for sub in subjects:
                 file.write(f'{i} {EV_file_name}\n')
                 
         if sub in ['sub-04', 'sub-06', 'sub-30', 'sub-31', 'sub-34']:
-            template_name = 'my_RDM_GLM_v2.fsf'
+            template_name = 'new_fsf_file.fsf'
+            #template_name = 'my_RDM_GLM_v2.fsf'
         elif sub in ['sub-35'] and th == '1':
-            template_name = 'my_RDM_GLM_v2.fsf'
+            #template_name = 'my_RDM_GLM_v2.fsf'
+            template_name = 'new_fsf_file.fsf'
         else:
-            template_name = 'my_RDM_GLM_pnm.fsf'
+            #template_name = 'my_RDM_GLM_pnm.fsf'
+            template_name = 'new_fsf_file_pnm.fsf'
             
         with open(f"{analysis_dir}/templates/{template_name}", "r") as fin:                    
             for line in fin:
@@ -313,7 +316,7 @@ for sub in subjects:
             else:
                 text_to_write_cleaned.append(line)
     
-        with open(f"{data_dir}/{sub}/func/{sub}_draft_GLM_0{th}_{version}.fsf", "w") as fout:
+        with open(f"{data_dir_deriv}/{sub}/func/{sub}_draft_GLM_0{th}_{version}.fsf", "w") as fout:
             for line in text_to_write_cleaned:
                 fout.write(line)
        
@@ -331,7 +334,7 @@ for sub in subjects:
             "fut_step_x_loc_regs": fut_step_x_loc_regs,
             "state_regs": state_regs,
             "OG_template_used": f"{analysis_dir}/templates/{template_name}",
-            "fsf_stored_as": f"{data_dir}/{sub}/func/{sub}_draft_GLM_0{th}_{version}.fsf",
+            "fsf_stored_as": f"{data_dir_deriv}/{sub}/func/{sub}_draft_GLM_0{th}_{version}.fsf",
             "EVs_stored_in": EV_folder,
         }
         
