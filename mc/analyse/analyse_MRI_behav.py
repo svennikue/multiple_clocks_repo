@@ -836,16 +836,20 @@ def transform_coord(coord, is_x = False, is_y = False):
 
 # use to check if the EV making went wrong
 def check_for_nan(array):
-    # import pdb; pdb.set_trace()
+    
     count = 0
     while np.isnan(array).any():
-        print(f"Careful! There are Nans in {array}. Pausing script")
+        print(f"Careful! There are Nans in {array}.")
         # import pdb; pdb.set_trace()
         # try if this is sensible: delete the rows with the nans.
         array = array[0: (len(array)-1)]
         count = count + 1
     if count > 0:   
         print(f"deteleted {count} rows to avoid nans.")
+    if array.shape[0] == 0:
+        print(f"Careful! Array {array} is empty. Pausing script")
+        count = -1
+        import pdb; pdb.set_trace()
     return count, array
 
 

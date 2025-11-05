@@ -141,19 +141,22 @@ for sub in subjects:
             # timings are in 't_curr_loc' column.
             fut_step_regs = mc.analyse.extract_and_clean.define_futsteps_x_locs_regressors(beh_th)
             future_step_EV_names = [c for c in fut_step_regs.columns if c.startswith('loc')]
-            for fut_step_EV in future_step_EV_names:
-                fut_step_regs_curr_EV = fut_step_regs[(fut_step_regs[fut_step_EV]==1) & (~fut_step_regs['t_curr_rew'].isna())].copy()
+            for fut_step_EV_name in future_step_EV_names:
+                fut_step_regs_curr_EV = fut_step_regs[(fut_step_regs[fut_step_EV_name]==1) & (~fut_step_regs['t_curr_rew'].isna())].copy()
                 on_fut_step_EV = fut_step_regs_curr_EV['t_curr_rew'].to_list()
+                if len(on_fut_step_EV) == 0:
+                    print(f"not creating {fut_step_EV_name} as there are no such steps.")
+                    continue
                 if rewards_as_stick_function == True:
                     dur_fut_step_EV = np.ones(len(on_fut_step_EV))
                 else:
                     dur_fut_step_EV = fut_step_regs_curr_EV['reward_delay'].to_list()
                 mag_fut_step_EV = np.ones(len(on_fut_step_EV))
-                fut_step_EV = mc.analyse.analyse_MRI_behav.create_EV(on_fut_step_EV, dur_fut_step_EV, mag_fut_step_EV, fut_step_EV, EV_folder, first_TR_at)
+                fut_step_EV = mc.analyse.analyse_MRI_behav.create_EV(on_fut_step_EV, dur_fut_step_EV, mag_fut_step_EV, fut_step_EV_name, EV_folder, first_TR_at)
                 deleted_x_rows, array = mc.analyse.analyse_MRI_behav.check_for_nan(fut_step_EV)
                 if deleted_x_rows > 0:
-                    print(f"careful! I am saving a cutted future step EV {fut_step_EV} file. Happened for subject {sub} in task half {th}")
-                    np.savetxt(str(EV_folder) + 'ev_' + f"{fut_step_EV}" + '.txt', array, delimiter="    ", fmt='%f')
+                    print(f"careful! I am saving a cutted future step EV {fut_step_EV_name} file. Happened for subject {sub} in task half {th}")
+                    np.savetxt(str(EV_folder) + 'ev_' + f"{fut_step_EV_name}" + '.txt', array, delimiter="    ", fmt='%f')
 
         if state_regs == True:
             states_included = ['A', 'B', 'C', 'D']
