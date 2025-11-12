@@ -91,10 +91,10 @@ def save_data_RDM_as_nifti(data_RDM_file, file_path, file_name, ref_image_for_af
         brain_4d[:,:,:,i] = curr_slice.reshape([x,y,z])
     
     brain_4d_nifti = nib.Nifti1Image(brain_4d, affine=affine_matrix)
-    brain_4d_file = f"{file_path}/{file_name}"
+    brain_4d_file = f"{file_path}/{file_name}.nii.gz"
     nib.save(brain_4d_nifti, brain_4d_file)
     
-    np.save(f"{file_path}/data_RDM", data_RDM_file)
+    np.save(f"{file_path}/{file_name}", data_RDM_file)
     
 
 

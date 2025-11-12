@@ -8,8 +8,13 @@ based on
 1. clean_fmri_behaviour
 2. create_fMRI_model_RDMs_on_clean_beh
 
+
+# this is the old GLM I used:
 GLM ('regression') settings (creating the 'bins'):
-    03-4 - 24 regressors; for the tasks where every reward is at a different location (A,C,E), only the rewards are modelled (stick function)
+    03-4 -24 regressors; for the tasks where every reward is at a different location (A,C,E), only the rewards are modelled (stick function)
+# this is the new GLM I want to use:
+    # glm_all-rews-split_buttons
+    
     
 @author: Svenja Küchenhoff, 2025
 """
@@ -80,7 +85,7 @@ else:
       
 # --- Load configuration ---
 # config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
-config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_state_only.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple_split_buttons_rews.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
@@ -167,6 +172,8 @@ for sub in subjects:
         model_EVs = pickle.load(file)
     selected_models = config.get("models", list(model_EVs.keys()))
     # loading the data EVs into dict
+    # DELETE THSI AGAIN
+    # regression_version = 'fut-steps_split-buttons'
     data_EVs, all_EV_keys = mc.analyse.my_RSA.load_data_EVs(data_dir, regression_version=regression_version)
     
     # if you don't want all conditions created through FSL, exclude some here!
@@ -178,21 +185,22 @@ for sub in subjects:
             
     EV_keys = []        
     for ev in sorted(all_EV_keys):
-        task, direction, state, phase = ev.split('_')
-        # simple include/exclude logic
-        for name, value in zip(["task", "direction", "state", "phase"], [task, direction, state, phase]):
-            part = parts_to_use[name]
-            includes = part.get("include", [])
-            excludes = part.get("exclude", [])
-            # Exclude first
-            if any(fnmatch(value, pat) for pat in excludes):
-                break  
-            # If include list non-empty → must match at least one
-            if includes and not any(fnmatch(value, pat) for pat in includes):
-                break
-        else:
-            # only append if none of the 4 parts triggered 'break'
-            EV_keys.append(ev)
+        if len(ev) > 10:
+            task, direction, state, phase = ev.split('_')
+            # simple include/exclude logic
+            for name, value in zip(["task", "direction", "state", "phase"], [task, direction, state, phase]):
+                part = parts_to_use[name]
+                includes = part.get("include", [])
+                excludes = part.get("exclude", [])
+                # Exclude first
+                if any(fnmatch(value, pat) for pat in excludes):
+                    break  
+                # If include list non-empty → must match at least one
+                if includes and not any(fnmatch(value, pat) for pat in includes):
+                    break
+            else:
+                # only append if none of the 4 parts triggered 'break'
+                EV_keys.append(ev)
        
     data_th1, data_th2 = pair_correct_tasks(data_EVs, EV_keys)
     data_concat = np.concatenate((data_th1, data_th2), axis = 0)
@@ -207,17 +215,24 @@ for sub in subjects:
         models_concat[model] = np.concatenate((model_th1, model_th2), axis = 0)
         model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr(models_concat[model], plotting= False)
    
+    # TEST:
+    # can I put the values from the model back into it's initial format
+    # and then create a 'mask' for the matrix, depending on what I want to exclude
+    # (e.g. all tasks for rewards that appear twice, and all As)
+    # and tehn
+        
+    
     
     if not os.path.exists(f"{data_rdm_dir}/data_RDM.npy"): 
          # and searchlight-wise for data RDMs
          data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr')
-         mc.analyse.handle_MRI_files.save_data_RDM_as_nifti(data_RDMs, data_rdm_dir, "data_RDM.nii.gz", ref_img, centers) 
+         mc.analyse.handle_MRI_files.save_data_RDM_as_nifti(data_RDMs, data_rdm_dir, "data_RDM", ref_img, centers) 
     else:
          data_RDMs = np.load(f"{data_rdm_dir}/data_RDM.npy")
 
     if smoothing == True:
         if not os.path.exists(f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}.npy"):
-            path_to_save_smooth = f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}.nii.gz"
+            path_to_save_smooth = f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}"
             print(f"now smoothing the RDM and saving it here: {path_to_save_smooth}")
             data_RDMs = mc.analyse.handle_MRI_files.smooth_RDMs(data_RDMs, ref_img, fwhm,use_rsa_toolbox = False, path_to_save=path_to_save_smooth,centers=centers)
         else:

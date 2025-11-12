@@ -19,14 +19,18 @@ import os
 import nibabel as nib
 
 
-def load_data_EVs(data_dir, regression_version):
+def load_data_EVs(data_dir, regression_version, old=False):
     EV_dict = {}
     # names need to be 'A1_backw_A_path' etc.
     list_loaded = []
     for th in [1,2]:
-        pe_path = f"{data_dir}/func/glm_{regression_version[0:2]}_pt0{th}.feat/stats"
+        # NOTE: if you still want to run the old ones, adjust which part of the regression version you take to load.
+        pe_path = f"{data_dir}/func/glm_{regression_version}_pt0{th}.feat/stats"
         # order from FSL processed EVs to names is stored here:
-        with open(f"{data_dir}/func/EVs_{regression_version[0:2]}_pt0{th}/task-to-EV.txt", 'r') as file:
+        with open(f"{data_dir}/func/EVs_{regression_version}_pt0{th}/task-to-EV.txt", 'r') as file:
+        # pe_path = f"{data_dir}/func/glm_{regression_version[0:2]}_pt0{th}.feat/stats"
+        # # order from FSL processed EVs to names is stored here:
+        # with open(f"{data_dir}/func/EVs_{regression_version[0:2]}_pt0{th}/task-to-EV.txt", 'r') as file:
             for line in file:
                 index, name_ev = line.strip().split(' ', 1)
                 name = name_ev.replace('ev_', '')
@@ -39,12 +43,36 @@ def load_data_EVs(data_dir, regression_version):
     print(f"loaded the following data EVs in dict: {list_loaded}")
     return EV_dict, list_loaded
     
+def load_data_EVs_th(data_dir, regression_version):
+    EV_dict = {}
+    # names need to be 'A1_backw_A_path' etc.
+    list_loaded = []
+    for th in [1,2]:
+        # NOTE: if you still want to run the old ones, adjust which part of the regression version you take to load.
+        pe_path = f"{data_dir}/func/glm_{regression_version}_pt0{th}.feat/stats"
+        # order from FSL processed EVs to names is stored here:
+        with open(f"{data_dir}/func/EVs_{regression_version}_pt0{th}/task-to-EV.txt", 'r') as file:
+        # pe_path = f"{data_dir}/func/glm_{regression_version[0:2]}_pt0{th}.feat/stats"
+        # # order from FSL processed EVs to names is stored here:
+        # with open(f"{data_dir}/func/EVs_{regression_version[0:2]}_pt0{th}/task-to-EV.txt", 'r') as file:
+            for line in file:
+                index, name_ev = line.strip().split(' ', 1)
+                name = name_ev.replace('ev_', '')
+                # reshape data so we have 1 x n_voxels
+                # import pdb; pdb.set_trace()
+                if name not in ['press_EV', 'up', 'down', 'left', 'right']:
+                    list_loaded.append(f"th_{th}_{name}")
+                    EV_path = os.path.join(pe_path, f"pe{int(index)+1}.nii.gz")
+                    EV_dict[f"th_{th}_{name}"] = np.array(nib.load(EV_path).get_fdata()).flatten()
+
+    print(f"loaded the following data EVs in dict: {list_loaded}")
+    return EV_dict, list_loaded
 
 
-def get_RDM_per_searchlight(fmri_data, centers, neighbors, method = 'crosscorr'):
+def get_RDM_per_searchlight(fmri_data, centers, neighbors, method = 'crosscorr', labels = None, mask = None):
     # import pdb; pdb.set_trace()
     data_2d = fmri_data
-    if method == 'crosscorr':
+    if method == 'crosscorr' or method == 'crosscorr_and_filter':
         #data_2d = np.concatenate((fmri_data['1'], fmri_data['2']),0)
         centers = np.array(centers)
         #n_conds = fmri_data['1'].shape[0]
@@ -75,13 +103,67 @@ def get_RDM_per_searchlight(fmri_data, centers, neighbors, method = 'crosscorr')
             # then compute the RDM per searchlight
             if method == 'crosscorr':
                 RDM_corr = mc.analyse.my_RSA.compute_crosscorr(center_data)
+            elif method == 'crosscorr_and_filter':
+                RDM_corr = mc.analyse.my_RSA.compute_crosscorr_and_filter(center_data, labels=labels, mask=mask)
             sl_rdms[chunks, :] = RDM_corr
             # then store per voxel and return.
             all_centers[chunks] = centers[chunks]
             # this is the same as centers. thus you can use centres as voxel indices          
     return sl_rdms
         
+     
         
+def compute_crosscorr_and_filter(data_chunk, labels = None, mask=None, plotting = False, binarise = False):  
+    RDM = []
+    # import pdb; pdb.set_trace()
+
+    if not isinstance(data_chunk, (list, tuple)):
+        data_chunk = [data_chunk]
+    
+    for data in data_chunk:
+        # centers the data around zero by subtracting the mean of each row
+        data_demeaned = data - data.mean(axis=1, keepdims=True)
+        # normalising data
+        data_demeaned /= np.sqrt(np.einsum('ij,ij->i', data_demeaned, data_demeaned))[:, None]    
+        # cosine dissimilarity
+        rdm_both_halves = 1 - np.einsum('ik,jk', data_demeaned, data_demeaned)  
+
+        # cutting the lower left square of the matrix
+        rdm_small = rdm_both_halves[int(len(rdm_both_halves)/2):,0:int(len(rdm_both_halves)/2)]
+    
+        # making the matrix symmetric
+        rdm = (rdm_small + np.transpose(rdm_small))/2
+    
+        # if you want to mask/filter, do that first
+        if mask:
+            # collect the indices I want to mask
+            idx_to_mask = []
+            for i, label in enumerate(labels):
+                for m in mask:
+                    if m in label:
+                        idx_to_mask.append(i)
+            
+            rdm[:, idx_to_mask] = np.nan
+            rdm[idx_to_mask] = np.nan
+            
+            if binarise == True:
+                # THIS IS ONLY FOR MODEL RDMS!!
+                rdm = np.where(np.isnan(rdm), np.nan, (rdm > 0.5).astype(float))
+        
+        # lastly, only store the part of the RDM I am actually interested in 
+        # i.e. the upper triangle, including the diagonal.
+        n = rdm.shape[1]    
+        RDM.append(rdm[np.triu_indices(n, k=0)]) 
+        if plotting == True:
+            plt.figure()
+            plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm')
+            plt.figure()
+            plt.imshow(rdm_both_halves, aspect = 'auto', cmap = 'coolwarm')
+
+    return RDM
+
+
+
 def compute_crosscorr(data_chunk, plotting = False):  
     RDM = []
     #import pdb; pdb.set_trace()
@@ -103,8 +185,7 @@ def compute_crosscorr(data_chunk, plotting = False):
         rdm = (rdm_small + np.transpose(rdm_small))/2
         
         # lastly, only store the part of the RDM I am actually interested in 
-        # i.e. the lower triangle, including the diagonal.
-        # import pdb; pdb.set_trace()
+        # i.e. the upper triangle, including the diagonal.
         n = rdm.shape[1]
         RDM.append(rdm[np.triu_indices(n, k=0)]) 
         if plotting == True:
@@ -114,6 +195,35 @@ def compute_crosscorr(data_chunk, plotting = False):
             plt.imshow(rdm_both_halves, aspect = 'auto', cmap = 'coolwarm')
             
     return RDM
+
+
+
+def mask_RDM(lower_tri, n, labels, mask=None, binarise = False, plotting = False):
+    # import pdb; pdb.set_trace()
+    # this puts it to the upper triangle 
+    masked_RDM = np.full((n, n), np.nan, dtype = float) 
+    iu = np.triu_indices(n, 0) 
+    masked_RDM[iu] = lower_tri 
+
+    # collect the indicesI want to mask
+    idx_to_mask = []
+    for i, label in enumerate(labels):
+        for m in mask:
+            if m in label:
+                idx_to_mask.append(i)
+    
+    masked_RDM[:, idx_to_mask] = np.nan
+    masked_RDM[idx_to_mask] = np.nan
+    masked_vector = masked_RDM[np.triu_indices(n, 0)]
+    
+    if binarise == True:
+        # THIS IS ONLY FOR MODEL RDMS!!
+        masked_vector = np.where(np.isnan(masked_vector), np.nan, (masked_vector > 0.5).astype(float))
+    if plotting == True:
+        plt.figure()
+        plt.imshow(masked_RDM, aspect = 'auto', cmap = 'coolwarm')
+
+    return masked_vector
 
 
 def evaluate_model(model_rdm, data_rdm):

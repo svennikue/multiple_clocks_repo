@@ -170,7 +170,7 @@ for sub in subjects:
         if not os.path.exists(RDM_dir):
             os.makedirs(RDM_dir)
         
-        with open(f"{RDM_dir}/{sub}_modelled_EVs_{EV_string}_.pkl", 'wb') as file:
+        with open(f"{RDM_dir}/{sub}_modelled_EVs_{EV_string}.pkl", 'wb') as file:
             pickle.dump(EVs, file)
             
         print(f"saved EV dictionary as {RDM_dir}/{sub}_modelled_EVs_{EV_string}.pkl")

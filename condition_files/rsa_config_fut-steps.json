@@ -1,0 +1,26 @@
+{
+  "name_of_RSA": "fut-steps",
+  "load_EVs_from": "fut-steps_split-buttons",
+  "regression_version": "fut-steps_split-buttons",
+  "EV_condition_selection": { "parts": { "task": {}, "direction": {}, "state": {}, "phase": {} } },
+  "smoothing": true,
+  "fwhm": 5,
+  "load_searchlights": true,
+  "visualise_RDMs": false,
+  "rdms_to_run_masking": {
+    "full": ["none"],
+    "curr": ["one", "two", "three"],
+    "one":  ["curr", "two", "three"],
+    "two":  ["curr", "one", "three"],
+    "three":["curr", "one", "two"],
+    "loc_9": ["loc_1", "loc_2", "loc_3", "loc_4", "loc_5", "loc_6", "loc_7", "loc_8"],
+    "loc_1": ["loc_9", "loc_2", "loc_3", "loc_4", "loc_5", "loc_6", "loc_7", "loc_8"],
+    "loc_2": ["loc_1", "loc_9", "loc_3", "loc_4", "loc_5", "loc_6", "loc_7", "loc_8"],
+    "loc_3": ["loc_1", "loc_2", "loc_9", "loc_5", "loc_6", "loc_7", "loc_8", "loc_4"],
+    "loc_4": ["loc_1", "loc_2", "loc_3", "loc_9", "loc_6", "loc_7", "loc_8", "loc_5"],
+    "loc_5": ["loc_1", "loc_2", "loc_3", "loc_4", "loc_9", "loc_6", "loc_7", "loc_8"],
+    "loc_6": ["loc_1", "loc_2", "loc_3", "loc_4", "loc_5", "loc_9", "loc_7", "loc_8"],
+    "loc_7": ["loc_1", "loc_2", "loc_3", "loc_4", "loc_5", "loc_6", "loc_9", "loc_8"],
+    "loc_8": ["loc_1", "loc_2", "loc_3", "loc_4", "loc_5", "loc_6", "loc_7", "loc_9"]
+  }
+}

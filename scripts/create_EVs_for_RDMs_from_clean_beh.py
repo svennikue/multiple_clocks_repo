@@ -36,13 +36,13 @@ else:
     data_dir_deriv = f"{source_dir}/data/derivatives"
     data_dir = f"{source_dir}/data/pilot"
     config_path = f"{source_dir}/analysis/multiple_clocks_repo/condition_files"
-    analysis_dir = f"{source_dir}/scratch/analysis"  
+    analysis_dir = f"{source_dir}/analysis"  
     print(f"Running on Cluster, setting {source_dir} as data directory")
 
          
 # import pdb; pdb.set_trace()      
 # --- Load configuration ---
-config_file = sys.argv[2] if len(sys.argv) > 2 else "EV_config_fut-steps_states_split-buttons.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "EV_config_all_rews_split-buttons.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
@@ -77,7 +77,7 @@ for sub in subjects:
     # define and make paths
     for th in [1,2]:
         print(f"Now creating EVs for fmri file {th} and {sub}")
-        EV_folder = f'{data_dir_deriv}/{sub}/func/EVs_{version}_half0{th}/'
+        EV_folder = f'{data_dir_deriv}/{sub}/func/EVs_{version}_pt0{th}/'
         if os.path.exists(EV_folder):
             print("careful, the EV folder does exist- there might be other EVs and thus not all files will be output correctly! Deleting dir.")
             shutil.rmtree(EV_folder)
@@ -262,7 +262,7 @@ for sub in subjects:
         if sub in ['sub-04', 'sub-06', 'sub-30', 'sub-31', 'sub-34']:
             template_name = 'new_fsf_file.fsf'
             #template_name = 'my_RDM_GLM_v2.fsf'
-        elif sub in ['sub-35'] and th == '1':
+        elif sub in ['sub-05', 'sub-35'] and th == 1:
             #template_name = 'my_RDM_GLM_v2.fsf'
             template_name = 'new_fsf_file.fsf'
         else:
