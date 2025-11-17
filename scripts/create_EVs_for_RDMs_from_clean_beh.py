@@ -42,7 +42,7 @@ else:
          
 # import pdb; pdb.set_trace()      
 # --- Load configuration ---
-config_file = sys.argv[2] if len(sys.argv) > 2 else "EV_config_all_rews_split-buttons.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "EV_config_states_excl_tBD_rewA_split-buttons.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 

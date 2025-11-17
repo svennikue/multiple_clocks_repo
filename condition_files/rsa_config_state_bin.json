@@ -1,0 +1,18 @@
+{
+  "name_of_RSA": "state_bin",
+  "load_EVs_from": "fut-steps_states_split-buttons",
+  "regression_version": "fut-steps_states_split-buttons",
+  "EV_condition_selection": {
+    "parts": {
+      "locations":      { "include": [],          "exclude": []},
+      "states": { "include": [],          "exclude": [] },
+      "slots":     { "include": [], "exclude": ["three_fut", "two_fut", "one_fut", "curr"] } }
+    },
+  "smoothing": true,
+  "fwhm": 5,
+  "load_searchlights": true,
+  "visualise_RDMs": false,
+  "rdms_to_run_masking": {
+    "full": ["none"]
+  }
+}

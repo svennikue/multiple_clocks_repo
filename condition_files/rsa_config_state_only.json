@@ -1,7 +1,7 @@
 {
-  "name_of_RSA": "state-only_excluding_rewA",
+  "name_of_RSA": "state-only_excluding_rewA_tasksBD",
   "load_EVs_from": "simple-clean_loc-fut-rews-state",
-  "regression_version": "03-4",
+  "regression_version": "all-rews-split_buttons",
   "EV_condition_selection": {
     "parts": {
       "task":      { "include": [],          "exclude": ["B*", "D*"]},

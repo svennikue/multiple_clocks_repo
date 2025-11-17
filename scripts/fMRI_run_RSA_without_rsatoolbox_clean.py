@@ -74,7 +74,7 @@ def pair_correct_tasks(data_dict, keys_list):
 # import pdb; pdb.set_trace() 
 source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks"
 if os.path.isdir(source_dir):
-    config_path = f"{source_dir}/multiple_clocks_repo/condition_files"
+    config_path = f"{source_dir}/multiple_clocks_repo/condition_filscanceles"
     print("Running on laptop.")
     
 else:
@@ -168,7 +168,7 @@ for sub in subjects:
     # Step 2: loading conditions for model and data RDMs
     #
     # loading the model EVs into dict
-    with open(f"{modelled_conditions_dir}/{sub}_modelled_EVs_{EV_string}_.pkl", 'rb') as file:
+    with open(f"{modelled_conditions_dir}/{sub}_modelled_EVs_{EV_string}.pkl", 'rb') as file:
         model_EVs = pickle.load(file)
     selected_models = config.get("models", list(model_EVs.keys()))
     # loading the data EVs into dict
@@ -201,7 +201,8 @@ for sub in subjects:
             else:
                 # only append if none of the 4 parts triggered 'break'
                 EV_keys.append(ev)
-       
+    
+    print(f"including the following EVs in the RDMs: {EV_keys}")
     data_th1, data_th2 = pair_correct_tasks(data_EVs, EV_keys)
     data_concat = np.concatenate((data_th1, data_th2), axis = 0)
     # 
@@ -220,9 +221,7 @@ for sub in subjects:
     # and then create a 'mask' for the matrix, depending on what I want to exclude
     # (e.g. all tasks for rewards that appear twice, and all As)
     # and tehn
-        
-    
-    
+
     if not os.path.exists(f"{data_rdm_dir}/data_RDM.npy"): 
          # and searchlight-wise for data RDMs
          data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr')

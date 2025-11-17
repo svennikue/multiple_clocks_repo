@@ -82,7 +82,7 @@ else:
       
 # --- Load configuration ---
 # config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
-config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_fut-steps.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_state_bin.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
@@ -92,6 +92,10 @@ regression_version = config.get("regression_version")
 today_str = date.today().strftime("%d-%m-%Y")
 name_RSA = config.get("name_of_RSA")
 RDM_version = f"{name_RSA}_{today_str}"
+
+# conditions selection
+conditions = config.get("EV_condition_selection")
+parts_to_use = conditions["parts"]
 
 
 # Subjects
@@ -155,9 +159,24 @@ for sub in subjects:
 
     #
     # Step 2: loading conditions for model and data RDMs
-    
+    # import pdb; pdb.set_trace()
     # loading the data EVs into dict
-    data_EVs, EV_keys = mc.analyse.my_RSA.load_data_EVs_th(data_dir, regression_version=regression_version)
+    data_EVs, all_EV_keys = mc.analyse.my_RSA.load_data_EVs_th(data_dir, regression_version=regression_version)
+    
+    # exclude the conditions that you don't want to include in the model later.
+    EV_keys = []        
+    for ev in sorted(all_EV_keys):
+        # simple include/exclude logic
+        for p in parts_to_use:
+            excludes = parts_to_use[p].get("exclude", [])
+            # Exclude first
+            if any((pat in ev) for pat in excludes):
+                break
+        else:
+            # only append if none of the 4 parts triggered 'break'
+            EV_keys.append(ev)
+            
+    
     # prepare labels for halved RDMs
     labels_half_RDM = [k.split('th_1_', 1)[1] for k in EV_keys if k.startswith('th_1_')]
     
@@ -173,30 +192,30 @@ for sub in subjects:
     # Step 3: compute the model and data RDMs.
     # model RDMs
     models_concat, model_RDM_dict = {}, {}
-    for exclude_mask in rdms_to_run_masking: 
-        model_RDM_dict[exclude_mask] = mc.analyse.my_RSA.compute_crosscorr_and_filter(full_model_concat, plotting = False, labels = labels_half_RDM, mask = rdms_to_run_masking[exclude_mask], binarise = True)
+    for model in rdms_to_run_masking: 
+        model_RDM_dict[model] = mc.analyse.my_RSA.compute_crosscorr_and_filter(full_model_concat, plotting = False, labels = labels_half_RDM, mask = rdms_to_run_masking[model], binarise = True)
 
     # data RDMs
     data_RDM_dict = {}
-    if not os.path.exists(f"{data_rdm_dir}/data_RDM.npy"): 
+    if not os.path.exists(f"{data_rdm_dir}/data_RDM_{model}.npy"): 
          # and searchlight-wise for data RDMs
          for model in rdms_to_run_masking:
              data_RDM_dict[model] = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr_and_filter', labels = labels_half_RDM, mask = rdms_to_run_masking[model])
-             mc.analyse.handle_MRI_files.save_data_RDM_as_nifti(data_RDM_dict[model], data_rdm_dir, f"data_RDM_{exclude_mask}", ref_img, centers)      
+             mc.analyse.handle_MRI_files.save_data_RDM_as_nifti(data_RDM_dict[model], data_rdm_dir, f"data_RDM_{model}", ref_img, centers)      
     else:
         for model in rdms_to_run_masking:
-            data_RDM_dict[model] = np.load(f"{data_rdm_dir}/data_RDM_{exclude_mask}.npy")
+            data_RDM_dict[model] = np.load(f"{data_rdm_dir}/data_RDM_{model}.npy")
 
     if smoothing == True:
         if not os.path.exists(f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}.npy"):
             path_to_save_smooth = f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}.nii.gz"
             print(f"now smoothing the RDM and saving it here: {path_to_save_smooth}")
-            for exclude_mask in rdms_to_run_masking:
+            for model in rdms_to_run_masking:
                 data_RDM_dict[model] = mc.analyse.handle_MRI_files.smooth_RDMs(data_RDM_dict[model], ref_img, fwhm,use_rsa_toolbox = False, path_to_save=path_to_save_smooth,centers=centers)
         
         else:
             for model in rdms_to_run_masking:
-                data_RDM_dict[model] = np.load(f"{data_rdm_dir}/data_RDM_{exclude_mask}_smooth_fwhm{fwhm}.npy")
+                data_RDM_dict[model] = np.load(f"{data_rdm_dir}/data_RDM_{model}_smooth_fwhm{fwhm}.npy")
 
     #
     # STEP 4: evaluate the model fit between model and data RDMs.
