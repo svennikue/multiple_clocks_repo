@@ -24,10 +24,15 @@ def load_data_EVs(data_dir, regression_version, old=False):
     # names need to be 'A1_backw_A_path' etc.
     list_loaded = []
     for th in [1,2]:
-        # NOTE: if you still want to run the old ones, adjust which part of the regression version you take to load.
-        pe_path = f"{data_dir}/func/glm_{regression_version}_pt0{th}.feat/stats"
+        if regression_version.startswith('0'):
+            # the old versions are numbers starting with 0. here, only take the first letters.
+            pe_path = f"{data_dir}/func/glm_{regression_version[0:2]}_pt0{th}.feat/stats"
+            EV_path = f"{data_dir}/func/EVs_{regression_version[0:2]}_pt0{th}/task-to-EV.txt"
+        else:
+            pe_path = f"{data_dir}/func/glm_{regression_version}_pt0{th}.feat/stats"
+            EV_path = f"{data_dir}/func/EVs_{regression_version}_pt0{th}/task-to-EV.txt"
         # order from FSL processed EVs to names is stored here:
-        with open(f"{data_dir}/func/EVs_{regression_version}_pt0{th}/task-to-EV.txt", 'r') as file:
+        with open(EV_path, 'r') as file:
         # pe_path = f"{data_dir}/func/glm_{regression_version[0:2]}_pt0{th}.feat/stats"
         # # order from FSL processed EVs to names is stored here:
         # with open(f"{data_dir}/func/EVs_{regression_version[0:2]}_pt0{th}/task-to-EV.txt", 'r') as file:
@@ -69,7 +74,7 @@ def load_data_EVs_th(data_dir, regression_version):
     return EV_dict, list_loaded
 
 
-def get_RDM_per_searchlight(fmri_data, centers, neighbors, method = 'crosscorr', labels = None, mask = None):
+def get_RDM_per_searchlight(fmri_data, centers, neighbors, method = 'crosscorr', labels = None, full_mask=None, mask_pairs=None):
     # import pdb; pdb.set_trace()
     data_2d = fmri_data
     if method == 'crosscorr' or method == 'crosscorr_and_filter':
@@ -104,7 +109,7 @@ def get_RDM_per_searchlight(fmri_data, centers, neighbors, method = 'crosscorr',
             if method == 'crosscorr':
                 RDM_corr = mc.analyse.my_RSA.compute_crosscorr(center_data)
             elif method == 'crosscorr_and_filter':
-                RDM_corr = mc.analyse.my_RSA.compute_crosscorr_and_filter(center_data, labels=labels, mask=mask)
+                RDM_corr = mc.analyse.my_RSA.compute_crosscorr_and_filter(center_data, labels=labels, full_mask=full_mask, mask_pairs=mask_pairs)
             sl_rdms[chunks, :] = RDM_corr
             # then store per voxel and return.
             all_centers[chunks] = centers[chunks]
@@ -113,7 +118,7 @@ def get_RDM_per_searchlight(fmri_data, centers, neighbors, method = 'crosscorr',
         
      
         
-def compute_crosscorr_and_filter(data_chunk, labels = None, mask=None, plotting = False, binarise = False):  
+def compute_crosscorr_and_filter(data_chunk, labels = None, full_mask=None, mask_pairs=None, plotting = False, binarise = False):  
     RDM = []
     # import pdb; pdb.set_trace()
 
@@ -133,13 +138,13 @@ def compute_crosscorr_and_filter(data_chunk, labels = None, mask=None, plotting 
     
         # making the matrix symmetric
         rdm = (rdm_small + np.transpose(rdm_small))/2
-    
+        # import pdb; pdb.set_trace()
         # if you want to mask/filter, do that first
-        if mask:
+        if full_mask:
             # collect the indices I want to mask
             idx_to_mask = []
             for i, label in enumerate(labels):
-                for m in mask:
+                for m in full_mask:
                     if m in label:
                         idx_to_mask.append(i)
             
@@ -149,6 +154,13 @@ def compute_crosscorr_and_filter(data_chunk, labels = None, mask=None, plotting 
             if binarise == True:
                 # THIS IS ONLY FOR MODEL RDMS!!
                 rdm = np.where(np.isnan(rdm), np.nan, (rdm > 0.5).astype(float))
+        elif mask_pairs:
+            for m_l in mask_pairs:
+                idx = [i for i, lab in enumerate(labels) if m_l in lab]
+                idx = np.array(idx, dtype=int)
+                rdm[np.ix_(idx, idx)] = np.nan
+
+            
         
         # lastly, only store the part of the RDM I am actually interested in 
         # i.e. the upper triangle, including the diagonal.

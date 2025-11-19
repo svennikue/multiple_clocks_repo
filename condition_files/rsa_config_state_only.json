@@ -4,9 +4,9 @@
   "regression_version": "all-rews-split_buttons",
   "EV_condition_selection": {
     "parts": {
-      "task":      { "include": [],          "exclude": ["B*", "D*"]},
+      "task":      { "include": [],          "exclude": []},
       "direction": { "include": [],          "exclude": [] },
-      "state":     { "include": [], "exclude": ["A"] },
+      "state":     { "include": [], "exclude": [] },
       "phase":     { "include": [],   "exclude": [] }
     }
   },

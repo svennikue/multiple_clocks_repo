@@ -87,7 +87,6 @@ with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
 # SETTINGS
-EV_string = config.get("load_EVs_from")
 regression_version = config.get("regression_version")
 today_str = date.today().strftime("%d-%m-%Y")
 name_RSA = config.get("name_of_RSA")
@@ -179,7 +178,7 @@ for sub in subjects:
     
     # prepare labels for halved RDMs
     labels_half_RDM = [k.split('th_1_', 1)[1] for k in EV_keys if k.startswith('th_1_')]
-    
+    print(f"considering the following conditions for my full RDM: {labels_half_RDM}")
     # make sure the EVs are paired in the correct order
     data_th1, data_th2, names_th1, names_th2, model_th1, model_th2 = pair_correct_tasks(data_EVs, EV_keys)
     
@@ -200,7 +199,7 @@ for sub in subjects:
     if not os.path.exists(f"{data_rdm_dir}/data_RDM_{model}.npy"): 
          # and searchlight-wise for data RDMs
          for model in rdms_to_run_masking:
-             data_RDM_dict[model] = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr_and_filter', labels = labels_half_RDM, mask = rdms_to_run_masking[model])
+             data_RDM_dict[model] = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr_and_filter', labels = labels_half_RDM, full_mask = rdms_to_run_masking[model])
              mc.analyse.handle_MRI_files.save_data_RDM_as_nifti(data_RDM_dict[model], data_rdm_dir, f"data_RDM_{model}", ref_img, centers)      
     else:
         for model in rdms_to_run_masking:
@@ -234,7 +233,6 @@ for sub in subjects:
     # --- SETTINGS SUMMARY (per subject) ---
     summary = {
         "subject": sub,
-        "EV_string": EV_string,
         "regression_version": regression_version,
         "RDM_version": RDM_version,
         "smoothing": smoothing,

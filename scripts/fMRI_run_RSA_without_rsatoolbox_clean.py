@@ -67,14 +67,14 @@ def pair_correct_tasks(data_dict, keys_list):
     th_1 = np.vstack(th_1)
     th_2 = np.vstack(th_2)
     # print(paired_list_control)
-    return th_1, th_2
+    return th_1, th_2, paired_list_control
 
 #
 #
 # import pdb; pdb.set_trace() 
 source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks"
 if os.path.isdir(source_dir):
-    config_path = f"{source_dir}/multiple_clocks_repo/condition_filscanceles"
+    config_path = f"{source_dir}/multiple_clocks_repo/condition_files"
     print("Running on laptop.")
     
 else:
@@ -85,7 +85,7 @@ else:
       
 # --- Load configuration ---
 # config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
-config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple_split_buttons_rews.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
@@ -108,6 +108,7 @@ subjects = [f"sub-{subj_no}"]
 smoothing = config.get("smoothing", True)
 fwhm = config.get("fwhm", 5)
 load_searchlights = config.get("load_searchlights", False)
+masked_conditions = config.get("masked_conds", None)
 
 # conditions selection
 conditions = config.get("EV_condition_selection")
@@ -203,7 +204,7 @@ for sub in subjects:
                 EV_keys.append(ev)
     
     print(f"including the following EVs in the RDMs: {EV_keys}")
-    data_th1, data_th2 = pair_correct_tasks(data_EVs, EV_keys)
+    data_th1, data_th2, paired_labels = pair_correct_tasks(data_EVs, EV_keys)
     data_concat = np.concatenate((data_th1, data_th2), axis = 0)
     # 
     # Step 3: compute the model and data RDMs.
@@ -211,20 +212,24 @@ for sub in subjects:
     model_RDM_dir = {}
     #import pdb; pdb.set_trace() 
     for model in model_EVs:
-        model_th1, model_th2 = pair_correct_tasks(model_EVs[model], EV_keys)
+        model_th1, model_th2, model_paired_labels = pair_correct_tasks(model_EVs[model], EV_keys)
         # finally, concatenate th1 and th2 to do the cross-correlation after
         models_concat[model] = np.concatenate((model_th1, model_th2), axis = 0)
-        model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr(models_concat[model], plotting= False)
-   
-    # TEST:
-    # can I put the values from the model back into it's initial format
-    # and then create a 'mask' for the matrix, depending on what I want to exclude
-    # (e.g. all tasks for rewards that appear twice, and all As)
-    # and tehn
+        if masked_conditions:
+            # here, I want to now mask all within-task similarities.
+            model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr_and_filter(models_concat[model], plotting = False, labels = model_paired_labels, mask_pairs= masked_conditions, full_mask=None, binarise = False)
+            print(f"excluding n = {np.sum(np.isnan(model_RDM_dir[model]))} datapoints from {len(model_RDM_dir[model][0])}.")
+            # import pdb; pdb.set_trace()
+        else:  
+            model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr(models_concat[model], plotting= False)
 
     if not os.path.exists(f"{data_rdm_dir}/data_RDM.npy"): 
          # and searchlight-wise for data RDMs
-         data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr')
+         if masked_conditions:
+             # here, I want to now mask all within-task similarities.
+             data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr_and_filter', labels = paired_labels, mask_pairs= masked_conditions)
+         else:
+             data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr')
          mc.analyse.handle_MRI_files.save_data_RDM_as_nifti(data_RDMs, data_rdm_dir, "data_RDM", ref_img, centers) 
     else:
          data_RDMs = np.load(f"{data_rdm_dir}/data_RDM.npy")
