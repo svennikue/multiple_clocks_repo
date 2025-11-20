@@ -159,7 +159,10 @@ for sub in subjects:
                     np.savetxt(str(EV_folder) + 'ev_' + f"{fut_step_EV_name}" + '.txt', array, delimiter="    ", fmt='%f')
 
         if state_regs == True:
-            states_included = ['A', 'B', 'C', 'D']
+            # first filter for those tasks that shall be included.
+            mask = beh_th['task_config_seq'].str.startswith(tuple(tasks_included))
+            beh_th = beh_th[mask]
+            
             # 1) Runs: increment when the state changes
             run_id = beh_th['state'].ne(beh_th['state'].shift()).cumsum()
         
@@ -185,7 +188,7 @@ for sub in subjects:
             
             if duration_state == 'full_path':
                 durations_by_state = runs.groupby('state', sort=False)['duration'].apply(list).to_dict()
-            # elif duration_state == 'only_rew':
+
             # add other options!
             
             # 4) Create one EV file per state in states_included

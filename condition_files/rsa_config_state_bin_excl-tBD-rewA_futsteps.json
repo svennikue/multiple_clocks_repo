@@ -1,6 +1,6 @@
 {
-  "name_of_RSA": "state_bin",
-  "regression_version": "states_split-buttons",
+  "name_of_RSA": "states_bin_excl_tBD-rewA_fut-steps",
+  "regression_version": "states_excl-tBD-rewA_split-buttons",
   "EV_condition_selection": {
     "parts": {
       "locations":      { "include": [],          "exclude": []},

@@ -138,6 +138,7 @@ for sub in subjects:
     # where the functional files have been registered to.
     mask_file = load_img(f"{data_dir}/anat/{sub}_T1w_noCSF_brain_mask_bin_func_01.nii.gz")
     mask = mask_file.get_fdata()  
+    
     # save this file to save time
     if load_searchlights:
         with open(f"{data_dir}/func/searchlight_centers.pkl", 'rb') as file:
@@ -192,7 +193,7 @@ for sub in subjects:
     # model RDMs
     models_concat, model_RDM_dict = {}, {}
     for model in rdms_to_run_masking: 
-        model_RDM_dict[model] = mc.analyse.my_RSA.compute_crosscorr_and_filter(full_model_concat, plotting = False, labels = labels_half_RDM, mask = rdms_to_run_masking[model], binarise = True)
+        model_RDM_dict[model] = mc.analyse.my_RSA.compute_crosscorr_and_filter(full_model_concat, plotting = False, labels = labels_half_RDM, full_mask = rdms_to_run_masking[model], binarise = True)
 
     # data RDMs
     data_RDM_dict = {}

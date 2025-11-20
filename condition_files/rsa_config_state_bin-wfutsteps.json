@@ -1,6 +1,6 @@
 {
-  "name_of_RSA": "state_bin",
-  "regression_version": "states_split-buttons",
+  "name_of_RSA": "state_bin-withfutsteps",
+  "regression_version": "fut-steps_states_split-buttons",
   "EV_condition_selection": {
     "parts": {
       "locations":      { "include": [],          "exclude": []},

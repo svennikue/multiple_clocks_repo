@@ -1,0 +1,21 @@
+{
+  "name_of_RSA": "state-only_excluding_rewA_tasksBD",
+  "load_EVs_from": "simple-clean_loc-fut-rews-state",
+  "regression_version": "all-rews-split_buttons",
+  "EV_condition_selection": {
+    "parts": {
+      "task":      { "include": [],          "exclude": ["B*", "D*"]},
+      "direction": { "include": [],          "exclude": [] },
+      "state":     { "include": [], "exclude": ["A"] },
+      "phase":     { "include": [],   "exclude": [] }
+    }
+  },
+  "models": ["state"],
+  "smoothing": true,
+  "fwhm": 5,
+  "load_searchlights": true,
+  "visualise_RDMs": false,
+  "run_combo_models": false
+}
+
+
