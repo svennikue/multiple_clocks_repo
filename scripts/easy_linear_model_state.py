@@ -397,4 +397,5 @@ if __name__ == "__main__":
     # they can also be: 'first_correct', 'one_correct', ... 'nine_correct'
     # NOTE: if you do per-repeat estimates, use every grid! grid mean will be super unreliable anyways
     compute_state_lin_mod_all(sessions=list(range(0,64)), trials = 'all_minus_explore', save_all = True)
+    # compute_state_lin_mod_all(sessions=list(range(0,10)), trials = 'all_minus_explore', save_all = False)
     

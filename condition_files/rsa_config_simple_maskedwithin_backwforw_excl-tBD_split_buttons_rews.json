@@ -1,0 +1,33 @@
+{
+  "name_of_RSA": "simple-maskedwithin_backwforw_loc-fut-rews-state-excl-taskBD",
+  "load_EVs_from": "simple-clean_loc-fut-rews-state",
+  "regression_version": "all-rews-split_buttons",
+    "EV_condition_selection": {
+    "parts": {
+      "task":      { "include": [],          "exclude": ["B*", "D*"]},
+      "direction": { "include": [],          "exclude": [] },
+      "state":     { "include": [], "exclude": [] },
+      "phase":     { "include": [],   "exclude": [] }
+    }
+  },
+  "masked_conds": ["A1", "B1",
+              "C1", "D1",
+              "E1"],  
+  "smoothing": true,
+  "fwhm": 5,
+  "load_searchlights": true,
+  "visualise_RDMs": false,
+  "run_comobo_models": true,
+  "combo_models": [
+    {
+      "name": "split_clock",
+      "regressors": ["curr_rew", "next_rew", "two_next_rew", "three_next_rew"],
+      "take_first_beta_only": false
+    },
+    {
+      "name": "split-clock-state",
+      "regressors": ["curr_rew", "next_rew", "two_next_rew", "three_next_rew", "state"],
+      "take_first_beta_only": true
+    }
+  ]
+}

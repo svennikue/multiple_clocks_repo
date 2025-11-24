@@ -85,7 +85,7 @@ else:
       
 # --- Load configuration ---
 # config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
-config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple_maskedwithin_backwforw_excl-tBD_split_buttons_rews.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
@@ -210,7 +210,7 @@ for sub in subjects:
     # Step 3: compute the model and data RDMs.
     models_concat = {}
     model_RDM_dir = {}
-    #import pdb; pdb.set_trace() 
+    # import pdb; pdb.set_trace() 
     for model in model_EVs:
         model_th1, model_th2, model_paired_labels = pair_correct_tasks(model_EVs[model], EV_keys)
         # finally, concatenate th1 and th2 to do the cross-correlation after
@@ -219,7 +219,7 @@ for sub in subjects:
             # here, I want to now mask all within-task similarities.
             model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr_and_filter(models_concat[model], plotting = False, labels = model_paired_labels, mask_pairs= masked_conditions, full_mask=None, binarise = False)
             print(f"excluding n = {np.sum(np.isnan(model_RDM_dir[model]))} datapoints from {len(model_RDM_dir[model][0])}.")
-            # import pdb; pdb.set_trace()
+            import pdb; pdb.set_trace()
         else:  
             model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr(models_concat[model], plotting= False)
 
@@ -275,7 +275,7 @@ for sub in subjects:
         combo_list = config["combo_models"]
         for combo in combo_list:
             combo_model_name = combo["name"]
-            print(f"running combo model {name}")
+            print(f"running combo model {combo_model_name}")
             models_to_combine = combo["regressors"]
             # check if these models have been computed in model_EVs
             missing = [m for m in models_to_combine if m not in model_EVs]
