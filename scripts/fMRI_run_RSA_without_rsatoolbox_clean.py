@@ -45,14 +45,10 @@ def pair_correct_tasks(data_dict, keys_list):
     th_1, th_2, paired_list_control  = [], [], []
     # Loop through keys in the *specified order*
     for key in keys_list:
-        if key not in data_dict:
-            continue  # skip if missing in dict
+        assert key in data_dict, "Missmatch between model rdm keys and data RDM keys"
         task, direction, state, phase = key.split('_')  # e.g. ['A1', 'forw', 'A', 'reward']
         # Create the pairing suffix (e.g. from '1_forw' → '2_backw')
         pair_suffix = task_pairs.get(f"{task[-1]}_{direction}")
-        if not pair_suffix:
-            continue  # skip if not in pairing
-
         # Build the paired key (e.g. 'A2_backw_A_reward')
         pair_key = f"{task[0]}{pair_suffix}_{state}_{phase}"
         # Only add if both keys exist
@@ -60,10 +56,8 @@ def pair_correct_tasks(data_dict, keys_list):
             th_1.append(np.asarray(data_dict[key]))
             th_2.append(np.asarray(data_dict[pair_key]))
             paired_list_control.append(f"{key} with {pair_key}")
-            
-    if not th_1:
-        raise ValueError("No valid key pairs found!")
-        
+
+    # import pdb; pdb.set_trace()       
     th_1 = np.vstack(th_1)
     th_2 = np.vstack(th_2)
     # print(paired_list_control)
@@ -93,7 +87,7 @@ with open(f"{config_path}/{config_file}", "r") as f:
 EV_string = config.get("load_EVs_from")
 regression_version = config.get("regression_version")
 
-regression_version = '03-4'
+# regression_version = '03-4'
 
 today_str = date.today().strftime("%d-%m-%Y")
 name_RSA = config.get("name_of_RSA")
@@ -181,8 +175,6 @@ for sub in subjects:
         model_EVs = pickle.load(file)
     selected_models = config.get("models", list(model_EVs.keys()))
     # loading the data EVs into dict
-    # DELETE THSI AGAIN
-    # regression_version = 'fut-steps_split-buttons'
     data_EVs, all_EV_keys = mc.analyse.my_RSA.load_data_EVs(data_dir, regression_version=regression_version)
     
     # if you don't want all conditions created through FSL, exclude some here!
@@ -194,22 +186,21 @@ for sub in subjects:
             
     EV_keys = []        
     for ev in sorted(all_EV_keys):
-        if len(ev) > 10:
-            task, direction, state, phase = ev.split('_')
-            # simple include/exclude logic
-            for name, value in zip(["task", "direction", "state", "phase"], [task, direction, state, phase]):
-                part = parts_to_use[name]
-                includes = part.get("include", [])
-                excludes = part.get("exclude", [])
-                # Exclude first
-                if any(fnmatch(value, pat) for pat in excludes):
-                    break  
-                # If include list non-empty → must match at least one
-                if includes and not any(fnmatch(value, pat) for pat in includes):
-                    break
-            else:
-                # only append if none of the 4 parts triggered 'break'
-                EV_keys.append(ev)
+        task, direction, state, phase = ev.split('_')
+        # simple include/exclude logic
+        for name, value in zip(["task", "direction", "state", "phase"], [task, direction, state, phase]):
+            part = parts_to_use[name]
+            includes = part.get("include", [])
+            excludes = part.get("exclude", [])
+            # Exclude first
+            if any(fnmatch(value, pat) for pat in excludes):
+                break  
+            # If include list non-empty → must match at least one
+            if includes and not any(fnmatch(value, pat) for pat in includes):
+                break
+        else:
+            # only append if none of the 4 parts triggered 'break'
+            EV_keys.append(ev)
     
     print(f"including the following EVs in the RDMs: {EV_keys}")
     data_th1, data_th2, paired_labels = pair_correct_tasks(data_EVs, EV_keys)
@@ -225,12 +216,13 @@ for sub in subjects:
         models_concat[model] = np.concatenate((model_th1, model_th2), axis = 0)
         if masked_conditions:
             # here, I want to now mask all within-task similarities.
-            model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr_and_filter(models_concat[model], plotting = True, labels = model_paired_labels, mask_pairs= masked_conditions, full_mask=None, binarise = False)
+            model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr_and_filter(models_concat[model], plotting = False, labels = model_paired_labels, mask_pairs= masked_conditions, full_mask=None, binarise = False)
             print(f"excluding n = {np.sum(np.isnan(model_RDM_dir[model]))} datapoints from {len(model_RDM_dir[model][0])}.")
             #import pdb; pdb.set_trace()
         else:  
             model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr(models_concat[model], plotting= False)
 
+    
     if not os.path.exists(f"{data_rdm_dir}/data_RDM.npy"): 
          # and searchlight-wise for data RDMs
          if masked_conditions:
@@ -242,6 +234,7 @@ for sub in subjects:
     else:
          data_RDMs = np.load(f"{data_rdm_dir}/data_RDM.npy")
 
+    
     if smoothing == True:
         if not os.path.exists(f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}.npy"):
             path_to_save_smooth = f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}"
@@ -265,7 +258,7 @@ for sub in subjects:
     #     mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [43, 50, 17], ref_img, condition_names)
     #     mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDMs, [43, 50, 17], ref_img, condition_names, centers = centers, no_rsa_toolbox=True)
         
-        
+       
     #
     # STEP 4: evaluate the model fit between model and data RDMs.
     #
@@ -309,7 +302,7 @@ for sub in subjects:
         "run_combo_models": run_combo_models,
         "combo_model_names": [c["name"] for c in config.get("combo_models", [])] if run_combo_models else [],
         "data_dir": data_dir,
-        "results_dir": results_dir,
+        "results_dir": results_dir
     }
     
     print("\n=== SETTINGS SUMMARY ===")

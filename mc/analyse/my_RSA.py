@@ -76,12 +76,9 @@ def load_data_EVs_th(data_dir, regression_version):
 
 def get_RDM_per_searchlight(fmri_data, centers, neighbors, method = 'crosscorr', labels = None, full_mask=None, mask_pairs=None):
     # import pdb; pdb.set_trace()
-    data_2d = fmri_data
-    if method == 'crosscorr' or method == 'crosscorr_and_filter':
-        #data_2d = np.concatenate((fmri_data['1'], fmri_data['2']),0)
-        centers = np.array(centers)
-        #n_conds = fmri_data['1'].shape[0]
-        n_conds = int(data_2d.shape[0]/2)
+    centers = np.array(centers)
+    #n_conds = fmri_data['1'].shape[0]
+    n_conds = int(fmri_data.shape[0]/2)
     
     # first step: parallelise centers/neighbors.
     n_centers = centers.shape[0]
@@ -97,23 +94,22 @@ def get_RDM_per_searchlight(fmri_data, centers, neighbors, method = 'crosscorr',
         sl_rdms = np.zeros((n_centers, n_conds * (n_conds + 1) // 2))
         # if excluding the diagonal
         # sl_rdms = np.zeros((n_centers, n_conds * (n_conds - 1) // 2))
-        all_centers = np.zeros((n_centers))
         #for chunks in chunked_center:
         for chunks in tqdm(chunked_center, desc='Calculating RDMs...'):            
             center_data= []
             for c in chunks:
                 # grab this centers of this chunk and its and neighbors
                 center_neighbors = neighbors[c]
-                center_data.append(data_2d[:, center_neighbors])
+                center_data.append(fmri_data[:, center_neighbors])
             # then compute the RDM per searchlight
             if method == 'crosscorr':
                 RDM_corr = mc.analyse.my_RSA.compute_crosscorr(center_data)
             elif method == 'crosscorr_and_filter':
                 RDM_corr = mc.analyse.my_RSA.compute_crosscorr_and_filter(center_data, labels=labels, full_mask=full_mask, mask_pairs=mask_pairs)
-            sl_rdms[chunks, :] = RDM_corr
-            # then store per voxel and return.
-            all_centers[chunks] = centers[chunks]
-            # this is the same as centers. thus you can use centres as voxel indices          
+            else:
+                assert False, "invalid method"
+            sl_rdms[chunks, :] = RDM_corr # then store per voxel and return.
+       
     return sl_rdms
         
      
@@ -319,9 +315,10 @@ def evaluate_model(model_rdm, data_rdm):
     # import pdb; pdb.set_trace()
 
     #X = sm.add_constant(model_rdm.transpose());
-    X = sm.add_constant(model_rdm);
+    #X = sm.add_constant(model_rdm);
     # first, normalize the regressors (but not the intercept, bc std = 0 -> division by 0!)
-    for i in range(1, X.shape[1]):
+    X = model_rdm.transpose()
+    for i in range(X.shape[1]):
         X[:,i] = (X[:,i] - np.nanmean(X[:,i]))/ np.nanstd(X[:,i])
     
     # to check if a GLM is ill-conditioned
@@ -333,6 +330,7 @@ def evaluate_model(model_rdm, data_rdm):
     # import pdb; pdb.set_trace()
     
     Y = data_rdm;
+    Y = (Y - np.nanmean(Y))/ np.nanstd(Y)
     
     # to filter out potential nans in the model part
     nan_filter = np.isnan(X).any(axis=1)
@@ -341,4 +339,4 @@ def evaluate_model(model_rdm, data_rdm):
     
     est = sm.OLS(filtered_Y, filtered_X).fit()
     # import pdb; pdb.set_trace()
-    return est.tvalues[1:], est.params[1:], est.pvalues[1:]
+    return est.tvalues, est.params, est.pvalues

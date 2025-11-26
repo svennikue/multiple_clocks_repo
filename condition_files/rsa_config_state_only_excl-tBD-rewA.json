@@ -11,7 +11,7 @@
     }
   },
   "models": ["state"],
-  "smoothing": true,
+  "smoothing": false,
   "fwhm": 5,
   "load_searchlights": true,
   "visualise_RDMs": false,

@@ -97,7 +97,6 @@ for sub in subjects:
     
     # this is for the future reward location models.
     # rotates the reward values by k, but keeps time-bin-length in place.
-    # Flagged for msm for later: understand this ?
     def rotate_runs(arr, k):
         """Rotate the values of consecutive runs by k, preserving run lengths."""
         # Finds the points at which a new value starts and turn them into indices

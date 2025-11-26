@@ -13,7 +13,7 @@
   "masked_conds": ["A1", "B1",
               "C1", "D1",
               "E1"],  
-  "smoothing": true,
+  "smoothing": false,
   "fwhm": 5,
   "load_searchlights": true,
   "visualise_RDMs": false,
@@ -21,13 +21,11 @@
   "combo_models": [
     {
       "name": "split_clock",
-      "regressors": ["curr_rew", "next_rew", "two_next_rew", "three_next_rew"],
-      "take_first_beta_only": false
+      "regressors": ["curr_rew", "next_rew", "two_next_rew", "three_next_rew"]
     },
     {
       "name": "split-clock-state",
-      "regressors": ["curr_rew", "next_rew", "two_next_rew", "three_next_rew", "state"],
-      "take_first_beta_only": true
+      "regressors": ["curr_rew", "next_rew", "two_next_rew", "three_next_rew", "state"]
     }
   ]
 }

@@ -48,30 +48,35 @@ else:
 alternative_regs = False
 
 # Find the source dir first, outside of the loop
-data_dir_beh = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/pilot/"
-out_dir      = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/pilot/"
-if os.path.isdir(data_dir_beh):
-    print(f"Running on laptop, now subject {sub}")
-else:
-    data_dir_beh = f"/home/fs0/xpsy1114/scratch/data/pilot/"
-    out_dir      = f"/home/fs0/xpsy1114/scratch/data/derivatives/"
-    print(f"Running on Cluster, setting {data_dir_beh} as data directory")
+data_dir_beh = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/pilot/"
+out_dir      = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/pilot/"
 
-subjects = glob(f"{data_dir_beh}/sub-*")
-subjects = [s.split("/")[-1] for s in subjects]
 # import pdb; pdb.set_trace()
-        
+all_sub_paths = glob(f"{data_dir_beh}/sub-*")
+subjects = [
+    os.path.basename(p)
+    for p in all_sub_paths
+    if os.path.isdir(p)
+]
+
 for sub in subjects:
+    if os.path.isdir(data_dir_beh):
+        print(f"Running on laptop, now subject {sub}")
+    else:
+        data_dir_beh = "/home/fs0/xpsy1114/scratch/data/pilot/"
+        out_dir      = "/home/fs0/xpsy1114/scratch/data/derivatives/"
+        print(f"Running on Cluster, setting {data_dir_beh} as data directory")
+
+    
     both_halves = []   # collect cleaned tables for both halves
 
     # Then here inside the loop, we know which subject we are looking at so we can define the correct folders
 
     for task_half in [1,2]:
-        file = data_dir_beh + f"{sub}_fmri_pt{task_half}.csv"
+        file = data_dir_beh + f"{sub}/beh/{sub}_fmri_pt{task_half}.csv"
         if not os.path.exists(file):
             print(f"This file doesn't exist: {file}")
             continue  # skip to next loop iteration
-
         df = pd.read_csv(file)
         
         # create a new df 
