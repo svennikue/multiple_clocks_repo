@@ -146,6 +146,11 @@ for sub in subjects:
     
     # concatenate both halves and save
     beh_both = pd.concat(both_halves, ignore_index=True)
+    
+    # import pdb; pdb.set_trace()
+    # store where same reward-states appear at the same locations for later masking
+    mc.analyse.extract_and_clean.store_same_locs_in_same_state(beh_both, out_dir)
+    
     out_file = os.path.join(out_dir, f"{sub}_beh_fmri_clean.csv")
     beh_both.to_csv(out_file, index=False)
     print(f"Saved {out_file}")

@@ -85,13 +85,16 @@ else:
       
 # --- Load configuration ---
 # config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
-config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple_maskedwithin_backwforw_excl-tBD_split_buttons_rews.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_state_masked_same_locstate.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
 # SETTINGS
 EV_string = config.get("load_EVs_from")
 regression_version = config.get("regression_version")
+
+regression_version = '03-4'
+
 today_str = date.today().strftime("%d-%m-%Y")
 name_RSA = config.get("name_of_RSA")
 RDM_version = f"{name_RSA}_{today_str}"
@@ -136,6 +139,11 @@ for sub in subjects:
        results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}_smooth{fwhm}/results" 
     os.makedirs(results_dir, exist_ok=True)
 
+    if masked_conditions[0] == 'load_same_loc_instate_mask':
+        with open (f"{data_dir}/{masked_conditions[1]}", "r") as f:
+            json_mask = json.load(f)
+        masked_conditions = json_mask.get("masked_conditions")
+        
 
     # get a reference image to later project the results onto. This is usually
     # example_func from half 1, as this is where the data is corrected to.
@@ -217,9 +225,9 @@ for sub in subjects:
         models_concat[model] = np.concatenate((model_th1, model_th2), axis = 0)
         if masked_conditions:
             # here, I want to now mask all within-task similarities.
-            model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr_and_filter(models_concat[model], plotting = False, labels = model_paired_labels, mask_pairs= masked_conditions, full_mask=None, binarise = False)
+            model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr_and_filter(models_concat[model], plotting = True, labels = model_paired_labels, mask_pairs= masked_conditions, full_mask=None, binarise = False)
             print(f"excluding n = {np.sum(np.isnan(model_RDM_dir[model]))} datapoints from {len(model_RDM_dir[model][0])}.")
-            import pdb; pdb.set_trace()
+            #import pdb; pdb.set_trace()
         else:  
             model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr(models_concat[model], plotting= False)
 

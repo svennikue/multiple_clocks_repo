@@ -13,7 +13,49 @@ import numpy as np
 import mc
 import matplotlib.pyplot as plt
 import scipy.special as sps  
+import json
 
+
+def store_same_locs_in_same_state(beh_df, results_dir):
+    # store where the same state in a different task is at the same location
+    # as this might create a potential visual and motor bias.
+    
+    # Group by State & location, collect unique tasks
+    repeated = (
+        beh_df
+        .groupby(['state', 'curr_rew'])['task_config_ex']
+        .apply(lambda x: sorted(x.unique()))
+        .reset_index(name='tasks')
+    )
+    
+    # Build nested dict: state -> location -> [tasks...], only where tasks are repeated
+    mask_state_locs = {}
+    for _, row in repeated.iterrows():
+        state = row['state']          # 'A', 'B', 'C', 'D'
+        loc   = row['curr_rew']       # reward location (e.g. 1, 2, 3...)
+        tasks = row['tasks']          # list of task names at that (state, location)
+    
+        # We only care when the same location appears in ≥ 2 tasks for that state
+        if len(tasks) < 2:
+            continue
+    
+        state_dict = mask_state_locs.setdefault(state, {})
+        state_dict[str(loc)] = tasks   # use str(loc) so JSON keys are strings
+    
+        
+    payload = {
+    "masked_conditions": mask_state_locs
+    }
+    
+    # Optional: save to its own JSON file
+    with open(f"{results_dir}state_loc_mask.json", "w") as f:
+        json.dump(payload, f, indent=2)
+
+    
+    # out_path = os.path.join(results_dir, filename)
+    # with open(out_path, "w") as f:
+    #     json.dump(payload, f, indent=2)
+    
 
 
 

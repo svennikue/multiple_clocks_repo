@@ -117,7 +117,47 @@ def get_RDM_per_searchlight(fmri_data, centers, neighbors, method = 'crosscorr',
     return sl_rdms
         
      
-        
+def parse_label_pair(label):
+    """
+    Example:
+        'A1_backw_A_reward with A2_forw_A_reward'
+    ->  state = 'A'
+        task1 = 'A1_backw'
+        task2 = 'A2_forw'
+    """
+    left, right = label.split(" with ")
+
+    def parse_side(side):
+        side = side.replace("_reward", "")
+        task, state = side.rsplit("_", 1)
+        return task, state
+
+    task1, state1 = parse_side(left)
+    task2, state2 = parse_side(right)
+
+    assert state1 == state2, f"State mismatch inside label: {label}"
+    return state1, task1, task2
+
+def plot_rdm_with_labels(rdm, labels, group_size=4):
+    n = rdm.shape[0]
+
+    fig, ax = plt.subplots()
+    im = ax.imshow(rdm, aspect='auto', cmap='coolwarm')
+
+    # Tick positions and labels
+    ax.set_xticks(np.arange(n))
+    ax.set_yticks(np.arange(n))
+    ax.set_xticklabels(labels, rotation=90, fontsize=6)
+    ax.set_yticklabels(labels, fontsize=6)
+
+    # White lines after each task (every `group_size` rows/cols)
+    for k in range(group_size, n, group_size):
+        ax.axhline(k - 0.5, color='white', linewidth=1)
+        ax.axvline(k - 0.5, color='white', linewidth=1)
+
+    plt.tight_layout()
+    plt.show()
+       
 def compute_crosscorr_and_filter(data_chunk, labels = None, full_mask=None, mask_pairs=None, plotting = False, binarise = False):  
     RDM = []
     # import pdb; pdb.set_trace()
@@ -154,23 +194,60 @@ def compute_crosscorr_and_filter(data_chunk, labels = None, full_mask=None, mask
             if binarise == True:
                 # THIS IS ONLY FOR MODEL RDMS!!
                 rdm = np.where(np.isnan(rdm), np.nan, (rdm > 0.5).astype(float))
-        elif mask_pairs:
-            for m_l in mask_pairs:
-                idx = [i for i, lab in enumerate(labels) if m_l in lab]
-                idx = np.array(idx, dtype=int)
-                rdm[np.ix_(idx, idx)] = np.nan
-
-            
         
+        elif mask_pairs:
+            # Two cases:
+            # 1) mask_pairs is your OLD list of substrings  -> keep old logic
+            # 2) mask_pairs is the NEW big dict (state -> loc -> [tasks])
+            if isinstance(mask_pairs, dict):
+                # import pdb; pdb.set_trace()
+                # --- NEW: mask "same state, same location" ---
+                # Prepare splitting labels
+                parsed = [parse_label_pair(lab) for lab in labels]
+                n_cond = len(labels)
+
+                for i in range(n_cond):
+                    # loop through all conditions i
+                    state_i, t1_i, t2_i = parsed[i] # split the labels
+                    # for the respective state of the current condition, call the paired mask.
+                    loc_dict_i = mask_pairs.get(state_i, {})
+                    if not loc_dict_i:
+                        continue
+                    # next, check each paired condition j
+                    for j in range(i, n_cond):
+                        state_j, t1_j, t2_j = parsed[j]
+                        if state_j != state_i:
+                            continue
+
+                        # Check if there exists a location where BOTH conditions live
+                        for loc, tasks in loc_dict_i.items():
+                            task_set = set(tasks)
+                            if (t1_i in task_set and t2_i in task_set and
+                                t1_j in task_set and t2_j in task_set):
+                                # same state, same location -> mask
+                                rdm[i, j] = np.nan
+                                rdm[j, i] = np.nan
+                                break  # stop looping over locs for this (i,j)
+
+            else:
+                # --- OLD behaviour: substring-based mask_pairs ---
+                for m_l in mask_pairs:
+                    idx = [i for i, lab in enumerate(labels) if m_l in lab]
+                    idx = np.array(idx, dtype=int)
+                    if idx.size > 0:
+                        rdm[np.ix_(idx, idx)] = np.nan
+   
+        #import pdb; pdb.set_trace()
         # lastly, only store the part of the RDM I am actually interested in 
         # i.e. the upper triangle, including the diagonal.
         n = rdm.shape[1]    
         RDM.append(rdm[np.triu_indices(n, k=0)]) 
         if plotting == True:
-            plt.figure()
-            plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm')
-            plt.figure()
-            plt.imshow(rdm_both_halves, aspect = 'auto', cmap = 'coolwarm')
+            plot_rdm_with_labels(rdm, labels, group_size=4)
+            #plt.figure()
+            #plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm')
+            #plt.figure()
+            #plt.imshow(rdm_both_halves, aspect = 'auto', cmap = 'coolwarm')
 
     return RDM
 

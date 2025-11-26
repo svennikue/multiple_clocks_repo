@@ -38,6 +38,15 @@ def get_data(sub, trials):
     data_norm = mc.analyse.helpers_human_cells.load_norm_data(data_folder, [f"{sub:02}"], res_data = res_data)
     return data_norm, data_folder 
 
+def f_test_state_main_effect(res, state_terms=('A', 'B', 'C', 'D')):
+    names = res.model.exog_names
+    C = np.zeros((len(state_terms), len(names)))
+    for row, name in enumerate(state_terms):
+        col = names.index(name)
+        C[row, col] = 1.0
+    return res.f_test(C)
+
+
 
 def make_long_df(
     neuron: np.ndarray,
@@ -157,18 +166,18 @@ def make_long_df(
     return df_long
 
 
-def nested_f_test(res_full, k_full, res_reduced, k_reduced):
-    """Classic nested-model F-test from two OLS fits.
-    res_* are statsmodels results; k_* are number of regressors in each model."""
-    sse_full = float(np.sum(res_full.resid**2))
-    sse_red  = float(np.sum(res_reduced.resid**2))
-    df1 = int(k_full - k_reduced)
-    df2 = int(res_full.df_resid)
-    if df1 <= 0 or df2 <= 0 or sse_full <= 0:
-        return np.nan, np.nan
-    F = ((sse_red - sse_full) / df1) / (sse_full / df2)
-    p = stats.f.sf(F, df1, df2)
-    return F, p
+# def nested_f_test(res_full, k_full, res_reduced, k_reduced):
+#     """Classic nested-model F-test from two OLS fits.
+#     res_* are statsmodels results; k_* are number of regressors in each model."""
+#     sse_full = float(np.sum(res_full.resid**2))
+#     sse_red  = float(np.sum(res_reduced.resid**2))
+#     df1 = int(k_full - k_reduced)
+#     df2 = int(res_full.df_resid)
+#     if df1 <= 0 or df2 <= 0 or sse_full <= 0:
+#         return np.nan, np.nan
+#     F = ((sse_red - sse_full) / df1) / (sse_full / df2)
+#     p = stats.f.sf(F, df1, df2)
+#     return F, p
 
 
 def determine_roi(n):
@@ -200,79 +209,31 @@ def run_linear_models(df, session, neuron_id, roi):
     y = stats.zscore(y)
 
     # Model 1 (main effects): y ~ A+B+C+D + rep_c + correct (no intercept)
-    # drop C because of collinearity issue and add an intercept.
-    #cols_m1 = ["A","B","C","D","rep_c","correct"]
     cols_m1 = ["A","B", "C", "D","rep_c","correct"]
-    # here z-score each variable, y as well as each X var
-    # will make beta and t the same and the betas will be interpretable
-    # 
-    
     X_m1 = df[cols_m1].astype(float)
-    # std = np.array(X_m1.std())
-    # if (not np.isnan(std).any()) and (not (std == 0).any()):
-    #     # put a condition that checks for nans
-    #     # because then the zscoring doesnt worl
-    #     X_m1 = stats.zscore(X_m1, axis=0)
-    
     res1 = sm.OLS(y, X_m1).fit(cov_type="HC3")
     
-    # #
-    # #
-    # #
-    # y = df["y"].to_numpy(float)
-    # # y = stats.zscore(y)
-
-    # # Model 1 (main effects): y ~ A+B+C+D + rep_c + correct (no intercept)
-    # # drop C because of collinearity issue and add an intercept.
-    # #cols_m1 = ["A","B","C","D","rep_c","correct"]
-    # cols_m1 = ["A","B","D","rep_c","correct"]
-    # # here z-score each variable, y as well as each X var
-    # # will make beta and t the same and the betas will be interpretable
-    # # 
+    # beta = np.linalg.pinv(X_m1) @ y
+    # is the same as res1.params
     
-    
-    # X_m1 = df[cols_m1].astype(float)
-    # std = np.array(X_m1.std())
-    # if (not np.isnan(std).any()) and (not (std == 0).any()):
-    #     # put a condition that checks for nans
-    #     # because then the zscoring doesnt worl
-    #     X_m1 = stats.zscore(X_m1, axis=0)
-    
-    
-    # # manual fit 
-    # np.linalg.pinv(X_m1) @ y
-    # res1 = sm.OLS(y, X_m1).fit(cov_type="HC3")
-    
-    
-    # # do the same thing with random data.
-    # y_rand = np.random.rand(45000,)
-    # y_rand = stats.zscore(y_rand)
-
-    # cols_3_states = ["A","B","D","rep_c","correct"]
-    # cols_4_states = ["A","B","C","D","rep_c","correct"]
-    
-    # X_4 = df[cols_4_states].astype(float)
-    # X_3 = df[cols_3_states].astype(float)
-    
-    # res3_rand = sm.OLS(y_rand, X_3).fit(cov_type="HC3")
-    # res4_rand = sm.OLS(y_rand, X_4).fit(cov_type="HC3")
-    
-    
-    # # testing random vs not random.
-    # # testing 4 states vs 3 states.
-    
-    
-    # # dont demean abcd, but demean the data. 
-    # # look at feat fsl website for main effect of state (F test)
-    
+    # DONT demean abcd, but demean the data!!!
+    # otherwise the results will be complete nonsense.
 
     #########
     ########
     
+    # ADJUST the F-test part!!! pv-vals everywehre etc.
     
-    # beta = np.linalg.pinv(X_m1) @ y
+    # State main effect.
+    # look at feat fsl website for main effect of state (F test)
+    # make three contrasts [1 0 0] [0 1 0] and [0 0 1] and enter all three contrasts into an F-test
+
+    # this is according to the FSL website:
+    # This corresponds to creating four separate T-contrasts 
+    # [1 0 0 0 0 0], [0 1 0 0 0 0], [0 0 1 0 0 0], [0 0 0 1 0 0]
+    f_res = res1.f_test('A = B = C = D = 0')
+    # the same as f_res = f_test_state_main_effect(res1)
     
-    # import pdb; pdb.set_trace()
     # per-regressor rows (M1)
     for term in cols_m1:
         result_rows.append({
@@ -281,42 +242,18 @@ def run_linear_models(df, session, neuron_id, roi):
             "beta": float(res1.params.get(term, np.nan)),
             "t":    float(res1.tvalues.get(term, np.nan)),
             "p":    float(res1.pvalues.get(term, np.nan)),
-            "F":    np.nan
+            "F":    f_res.fvalue,
+            "p_F": f_res.pvalue
         })
-    # State main effect.
-    #f_state = res1.f_test("A = 0, B = 0, C = 0, D = 0")
-    cols_red_state = ["rep_c","correct"]
-    X_red_state = df[cols_red_state].astype(float)
-    std = np.array(X_red_state.std())
-    if (not np.isnan(std).any()) and (not (std == 0).any()):
-        # put a condition that checks for nans
-        # because then the zscoring doesnt worl
-        X_red_state = stats.zscore(X_red_state, axis = 0)
     
-    
-    res1_reduced = sm.OLS(y, X_red_state).fit()  # classic for SSE
-    # res1_full can reuse res1, but we need classic SSE; refit without robust is simplest:
-    res1_full_classic = sm.OLS(y, X_m1).fit()
-    F_state, p_state = nested_f_test(res1_full_classic, k_full=len(cols_m1),
-                                     res_reduced=res1_reduced, k_reduced=len(cols_red_state))
-    
-    result_rows.append({
-        "session": session, "neuron": neuron_id, "roi": roi,
-        "model": "M1_main", "term": "State_main_effect",
-        "beta": np.nan, "t": np.nan,
-        "p": p_state, "F": F_state
-    })
-
-    # Model 2 (with interaction): y ~ A+B+C+D + rep_c + correct + (A_rep+B_rep+C_rep+D_rep)
-    #cols_m2 = ["A","B","C","D","rep_c","correct","A_rep","B_rep","C_rep","D_rep"]
-    cols_m2 = ["A","B","D","rep_c","correct","A_rep","B_rep","C_rep","D_rep"]
+    # Model 2 (with interaction): y ~ A+B+C+D + correct + (A_rep+B_rep+C_rep+D_rep)
+    # exclude rep_c here because the interactions would be a linear combination of it.
+    cols_m2 = ["A","B","C","D","correct","A_rep","B_rep","C_rep","D_rep"]
     X_m2 = df[cols_m2].astype(float)
-    std = np.array(X_m2.std())
-    if (not np.isnan(std).any()) and (not (std == 0).any()):
-        # put a condition that checks for nans
-        # because then the zscoring doesnt worl
-        X_m2 = stats.zscore(X_m2, axis = 0)
     res2 = sm.OLS(y, X_m2).fit(cov_type="HC3")
+    
+    # Main effect State Repeats
+    f_res_int = res2.f_test('A_rep = B_rep = C_rep = D_rep = 0')
 
     for term in cols_m2:
         result_rows.append({
@@ -325,19 +262,9 @@ def run_linear_models(df, session, neuron_id, roi):
             "beta": float(res2.params.get(term, np.nan)),
             "t":    float(res2.tvalues.get(term, np.nan)),
             "p":    float(res2.pvalues.get(term, np.nan)),
-            "F":    np.nan
+            "F":    f_res_int.fvalue,
+            "p_F": f_res_int.pvalue
         })
-        
-    # STATExREP via nested F: reduced = M1, full = M2
-    res2_reduced = sm.OLS(y, X_m1).fit()  # classic for SSE
-    res2_full_classic = sm.OLS(y, X_m2).fit()
-    F_int, p_int = nested_f_test(res2_full_classic, k_full=len(cols_m2),
-                                 res_reduced=res2_reduced, k_reduced=len(cols_m1))
-    result_rows.append({
-        "session": session, "neuron": neuron_id, "roi": roi,
-        "model": "M2_interact", "term": "STATExREP_BLOCK",
-        "beta": np.nan, "t": np.nan, "p": p_int, "F": F_int
-    })
 
     return result_rows
 
@@ -373,9 +300,9 @@ def compute_state_lin_mod_all(sessions, trials, save_all=False):
             roi = determine_roi(n)
             results = run_linear_models(df, sesh, n, roi)
             all_result_rows.extend(results)
-    
+
     # import pdb; pdb.set_trace()
-    results_df = pd.DataFrame(all_result_rows, columns=["session","neuron","roi","model","term","beta","t","p","F"])
+    results_df = pd.DataFrame(all_result_rows, columns=["session","neuron","roi","model","term","beta","t","p","F","p_F"])
     print(results_df.head())
     
     
@@ -396,6 +323,6 @@ if __name__ == "__main__":
     # trials can be 'all', 'all_correct', 'early', 'late', 'all_minus_explore', 'residualised'
     # they can also be: 'first_correct', 'one_correct', ... 'nine_correct'
     # NOTE: if you do per-repeat estimates, use every grid! grid mean will be super unreliable anyways
-    compute_state_lin_mod_all(sessions=list(range(0,64)), trials = 'all_minus_explore', save_all = True)
-    # compute_state_lin_mod_all(sessions=list(range(0,10)), trials = 'all_minus_explore', save_all = False)
+    compute_state_lin_mod_all(sessions=list(range(1,64)), trials = 'all_minus_explore', save_all = True)
+    # compute_state_lin_mod_all(sessions=list(range(0,3)), trials = 'all_minus_explore', save_all = False)
     
