@@ -62,18 +62,17 @@ for sub in subjects:
         beh_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}/beh"
         RDM_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}/beh/modelled_EVs"
         print(f"Running on Cluster, setting {beh_dir} as data directory")
-            
-                 
+
     beh_df = pd.read_csv(f"{beh_dir}/{sub}_beh_fmri_clean.csv")
     tasks = beh_df['task_config_ex'].unique()
     states = beh_df['state'].unique()
     bin_type = beh_df['time_bin_type'].unique()
-    
+
     locations = sorted(beh_df['curr_loc'].unique())
     loc_to_row = {loc: i for i, loc in enumerate(locations)}
     
     
-    # define regressors.
+    # define regressors. unique_time_bin_type look like E1_forw_A_reward etc.
     regs = sorted(beh_df['unique_time_bin_type'].unique())
     regressors = {}
     for reg in regs:
@@ -93,19 +92,22 @@ for sub in subjects:
     
     for loc in locations:
         models['location'][loc-1][beh_df['curr_loc'] == loc] = 1
-    
-    for loc in locations:
         models['curr_rew'][loc-1][beh_df['curr_rew'] == loc] = 1
     
     
     # this is for the future reward location models.
     # rotates the reward values by k, but keeps time-bin-length in place.
+    # Flagged for msm for later: understand this ?
     def rotate_runs(arr, k):
         """Rotate the values of consecutive runs by k, preserving run lengths."""
+        # Finds the points at which a new value starts and turn them into indices
         changes = np.r_[True, arr[1:] != arr[:-1]]
         starts  = np.flatnonzero(changes)
+        # Count number of identical consecutive items
         lens    = np.diff(np.r_[starts, arr.size])
+        # Find which values are repeated
         vals    = arr[starts]
+        # rols, and then repeat and return
         rot_vals = np.roll(vals, - (k % len(vals)))   # left-roll so first run takes next run's value
         return np.repeat(rot_vals, lens)
 
@@ -161,9 +163,7 @@ for sub in subjects:
                 plt.axvline(interval-0.5, color='white', ls='dashed')
                 plt.axhline(interval-0.5, color='white', ls='dashed')
             plt.title(model)
-            
-    
-        
+
     # import pdb; pdb.set_trace()          
     if save_RDMs: 
         # then save these matrices.
@@ -174,9 +174,4 @@ for sub in subjects:
             pickle.dump(EVs, file)
             
         print(f"saved EV dictionary as {RDM_dir}/{sub}_modelled_EVs_{EV_string}.pkl")
-    
-    
 
-    
-    
-    
