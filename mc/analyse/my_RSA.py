@@ -43,7 +43,7 @@ def load_data_EVs(data_dir, regression_version, old=False):
                 EV_dict[name] = np.array(nib.load(EV_path).get_fdata()).flatten()
                 # reshape data so we have 1 x n_voxels
                 # import pdb; pdb.set_trace()
-                if name not in ['press_EV']:
+                if name not in ['press_EV', 'up', 'down', 'left', 'right']:
                     list_loaded.append(name)
     print(f"loaded the following data EVs in dict: {list_loaded}")
     return EV_dict, list_loaded
@@ -315,10 +315,10 @@ def evaluate_model(model_rdm, data_rdm):
     # import pdb; pdb.set_trace()
 
     #X = sm.add_constant(model_rdm.transpose());
-    #X = sm.add_constant(model_rdm);
+    X = sm.add_constant(model_rdm);
     # first, normalize the regressors (but not the intercept, bc std = 0 -> division by 0!)
-    X = model_rdm.transpose()
-    for i in range(X.shape[1]):
+    # X = model_rdm.transpose()
+    for i in range(1, X.shape[1]):
         X[:,i] = (X[:,i] - np.nanmean(X[:,i]))/ np.nanstd(X[:,i])
     
     # to check if a GLM is ill-conditioned
@@ -339,4 +339,4 @@ def evaluate_model(model_rdm, data_rdm):
     
     est = sm.OLS(filtered_Y, filtered_X).fit()
     # import pdb; pdb.set_trace()
-    return est.tvalues, est.params, est.pvalues
+    return est.tvalues[1:], est.params[1:], est.pvalues[1:]

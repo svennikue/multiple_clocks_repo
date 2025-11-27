@@ -45,9 +45,17 @@ subjects = [f"sub-{subj_no}"]
 #regression_version = '03-4' 
 #RDM_version = '03-1'
 # no_phase_neurons = 3
-plot_RDMs = True 
+plot_RDMs = False 
 save_RDMs = True
 EV_string = 'simple-clean_loc-fut-rews-state'
+
+coord_to_loc = {
+    (-0.21,  0.29): 1, (0.0,  0.29): 2, (0.21,  0.29): 3,
+    (-0.21,  0.0 ): 4, (0.0,  0.0 ): 5, (0.21,  0.0 ): 6,
+    (-0.21, -0.29): 7, (0.0, -0.29): 8, (0.21, -0.29): 9,
+}
+loc_to_coord = {v:k for k,v in coord_to_loc.items()}
+
 #models_I_want = mc.analyse.analyse_MRI_behav.select_models_I_want(RDM_version)
    
 # import pdb; pdb.set_trace()
@@ -69,6 +77,8 @@ for sub in subjects:
     bin_type = beh_df['time_bin_type'].unique()
 
     locations = sorted(beh_df['curr_loc'].unique())
+    coordinates = np.array([loc_to_coord[loc] for loc in locations])
+    
     loc_to_row = {loc: i for i, loc in enumerate(locations)}
     
     
@@ -84,17 +94,22 @@ for sub in subjects:
     models = {}
     # ['location', 'curr_rew', 'next_rew', 'second_next_rew', 'third_next_rew', 'state', 'clocks']
     models['state'] = np.zeros((len(states), len(beh_df)))
+    models['A-state'] = np.zeros((len(states), len(beh_df)))
+    
     for s_i, state in enumerate(states):
+        if state == 'A':
+            models['A-state'][s_i][beh_df['state'] == state] = 1
         models['state'][s_i][beh_df['state'] == state] = 1
     
-    for key in ["location", "curr_rew", "next_rew", "two_next_rew", "three_next_rew"]:
+    for key in ["location", "curr_rew", "next_rew", "two_next_rew", "three_next_rew", "l2_norm"]:
         models[key] = np.zeros((len(locations), len(beh_df)), dtype=float)
     
-    for loc in locations:
-        models['location'][loc-1][beh_df['curr_loc'] == loc] = 1
-        models['curr_rew'][loc-1][beh_df['curr_rew'] == loc] = 1
-    
-    
+    for i_loc, loc in enumerate(locations):
+        models['location'][i_loc][beh_df['curr_loc'] == loc] = 1
+        models['curr_rew'][i_loc][beh_df['curr_rew'] == loc] = 1
+        for idx_inner_loc, inner_loc in enumerate(locations):
+            models['l2_norm'][idx_inner_loc][beh_df['curr_loc'] == loc] = -np.linalg.norm(coordinates[i_loc] - coordinates[idx_inner_loc])
+            
     # this is for the future reward location models.
     # rotates the reward values by k, but keeps time-bin-length in place.
     def rotate_runs(arr, k):

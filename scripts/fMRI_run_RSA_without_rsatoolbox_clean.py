@@ -79,7 +79,7 @@ else:
       
 # --- Load configuration ---
 # config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
-config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_state_masked_same_locstate.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_state_and_combostate.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
@@ -87,7 +87,8 @@ with open(f"{config_path}/{config_file}", "r") as f:
 EV_string = config.get("load_EVs_from")
 regression_version = config.get("regression_version")
 
-# regression_version = '03-4'
+# DONT FORGET TO COMMENT THIS OUT!!!!
+#regression_version = '03-4'
 
 today_str = date.today().strftime("%d-%m-%Y")
 name_RSA = config.get("name_of_RSA")
@@ -133,10 +134,11 @@ for sub in subjects:
        results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}_smooth{fwhm}/results" 
     os.makedirs(results_dir, exist_ok=True)
 
-    if masked_conditions[0] == 'load_same_loc_instate_mask':
-        with open (f"{data_dir}/{masked_conditions[1]}", "r") as f:
-            json_mask = json.load(f)
-        masked_conditions = json_mask.get("masked_conditions")
+    if masked_conditions:
+        if masked_conditions[0] == 'load_same_loc_instate_mask':
+            with open (f"{data_dir}/{masked_conditions[1]}", "r") as f:
+                json_mask = json.load(f)
+            masked_conditions = json_mask.get("masked_conditions")
         
 
     # get a reference image to later project the results onto. This is usually
@@ -209,7 +211,7 @@ for sub in subjects:
     # Step 3: compute the model and data RDMs.
     models_concat = {}
     model_RDM_dir = {}
-    # import pdb; pdb.set_trace() 
+    
     for model in model_EVs:
         model_th1, model_th2, model_paired_labels = pair_correct_tasks(model_EVs[model], EV_keys)
         # finally, concatenate th1 and th2 to do the cross-correlation after
@@ -218,9 +220,17 @@ for sub in subjects:
             # here, I want to now mask all within-task similarities.
             model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr_and_filter(models_concat[model], plotting = False, labels = model_paired_labels, mask_pairs= masked_conditions, full_mask=None, binarise = False)
             print(f"excluding n = {np.sum(np.isnan(model_RDM_dir[model]))} datapoints from {len(model_RDM_dir[model][0])}.")
-            #import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()
         else:  
             model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr(models_concat[model], plotting= False)
+            if model == 'A-state':
+                # first make sure to not do this for the 'correct nans'
+                nan_mask = np.isnan(model_RDM_dir['state'][0])
+                # then turn all nans into 1s
+                nan_mask_other_states = np.isnan(model_RDM_dir[model][0])
+                model_RDM_dir[model][0][nan_mask_other_states] = 1
+                #plt.figure(); plt.imshow(model_RDM_dir[model][0])
+                #import pdb; pdb.set_trace()
 
     
     if not os.path.exists(f"{data_rdm_dir}/data_RDM.npy"): 
