@@ -88,7 +88,7 @@ EV_string = config.get("load_EVs_from")
 regression_version = config.get("regression_version")
 
 # DONT FORGET TO COMMENT THIS OUT!!!!
-#regression_version = '03-4'
+# regression_version = '03-4'
 
 today_str = date.today().strftime("%d-%m-%Y")
 name_RSA = config.get("name_of_RSA")
@@ -129,7 +129,7 @@ for sub in subjects:
     modelled_conditions_dir = f"{data_dir}/beh/modelled_EVs"
     data_rdm_dir = f"{data_dir}/func/data_RDMs_{RDM_version}_glmbase_{regression_version}"
 
-    results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}" 
+    results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results" 
     if smoothing == True:
        results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}_smooth{fwhm}/results" 
     os.makedirs(results_dir, exist_ok=True)
@@ -230,7 +230,7 @@ for sub in subjects:
                 nan_mask_other_states = np.isnan(model_RDM_dir[model][0])
                 model_RDM_dir[model][0][nan_mask_other_states] = 1
                 #plt.figure(); plt.imshow(model_RDM_dir[model][0])
-                #import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
 
     
     if not os.path.exists(f"{data_rdm_dir}/data_RDM.npy"): 

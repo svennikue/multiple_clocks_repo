@@ -11,7 +11,7 @@
     }
   },
   "models": [
-    "state", "state_A", "location", "l2_norm"
+    "state", "A-state", "location", "l2_norm"
   ],
   "smoothing": false,
   "fwhm": 5,
@@ -22,7 +22,7 @@
   "combo_models": [
     {
       "name": "state_stateA_locs_l2",
-      "regressors": ["state", "state_A", "location", "l2_norm"]
+      "regressors": ["state", "A-state", "location", "l2_norm"]
     }
   ]
 }
