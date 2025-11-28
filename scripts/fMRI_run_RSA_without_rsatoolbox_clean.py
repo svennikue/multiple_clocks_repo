@@ -79,7 +79,7 @@ else:
       
 # --- Load configuration ---
 # config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
-config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_state_Amasked_and_combostate.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_state_Aones_and_combostate.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
@@ -233,13 +233,27 @@ for sub in subjects:
                 nan_mask_other_states = np.isnan(model_RDM_dir[model][0])
                 model_RDM_dir[model][0][nan_mask_other_states] = 1
                 #plt.figure(); plt.imshow(model_RDM_dir[model][0])
-
+    
+    if 'A-state-ones' in selected_models:
+        model_RDM_dir['state'][0][A_state_mask] = model_RDM_dir['state'][0][3]
+        print(f"set state A in state regressor to {model_RDM_dir['state'][0][3]}")
     if 'A-state-mask' in selected_models:
         # A_state_mask = ~np.isnan(model_RDM_dir['A-state'][0])
         for model in model_RDM_dir:
             model_RDM_dir[model][0][A_state_mask] = np.nan
             print(f"excluding n = {np.sum(np.isnan(model_RDM_dir[model]))} datapoints from {len(model_RDM_dir[model][0])} because of state-A masking.")
+            # if plotting == True:
+            #     # plot to test how it looks like
+            #     rdm_recon = np.zeros((40, 40))
+            #     tri_u = np.triu_indices(40, k=0)
+            #     # fill upper triangle
+            #     rdm_recon[tri_u] = model_RDM_dir[model][0]
+            #     plt.figure()
+            #     plt.imshow(rdm_recon)
+            #     plt.title(model)
+        import pdb; pdb.set_trace()
 
+        
     
     if not os.path.exists(f"{data_rdm_dir}/data_RDM.npy"): 
          # and searchlight-wise for data RDMs
@@ -282,8 +296,8 @@ for sub in subjects:
     #
     RSA_results = {}
     for model in selected_models:
-        if model == 'A-state-mask':
-            print("skipping computing A-state-mask, already masked")
+        if model == 'A-state-mask' or model == 'A-state-ones':
+            print("skipping computing A-state-mask or A-state-ones, already masked")
             continue
         print(model)
         # first, compute similarity esitmate for each model separately.

@@ -1,5 +1,5 @@
 {
-  "name_of_RSA": "state_Amasked_and_combo",
+  "name_of_RSA": "state_Aones_and_combo",
   "load_EVs_from": "simple-clean_loc-fut-rews-state",
   "regression_version": "all-rews-split_buttons",
     "EV_condition_selection": {
@@ -11,7 +11,7 @@
     }
   },
   "models": [
-    "state", "location", "l2_norm"
+    "state", "location", "l2_norm", "A-state-ones", "A-state"
   ],
   "smoothing": false,
   "fwhm": 5,
@@ -21,8 +21,8 @@
    "run_comobo_models": true,
   "combo_models": [
     {
-      "name": "state_locs_l2",
-      "regressors": ["state", "location", "l2_norm"]
+      "name": "stateAOnes_locs_l2_Astate",
+      "regressors": ["state", "location", "l2_norm", "A-state"]
     }
   ]
 }
