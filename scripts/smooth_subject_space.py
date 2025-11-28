@@ -71,7 +71,7 @@ for sub in subjects:
         print(f"now smoothing the RDM and saving it here: {smooth_dir}")
 
         # get all files ending with *t_val.nii.gz
-        nifti_files = glob(os.path.join(f"{RSA_dir}/results", "*t_val.nii.gz"))
+        nifti_files = glob(os.path.join(f"{RSA_dir}/results", "*.nii.gz"))
         print(f"found the following files to smooth: {nifti_files}")
         # in smoothing, the 0s around the brain will 'bleed' into the brain.
         # if I, however, smooth the mask, then divide the smoothed imaged by

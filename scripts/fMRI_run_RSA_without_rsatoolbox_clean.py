@@ -79,7 +79,7 @@ else:
       
 # --- Load configuration ---
 # config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
-config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_state_and_combostate.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_state_Amasked_and_combostate.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
@@ -87,8 +87,6 @@ with open(f"{config_path}/{config_file}", "r") as f:
 EV_string = config.get("load_EVs_from")
 regression_version = config.get("regression_version")
 
-# DONT FORGET TO COMMENT THIS OUT!!!!
-# regression_version = '03-4'
 
 today_str = date.today().strftime("%d-%m-%Y")
 name_RSA = config.get("name_of_RSA")
@@ -122,6 +120,8 @@ for sub in subjects:
     data_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}"
     if os.path.isdir(data_dir):
         print("Running on laptop.")
+        # DONT FORGET TO COMMENT THIS OUT!!!!
+        regression_version = '03-4'
     else:
         data_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}"
         print(f"Running on Cluster, setting {data_dir} as data directory")
@@ -216,6 +216,7 @@ for sub in subjects:
         model_th1, model_th2, model_paired_labels = pair_correct_tasks(model_EVs[model], EV_keys)
         # finally, concatenate th1 and th2 to do the cross-correlation after
         models_concat[model] = np.concatenate((model_th1, model_th2), axis = 0)
+        
         if masked_conditions:
             # here, I want to now mask all within-task similarities.
             model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr_and_filter(models_concat[model], plotting = False, labels = model_paired_labels, mask_pairs= masked_conditions, full_mask=None, binarise = False)
@@ -224,13 +225,20 @@ for sub in subjects:
         else:  
             model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr(models_concat[model], plotting= False)
             if model == 'A-state':
+                A_state_mask = ~np.isnan(model_RDM_dir['A-state'][0])
+                # import pdb; pdb.set_trace()
                 # first make sure to not do this for the 'correct nans'
                 nan_mask = np.isnan(model_RDM_dir['state'][0])
                 # then turn all nans into 1s
                 nan_mask_other_states = np.isnan(model_RDM_dir[model][0])
                 model_RDM_dir[model][0][nan_mask_other_states] = 1
                 #plt.figure(); plt.imshow(model_RDM_dir[model][0])
-    import pdb; pdb.set_trace()
+
+    if 'A-state-mask' in selected_models:
+        # A_state_mask = ~np.isnan(model_RDM_dir['A-state'][0])
+        for model in model_RDM_dir:
+            model_RDM_dir[model][0][A_state_mask] = np.nan
+            print(f"excluding n = {np.sum(np.isnan(model_RDM_dir[model]))} datapoints from {len(model_RDM_dir[model][0])} because of state-A masking.")
 
     
     if not os.path.exists(f"{data_rdm_dir}/data_RDM.npy"): 
@@ -274,6 +282,9 @@ for sub in subjects:
     #
     RSA_results = {}
     for model in selected_models:
+        if model == 'A-state-mask':
+            print("skipping computing A-state-mask, already masked")
+            continue
         print(model)
         # first, compute similarity esitmate for each model separately.
         # ACTUAL RSA - single regressors

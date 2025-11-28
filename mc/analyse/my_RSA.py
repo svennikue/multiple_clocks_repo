@@ -227,6 +227,7 @@ def compute_crosscorr_and_filter(data_chunk, labels = None, full_mask=None, mask
 
             else:
                 # --- OLD behaviour: substring-based mask_pairs ---
+                import pdb; pdb.set_trace()
                 for m_l in mask_pairs:
                     idx = [i for i, lab in enumerate(labels) if m_l in lab]
                     idx = np.array(idx, dtype=int)
