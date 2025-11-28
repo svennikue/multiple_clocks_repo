@@ -42,7 +42,7 @@ else:
          
 # import pdb; pdb.set_trace()      
 # --- Load configuration ---
-config_file = sys.argv[2] if len(sys.argv) > 2 else "EV_config_states_excl_tBD_rewA_split-buttons.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "EV_config_all_paths_stickrews_split-buttons.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
@@ -218,7 +218,8 @@ for sub in subjects:
                         if deleted_x_rows > 0:
                             print(f"careful! I am saving a cut state EV {task}_{rew}_reward file. Happened for subject {sub} in task half {th}")
                             np.savetxt(str(EV_folder) + 'ev_' + f"{task}_{rew}_reward" + '.txt', array, delimiter="    ", fmt='%f')
-                        
+        
+        # import pdb; pdb.set_trace()                
         if regress_subpaths == True:
             all_tasks = beh_th['task_config_ex'].unique()
             for task in all_tasks:
