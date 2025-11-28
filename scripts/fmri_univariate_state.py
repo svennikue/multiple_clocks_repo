@@ -18,7 +18,9 @@ import sys
 from datetime import date
 import json
 import nibabel as nib
-
+import scipy
+import nilearn
+import nilearn.image
 
 # import pdb; pdb.set_trace() 
 source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks"
@@ -34,13 +36,14 @@ else:
       
 # --- Load configuration ---
 # config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
-config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_state_Aones_and_combostate.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "config_univ_state.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
 # SETTINGS
 EV_string = config.get("load_EVs_from")
 regression_version = config.get("regression_version")
+fwhm = config.get("fwhm", 5)
 today_str = date.today().strftime("%d-%m-%Y")
 
 
@@ -66,7 +69,7 @@ for sub in subjects:
         print(f"Running on Cluster, setting {data_dir} as data directory")
       
     modelled_conditions_dir = f"{data_dir}/beh/modelled_EVs"
-    results_dir = f"{data_dir}/func/State_univ_glmbase_{regression_version}/results" 
+    results_dir = f"{data_dir}/func/state_univ_glmbase_{regression_version}/results" 
     os.makedirs(results_dir, exist_ok=True)
 
     # preparing the mask
@@ -74,7 +77,13 @@ for sub in subjects:
     mask_3d = mask_file.get_fdata()  
     n_vox_total = len(mask_3d.ravel())
     mask = (mask_3d > 0).ravel().astype(bool)
-    
+    # in smoothing, the 0s around the brain will 'bleed' into the brain.
+    # if I, however, smooth the mask, then divide the smoothed imaged by
+    # the smoothed value, I essentially correct the value at the edge back
+    # to it's initial one, getting rid of the 'bleeding'.
+    # so, first smooth the mask.
+    smooth_mask = nilearn.image.smooth_img(mask_file, fwhm)
+        
     
     # loading the model EVs into dict
     with open(f"{modelled_conditions_dir}/{sub}_modelled_EVs_{EV_string}.pkl", 'rb') as file:
@@ -83,7 +92,7 @@ for sub in subjects:
     # loading the data EVs and creating the data matrix
     data_EVs, all_EV_keys = mc.analyse.my_RSA.load_data_EVs(data_dir, regression_version=regression_version)
     data_EVs_stack = np.vstack([data_EVs[label] for label in all_EV_keys])
-    # mask the 
+    # mask the data
     Y = data_EVs_stack[:, mask]
     
     # preparing regressors
@@ -103,6 +112,7 @@ for sub in subjects:
     # 1) mark voxels that have any NaN across conditions
     valid_vox = ~np.any(np.isnan(Y), axis=0)   # shape (n_mask_vox,)
     
+
     # 2) precompute pseudoinverse of X
     X_pinv = np.linalg.pinv(X)                 # shape (n_reg, n_cond)
     
@@ -113,9 +123,15 @@ for sub in subjects:
     
     # 4) run GLM only on valid voxels
     Y_valid = Y[:, valid_vox]                  # (n_cond, n_valid_vox)
+    
+    # # z-score X and Y
+    # import pdb; pdb.set_trace()
+    # # Do not zscore this because they sum to a constant and therefore it would end up being singular
+    # #X = scipy.stats.zscore(X, axis= nan_policy='raise')
+    # Y = scipy.stats.zscore(Y_valid, axis=0, nan_policy='raise')
+    
     betas_masked[:, valid_vox] = X_pinv @ Y_valid
-    
-    
+ 
     # then put betas back in the none-masked shape
     betas_full_flat = np.full((n_reg, n_vox_total), np.nan)
     betas_full_flat[:, mask] = betas_masked
@@ -126,11 +142,28 @@ for sub in subjects:
     affine = mask_file.affine  # from your original data
     header = mask_file.header
     
+    # also store the smoothed version.
+    smooth_dir = os.path.join(f"{data_dir}/func/state_univ_glmbase_{regression_version}/smoothed")
+    if not os.path.exists(smooth_dir):
+        os.makedirs(smooth_dir, exist_ok=True)
+    print(f"now smoothing the RDM and saving it here: {smooth_dir}")
+    
     for i, state in enumerate(states):
         beta_img = nib.Nifti1Image(beta_vols[i], affine=affine, header=header)
         out_name = f"{sub}_state_{state}_univ_glmbase_{regression_version}.nii.gz"
         beta_img.to_filename(os.path.join(results_dir, out_name))
-
+        
+        print("Smoothing:", out_name)
+        nifti_smooth = nilearn.image.smooth_img(beta_img, fwhm)
+        # then divide by smoothed mask to get rid of bleeding
+        np_nifti_smooth = nifti_smooth.get_fdata() / smooth_mask.get_fdata()
+        np_nifti_smooth[mask_file.get_fdata() == 0.] = 0
+        # save with a simple modified name
+        out_file = os.path.join(smooth_dir, f"smooth_fwhm{fwhm}_{out_name}")
+    
+        nifti_smooth = nilearn.image.new_img_like(beta_img, np_nifti_smooth)
+        nifti_smooth.to_filename(out_file)
+        
 
     # --- SETTINGS SUMMARY (per subject) ---
     summary = {
