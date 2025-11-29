@@ -27,6 +27,138 @@ from joblib import Parallel, delayed
 from tqdm import tqdm
 import pickle
 import ast
+import re
+
+def build_dynamic_fsf(template_path, EV_paths):
+    """
+    Take an existing FEAT .fsf template and a list of EV text files,
+    and return a list of lines for a new .fsf with:
+      - evs_orig / evs_real matched to len(EV_paths)
+      - one EV block per EV file
+      - full ortho matrix up to N EVs
+      - contrast vectors of the correct length, all zeros
+    """
+    EV_paths = sorted(EV_paths)
+    n_evs = len(EV_paths)
+    n_real = n_evs   # we set all deriv_yn = 0, so evs_real == evs_orig
+
+    with open(template_path, "r") as f:
+        tmpl = f.read().splitlines()
+
+    # ---- find boundaries in the template ----
+    ev_start = None
+    contrast_marker = None
+    last_conorig = None
+
+    for i, line in enumerate(tmpl):
+        if ev_start is None and line.startswith("# EV 1 title"):
+            ev_start = i
+        if contrast_marker is None and line.strip() == "# Contrast & F-tests mode":
+            contrast_marker = i
+        if line.startswith("set fmri(con_orig"):
+            last_conorig = i
+
+    if ev_start is None or contrast_marker is None or last_conorig is None:
+        raise RuntimeError("Could not locate EV/contrast sections in the FSF template.")
+
+    # ---- header: keep everything before EV 1, but fix evs_orig / evs_real ----
+    header = []
+    for line in tmpl[:ev_start]:
+        if line.startswith("set fmri(evs_orig)"):
+            header.append(f"set fmri(evs_orig) {n_evs}")
+        elif line.startswith("set fmri(evs_real)"):
+            header.append(f"set fmri(evs_real) {n_real}")
+        else:
+            header.append(line)
+
+    # ---- EV region: rebuild from scratch for all EVs ----
+    ev_region = []
+    for idx, EV_path in enumerate(EV_paths, start=1):
+        EV_name = os.path.basename(EV_path).rsplit(".", 1)[0]
+
+        # Minimal EV block – using the settings from your template
+        ev_region.append(f"# EV {idx} title")
+        ev_region.append(f'set fmri(evtitle{idx}) "{EV_name}"')
+        ev_region.append(f"set fmri(shape{idx}) 3")
+        ev_region.append(f"set fmri(convolve{idx}) 2")
+        ev_region.append(f"set fmri(convolve_phase{idx}) 0")
+        ev_region.append(f"set fmri(tempfilt_yn{idx}) 1")
+        ev_region.append(f"set fmri(deriv_yn{idx}) 0")
+        ev_region.append(f'set fmri(custom{idx}) "{EV_path}"')
+        ev_region.append(f"set fmri(gammasigma{idx}) 3")
+        ev_region.append(f"set fmri(gammadelay{idx}) 6")
+
+        # Orthogonalisation: EV idx wrt EV 0..N – all zeros
+        for j in range(0, n_evs + 1):
+            ev_region.append(f"# Orthogonalise EV {idx} wrt EV {j}")
+            ev_region.append(f"set fmri(ortho{idx}.{j}) 0")
+
+        ev_region.append("")  # blank line between EVs
+
+    # ---- Contrast header from template ----
+    # Grab the lines:
+    #   # Contrast & F-tests mode
+    #   # real ...
+    #   # orig ...
+    #   set fmri(con_mode_old) ...
+    #   set fmri(con_mode) ...
+    #   <blank>
+    conpic_real1_idx = None
+    for i in range(contrast_marker, len(tmpl)):
+        if tmpl[i].startswith("set fmri(conpic_real.1)"):
+            conpic_real1_idx = i
+            break
+    if conpic_real1_idx is None:
+        raise RuntimeError("Could not find 'conpic_real.1' in template.")
+
+    header_end_idx = conpic_real1_idx - 1  # line with '# Display images for contrast_real 1'
+    contrast_header = tmpl[contrast_marker:header_end_idx]
+
+    # How many contrasts? (same for real and orig)
+    ncon = None
+    for line in tmpl:
+        m = re.match(r"set fmri\(ncon_real\)\s+(\d+)", line)
+        if m:
+            ncon = int(m.group(1))
+            break
+    if ncon is None:
+        ncon = 0
+
+    # ---- Rebuild all contrasts: real and orig, all zeros ----
+    contrast_region = list(contrast_header)
+    contrast_region.append("")  # keep a blank line
+
+    # real contrasts – vectors of length n_real
+    for c in range(1, ncon + 1):
+        contrast_region.append(f"# Display images for contrast_real {c}")
+        contrast_region.append(f"set fmri(conpic_real.{c}) 1")
+        contrast_region.append("")
+        contrast_region.append(f"# Title for contrast_real {c}")
+        contrast_region.append(f'set fmri(conname_real.{c}) "c{c}"')
+        contrast_region.append("")
+        for k in range(1, n_real + 1):
+            contrast_region.append(f"# Real contrast_real vector {c} element {k}")
+            contrast_region.append(f"set fmri(con_real{c}.{k}) 0")
+        contrast_region.append("")
+
+    # orig contrasts – vectors of length n_evs
+    for c in range(1, ncon + 1):
+        contrast_region.append(f"# Display images for contrast_orig {c}")
+        contrast_region.append(f"set fmri(conpic_orig.{c}) 1")
+        contrast_region.append("")
+        contrast_region.append(f"# Title for contrast_orig {c}")
+        contrast_region.append(f'set fmri(conname_orig.{c}) "c{c}"')
+        contrast_region.append("")
+        for k in range(1, n_evs + 1):
+            contrast_region.append(f"# Real contrast_orig vector {c} element {k}")
+            contrast_region.append(f"set fmri(con_orig{c}.{k}) 0")
+        contrast_region.append("")
+
+    # ---- Tail: everything after the last con_orig line ----
+    tail = tmpl[last_conorig + 1:]
+
+    # Stitch everything together
+    return header + [""] + ev_region + contrast_region + tail
 
 
 

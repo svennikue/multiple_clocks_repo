@@ -272,61 +272,73 @@ for sub in subjects:
         else:
             #template_name = 'my_RDM_GLM_pnm.fsf'
             template_name = 'new_fsf_file_pnm.fsf'
-            
-        with open(f"{analysis_dir}/templates/{template_name}", "r") as fin:                    
-            for line in fin:
-                for i, EV_path in enumerate(sorted_EVs): 
-                    if line.startswith(f"set fmri(custom{i+1})"):
-                        # print(f"my old line was: {line}")
-                        line = f'set fmri(custom{i+1}) "{EV_path}"\n'
-                    if line.startswith(f"set fmri(evtitle{i+1})"):
-                        EV_name_ext = os.path.basename(EV_path)
-                        EV_name = EV_name_ext.rsplit('.',1)[0]
-                        # print(f"changing evtitle{i+1} to {EV_name}")
-                        line = f'set fmri(evtitle{i+1}) "{EV_name}"\n'
-                    if line.startswith("set fmri(evs_orig)"):
-                        line = f"set fmri(evs_orig) {len(EV_paths)}\n"
-                    if line.startswith("set fmri(evs_real)"):
-                        line = f"set fmri(evs_real) {len(EV_paths)+1}\n"   
-                        # import pdb; pdb.set_trace();
-                text_to_write.append(line)
         
-        # then, in the next round, delete all the EVs that I don't actually include.
-        # first, do this for the orthogonalisation of the EVs + contrasts you want with the ones you don't.
-        skip = 0
-        text_to_write_half_cleaned = []
-        for line in text_to_write:
-            if skip > 0:
-                # if the counter is increased, skip next line and decrease counter
-                skip -= 1
-                continue
-            if (line.startswith("# Orthogonalise EV") and int(line[-3:-1]) > len(EV_paths)) or (line.startswith("# Real contrast_orig") and int(line[-3:-1]) > len(EV_paths)) or (line.startswith("# Real contrast_real vector") and int(line[-3:-1]) > len(EV_paths)):
-                #print(f"end of line is {line[-3:-1]}, so skip these next 3")
-                skip = 2
-            else:
-                #import pdb; pdb.set_trace();
-                text_to_write_half_cleaned.append(line)
-                
-        # then, delete all the configurations of the actual EVs don't want.
-        skip_until_marker = False
-        marker_line = "# Contrast & F-tests mode"
-        text_to_write_cleaned = []
-        for line in text_to_write_half_cleaned:
-            if skip_until_marker:
-                if line.strip() == marker_line:
-                    # add marker line to text and stop skipping
+        if len(sorted_EVs) > 81:
+            # then my OG fsf file re-write doesnt work. So call 
+            # the helper function
+            template_path = f"{analysis_dir}/templates/{template_name}"
+
+            # build the new FSF lines dynamically
+            fsf_lines = mc.analyse.analyse_MRI_behav.build_dynamic_fsf(template_path, sorted_EVs)
+            out_path = f"{data_dir_deriv}/{sub}/func/{sub}_draft_GLM_0{th}_{version}.fsf"
+            with open(out_path, "w") as fout:
+                fout.write("\n".join(fsf_lines))
+
+        else:
+            with open(f"{analysis_dir}/templates/{template_name}", "r") as fin:                    
+                for line in fin:
+                    for i, EV_path in enumerate(sorted_EVs): 
+                        if line.startswith(f"set fmri(custom{i+1})"):
+                            # print(f"my old line was: {line}")
+                            line = f'set fmri(custom{i+1}) "{EV_path}"\n'
+                        if line.startswith(f"set fmri(evtitle{i+1})"):
+                            EV_name_ext = os.path.basename(EV_path)
+                            EV_name = EV_name_ext.rsplit('.',1)[0]
+                            # print(f"changing evtitle{i+1} to {EV_name}")
+                            line = f'set fmri(evtitle{i+1}) "{EV_name}"\n'
+                        if line.startswith("set fmri(evs_orig)"):
+                            line = f"set fmri(evs_orig) {len(EV_paths)}\n"
+                        if line.startswith("set fmri(evs_real)"):
+                            line = f"set fmri(evs_real) {len(EV_paths)+1}\n"   
+                            # import pdb; pdb.set_trace();
+                    text_to_write.append(line)
+            
+            # then, in the next round, delete all the EVs that I don't actually include.
+            # first, do this for the orthogonalisation of the EVs + contrasts you want with the ones you don't.
+            skip = 0
+            text_to_write_half_cleaned = []
+            for line in text_to_write:
+                if skip > 0:
+                    # if the counter is increased, skip next line and decrease counter
+                    skip -= 1
+                    continue
+                if (line.startswith("# Orthogonalise EV") and int(line[-3:-1]) > len(EV_paths)) or (line.startswith("# Real contrast_orig") and int(line[-3:-1]) > len(EV_paths)) or (line.startswith("# Real contrast_real vector") and int(line[-3:-1]) > len(EV_paths)):
+                    #print(f"end of line is {line[-3:-1]}, so skip these next 3")
+                    skip = 2
+                else:
+                    #import pdb; pdb.set_trace();
+                    text_to_write_half_cleaned.append(line)
+                    
+            # then, delete all the configurations of the actual EVs don't want.
+            skip_until_marker = False
+            marker_line = "# Contrast & F-tests mode"
+            text_to_write_cleaned = []
+            for line in text_to_write_half_cleaned:
+                if skip_until_marker:
+                    if line.strip() == marker_line:
+                        # add marker line to text and stop skipping
+                        text_to_write_cleaned.append(line)
+                        skip_until_marker = False
+                    continue
+                if line.startswith("# EV") and int(line[5:7]) > len(EV_paths):
+                    skip_until_marker = True
+                else:
                     text_to_write_cleaned.append(line)
-                    skip_until_marker = False
-                continue
-            if line.startswith("# EV") and int(line[5:7]) > len(EV_paths):
-                skip_until_marker = True
-            else:
-                text_to_write_cleaned.append(line)
-    
-        with open(f"{data_dir_deriv}/{sub}/func/{sub}_draft_GLM_0{th}_{version}.fsf", "w") as fout:
-            for line in text_to_write_cleaned:
-                fout.write(line)
-       
+        
+            with open(f"{data_dir_deriv}/{sub}/func/{sub}_draft_GLM_0{th}_{version}.fsf", "w") as fout:
+                for line in text_to_write_cleaned:
+                    fout.write(line)
+           
         # --- SETTINGS SUMMARY (per subject) ---
         summary = {
             "subject": sub,

@@ -33,7 +33,7 @@ import nilearn.image
 
 
 # MNI coordinates: 
-MNI_coords = [0,0,0]
+MNI_coords = [10, -80, 13]
 
 # import pdb; pdb.set_trace() 
 source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks"
@@ -61,15 +61,38 @@ for sub in subjects:
         data_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}"
         print(f"Running on Cluster, setting {data_dir} as data directory")
     # data_rdm_dir = f"{data_dir}/func/data_RDMs_{RDM_version}_glmbase_{regression_version}"
-    transform_mat = f"{data_dir}/func/preproc_clean_02.feat/reg/standard2example_func.mat"
-    import pdb; pdb.set_trace(transform_mat) 
-    # then open with np.loadtxt()
+    transform_mat = f"{data_dir}/func/preproc_clean_01.feat/reg/standard2example_func.mat"
     
-    # nilearn.image.coord_transform(MNI_coords[0], MNI_coords[1], MNI_coords[2], affine)
+    affine = np.loadtxt(transform_mat)
+    subj_coords = nilearn.image.coord_transform(MNI_coords[0], MNI_coords[1], MNI_coords[2], affine)
+    
+    data_RDM_file_name = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/sub-02/func/data_RDMs_state-only_masked_same_locinstate_27-11-2025_glmbase_03-4/data_RDM.nii.gz"
+    data_RDM = load_img(data_RDM_file_name)
+    RDM_affine = data_RDM.affine
+    subj_coords = nilearn.image.coord_transform(MNI_coords[0], MNI_coords[1], MNI_coords[2], affine)
+    subj_indices = nilearn.image.coord_transform(subj_coords[0], subj_coords[1], subj_coords[2], np.linalg.inv(data_RDM.affine))
     
     
+    import pdb; pdb.set_trace() 
     
-    
+     mc.plotting.deep_data_plt.plot_data_RDMconds_per_searchlight(data_RDM_file_2d, centers, neighbors, [54, 63, 41], ref_img, condition_names)
+     mc.plotting.deep_data_plt.plot_dataRDM_by_voxel_coords(data_RDMs, [54, 63, 41], ref_img, condition_names, centers = centers, no_rsa_toolbox=True)
+
+
+
+
+
+subj_coords = nilearn.image.coord_transform(MNI_coords[0], MNI_coords[1], MNI_coords[2], affine)
+subj_indices = nilearn.image.coord_transform(subj_coords[0], subj_coords[1], subj_coords[2], data_RDM.affine)
+
+subj_coords = nilearn.image.coord_transform(MNI_coords[0], MNI_coords[1], MNI_coords[2], np.linalg.inv(affine))
+subj_indices = nilearn.image.coord_transform(subj_coords[0], subj_coords[1], subj_coords[2], data_RDM.affine)
+
+subj_coords = nilearn.image.coord_transform(MNI_coords[0], MNI_coords[1], MNI_coords[2], affine)
+subj_indices = nilearn.image.coord_transform(subj_coords[0], subj_coords[1], subj_coords[2], np.linalg.inv(data_RDM.affine))
+
+subj_coords = nilearn.image.coord_transform(MNI_coords[0], MNI_coords[1], MNI_coords[2], np.linalg.inv(affine))
+subj_indices = nilearn.image.coord_transform(subj_coords[0], subj_coords[1], subj_coords[2], np.linalg.inv(data_RDM.affine))
     
     
     
