@@ -29,136 +29,217 @@ import pickle
 import ast
 import re
 
-def build_dynamic_fsf(template_path, EV_paths):
+import re  # add this if you don't already have it
+
+
+def extend_for_more_evs(text_lines, ev_paths):
     """
-    Take an existing FEAT .fsf template and a list of EV text files,
-    and return a list of lines for a new .fsf with:
-      - evs_orig / evs_real matched to len(EV_paths)
-      - one EV block per EV file
-      - full ortho matrix up to N EVs
-      - contrast vectors of the correct length, all zeros
+    Extend a FEAT .fsf (already mostly filled in) to support more EVs.
+
+    text_lines: list of strings (your text_to_write list)
+    ev_paths:   sorted list of EV file paths (same order as you use for evtitle/custom)
+
+    This will:
+      - extend orthogonalisation for all existing EVs up to len(ev_paths)
+      - add full EV blocks (title/shape/convolve/custom/ortho) for new EV indices
+      - extend contrast_real and contrast_orig vectors with extra zeros
+
+    It preserves all existing whitespace and comments.
     """
-    EV_paths = sorted(EV_paths)
-    n_evs = len(EV_paths)
-    n_real = n_evs   # we set all deriv_yn = 0, so evs_real == evs_orig
+    lines = list(text_lines)
+    n_evs = len(ev_paths)
 
-    with open(template_path, "r") as f:
-        tmpl = f.read().splitlines()
+    # --- find how many EVs the template currently has ---
+    ev_nums = []
+    for line in lines:
+        if line.startswith("# EV ") and "title" in line:
+            # "# EV X title"
+            parts = line.split()
+            try:
+                ev_nums.append(int(parts[2]))
+            except (IndexError, ValueError):
+                pass
 
-    # ---- find boundaries in the template ----
-    ev_start = None
-    contrast_marker = None
-    last_conorig = None
+    if not ev_nums:
+        return lines  # nothing to do
 
-    for i, line in enumerate(tmpl):
-        if ev_start is None and line.startswith("# EV 1 title"):
-            ev_start = i
-        if contrast_marker is None and line.strip() == "# Contrast & F-tests mode":
-            contrast_marker = i
-        if line.startswith("set fmri(con_orig"):
-            last_conorig = i
+    old_max_ev = max(ev_nums)
 
-    if ev_start is None or contrast_marker is None or last_conorig is None:
-        raise RuntimeError("Could not locate EV/contrast sections in the FSF template.")
+    # If we don't have MORE EVs than in the template, do nothing
+    if n_evs <= old_max_ev:
+        return lines
 
-    # ---- header: keep everything before EV 1, but fix evs_orig / evs_real ----
-    header = []
-    for line in tmpl[:ev_start]:
-        if line.startswith("set fmri(evs_orig)"):
-            header.append(f"set fmri(evs_orig) {n_evs}")
-        elif line.startswith("set fmri(evs_real)"):
-            header.append(f"set fmri(evs_real) {n_real}")
-        else:
-            header.append(line)
+    # --- get evs_real from the header (you already set this earlier) ---
+    evs_orig = n_evs
+    evs_real = None
+    for line in lines:
+        if line.startswith("set fmri(evs_real)"):
+            try:
+                evs_real = int(line.split()[-1])
+            except ValueError:
+                pass
+    if evs_real is None:
+        evs_real = evs_orig  # fallback
 
-    # ---- EV region: rebuild from scratch for all EVs ----
-    ev_region = []
-    for idx, EV_path in enumerate(EV_paths, start=1):
-        EV_name = os.path.basename(EV_path).rsplit(".", 1)[0]
+    # ==========================================================
+    # 1) EXTEND ORTHOGONALISATION FOR EXISTING EVs (1..old_max_ev)
+    # ==========================================================
+    for ev in range(1, old_max_ev + 1):
+        # Find the last orth line for this EV: "... wrt EV old_max_ev"
+        comment = f"# Orthogonalise EV {ev} wrt EV {old_max_ev}\n"
+        idx = None
+        for i, line in enumerate(lines):
+            if line == comment:
+                idx = i  # keep last match if any
+        if idx is None:
+            continue  # no orth block for this EV (unlikely)
 
-        # Minimal EV block – using the settings from your template
-        ev_region.append(f"# EV {idx} title")
-        ev_region.append(f'set fmri(evtitle{idx}) "{EV_name}"')
-        ev_region.append(f"set fmri(shape{idx}) 3")
-        ev_region.append(f"set fmri(convolve{idx}) 2")
-        ev_region.append(f"set fmri(convolve_phase{idx}) 0")
-        ev_region.append(f"set fmri(tempfilt_yn{idx}) 1")
-        ev_region.append(f"set fmri(deriv_yn{idx}) 0")
-        ev_region.append(f'set fmri(custom{idx}) "{EV_path}"')
-        ev_region.append(f"set fmri(gammasigma{idx}) 3")
-        ev_region.append(f"set fmri(gammadelay{idx}) 6")
+        # Pattern around here is:
+        # idx     : "# Orthogonalise EV ev wrt EV old_max_ev"
+        # idx + 1 : "set fmri(orthoev.old_max_ev) 0"
+        # idx + 2 : "\n"
+        insert_at = idx + 3
 
-        # Orthogonalisation: EV idx wrt EV 0..N – all zeros
+        new_block = []
+        for j in range(old_max_ev + 1, n_evs + 1):
+            new_block.append(f"# Orthogonalise EV {ev} wrt EV {j}\n")
+            new_block.append(f"set fmri(ortho{ev}.{j}) 0\n")
+            new_block.append("\n")
+        lines[insert_at:insert_at] = new_block
+
+    # ==========================================================
+    # 2) ADD FULL EV BLOCKS (INCLUDING ORTHO) FOR NEW EV INDICES
+    # ==========================================================
+    # Insert just before "# Contrast & F-tests mode"
+    contrast_marker_idx = None
+    for i, line in enumerate(lines):
+        if line.strip() == "# Contrast & F-tests mode":
+            contrast_marker_idx = i
+            break
+    if contrast_marker_idx is None:
+        return lines  # shouldn't happen, but be safe
+
+    new_ev_blocks = []
+    for ev in range(old_max_ev + 1, n_evs + 1):
+        ev_path = ev_paths[ev - 1]
+        ev_name = ev_path.split("/")[-1].rsplit(".", 1)[0]
+
+        # IMPORTANT: no leading blank line here – we reuse the blank that's
+        # already there after the last "ortho81.81" line.
+        new_ev_blocks.extend([
+            f"# EV {ev} title\n",
+            f'set fmri(evtitle{ev}) "{ev_name}"\n',
+            "\n",
+            f"# Basic waveform shape (EV {ev})\n",
+            "# 0 : Square\n",
+            "# 1 : Sinusoid\n",
+            "# 2 : Custom (1 entry per volume)\n",
+            "# 3 : Custom (3 column format)\n",
+            "# 4 : Interaction\n",
+            "# 10 : Empty (all zeros)\n",
+            f"set fmri(shape{ev}) 3\n",
+            "\n",
+            f"# Convolution (EV {ev})\n",
+            "# 0 : None\n",
+            "# 1 : Gaussian\n",
+            "# 2 : Gamma\n",
+            "# 3 : Double-Gamma HRF\n",
+            "# 4 : Gamma basis functions\n",
+            "# 5 : Sine basis functions\n",
+            "# 6 : FIR basis functions\n",
+            "# 8 : Alternate Double-Gamma\n",
+            f"set fmri(convolve{ev}) 2\n",
+            "\n",
+            f"# Convolve phase (EV {ev})\n",
+            f"set fmri(convolve_phase{ev}) 0\n",
+            "\n",
+            f"# Apply temporal filtering (EV {ev})\n",
+            f"set fmri(tempfilt_yn{ev}) 1\n",
+            "\n",
+            f"# Add temporal derivative (EV {ev})\n",
+            f"set fmri(deriv_yn{ev}) 0\n",
+            "\n",
+            f"# Custom EV file (EV {ev})\n",
+            f'set fmri(custom{ev}) "{ev_path}"\n',
+            "\n",
+            f"# Gamma sigma (EV {ev})\n",
+            f"set fmri(gammasigma{ev}) 3\n",
+            "\n",
+            f"# Gamma delay (EV {ev})\n",
+            f"set fmri(gammadelay{ev}) 6\n",
+            "\n",
+        ])
+
+        # Orthogonalise EV ev wrt all EVs 0..n_evs
         for j in range(0, n_evs + 1):
-            ev_region.append(f"# Orthogonalise EV {idx} wrt EV {j}")
-            ev_region.append(f"set fmri(ortho{idx}.{j}) 0")
+            new_ev_blocks.append(f"# Orthogonalise EV {ev} wrt EV {j}\n")
+            new_ev_blocks.append(f"set fmri(ortho{ev}.{j}) 0\n")
+            new_ev_blocks.append("\n")
 
-        ev_region.append("")  # blank line between EVs
+    # insert new EV blocks right before the contrast section
+    lines[contrast_marker_idx:contrast_marker_idx] = new_ev_blocks
 
-    # ---- Contrast header from template ----
-    # Grab the lines:
-    #   # Contrast & F-tests mode
-    #   # real ...
-    #   # orig ...
-    #   set fmri(con_mode_old) ...
-    #   set fmri(con_mode) ...
-    #   <blank>
-    conpic_real1_idx = None
-    for i in range(contrast_marker, len(tmpl)):
-        if tmpl[i].startswith("set fmri(conpic_real.1)"):
-            conpic_real1_idx = i
-            break
-    if conpic_real1_idx is None:
-        raise RuntimeError("Could not find 'conpic_real.1' in template.")
+    # ==========================================================
+    # 3) EXTEND CONTRAST VECTORS (REAL + ORIG) WITH EXTRA ZEROS
+    # ==========================================================
 
-    header_end_idx = conpic_real1_idx - 1  # line with '# Display images for contrast_real 1'
-    contrast_header = tmpl[contrast_marker:header_end_idx]
-
-    # How many contrasts? (same for real and orig)
-    ncon = None
-    for line in tmpl:
-        m = re.match(r"set fmri\(ncon_real\)\s+(\d+)", line)
+    # old lengths from existing comments
+    old_real_len = 0
+    old_orig_len = 0
+    for line in lines:
+        m = re.match(r"# Real contrast_real vector (\d+) element (\d+)", line)
         if m:
-            ncon = int(m.group(1))
-            break
-    if ncon is None:
-        ncon = 0
+            old_real_len = max(old_real_len, int(m.group(2)))
+        m2 = re.match(r"# Real contrast_orig vector (\d+) element (\d+)", line)
+        if m2:
+            old_orig_len = max(old_orig_len, int(m2.group(2)))
 
-    # ---- Rebuild all contrasts: real and orig, all zeros ----
-    contrast_region = list(contrast_header)
-    contrast_region.append("")  # keep a blank line
+    new_orig_len = evs_orig        # should be len(ev_paths)
+    new_real_len = evs_real        # you already set this (e.g. len(ev_paths)+1)
 
-    # real contrasts – vectors of length n_real
-    for c in range(1, ncon + 1):
-        contrast_region.append(f"# Display images for contrast_real {c}")
-        contrast_region.append(f"set fmri(conpic_real.{c}) 1")
-        contrast_region.append("")
-        contrast_region.append(f"# Title for contrast_real {c}")
-        contrast_region.append(f'set fmri(conname_real.{c}) "c{c}"')
-        contrast_region.append("")
-        for k in range(1, n_real + 1):
-            contrast_region.append(f"# Real contrast_real vector {c} element {k}")
-            contrast_region.append(f"set fmri(con_real{c}.{k}) 0")
-        contrast_region.append("")
+    # --- extend con_real*.* ---
+    if new_real_len > old_real_len:
+        last_real_comment_idx = {}  # contrast id -> index of comment for old_real_len
+        for idx, line in enumerate(lines):
+            m = re.match(r"# Real contrast_real vector (\d+) element (\d+)", line)
+            if m:
+                c = int(m.group(1))
+                k = int(m.group(2))
+                if k == old_real_len:
+                    last_real_comment_idx[c] = idx
 
-    # orig contrasts – vectors of length n_evs
-    for c in range(1, ncon + 1):
-        contrast_region.append(f"# Display images for contrast_orig {c}")
-        contrast_region.append(f"set fmri(conpic_orig.{c}) 1")
-        contrast_region.append("")
-        contrast_region.append(f"# Title for contrast_orig {c}")
-        contrast_region.append(f'set fmri(conname_orig.{c}) "c{c}"')
-        contrast_region.append("")
-        for k in range(1, n_evs + 1):
-            contrast_region.append(f"# Real contrast_orig vector {c} element {k}")
-            contrast_region.append(f"set fmri(con_orig{c}.{k}) 0")
-        contrast_region.append("")
+        # insert from bottom to top so indices stay valid
+        for c, idx in sorted(last_real_comment_idx.items(), key=lambda x: -x[1]):
+            insert_at = idx + 3  # after comment, set, blank
+            new_lines = []
+            for k in range(old_real_len + 1, new_real_len + 1):
+                new_lines.append(f"# Real contrast_real vector {c} element {k}\n")
+                new_lines.append(f"set fmri(con_real{c}.{k}) 0\n")
+                new_lines.append("\n")
+            lines[insert_at:insert_at] = new_lines
 
-    # ---- Tail: everything after the last con_orig line ----
-    tail = tmpl[last_conorig + 1:]
+    # --- extend con_orig*.* ---
+    if new_orig_len > old_orig_len:
+        last_orig_comment_idx = {}
+        for idx, line in enumerate(lines):
+            m = re.match(r"# Real contrast_orig vector (\d+) element (\d+)", line)
+            if m:
+                c = int(m.group(1))
+                k = int(m.group(2))
+                if k == old_orig_len:
+                    last_orig_comment_idx[c] = idx
 
-    # Stitch everything together
-    return header + [""] + ev_region + contrast_region + tail
+        for c, idx in sorted(last_orig_comment_idx.items(), key=lambda x: -x[1]):
+            insert_at = idx + 3
+            new_lines = []
+            for k in range(old_orig_len + 1, new_orig_len + 1):
+                new_lines.append(f"# Real contrast_orig vector {c} element {k}\n")
+                new_lines.append(f"set fmri(con_orig{c}.{k}) 0\n")
+                new_lines.append("\n")
+            lines[insert_at:insert_at] = new_lines
+
+    return lines
+
 
 
 
