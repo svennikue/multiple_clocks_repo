@@ -87,10 +87,10 @@ def extend_for_more_evs(text_to_write, sorted_EVs, n_EVs, max_EVs_og_fsf):
         additional_EVs.extend(adjusted_EV)
 
     
-    insert_pos = end_last_EV +1
+    insert_pos = end_last_EV +2
     # this might need to be flatten first, maybe by just doing extend its fine
     text_to_write[insert_pos:insert_pos] = additional_EVs
-    
+    # import pdb; pdb.set_trace() 
     # only the old EVs need to be adjusted now.
     for EV_idx in range(1, max_EVs_og_fsf+1):
         # print(EV_idx)
@@ -118,36 +118,102 @@ def extend_for_more_evs(text_to_write, sorted_EVs, n_EVs, max_EVs_og_fsf):
         #     ])
         
     # the second chunk that needs to be adjusted
-    # there are 6 contrast vectors
-    # import pdb; pdb.set_trace() 
-    for add_contr_idx in range(max_EVs_og_fsf+2, max_EVs_og_fsf+2 + n_EVs_to_insert):
-        #print(f"now for EV {add_contr_idx}")
-        for vec in [1,2,3,4,5,6]:
-            #print(f"now for vector {vec}")
-            for idx, line in enumerate(text_to_write):
-                if f"# Real contrast_real vector {vec} element {add_contr_idx-1}" in line:
-                    idx_to_insert = idx + 3
-                    copied_contrast_vec = text_to_write[idx: idx + 3]
-                    # next, replace the incorrect index (82) with the correct ones
-                    for row in range(0, len(copied_contrast_vec)):
-                        copied_contrast_vec[row] = copied_contrast_vec[row].replace(str(add_contr_idx-1), str(add_contr_idx))
-                    #print(f"now inserting {copied_contrast_vec}")
-                    text_to_write[idx_to_insert:idx_to_insert] = copied_contrast_vec
-                    # i'm not actually replacing the initial lines, so put a breakpoint here to avoid 
-                    # unlimited loops
-                    break
-                if f"# Real contrast_orig vector {vec} element {add_contr_idx-1}" in line:
-                    idx_to_insert = idx + 3
-                    copied_contrast_vec = text_to_write[idx: idx + 3]
-                    # next, replace the incorrect index (82) with the correct ones
-                    for row in range(0, len(copied_contrast_vec)):
-                        copied_contrast_vec[row] = copied_contrast_vec[row].replace(str(add_contr_idx-1), str(add_contr_idx))
-                    #print(f"now inserting {copied_contrast_vec}")
-                    text_to_write[idx_to_insert:idx_to_insert] = copied_contrast_vec
-                    # i'm not actually replacing the initial lines, so put a breakpoint here to avoid 
-                    # unlimited loops
-                    break
+    # there are 6 contrast vectors. 
+    # for contrast_real vector, these go to element 82.
+    # for contrast_orig vector, these go to element 81.
+    
+    # so, per vector, find the row in question, and add the +n_EVs_to_insert elements
+    for vec in [1,2,3,4,5,6]:
+        # for contrast_orig vector, these go to element 81.
+        for idx, line in enumerate(text_to_write):
+            if f"# Real contrast_orig vector {vec} element {max_EVs_og_fsf}" in line:
+                append_contrast_orig = []
+                for add_EV_idx in range(max_EVs_og_fsf, max_EVs_og_fsf + n_EVs_to_insert+1):
+                    append_contrast_orig.extend([
+                        f'# Real contrast_orig vector {vec} element {add_EV_idx}\n', 
+                        f'set fmri(con_orig{vec}.{add_EV_idx}) 0\n', 
+                        '\n'
+                            ])
+                text_to_write[idx:idx+3] = append_contrast_orig
+                break
+    
+    # enter the loop again for contrast_real vectors.
+    for vec in [1,2,3,4,5,6]:
+        # for contrast_real vector, these go to element 82.
+        for idx, line in enumerate(text_to_write):
+            if f"# Real contrast_real vector {vec} element {max_EVs_og_fsf+1}" in line:
+                append_contrast_real = []
+                for add_EV_idx in range(max_EVs_og_fsf, max_EVs_og_fsf + n_EVs_to_insert+1):
+                    append_contrast_real.extend([
+                        f'# Real contrast_real vector {vec} element {add_EV_idx+1}\n', 
+                        f'set fmri(con_real{vec}.{add_EV_idx+1}) 0\n', 
+                        '\n'
+                            ])
+                text_to_write[idx:idx+3] = append_contrast_real
+                break
                 
+
+    # import pdb; pdb.set_trace()     
+    # # do this differently.
+    # for add_contr_idx in range(max_EVs_og_fsf+2, max_EVs_og_fsf+2 + n_EVs_to_insert):
+    #     #print(f"now for EV {add_contr_idx}")
+    #     for vec in [1,2,3,4,5,6]:
+    #         #print(f"now for vector {vec}")
+    #         for idx, line in enumerate(text_to_write):
+    #             if f"# Real contrast_real vector {vec} element {add_contr_idx-1}" in line:
+    #                 idx_to_insert = idx + 3
+    #                 print(idx_to_insert)
+    #                 copied_contrast_vec = text_to_write[idx: idx + 3]
+    #                 # next, replace the incorrect index (82) with the correct ones
+    #                 for row in range(0, len(copied_contrast_vec)):
+    #                     copied_contrast_vec[row] = copied_contrast_vec[row].replace(str(add_contr_idx-1), str(add_contr_idx))
+    #                 #print(f"now inserting {copied_contrast_vec}")
+                    
+    #                 #text_to_write[idx_to_insert:idx_to_insert] = copied_contrast_vec
+    #                 # i'm not actually replacing the initial lines, so put a breakpoint here to avoid 
+    #                 # unlimited loops
+    #                 break
+
+
+    
+    
+    
+    
+    # for add_contr_idx in range(max_EVs_og_fsf+2, max_EVs_og_fsf+2 + n_EVs_to_insert):
+    #     #print(f"now for EV {add_contr_idx}")
+    #     for vec in [1,2,3,4,5,6]:
+    #         #print(f"now for vector {vec}")
+    #         for idx, line in enumerate(text_to_write):
+    #             if f"# Real contrast_orig vector {vec} element {add_contr_idx-2}" in line:
+    #                 print(f"# Real contrast_orig vector {vec} element {add_contr_idx-2}")
+    #                 idx_to_insert = idx + 3
+    #                 print(idx_to_insert)
+    #                 copied_contrast_vec = text_to_write[idx: idx + 3]
+    #                 # next, replace the incorrect index (82) with the correct ones
+    #                 for row in range(0, len(copied_contrast_vec)):
+    #                     copied_contrast_vec[row] = copied_contrast_vec[row].replace(str(add_contr_idx-2), str(add_contr_idx-1))
+    #                 print(f"now inserting {copied_contrast_vec}")
+                    
+    #                 # text_to_write[idx_to_insert:idx_to_insert] = copied_contrast_vec
+    #                 # i'm not actually replacing the initial lines, so put a breakpoint here to avoid 
+    #                 # unlimited loops
+    #                 break
+    #             if f"# Real contrast_real vector {vec} element {add_contr_idx-1}" in line:
+    #                 idx_to_insert = idx + 3
+    #                 print(idx_to_insert)
+    #                 copied_contrast_vec = text_to_write[idx: idx + 3]
+    #                 # next, replace the incorrect index (82) with the correct ones
+    #                 for row in range(0, len(copied_contrast_vec)):
+    #                     copied_contrast_vec[row] = copied_contrast_vec[row].replace(str(add_contr_idx-1), str(add_contr_idx))
+    #                 #print(f"now inserting {copied_contrast_vec}")
+                    
+    #                 #text_to_write[idx_to_insert:idx_to_insert] = copied_contrast_vec
+    #                 # i'm not actually replacing the initial lines, so put a breakpoint here to avoid 
+    #                 # unlimited loops
+    #                 break
+
+                
+    # import pdb; pdb.set_trace()           
     return text_to_write
     
 
