@@ -152,7 +152,7 @@ def extend_for_more_evs(text_to_write, sorted_EVs, n_EVs, max_EVs_og_fsf):
                 text_to_write[idx:idx+3] = append_contrast_real
                 break
                 
-
+    print(f"most recent stiched index at {idx}")
     # import pdb; pdb.set_trace()     
     # # do this differently.
     # for add_contr_idx in range(max_EVs_og_fsf+2, max_EVs_og_fsf+2 + n_EVs_to_insert):
