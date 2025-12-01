@@ -50,7 +50,8 @@ def extend_for_more_evs(text_to_write, sorted_EVs, n_EVs, max_EVs_og_fsf):
         if str(max_EVs_og_fsf) in line:
             idx_to_change.append(idx)
             row_to_change.append(line)
-      
+    
+    # import pdb; pdb.set_trace() 
     additional_EVs = []
     for additional_EV in range(max_EVs_og_fsf, max_EVs_og_fsf+n_EVs_to_insert):
         adjusted_EV = copied_max_EV.copy()
@@ -80,6 +81,7 @@ def extend_for_more_evs(text_to_write, sorted_EVs, n_EVs, max_EVs_og_fsf):
                 f"# Orthogonalise EV {additional_EV+1} wrt EV {add_EV_idx}\n",
                 f"set fmri(ortho{additional_EV+1}.{add_EV_idx}) 0\n",
             ])
+        last_lines_appendix.extend("\n")
         adjusted_EV[-3:] = last_lines_appendix
         # additional_EVs.append(adjusted_EV)
         additional_EVs.extend(adjusted_EV)
@@ -91,7 +93,7 @@ def extend_for_more_evs(text_to_write, sorted_EVs, n_EVs, max_EVs_og_fsf):
     
     # only the old EVs need to be adjusted now.
     for EV_idx in range(1, max_EVs_og_fsf+1):
-        print(EV_idx)
+        # print(EV_idx)
         for li, line in enumerate(text_to_write):
             if f"# Orthogonalise EV {EV_idx} wrt EV {max_EVs_og_fsf}\n" in line:
                 append_ortho_EV = []
@@ -102,7 +104,7 @@ def extend_for_more_evs(text_to_write, sorted_EVs, n_EVs, max_EVs_og_fsf):
                         "\n"
                     ])
                 # here I replace the text.
-                print(f"now adding lines {append_ortho_EV}")
+                # print(f"now adding lines {append_ortho_EV}")
                 text_to_write[li:li+3] = append_ortho_EV
                 break
             
@@ -119,9 +121,9 @@ def extend_for_more_evs(text_to_write, sorted_EVs, n_EVs, max_EVs_og_fsf):
     # there are 6 contrast vectors
     # import pdb; pdb.set_trace() 
     for add_contr_idx in range(max_EVs_og_fsf+2, max_EVs_og_fsf+2 + n_EVs_to_insert):
-        print(f"now for EV {add_contr_idx}")
+        #print(f"now for EV {add_contr_idx}")
         for vec in [1,2,3,4,5,6]:
-            print(f"now for vector {vec}")
+            #print(f"now for vector {vec}")
             for idx, line in enumerate(text_to_write):
                 if f"# Real contrast_real vector {vec} element {add_contr_idx-1}" in line:
                     idx_to_insert = idx + 3
@@ -129,7 +131,7 @@ def extend_for_more_evs(text_to_write, sorted_EVs, n_EVs, max_EVs_og_fsf):
                     # next, replace the incorrect index (82) with the correct ones
                     for row in range(0, len(copied_contrast_vec)):
                         copied_contrast_vec[row] = copied_contrast_vec[row].replace(str(add_contr_idx-1), str(add_contr_idx))
-                    print(f"now inserting {copied_contrast_vec}")
+                    #print(f"now inserting {copied_contrast_vec}")
                     text_to_write[idx_to_insert:idx_to_insert] = copied_contrast_vec
                     # i'm not actually replacing the initial lines, so put a breakpoint here to avoid 
                     # unlimited loops
@@ -140,7 +142,7 @@ def extend_for_more_evs(text_to_write, sorted_EVs, n_EVs, max_EVs_og_fsf):
                     # next, replace the incorrect index (82) with the correct ones
                     for row in range(0, len(copied_contrast_vec)):
                         copied_contrast_vec[row] = copied_contrast_vec[row].replace(str(add_contr_idx-1), str(add_contr_idx))
-                    print(f"now inserting {copied_contrast_vec}")
+                    #print(f"now inserting {copied_contrast_vec}")
                     text_to_write[idx_to_insert:idx_to_insert] = copied_contrast_vec
                     # i'm not actually replacing the initial lines, so put a breakpoint here to avoid 
                     # unlimited loops

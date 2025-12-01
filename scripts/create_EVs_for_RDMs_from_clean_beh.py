@@ -272,17 +272,6 @@ for sub in subjects:
         else:
             #template_name = 'my_RDM_GLM_pnm.fsf'
             template_name = 'new_fsf_file_pnm.fsf'
-        
-        # if len(sorted_EVs) > 81:
-        #     # then my OG fsf file re-write doesnt work. So call 
-        #     # the helper function
-        #     template_path = f"{analysis_dir}/templates/{template_name}"
-
-        #     # build the new FSF lines dynamically
-        #     fsf_lines = mc.analyse.analyse_MRI_behav.build_dynamic_fsf(template_path, sorted_EVs)
-        #     out_path = f"{data_dir_deriv}/{sub}/func/{sub}_draft_GLM_0{th}_{version}.fsf"
-        #     with open(out_path, "w") as fout:
-        #         fout.write("\n".join(fsf_lines))
 
         # else:
         with open(f"{analysis_dir}/templates/{template_name}", "r") as fin:                    
@@ -304,13 +293,13 @@ for sub in subjects:
                         # import pdb; pdb.set_trace();
                 text_to_write.append(line)
         
-        # extend EV definitions / orth / contrasts if we now have more EVs than the template
-        # this doesn't work.
-        # text_to_write = mc.analyse.analyse_MRI_behav.extend_for_more_evs(text_to_write, sorted_EVs)
+
+
         n_EVs = len(sorted_EVs)
         max_EVs_og_fsf = 81
         if n_EVs > max_EVs_og_fsf:
-            text_to_write = mc.analyse.analyse_MRI_behav.extend_for_more_evs(text_to_write, sorted_EVs, n_EVs, max_EVs_og_fsf)
+            print(f"n EVs is {n_EVs} but fsf file only covers {max_EVs_og_fsf}. starting the helper function.")
+            text_to_write = mc.analyse.analyse_MRI_behav.extend_for_more_evs(text_to_write.copy(), sorted_EVs, n_EVs, max_EVs_og_fsf)
             
         # import pdb; pdb.set_trace() 
         # then, in the next round, delete all the EVs that I don't actually include.
@@ -348,6 +337,7 @@ for sub in subjects:
         with open(f"{data_dir_deriv}/{sub}/func/{sub}_draft_GLM_0{th}_{version}.fsf", "w") as fout:
             for line in text_to_write_cleaned:
                 fout.write(line)
+            print(f"stored updated fsf file here: {data_dir_deriv}/{sub}/func/{sub}_draft_GLM_0{th}_{version}.fsf")
            
         # --- SETTINGS SUMMARY (per subject) ---
         summary = {
