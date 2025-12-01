@@ -29,216 +29,126 @@ import pickle
 import ast
 import re
 
-import re  # add this if you don't already have it
 
+def extend_for_more_evs(text_to_write, sorted_EVs, n_EVs, max_EVs_og_fsf):
+    n_EVs_to_insert = n_EVs - max_EVs_og_fsf
+    
+    # if I have more EV's than in the OG template, I need to rewrite the file.
+    # Plan is: doublicate the last EV 81. 
+    # copy # EV 81 title
+    # to 
+    # set fmri(ortho81.81) 0
+    for idx, line in enumerate(text_to_write):
+        if "# EV 81 title" in line:
+            start_last_EV = int(idx)
+        if "set fmri(ortho81.81) 0" in line:
+            end_last_EV = int(idx)
+    copied_max_EV = text_to_write[start_last_EV: end_last_EV+1]
+    # next, replace the incorrect indices and names with the correct ones
+    idx_to_change, row_to_change = [], []
+    for idx, line in enumerate(copied_max_EV):
+        if str(max_EVs_og_fsf) in line:
+            idx_to_change.append(idx)
+            row_to_change.append(line)
+      
+    additional_EVs = []
+    for additional_EV in range(max_EVs_og_fsf, max_EVs_og_fsf+n_EVs_to_insert):
+        adjusted_EV = copied_max_EV.copy()
+        EV_path = sorted_EVs[additional_EV]
+        EV_name_ext = os.path.basename(EV_path)
+        EV_name = EV_name_ext.rsplit('.',1)[0]
+        # now, most bits are updated with the correct number.
+        for row_idx in idx_to_change:
+            # note that this will also change both numbers in fmri(ortho81.81)
+            adjusted_EV[row_idx] = adjusted_EV[row_idx].replace("81", str(additional_EV+1))
+            # also exchange the title
+            if adjusted_EV[row_idx].startswith("set fmri(evtitle"):
+                adjusted_EV[row_idx] = f'set fmri(evtitle{additional_EV+1}) "{EV_name}"\n' 
+            # exchange path  
+            if adjusted_EV[row_idx].startswith("set fmri(custom"):
+                # print(f"my old line was: {line}")
+                adjusted_EV[row_idx] = f'set fmri(custom{additional_EV+1}) "{EV_path}"\n'
+     
+         
+        # CAREFUL! this needs to happen for all EVs, not only the new ones.
+        
+        # add the orthogonalisation of the additional EVs
+        last_lines_appendix = []
+        for add_EV_idx in range(max_EVs_og_fsf, max_EVs_og_fsf + n_EVs_to_insert+1):
+            last_lines_appendix.extend([
+                "\n",
+                f"# Orthogonalise EV {additional_EV+1} wrt EV {add_EV_idx}\n",
+                f"set fmri(ortho{additional_EV+1}.{add_EV_idx}) 0\n",
+            ])
+        adjusted_EV[-3:] = last_lines_appendix
+        # additional_EVs.append(adjusted_EV)
+        additional_EVs.extend(adjusted_EV)
 
-def extend_for_more_evs(text_lines, ev_paths):
-    """
-    Extend a FEAT .fsf (already mostly filled in) to support more EVs.
+    
+    insert_pos = end_last_EV +1
+    # this might need to be flatten first, maybe by just doing extend its fine
+    text_to_write[insert_pos:insert_pos] = additional_EVs
+    
+    # only the old EVs need to be adjusted now.
+    for EV_idx in range(1, max_EVs_og_fsf+1):
+        print(EV_idx)
+        for li, line in enumerate(text_to_write):
+            if f"# Orthogonalise EV {EV_idx} wrt EV {max_EVs_og_fsf}\n" in line:
+                append_ortho_EV = []
+                for add_EV_idx in range(max_EVs_og_fsf, max_EVs_og_fsf + n_EVs_to_insert+1):
+                    append_ortho_EV.extend([
+                        f"# Orthogonalise EV {EV_idx} wrt EV {add_EV_idx}\n",
+                        f"set fmri(ortho{EV_idx}.{add_EV_idx}) 0\n",
+                        "\n"
+                    ])
+                # here I replace the text.
+                print(f"now adding lines {append_ortho_EV}")
+                text_to_write[li:li+3] = append_ortho_EV
+                break
+            
+        # # add the orthogonalisation of the additional EVs
+        # last_lines_appendix = []
+        # for add_EV_idx in range(max_EVs_og_fsf, max_EVs_og_fsf + n_EVs_to_insert+1):
+        #     last_lines_appendix.extend([
+        #         "\n",
+        #         f"# Orthogonalise EV {additional_EV+1} wrt EV {add_EV_idx}\n",
+        #         f"set fmri(ortho{additional_EV+1}.{add_EV_idx}) 0\n",
+        #     ])
+        
+    # the second chunk that needs to be adjusted
+    # there are 6 contrast vectors
+    # import pdb; pdb.set_trace() 
+    for add_contr_idx in range(max_EVs_og_fsf+2, max_EVs_og_fsf+2 + n_EVs_to_insert):
+        print(f"now for EV {add_contr_idx}")
+        for vec in [1,2,3,4,5,6]:
+            print(f"now for vector {vec}")
+            for idx, line in enumerate(text_to_write):
+                if f"# Real contrast_real vector {vec} element {add_contr_idx-1}" in line:
+                    idx_to_insert = idx + 3
+                    copied_contrast_vec = text_to_write[idx: idx + 3]
+                    # next, replace the incorrect index (82) with the correct ones
+                    for row in range(0, len(copied_contrast_vec)):
+                        copied_contrast_vec[row] = copied_contrast_vec[row].replace(str(add_contr_idx-1), str(add_contr_idx))
+                    print(f"now inserting {copied_contrast_vec}")
+                    text_to_write[idx_to_insert:idx_to_insert] = copied_contrast_vec
+                    # i'm not actually replacing the initial lines, so put a breakpoint here to avoid 
+                    # unlimited loops
+                    break
+                if f"# Real contrast_orig vector {vec} element {add_contr_idx-1}" in line:
+                    idx_to_insert = idx + 3
+                    copied_contrast_vec = text_to_write[idx: idx + 3]
+                    # next, replace the incorrect index (82) with the correct ones
+                    for row in range(0, len(copied_contrast_vec)):
+                        copied_contrast_vec[row] = copied_contrast_vec[row].replace(str(add_contr_idx-1), str(add_contr_idx))
+                    print(f"now inserting {copied_contrast_vec}")
+                    text_to_write[idx_to_insert:idx_to_insert] = copied_contrast_vec
+                    # i'm not actually replacing the initial lines, so put a breakpoint here to avoid 
+                    # unlimited loops
+                    break
+                
+    return text_to_write
+    
 
-    text_lines: list of strings (your text_to_write list)
-    ev_paths:   sorted list of EV file paths (same order as you use for evtitle/custom)
-
-    This will:
-      - extend orthogonalisation for all existing EVs up to len(ev_paths)
-      - add full EV blocks (title/shape/convolve/custom/ortho) for new EV indices
-      - extend contrast_real and contrast_orig vectors with extra zeros
-
-    It preserves all existing whitespace and comments.
-    """
-    lines = list(text_lines)
-    n_evs = len(ev_paths)
-
-    # --- find how many EVs the template currently has ---
-    ev_nums = []
-    for line in lines:
-        if line.startswith("# EV ") and "title" in line:
-            # "# EV X title"
-            parts = line.split()
-            try:
-                ev_nums.append(int(parts[2]))
-            except (IndexError, ValueError):
-                pass
-
-    if not ev_nums:
-        return lines  # nothing to do
-
-    old_max_ev = max(ev_nums)
-
-    # If we don't have MORE EVs than in the template, do nothing
-    if n_evs <= old_max_ev:
-        return lines
-
-    # --- get evs_real from the header (you already set this earlier) ---
-    evs_orig = n_evs
-    evs_real = None
-    for line in lines:
-        if line.startswith("set fmri(evs_real)"):
-            try:
-                evs_real = int(line.split()[-1])
-            except ValueError:
-                pass
-    if evs_real is None:
-        evs_real = evs_orig  # fallback
-
-    # ==========================================================
-    # 1) EXTEND ORTHOGONALISATION FOR EXISTING EVs (1..old_max_ev)
-    # ==========================================================
-    for ev in range(1, old_max_ev + 1):
-        # Find the last orth line for this EV: "... wrt EV old_max_ev"
-        comment = f"# Orthogonalise EV {ev} wrt EV {old_max_ev}\n"
-        idx = None
-        for i, line in enumerate(lines):
-            if line == comment:
-                idx = i  # keep last match if any
-        if idx is None:
-            continue  # no orth block for this EV (unlikely)
-
-        # Pattern around here is:
-        # idx     : "# Orthogonalise EV ev wrt EV old_max_ev"
-        # idx + 1 : "set fmri(orthoev.old_max_ev) 0"
-        # idx + 2 : "\n"
-        insert_at = idx + 3
-
-        new_block = []
-        for j in range(old_max_ev + 1, n_evs + 1):
-            new_block.append(f"# Orthogonalise EV {ev} wrt EV {j}\n")
-            new_block.append(f"set fmri(ortho{ev}.{j}) 0\n")
-            new_block.append("\n")
-        lines[insert_at:insert_at] = new_block
-
-    # ==========================================================
-    # 2) ADD FULL EV BLOCKS (INCLUDING ORTHO) FOR NEW EV INDICES
-    # ==========================================================
-    # Insert just before "# Contrast & F-tests mode"
-    contrast_marker_idx = None
-    for i, line in enumerate(lines):
-        if line.strip() == "# Contrast & F-tests mode":
-            contrast_marker_idx = i
-            break
-    if contrast_marker_idx is None:
-        return lines  # shouldn't happen, but be safe
-
-    new_ev_blocks = []
-    for ev in range(old_max_ev + 1, n_evs + 1):
-        ev_path = ev_paths[ev - 1]
-        ev_name = ev_path.split("/")[-1].rsplit(".", 1)[0]
-
-        # IMPORTANT: no leading blank line here – we reuse the blank that's
-        # already there after the last "ortho81.81" line.
-        new_ev_blocks.extend([
-            f"# EV {ev} title\n",
-            f'set fmri(evtitle{ev}) "{ev_name}"\n',
-            "\n",
-            f"# Basic waveform shape (EV {ev})\n",
-            "# 0 : Square\n",
-            "# 1 : Sinusoid\n",
-            "# 2 : Custom (1 entry per volume)\n",
-            "# 3 : Custom (3 column format)\n",
-            "# 4 : Interaction\n",
-            "# 10 : Empty (all zeros)\n",
-            f"set fmri(shape{ev}) 3\n",
-            "\n",
-            f"# Convolution (EV {ev})\n",
-            "# 0 : None\n",
-            "# 1 : Gaussian\n",
-            "# 2 : Gamma\n",
-            "# 3 : Double-Gamma HRF\n",
-            "# 4 : Gamma basis functions\n",
-            "# 5 : Sine basis functions\n",
-            "# 6 : FIR basis functions\n",
-            "# 8 : Alternate Double-Gamma\n",
-            f"set fmri(convolve{ev}) 2\n",
-            "\n",
-            f"# Convolve phase (EV {ev})\n",
-            f"set fmri(convolve_phase{ev}) 0\n",
-            "\n",
-            f"# Apply temporal filtering (EV {ev})\n",
-            f"set fmri(tempfilt_yn{ev}) 1\n",
-            "\n",
-            f"# Add temporal derivative (EV {ev})\n",
-            f"set fmri(deriv_yn{ev}) 0\n",
-            "\n",
-            f"# Custom EV file (EV {ev})\n",
-            f'set fmri(custom{ev}) "{ev_path}"\n',
-            "\n",
-            f"# Gamma sigma (EV {ev})\n",
-            f"set fmri(gammasigma{ev}) 3\n",
-            "\n",
-            f"# Gamma delay (EV {ev})\n",
-            f"set fmri(gammadelay{ev}) 6\n",
-            "\n",
-        ])
-
-        # Orthogonalise EV ev wrt all EVs 0..n_evs
-        for j in range(0, n_evs + 1):
-            new_ev_blocks.append(f"# Orthogonalise EV {ev} wrt EV {j}\n")
-            new_ev_blocks.append(f"set fmri(ortho{ev}.{j}) 0\n")
-            new_ev_blocks.append("\n")
-
-    # insert new EV blocks right before the contrast section
-    lines[contrast_marker_idx:contrast_marker_idx] = new_ev_blocks
-
-    # ==========================================================
-    # 3) EXTEND CONTRAST VECTORS (REAL + ORIG) WITH EXTRA ZEROS
-    # ==========================================================
-
-    # old lengths from existing comments
-    old_real_len = 0
-    old_orig_len = 0
-    for line in lines:
-        m = re.match(r"# Real contrast_real vector (\d+) element (\d+)", line)
-        if m:
-            old_real_len = max(old_real_len, int(m.group(2)))
-        m2 = re.match(r"# Real contrast_orig vector (\d+) element (\d+)", line)
-        if m2:
-            old_orig_len = max(old_orig_len, int(m2.group(2)))
-
-    new_orig_len = evs_orig        # should be len(ev_paths)
-    new_real_len = evs_real        # you already set this (e.g. len(ev_paths)+1)
-
-    # --- extend con_real*.* ---
-    if new_real_len > old_real_len:
-        last_real_comment_idx = {}  # contrast id -> index of comment for old_real_len
-        for idx, line in enumerate(lines):
-            m = re.match(r"# Real contrast_real vector (\d+) element (\d+)", line)
-            if m:
-                c = int(m.group(1))
-                k = int(m.group(2))
-                if k == old_real_len:
-                    last_real_comment_idx[c] = idx
-
-        # insert from bottom to top so indices stay valid
-        for c, idx in sorted(last_real_comment_idx.items(), key=lambda x: -x[1]):
-            insert_at = idx + 3  # after comment, set, blank
-            new_lines = []
-            for k in range(old_real_len + 1, new_real_len + 1):
-                new_lines.append(f"# Real contrast_real vector {c} element {k}\n")
-                new_lines.append(f"set fmri(con_real{c}.{k}) 0\n")
-                new_lines.append("\n")
-            lines[insert_at:insert_at] = new_lines
-
-    # --- extend con_orig*.* ---
-    if new_orig_len > old_orig_len:
-        last_orig_comment_idx = {}
-        for idx, line in enumerate(lines):
-            m = re.match(r"# Real contrast_orig vector (\d+) element (\d+)", line)
-            if m:
-                c = int(m.group(1))
-                k = int(m.group(2))
-                if k == old_orig_len:
-                    last_orig_comment_idx[c] = idx
-
-        for c, idx in sorted(last_orig_comment_idx.items(), key=lambda x: -x[1]):
-            insert_at = idx + 3
-            new_lines = []
-            for k in range(old_orig_len + 1, new_orig_len + 1):
-                new_lines.append(f"# Real contrast_orig vector {c} element {k}\n")
-                new_lines.append(f"set fmri(con_orig{c}.{k}) 0\n")
-                new_lines.append("\n")
-            lines[insert_at:insert_at] = new_lines
-
-    return lines
 
 
 

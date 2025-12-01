@@ -67,7 +67,7 @@ state_regs = config.get("state_regs", False)
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '02'  
+    subj_no = '01'  
 subjects = [f"sub-{subj_no}"]
 
 for sub in subjects:
@@ -288,6 +288,7 @@ for sub in subjects:
         with open(f"{analysis_dir}/templates/{template_name}", "r") as fin:                    
             for line in fin:
                 for i, EV_path in enumerate(sorted_EVs): 
+                    # the count in the EV file starts from 1, not 0 -> so do +1
                     if line.startswith(f"set fmri(custom{i+1})"):
                         # print(f"my old line was: {line}")
                         line = f'set fmri(custom{i+1}) "{EV_path}"\n'
@@ -304,8 +305,14 @@ for sub in subjects:
                 text_to_write.append(line)
         
         # extend EV definitions / orth / contrasts if we now have more EVs than the template
-        text_to_write = mc.analyse.analyse_MRI_behav.extend_for_more_evs(text_to_write, sorted_EVs)
-        
+        # this doesn't work.
+        # text_to_write = mc.analyse.analyse_MRI_behav.extend_for_more_evs(text_to_write, sorted_EVs)
+        n_EVs = len(sorted_EVs)
+        max_EVs_og_fsf = 81
+        if n_EVs > max_EVs_og_fsf:
+            text_to_write = mc.analyse.analyse_MRI_behav.extend_for_more_evs(text_to_write, sorted_EVs, n_EVs, max_EVs_og_fsf)
+            
+        # import pdb; pdb.set_trace() 
         # then, in the next round, delete all the EVs that I don't actually include.
         # first, do this for the orthogonalisation of the EVs + contrasts you want with the ones you don't.
         skip = 0
@@ -315,14 +322,14 @@ for sub in subjects:
                 # if the counter is increased, skip next line and decrease counter
                 skip -= 1
                 continue
-            if (line.startswith("# Orthogonalise EV") and int(line[-3:-1]) > len(EV_paths)) or (line.startswith("# Real contrast_orig") and int(line[-3:-1]) > len(EV_paths)) or (line.startswith("# Real contrast_real vector") and int(line[-3:-1]) > len(EV_paths)):
+            if (line.startswith("# Orthogonalise EV") and int(line[-3:-1]) > n_EVs) or (line.startswith("# Real contrast_orig") and int(line[-3:-1]) > n_EVs) or (line.startswith("# Real contrast_real vector") and int(line[-3:-1]) > n_EVs):
                 #print(f"end of line is {line[-3:-1]}, so skip these next 3")
                 skip = 2
             else:
                 #import pdb; pdb.set_trace();
                 text_to_write_half_cleaned.append(line)
                 
-        # then, delete all the configurations of the actual EVs don't want.
+        # then, delete all the configurations of the actual EVs I don't want.
         skip_until_marker = False
         marker_line = "# Contrast & F-tests mode"
         text_to_write_cleaned = []
@@ -333,7 +340,7 @@ for sub in subjects:
                     text_to_write_cleaned.append(line)
                     skip_until_marker = False
                 continue
-            if line.startswith("# EV") and int(line[5:7]) > len(EV_paths):
+            if line.startswith("# EV") and int(line[5:7]) > n_EVs:
                 skip_until_marker = True
             else:
                 text_to_write_cleaned.append(line)
