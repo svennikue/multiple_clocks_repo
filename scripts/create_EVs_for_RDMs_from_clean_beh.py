@@ -264,15 +264,16 @@ for sub in subjects:
                 file.write(f'{i} {EV_file_name}\n')
                 
         if sub in ['sub-04', 'sub-06', 'sub-30', 'sub-31', 'sub-34']:
-            template_name = 'new_fsf_file.fsf'
+            template_name = 'new_fsf_file_84.fsf'
             #template_name = 'my_RDM_GLM_v2.fsf'
         elif sub in ['sub-05', 'sub-35'] and th == 1:
             #template_name = 'my_RDM_GLM_v2.fsf'
-            template_name = 'new_fsf_file.fsf'
+            template_name = 'new_fsf_file_84.fsf'
         else:
             #template_name = 'my_RDM_GLM_pnm.fsf'
-            template_name = 'new_fsf_file_pnm.fsf'
+            template_name = 'new_fsf_file_pnm_84.fsf'
 
+        #template_name = 'new_fsf_file_84.fsf'
         # else:
         with open(f"{analysis_dir}/templates/{template_name}", "r") as fin:                    
             for line in fin:
@@ -296,43 +297,46 @@ for sub in subjects:
 
 
         n_EVs = len(sorted_EVs)
-        max_EVs_og_fsf = 81
-        if n_EVs > max_EVs_og_fsf:
-            print(f"n EVs is {n_EVs} but fsf file only covers {max_EVs_og_fsf}. starting the helper function.")
-            text_to_write_cleaned = mc.analyse.analyse_MRI_behav.extend_for_more_evs(text_to_write.copy(), sorted_EVs, n_EVs, max_EVs_og_fsf)
         
-        else:
-            # then, in the next round, delete all the EVs that I don't actually include.
-            # first, do this for the orthogonalisation of the EVs + contrasts you want with the ones you don't.
-            skip = 0
-            text_to_write_half_cleaned = []
-            for line in text_to_write:
-                if skip > 0:
-                    # if the counter is increased, skip next line and decrease counter
-                    skip -= 1
-                    continue
-                if (line.startswith("# Orthogonalise EV") and int(line[-3:-1]) > n_EVs) or (line.startswith("# Real contrast_orig") and int(line[-3:-1]) > n_EVs) or (line.startswith("# Real contrast_real vector") and int(line[-3:-1]) > n_EVs):
-                    #print(f"end of line is {line[-3:-1]}, so skip these next 3")
-                    skip = 2
-                else:
-                    #import pdb; pdb.set_trace();
-                    text_to_write_half_cleaned.append(line)
-                    
-            # then, delete all the configurations of the actual EVs I don't want.
-            skip_until_marker = False
-            marker_line = "# Contrast & F-tests mode"
-            text_to_write_cleaned = []
-            for line in text_to_write_half_cleaned:
-                if skip_until_marker:
-                    if line.strip() == marker_line:
-                        # add marker line to text and stop skipping
-                        text_to_write_cleaned.append(line)
-                        skip_until_marker = False
-                    continue
-                if line.startswith("# EV") and int(line[5:7]) > n_EVs:
-                    skip_until_marker = True
-                else:
+        # this looks pretty well, but sadly, feat doesnt seem to run with it.
+        #max_EVs_og_fsf = 81
+        #if n_EVs > max_EVs_og_fsf:
+        #    print(f"n EVs is {n_EVs} but fsf file only covers {max_EVs_og_fsf}. starting the helper function.")
+        #    text_to_write_cleaned = mc.analyse.analyse_MRI_behav.extend_for_more_evs(text_to_write.copy(), sorted_EVs, n_EVs, max_EVs_og_fsf)
+        
+        #else:
+            
+        # then, in the next round, delete all the EVs that I don't actually include.
+        # first, do this for the orthogonalisation of the EVs + contrasts you want with the ones you don't.
+        skip = 0
+        text_to_write_half_cleaned = []
+        for line in text_to_write:
+            if skip > 0:
+                # if the counter is increased, skip next line and decrease counter
+                skip -= 1
+                continue
+            if (line.startswith("# Orthogonalise EV") and int(line[-3:-1]) > n_EVs) or (line.startswith("# Real contrast_orig") and int(line[-3:-1]) > n_EVs) or (line.startswith("# Real contrast_real vector") and int(line[-3:-1]) > n_EVs):
+                #print(f"end of line is {line[-3:-1]}, so skip these next 3")
+                skip = 2
+            else:
+                #import pdb; pdb.set_trace();
+                text_to_write_half_cleaned.append(line)
+                
+        # then, delete all the configurations of the actual EVs I don't want.
+        skip_until_marker = False
+        marker_line = "# Contrast & F-tests mode"
+        text_to_write_cleaned = []
+        for line in text_to_write_half_cleaned:
+            if skip_until_marker:
+                if line.strip() == marker_line:
+                    # add marker line to text and stop skipping
                     text_to_write_cleaned.append(line)
+                    skip_until_marker = False
+                continue
+            if line.startswith("# EV") and int(line[5:7]) > n_EVs:
+                skip_until_marker = True
+            else:
+                text_to_write_cleaned.append(line)
                     
         with open(f"{data_dir_deriv}/{sub}/func/{sub}_draft_GLM_0{th}_{version}.fsf", "w") as fout:
             for line in text_to_write_cleaned:
