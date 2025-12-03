@@ -41,8 +41,8 @@ with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
 # SETTINGS
-EV_string = config.get("load_EVs_from")
 regression_version = config.get("regression_version")
+result_name = config.get("name")
 fwhm = config.get("fwhm", 5)
 today_str = date.today().strftime("%d-%m-%Y")
 
@@ -67,9 +67,8 @@ for sub in subjects:
     else:
         data_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}"
         print(f"Running on Cluster, setting {data_dir} as data directory")
-      
-    modelled_conditions_dir = f"{data_dir}/beh/modelled_EVs"
-    results_dir = f"{data_dir}/func/state_univ_glmbase_{regression_version}/results" 
+
+    results_dir = f"{data_dir}/func/{result_name}_glmbase_{regression_version}/results" 
     os.makedirs(results_dir, exist_ok=True)
 
     # preparing the mask
@@ -83,11 +82,6 @@ for sub in subjects:
     # to it's initial one, getting rid of the 'bleeding'.
     # so, first smooth the mask.
     smooth_mask = nilearn.image.smooth_img(mask_file, fwhm)
-        
-    
-    # loading the model EVs into dict
-    with open(f"{modelled_conditions_dir}/{sub}_modelled_EVs_{EV_string}.pkl", 'rb') as file:
-        model_EVs = pickle.load(file)
     
     # loading the data EVs and creating the data matrix
     data_EVs, all_EV_keys = mc.analyse.my_RSA.load_data_EVs(data_dir, regression_version=regression_version)

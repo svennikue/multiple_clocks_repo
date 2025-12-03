@@ -19,12 +19,11 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 import statsmodels.api as sm
-from patsy import dmatrices, build_design_matrices
-import statsmodels.formula.api as smf
-from sklearn.linear_model import LinearRegression
 from scipy import stats
-from matplotlib.ticker import PercentFormatter
+from joblib import Parallel, delayed
+from tqdm import tqdm
 
+#import pdb; pdb.set_trace()
 
 def get_data(sub, trials):
     data_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives"
@@ -199,7 +198,7 @@ def determine_roi(n):
 
 
 
-def run_linear_models(df, session, neuron_id, roi):
+def run_linear_models(df, session, neuron_id, roi, permute_state = False):
     result_rows = [] 
     # now, fit the full model with interaction terms.
     # get one p-value per regressor -> for group stats
@@ -210,7 +209,16 @@ def run_linear_models(df, session, neuron_id, roi):
 
     # Model 1 (main effects): y ~ A+B+C+D + rep_c + correct (no intercept)
     cols_m1 = ["A","B", "C", "D","rep_c","correct"]
+    
     X_m1 = df[cols_m1].astype(float)
+    
+    # import pdb; pdb.set_trace()
+    if permute_state == True:
+        # shift the state columns
+        for s_col in cols_m1[:4]:
+            shift = np.random.randint(1, len(X_m1))
+            X_m1[s_col] = np.roll(X_m1[s_col].to_numpy(), shift)
+    
     res1 = sm.OLS(y, X_m1).fit(cov_type="HC3")
     
     # beta = np.linalg.pinv(X_m1) @ y
@@ -221,9 +229,7 @@ def run_linear_models(df, session, neuron_id, roi):
 
     #########
     ########
-    
-    # ADJUST the F-test part!!! pv-vals everywehre etc.
-    
+
     # State main effect.
     # look at feat fsl website for main effect of state (F test)
     # make three contrasts [1 0 0] [0 1 0] and [0 0 1] and enter all three contrasts into an F-test
@@ -243,13 +249,21 @@ def run_linear_models(df, session, neuron_id, roi):
             "t":    float(res1.tvalues.get(term, np.nan)),
             "p":    float(res1.pvalues.get(term, np.nan)),
             "F":    f_res.fvalue,
-            "p_F": f_res.pvalue
+            "p_F": f_res.pvalue,
+            "permuted": f"perm_by_{shift}"
         })
     
     # Model 2 (with interaction): y ~ A+B+C+D + correct + (A_rep+B_rep+C_rep+D_rep)
     # exclude rep_c here because the interactions would be a linear combination of it.
     cols_m2 = ["A","B","C","D","correct","A_rep","B_rep","C_rep","D_rep"]
     X_m2 = df[cols_m2].astype(float)
+    
+    if permute_state == True:
+        # shift the repeate x state columns
+        for srep_col in cols_m2[-4:]:
+            shift = np.random.randint(1, len(X_m2))
+            X_m2[srep_col] = np.roll(X_m2[srep_col].to_numpy(), shift)
+            
     res2 = sm.OLS(y, X_m2).fit(cov_type="HC3")
     
     # Main effect State Repeats
@@ -263,13 +277,14 @@ def run_linear_models(df, session, neuron_id, roi):
             "t":    float(res2.tvalues.get(term, np.nan)),
             "p":    float(res2.pvalues.get(term, np.nan)),
             "F":    f_res_int.fvalue,
-            "p_F": f_res_int.pvalue
+            "p_F": f_res_int.pvalue,
+            "permuted": f"perm_by_{shift}"
         })
 
     return result_rows
 
     
-def compute_state_lin_mod_all(sessions, trials, save_all=False):
+def compute_state_lin_mod_all(sessions, trials, perms = False, save_all=False):
     all_result_rows = []
     for sesh in sessions:
         # # first step: load data of a single neuron.
@@ -298,20 +313,32 @@ def compute_state_lin_mod_all(sessions, trials, save_all=False):
         for n in neurons:
             df = make_long_df(neurons[n].to_numpy(), beh_df)
             roi = determine_roi(n)
-            results = run_linear_models(df, sesh, n, roi)
-            all_result_rows.extend(results)
+            
+            # think about how to run the permutations and how to store this!!!
+            if perms == True:
+                no_perms = np.array(range(0,200))
+                results = Parallel(n_jobs=3)(delayed(run_linear_models)(df, sesh, n, roi, permute_state=perms) for p in tqdm(no_perms))
+                for r in results:
+                    all_result_rows.extend(r)
+                # not sure if this is crrect.
+            else:
+                import pdb; pdb.set_trace()        
+                results = run_linear_models(df, sesh, n, roi, permute_state=perms)
+                all_result_rows.extend(results)
 
-    # import pdb; pdb.set_trace()
-    results_df = pd.DataFrame(all_result_rows, columns=["session","neuron","roi","model","term","beta","t","p","F","p_F"])
+    # 
+    results_df = pd.DataFrame(all_result_rows, columns=["session","neuron","roi","model","term","beta","t","p","F","p_F", "permuted"])
     print(results_df.head())
     
-    
-    
+    # import pdb; pdb.set_trace()
     if save_all == True:
         group_dir_state = f"{source_dir}/group/state_lin_regs"
         if not os.path.isdir(group_dir_state):
             os.mkdir(group_dir_state)
-        name_result = f"{group_dir_state}/state_rep_int_{trials}.csv"
+        if perms == True:
+            name_result = f"{group_dir_state}/perm_state_rep_int_{trials}.csv"
+        else:
+            name_result = f"{group_dir_state}/state_rep_int_{trials}.csv"
         results_df.to_csv(name_result)
 
     import pdb; pdb.set_trace()
@@ -323,6 +350,8 @@ if __name__ == "__main__":
     # trials can be 'all', 'all_correct', 'early', 'late', 'all_minus_explore', 'residualised'
     # they can also be: 'first_correct', 'one_correct', ... 'nine_correct'
     # NOTE: if you do per-repeat estimates, use every grid! grid mean will be super unreliable anyways
-    compute_state_lin_mod_all(sessions=list(range(1,64)), trials = 'all_minus_explore', save_all = True)
+    compute_state_lin_mod_all(sessions=list(range(1,64)), trials = 'all_minus_explore', perms = True, save_all = True)
+    # compute_state_lin_mod_all(sessions=list(range(1,5)), trials = 'all_minus_explore', perms = True, save_all = True)
+    
     # compute_state_lin_mod_all(sessions=list(range(0,3)), trials = 'all_minus_explore', save_all = False)
     
