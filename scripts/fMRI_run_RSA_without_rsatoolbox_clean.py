@@ -91,7 +91,7 @@ regression_version = config.get("regression_version")
 
 today_str = date.today().strftime("%d-%m-%Y")
 name_RSA = config.get("name_of_RSA")
-RDM_version = f"{name_RSA}_{today_str}"
+RDM_version = f"{name_RSA}"
 
 
 # Subjects
@@ -133,9 +133,9 @@ for sub in subjects:
     modelled_conditions_dir = f"{data_dir}/beh/modelled_EVs"
     data_rdm_dir = f"{data_dir}/func/data_RDMs_{RDM_version}_glmbase_{regression_version}"
 
-    results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}/results" 
+    results_dir = f"{data_dir}/func/RSA_{RDM_version}_{today_str}_glmbase_{regression_version}/results" 
     if smoothing == True:
-       results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}_smooth{fwhm}/results" 
+       results_dir = f"{data_dir}/func/RSA_{RDM_version}_{today_str}_glmbase_{regression_version}_smooth{fwhm}/results" 
     os.makedirs(results_dir, exist_ok=True)
 
     # if masked_conditions:
