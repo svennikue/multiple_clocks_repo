@@ -10,6 +10,7 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import itertools
 
 
 def parse_args():
@@ -85,8 +86,8 @@ def main():
     subjects = [s for s in subjects if s not in exclude_subs]
 
     locs = list(range(1, 10))
-    subj_loc_counts = []
-    subj_names = []
+    loc_counts = {loc: 0 for loc in locs}
+    combo_counts = {}
 
     for sub in subjects:
         beh_dir = os.path.join(source_dir, "data/derivatives", sub, "beh")
@@ -94,39 +95,61 @@ def main():
         if not os.path.exists(beh_path):
             continue
         beh_df = pd.read_csv(beh_path)
-        mask = beh_df["unique_time_bin_type"].isin(top_evs)
-        curr_locs = beh_df.loc[mask, "curr_loc"]
-        counts = curr_locs.value_counts().to_dict()
-        subj_loc_counts.append([counts.get(loc, 0) for loc in locs])
-        subj_names.append(sub)
+        for ev in top_evs:
+            ev_rows = beh_df[beh_df["unique_time_bin_type"] == ev]
+            if ev_rows.empty:
+                continue
+            # unique locations visited during this EV (count each EV once)
+            curr_locs = sorted(set(ev_rows["curr_loc"].dropna().astype(int).tolist()))
+            for loc in curr_locs:
+                if loc in loc_counts:
+                    loc_counts[loc] += 1
+            # also count reward locations once per EV, if available
+            if "curr_rew" in ev_rows.columns:
+                rew_locs = sorted(set(ev_rows["curr_rew"].dropna().astype(int).tolist()))
+                for loc in rew_locs:
+                    if loc in loc_counts:
+                        loc_counts[loc] += 1
+            # count location-combinations as the set of unique locations (per EV)
+            if len(curr_locs) >= 2:
+                combo = tuple(curr_locs)
+                combo_counts[combo] = combo_counts.get(combo, 0) + 1
 
-    if subj_loc_counts:
-        heat = np.asarray(subj_loc_counts)
-        fig, ax = plt.subplots(figsize=(6, 0.4 * len(subj_names) + 2))
-        im = ax.imshow(heat, aspect="auto", interpolation="None")
-        ax.set_title(f"Locations for top {len(top_df)} high-contrib datapoints", fontsize=12)
-        ax.set_xlabel("Location (curr_loc)", fontsize=10)
-        ax.set_ylabel("Subject", fontsize=10)
-        ax.set_xticks(range(len(locs)))
-        ax.set_xticklabels(locs)
-        ax.set_yticks(range(len(subj_names)))
-        ax.set_yticklabels(subj_names, fontsize=8)
-        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        fig.tight_layout()
-        fig.savefig(os.path.join(out_dir, "heat_locations_top_contrib.png"), dpi=200)
-        plt.close(fig)
+    # Bar plot for locations and location-combinations (top 20 labels)
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
+    axes[0].bar(list(loc_counts.keys()), list(loc_counts.values()), color="#4c78a8")
+    axes[0].set_title("Location counts (unique per EV)", fontsize=12)
+    axes[0].set_xlabel("Location", fontsize=10)
+    axes[0].set_ylabel("Count", fontsize=10)
 
-    # Plot condition-pair labels (top 30)
-    top_label_counts = top_df["label"].value_counts().head(30)
-    if len(top_label_counts) > 0:
-        fig2, ax2 = plt.subplots(figsize=(8, 6))
-        ax2.barh(top_label_counts.index[::-1], top_label_counts.values[::-1])
-        ax2.set_title("Top condition-pair labels", fontsize=12)
-        ax2.set_xlabel("Count", fontsize=10)
+    if combo_counts:
+        combos_sorted = sorted(combo_counts.items(), key=lambda kv: kv[1], reverse=True)
+        combo_labels = ["-".join(map(str, combo)) for combo, _ in combos_sorted]
+        combo_vals = [v for _, v in combos_sorted]
+        axes[1].barh(combo_labels[::-1], combo_vals[::-1], color="#f58518")
+    axes[1].set_title("Location-combination counts (unique per EV)", fontsize=12)
+    axes[1].set_xlabel("Count", fontsize=10)
+    axes[1].set_ylabel("Location pair", fontsize=10)
+
+    fig.tight_layout()
+    fig.savefig(os.path.join(out_dir, "bar_locations_and_combos_top20.png"), dpi=200)
+    #plt.close(fig)
+
+    # Plot condition-pair labels (top 30 by mean_contrib)
+    top_labels = (
+        top_df[["label", "mean_contrib"]]
+        .dropna()
+        .head(30)
+        .iloc[::-1]
+    )
+    if len(top_labels) > 0:
+        fig2, ax2 = plt.subplots(figsize=(10, 7))
+        ax2.barh(top_labels["label"], top_labels["mean_contrib"])
+        ax2.set_title("Top condition-pair labels (by mean_contrib)", fontsize=12)
+        ax2.set_xlabel("Mean contribution", fontsize=10)
         fig2.tight_layout()
         fig2.savefig(os.path.join(out_dir, "bar_top_condition_pairs.png"), dpi=200)
-        plt.close(fig2)
-
+        # plt.close(fig2)
     # Save EV list
     with open(os.path.join(out_dir, "top_contrib_EVs.txt"), "w") as f:
         for ev in top_evs:

@@ -79,7 +79,8 @@ else:
       
 # --- Load configuration ---
 # config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
-config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_DSR_rew_vs_path_interaction_vis_combos.json"
+#config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_DSR_rew_vs_path_interaction_vis_combos.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_DSR_bias-path-rew-splitfuts_combos.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
@@ -105,6 +106,7 @@ smoothing = config.get("smoothing", True)
 fwhm = config.get("fwhm", 5)
 load_searchlights = config.get("load_searchlights", False)
 masked_conditions = config.get("masked_conds", None)
+conditions_masking = None
 include_diagonal = config.get("diagonal_included", True)
 
 # conditions selection
@@ -136,11 +138,11 @@ for sub in subjects:
        results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version}_smooth{fwhm}/results" 
     os.makedirs(results_dir, exist_ok=True)
 
-    if masked_conditions:
-        if masked_conditions[0] == 'load_same_loc_instate_mask':
-            with open (f"{data_dir}/{masked_conditions[1]}", "r") as f:
-                json_mask = json.load(f)
-            masked_conditions = json_mask.get("masked_conditions")
+    # if masked_conditions:
+    #     if masked_conditions[0] == 'load_same_loc_instate_mask':
+    #         with open (f"{data_dir}/{masked_conditions[1]}", "r") as f:
+    #             json_mask = json.load(f)
+    #         masked_conditions = json_mask.get("masked_conditions")
         
 
     # get a reference image to later project the results onto. This is usually
@@ -225,29 +227,34 @@ for sub in subjects:
         # finally, concatenate th1 and th2 to do the cross-correlation after
         models_concat[model] = np.concatenate((model_th1, model_th2), axis = 0)
         
-        if masked_conditions:
-            # here, I want to now mask all within-task similarities.
-            import pdb; pdb.set_trace()
-            # THIS IS OLD AND SHOULDNT BE CALLED
-            model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr_and_filter(models_concat[model], plotting = False, labels = model_paired_labels, mask_pairs= masked_conditions, full_mask=None, binarise = False)
-            print(f"excluding n = {np.sum(np.isnan(model_RDM_dir[model]))} datapoints from {len(model_RDM_dir[model][0])}.")
+        # if masked_conditions:
+        #     # here, I want to now mask all within-task similarities.
+        #     import pdb; pdb.set_trace()
+        #     # THIS IS OLD AND SHOULDNT BE CALLED
+        #     model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr_and_filter(models_concat[model], plotting = False, labels = model_paired_labels, mask_pairs= masked_conditions, full_mask=None, binarise = False)
+        #     print(f"excluding n = {np.sum(np.isnan(model_RDM_dir[model]))} datapoints from {len(model_RDM_dir[model][0])}.")
             
-        else:  
-            if model == 'path_rew':
-                model_RDM_dir[model] = mc.analyse.my_RSA.make_categorical_RDM(models_concat[model], plotting = False, include_diagonal=include_diagonal)
-            elif model == 'duration':
-                model_RDM_dir[model] = mc.analyse.my_RSA.make_distance_RDM(models_concat[model], plotting = False, include_diagonal=include_diagonal)
-            else:
-                model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr(models_concat[model], plotting= False, include_diagonal=include_diagonal)
-                if model == 'A-state':
-                    A_state_mask = ~np.isnan(model_RDM_dir['A-state'][0])
-                    # import pdb; pdb.set_trace()
-                    # first make sure to not do this for the 'correct nans'
-                    nan_mask = np.isnan(model_RDM_dir['state'][0])
-                    # then turn all nans into 1s
-                    nan_mask_other_states = np.isnan(model_RDM_dir[model][0])
-                    model_RDM_dir[model][0][nan_mask_other_states] = 1
-                    #plt.figure(); plt.imshow(model_RDM_dir[model][0])
+        # else:  
+        if model == 'path_rew':
+            model_RDM_dir[model] = mc.analyse.my_RSA.make_categorical_RDM(models_concat[model], plotting = False, include_diagonal=include_diagonal)
+        elif model == 'duration':
+            model_RDM_dir[model] = mc.analyse.my_RSA.make_distance_RDM(models_concat[model], plotting = False, include_diagonal=include_diagonal)
+        elif model.startswith('button'):
+            model_RDM_dir[model] = mc.analyse.my_RSA.make_distance_RDM_cosine_normratio(models_concat[model], plotting = False, include_diagonal=include_diagonal)
+        else:
+            model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr(models_concat[model], plotting= False, include_diagonal=include_diagonal)
+            if model == 'A-state':
+                A_state_mask = ~np.isnan(model_RDM_dir['A-state'][0])
+                # import pdb; pdb.set_trace()
+                # first make sure to not do this for the 'correct nans'
+                nan_mask = np.isnan(model_RDM_dir['state'][0])
+                # then turn all nans into 1s
+                nan_mask_other_states = np.isnan(model_RDM_dir[model][0])
+                model_RDM_dir[model][0][nan_mask_other_states] = 1
+                #plt.figure(); plt.imshow(model_RDM_dir[model][0])
+    
+    if masked_conditions:
+        conditions_masking = mc.analyse.my_RSA.make_category_masks(models_concat['path_rew'], plotting = False, include_diagonal=include_diagonal)
     
     if 'A-state-ones' in selected_models:
         model_RDM_dir['state'][0][A_state_mask] = model_RDM_dir['state'][0][3]
@@ -268,16 +275,17 @@ for sub in subjects:
             #     plt.title(model)
     #import pdb; pdb.set_trace()
 
+    
         
     
-    if not os.path.exists(f"{data_rdm_dir}/data_RDM.npy"): 
-          # and searchlight-wise for data RDMs
-          if masked_conditions:
-              # here, I want to now mask all within-task similarities.
-              data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr_and_filter', labels = paired_labels, mask_pairs= masked_conditions, include_diagonal=include_diagonal)
-          else:
-              data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr', include_diagonal=include_diagonal)
-          mc.analyse.handle_MRI_files.save_data_RDM_as_nifti(data_RDMs, data_rdm_dir, "data_RDM", ref_img, centers) 
+    if not os.path.exists(f"{data_rdm_dir}/data_RDM.npy"):
+          # # and searchlight-wise for data RDMs
+          # if masked_conditions:
+          #     # here, I want to now mask all within-task similarities.
+          #     data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr_and_filter', labels = paired_labels, mask_pairs= masked_conditions, include_diagonal=include_diagonal)
+          # else:
+        data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr', include_diagonal=include_diagonal) 
+        mc.analyse.handle_MRI_files.save_data_RDM_as_nifti(data_RDMs, data_rdm_dir, "data_RDM", ref_img, centers) 
     else:
           data_RDMs = np.load(f"{data_rdm_dir}/data_RDM.npy")
 
@@ -333,13 +341,27 @@ for sub in subjects:
             # for i in range(len(models_to_combine)):
             #     for j in range(i+1, len(models_to_combine)):
             #         print(f"{models_to_combine[i]} vs {models_to_combine[j]}: r={corr[i,j]:.3f}")
-            # corr, fig, ax = mc.analyse.my_RSA.plot_model_correlations(stacked_model_RDMs, models_to_combine)
+            # corr, fig, ax = mc.analyse.my_RSA.plot_model_correlations(stacked_model_RDMs, models_to_combine, conditions_masking=conditions_masking)
             
             # import pdb; pdb.set_trace()
+            # if masked_conditions == True:
+            #     for con in conditions_masking:
+            #         stacked_model_RDMs = np.stack([model_RDM_dir[m][0] for m in models_to_combine], axis=1)
+            #         import pdb; pdb.set_trace()
+            
             estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs, d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name}"))
             for i, model in enumerate(models_to_combine):
                 mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
             
+            if masked_conditions:
+                for cond in conditions_masking:
+                    estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs[conditions_masking[cond]], d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name} only including {cond}"))
+                    for i, model in enumerate(models_to_combine):
+                        mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}-{cond}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+      
+                
+        
+        
     # --- SETTINGS SUMMARY (per subject) ---
     summary = {
         "subject": sub,

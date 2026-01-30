@@ -1,0 +1,38 @@
+{
+  "name_of_RSA": "DSR_bias-path-rew-splitfuts_combos",
+  "load_EVs_from": "DSR_loc-fut-rews-state-dur-type",
+  "regression_version": "all-paths-fixed_stickrews_split-buttons",
+    "EV_condition_selection": {
+    "parts": {
+      "task":      { "include": [],          "exclude": []},
+      "direction": { "include": [],          "exclude": [] },
+      "state":     { "include": [], "exclude": [] },
+      "phase":     { "include": [],   "exclude": [] }
+    }
+  },
+  "models": [
+    "DSR", "location", "l2_norm", "A-state", "path_rew", "DSR_onefut", "DSR_twofut", "DSR_threefut", "DSR_fourfut", "DSR_fivefut", "DSR_sixfut", "DSR_sevenfut", "prev_buttons", "buttons_out"
+  ],
+  "smoothing": false,
+  "diagonal_included": false,
+  "fwhm": 5,
+  "load_searchlights": true,
+  "visualise_RDMs": false,
+  "run_single_models": false,
+  "masked_conds": true,
+  "run_comobo_models": true,
+  "combo_models": [
+    {
+      "name": "Split_DSR_buttons",
+      "regressors": ["location", "DSR_onefut", "DSR_twofut", "DSR_threefut", "DSR_fourfut", "DSR_fivefut", "DSR_sixfut", "DSR_sevenfut", "l2_norm", "A-state", "path_rew", "prev_buttons", "buttons_out"]
+    },
+    {
+      "name": "DSR_all_controls",
+      "regressors": ["DSR", "location", "l2_norm", "A-state", "path_rew", "prev_buttons", "buttons_out"]
+    },
+    {
+      "name": "DSR_vis_button_out_pathrew",
+      "regressors": ["DSR", "location", "l2_norm", "A-state", "path_rew", "buttons_out"]
+    }
+  ]
+}

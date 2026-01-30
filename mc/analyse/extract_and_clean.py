@@ -14,6 +14,7 @@ import mc
 import matplotlib.pyplot as plt
 import scipy.special as sps  
 import json
+import ast
 
 
 def store_same_locs_in_same_state(beh_df, results_dir):
@@ -55,9 +56,128 @@ def store_same_locs_in_same_state(beh_df, results_dir):
     # out_path = os.path.join(results_dir, filename)
     # with open(out_path, "w") as f:
     #     json.dump(payload, f, indent=2)
+
     
+def _parse_list(val):
+    if pd.isna(val):
+        return []
+    if isinstance(val, (list, tuple, np.ndarray)):
+        return list(val)
+    try:
+        return list(ast.literal_eval(val))
+    except (ValueError, SyntaxError):
+        return []
+
+def _to_float_list(vals):
+    out = []
+    for v in vals:
+        try:
+            out.append(float(v))
+        except (TypeError, ValueError):
+            continue
+    return out
 
 
+def match_buttons_to_steps(df, beh_raw, beh_clean):
+    
+    end_rows = df[df['nav_key_task.rt'].notna()].reset_index(drop=True)
+
+    # this is 5 repeats x 10 tasks.
+    repeat_block = (
+        beh_raw['repeat'].ne(beh_raw['repeat'].shift())
+        | beh_raw['task_config'].ne(beh_raw['task_config'].shift())
+        | beh_raw['type'].ne(beh_raw['type'].shift())
+    ).cumsum()
+
+    button_rts_per_step = {idx: [] for idx in beh_clean.index}
+    button_keys_per_step = {idx: [] for idx in beh_clean.index}
+    
+    # loop through the list of blocks repeats across all tasks
+    block_ids = repeat_block.drop_duplicates().tolist()
+    prev_block_last_step_idx = None
+    prev_block_task = None
+    for block_idx, block_id in enumerate(block_ids):
+        if block_idx >= len(end_rows):
+            break
+        # list of button press times in current repeat
+        rts = _to_float_list(_parse_list(end_rows.at[block_idx, 'nav_key_task.rt']))
+        # list of key idenitites in current repeat
+        keys = [int(k) for k in _parse_list(end_rows.at[block_idx, 'nav_key_task.keys'])]
+        # if len(rts) != len(keys):
+        #     print(
+        #         f"Warning: RT/key length mismatch in block {block_idx} "
+        #         f"(rts={len(rts)} keys={len(keys)}). Padding shorter list."
+        #     )
+        #     if len(rts) > len(keys):
+        #         keys = keys + [None] * (len(rts) - len(keys))
+        #     else:
+        #         rts = rts + [np.nan] * (len(keys) - len(rts))
+
+
+        # consider only the steps taken in this particular repeat
+        step_indices = beh_clean.index[repeat_block == block_id]
+        if len(step_indices) == 0:
+            continue
+
+        block_repeat = beh_raw.at[step_indices[0], 'repeat']
+        block_task = (
+            beh_raw.at[step_indices[0], 'task_config_ex']
+            if 'task_config_ex' in beh_raw.columns
+            else None
+        )
+
+        prev_idx = -1
+        first_step = True
+        # loop through each step
+        for idx in step_indices:
+            
+            # for each step, find the button-press that matches this time
+            curr_rt = beh_raw.at[idx, 't_step_press_curr_run']
+            if pd.isna(curr_rt):
+                continue
+            # which index matches the current button press?
+            curr_matches = np.where(np.isclose(rts, float(curr_rt), atol=1e-4))[0]
+            curr_matches = [m for m in curr_matches if m > prev_idx]
+            if not curr_matches:
+                continue
+            curr_idx = curr_matches[0]
+            
+            if first_step:
+                if (
+                    block_repeat > 0
+                    and prev_block_last_step_idx is not None
+                    and (block_task is None or block_task == prev_block_task)
+                    and curr_idx > 0
+                ):
+                    extra_slice = range(0, curr_idx)
+                    button_rts_per_step[prev_block_last_step_idx].extend(
+                        [rts[i] for i in extra_slice]
+                    )
+                    button_keys_per_step[prev_block_last_step_idx].extend(
+                        [keys[i] for i in extra_slice]
+                    )
+                    prev_idx = curr_idx - 1
+                first_step = False
+
+            assign_slice = range(prev_idx + 1, curr_idx + 1)
+                    
+            button_rts_per_step[idx] = [rts[i] for i in assign_slice]
+            button_keys_per_step[idx] = [keys[i] for i in assign_slice]
+            
+            prev_idx = curr_idx
+
+        if prev_idx < len(rts) - 1 and len(step_indices) > 0:
+            last_idx = step_indices[-1]
+            assign_slice = range(prev_idx + 1, len(rts))
+            button_rts_per_step[last_idx].extend([rts[i] for i in assign_slice])
+            button_keys_per_step[last_idx].extend([keys[i] for i in assign_slice])
+
+        prev_block_last_step_idx = step_indices[-1]
+        prev_block_task = block_task
+      
+    return button_rts_per_step, button_keys_per_step
+
+    
 
 
 def define_futsteps_x_locs_regressors(beh_df):

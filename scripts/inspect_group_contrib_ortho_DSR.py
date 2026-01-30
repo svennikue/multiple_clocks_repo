@@ -391,7 +391,7 @@ def main():
             dpi=200,
         )
         #plt.close(fig_h)
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         print(
             f"Saved group summary for ortho {ortho_name}: {summary_path}"
         )

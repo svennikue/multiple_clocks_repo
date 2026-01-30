@@ -33,14 +33,15 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 import json
 from fnmatch import fnmatch
+import ast
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
     subj_no = '02'
 
-subjects = [f"sub-{subj_no}"]
-subjects = subs_list = [f'sub-{i:02}' for i in range(22, 35)]
+# subjects = [f"sub-{subj_no}"]
+subjects = subs_list = [f'sub-{i:02}' for i in range(1, 35)]
 
 # --- Load configuration ---
 source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks"
@@ -52,8 +53,9 @@ else:
     config_path = f"{source_dir}/analysis/multiple_clocks_repo/condition_files"
     print(f"Running on Cluster, setting {source_dir} as data directory")
 
+config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_DSR_bias-path-rew-splitfuts_combos.json"
 #config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_DSR_rew_vs_path_stepwise_combos.json"
-config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_DSR_rew_stepwise_combos.json"
+#config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_DSR_rew_stepwise_combos.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
@@ -95,6 +97,7 @@ for sub in subjects:
     beh_df = pd.read_csv(f"{beh_dir}/{sub}_beh_fmri_clean.csv")
     tasks = beh_df['task_config_ex'].unique()
     states = beh_df['state'].unique()
+    buttons = ['left', 'up', 'down', 'right']
     bin_type = beh_df['time_bin_type'].unique()
 
     locations = sorted(beh_df['curr_loc'].unique())
@@ -144,6 +147,8 @@ for sub in subjects:
     models['A-state'] = np.zeros((len(states), len(beh_df)))
     models['duration'] = np.expand_dims(beh_df['t_spent_at_curr_loc'].to_numpy(), axis=0)
     models['path_rew'] = np.expand_dims(beh_df['time_bin_type'].to_numpy(), axis=0)
+    models['prev_buttons'] = np.zeros((len(buttons), len(beh_df)))
+    models['buttons_out'] = np.zeros((len(buttons), len(beh_df)))
     
     for s_i, state in enumerate(states):
         # import pdb; pdb.set_trace()
@@ -151,12 +156,10 @@ for sub in subjects:
             models['A-state'][s_i][(beh_df['state'] == state)& (beh_df['time_bin_type'] == 'reward')] = 1
         models['state'][s_i][beh_df['state'] == state] = 1
     
-    for key in ["location", "curr_rew", "next_rew", "two_next_rew", "three_next_rew", "l2_norm", "curr_path"]:
+    for key in ["location", "curr_rew", "next_rew", "two_next_rew", "three_next_rew", "l2_norm", "curr_path", "DSR_onefut", "DSR_twofut", "DSR_threefut","DSR_fourfut", "DSR_fivefut", "DSR_sixfut", "DSR_sevenfut"]:
         models[key] = np.zeros((len(locations), len(beh_df)), dtype=float)
     
-    
-    
-    # I THINK I NEED TO DELETE THE FIRST TIMEPOINT IN SUBPATH A! that's reward D.
+
     for i_loc, loc in enumerate(locations):
         models['location'][i_loc][beh_df['curr_loc'] == loc] = 1
         models['curr_rew'][i_loc][beh_df['curr_rew'] == loc] = 1
@@ -164,7 +167,7 @@ for sub in subjects:
         # models['rew'][i_loc][(beh_df['curr_rew'] == loc) & (beh_df['time_bin_type'] == 'reward')] = 1
         for idx_inner_loc, inner_loc in enumerate(locations):
             models['l2_norm'][idx_inner_loc][beh_df['curr_loc'] == loc] = -np.linalg.norm(coordinates[i_loc] - coordinates[idx_inner_loc])
-   
+
 
     # this is for the future reward location models.
     # rotates the reward values by k, but keeps time-bin-length in place.
@@ -186,20 +189,36 @@ for sub in subjects:
         idx  = (beh_df["task_config_ex"] == task)
         cols = np.flatnonzero(idx)
         rews = beh_df.loc[idx, "curr_rew"].to_numpy()
-    
-        fut1 = rotate_runs(rews, 1)  # +1 run
-        fut2 = rotate_runs(rews, 2)  # +2 runs
-        fut3 = rotate_runs(rews, 3)  # +3 runs
-    
-        for fut, name in [(fut1,"next_rew"), (fut2,"two_next_rew"), (fut3,"three_next_rew")]:
+        locs = beh_df.loc[idx, "curr_loc"].to_numpy()
+        
+        fut1_rew = rotate_runs(rews, 1)  # +1 run
+        fut1 = rotate_runs(locs, 1)  # +1 run
+        fut2_rew = rotate_runs(rews, 2)  # +2 runs
+        fut2 = rotate_runs(locs, 2)  # +2 runs
+        fut3_rew = rotate_runs(rews, 3)  # +3 runs
+        fut3 = rotate_runs(locs, 3)  # +3 runs
+        
+        fut4 = rotate_runs(locs, 4)  # +3 runs
+        fut5 = rotate_runs(locs, 5)  # +3 runs
+        fut6 = rotate_runs(locs, 6)  # +3 runs
+        fut7 = rotate_runs(locs, 7)  # +3 runs
+
+        for fut, name in [(fut1_rew,"next_rew"), (fut2_rew,"two_next_rew"), (fut3_rew,"three_next_rew")]:
             rows = np.fromiter((loc_to_row[v] for v in fut), dtype=int, count=fut.size)
             models[name][rows, cols] = 1.0
+            
+        for fut, name in [(fut1,"DSR_onefut"), (fut2,"DSR_twofut"), (fut3,"DSR_threefut"), (fut4,"DSR_fourfut"), (fut5,"DSR_fivefut"), (fut6,"DSR_sixfut"), (fut7,"DSR_sevenfut")]:
+            rows = np.fromiter((loc_to_row[v] for v in fut), dtype=int, count=fut.size)
+            models[name][rows, cols] = 1.0
+            
     
     
     # create regressors.
     EVs = {}
     for model in models:
         EVs[model] = {}
+        if model == 'prev_buttons' or model == 'buttons_out':
+            continue
         for reg in regressors:
             if model == 'path_rew':
                 label = 'reward' if reg.endswith('reward') else 'path' if reg.endswith('path') else None
@@ -216,6 +235,23 @@ for sub in subjects:
                         # this is because the way I use ithem, the regressors would be a linear combination of the intercept ([11111] vector)
                         EVs[model][reg][index] = LinearRegression(fit_intercept=False).fit(regressors[reg].reshape(-1,1), row.reshape(-1,1)).coef_
 
+    # treat the button ones differently (just count how many times each button occured)
+    
+    n_reps = int(np.max(beh_df['repeat'].unique()))+1
+    for reg in regressors:
+        EVs['buttons_out'][reg] = np.zeros((len(buttons)))
+        EVs['prev_buttons'][reg] =  np.zeros((len(buttons)))
+        # filter for the current reg
+        curr_button_string_list = beh_df[beh_df['unique_time_bin_type'] == reg]['button_keys'].to_list()
+        curr_buttons = [x for s in curr_button_string_list for x in ast.literal_eval(s)]
+        for b_idx, button in enumerate(buttons):
+            curr_buttons = np.array(curr_buttons)
+            # just count the buttons in this regressor!
+            # check for how many rows you're in the regressor
+            EVs['buttons_out'][reg][b_idx] = np.sum(curr_buttons[curr_buttons == (b_idx + 1)])/n_reps
+            
+    
+    
     # additionally, add the simple musicbox: at each of the 8 timebins, the future is already encoded.
     # order inside a task
     temp_order = [
@@ -225,8 +261,10 @@ for sub in subjects:
         "D_path", "D_reward"
     ]
     
+    temp_order_shifted = np.roll(temp_order, 1).copy()
+    # this is to do the rotation as well for the buttons:
+    # previous buttons are the ones you pressed on the previous locations.
     
-
     models['DSR'] = np.zeros((len(temp_order)*len(locations)))
     EVs['DSR'] = {}
     for task in tasks:
@@ -243,10 +281,13 @@ for sub in subjects:
         n_bins = len(temp_order)  # 8 (4 x subpaths, 4x rewards)
         n_locations = firing_for_subpath_A.size // n_bins   # 9 locations
         assert n_locations * n_bins == firing_for_subpath_A.size
-     
         # for each position, rotate by whole blocks of `block_len` so subpath-chunks move together
         for pos, temp_bin in enumerate(temp_order):
             bin_curr_task = f"{task}_{temp_bin}"
+            # for the buttons:
+            bin_shifted_task = f"{task}_{temp_order_shifted[pos]}"
+            EVs['prev_buttons'][bin_shifted_task] = EVs['buttons_out'][bin_curr_task].copy()
+            
             # left-roll by pos blocks: multiply by block_len to rotate whole 9-element blocks
             rotated = np.roll(firing_for_subpath_A, -pos * n_locations).copy()  # shape (72,)
             # store as 1D vector of length 72; if you want shape (1,72) use rotated.reshape(1,-1)
@@ -296,11 +337,11 @@ for sub in subjects:
                 labels=y_labels,
                 method="crosscorr",
                 label_half="first",
-                group_size=4,
+                group_size=8,
                 title=model,
             )
 
-    #import pdb; pdb.set_trace()          
+    # import pdb; pdb.set_trace()          
     if save_RDMs: 
         # then save these matrices.
         if not os.path.exists(RDM_dir):

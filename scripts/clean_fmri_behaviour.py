@@ -30,6 +30,7 @@ import sys
 import mc
 import numpy as np
 
+
 from glob import glob
 
 # for mapping locations
@@ -40,6 +41,7 @@ coord_to_loc = {
     (-0.21, -0.29): 7, (0.0, -0.29): 8, (0.21, -0.29): 9,
 }
 
+        
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
@@ -78,7 +80,6 @@ for sub in subjects:
     both_halves = []   # collect cleaned tables for both halves
 
     # Then here inside the loop, we know which subject we are looking at so we can define the correct folders
-
     for task_half in [1,2]:
         file = data_dir_beh + f"/{sub}/beh/{sub}_fmri_pt{task_half}.csv"
         if not os.path.exists(file):
@@ -105,8 +106,6 @@ for sub in subjects:
         df['t_step_press_global'] = df['t_step_press_global'].bfill()
         # but not in the last repeat of a task, as then a different screen followed and no button was pressed.
         df.loc[df['task_config'].ne(df['task_config'].shift(-1)), 't_step_press_global'] = np.nan
-
-
 
         # remove these rows as it's not actually a step.
         beh_raw = df[df['start_ABCD_screen'].isna()].copy()
@@ -135,7 +134,6 @@ for sub in subjects:
             axis=1
         )
         
-
         # 5) time start reward and length
         # for rewards:
         # -> arrival at location = t_step_end_global
@@ -172,7 +170,6 @@ for sub in subjects:
         # -> overall time related to this location = anything from arrival to next location.
         beh_clean['t_spent_at_curr_loc'] = beh_clean['t_move_to_next_loc'] + beh_clean['t_dwell_curr_loc']
         
-        
         # 8) button press for respective loc [1/4 keys]
         # leave this for now!
         # a bit more complicated given there might have been more buttons stored
@@ -181,11 +178,15 @@ for sub in subjects:
         #timings = beh_clean[beh_clean['repeat'] == 1][beh_clean['task_config_ex']=='B1_backw']['t_curr_loc'].to_numpy()
         #import ast; press_timings_local = ast.literal_eval(x['nav_key_task.rt'][x['nav_key_task.rt'].notna()].iloc[0])
         
-        # for now just keep the relevant rows.
-        beh_clean['button_rts']  = beh_raw['nav_key_task.rt']
-        beh_clean['button_keys'] = beh_raw['nav_key_task.keys']
-        
 
+        button_rts_per_step, button_keys_per_step = mc.analyse.extract_and_clean.match_buttons_to_steps(df=df, beh_raw=beh_raw, beh_clean=beh_clean)
+        
+        beh_clean['button_rts'] = beh_clean.index.map(button_rts_per_step.get)
+        beh_clean['button_keys'] = beh_clean.index.map(button_keys_per_step.get)
+        
+        #beh_clean['old_button_rts']  = beh_raw['nav_key_task.rt']
+        #beh_clean['old_button_keys'] = beh_raw['nav_key_task.keys']
+        
         # 9) state
         # Sometimes at the start state is empty but since we know things start at A we just fill it in
         beh_clean['state'] = beh_raw['state'].fillna('A')
@@ -197,7 +198,7 @@ for sub in subjects:
         beh_clean['unique_time_bin_type'] = beh_clean['task_config_ex'] + '_' + beh_clean['state'] + '_path'
         beh_clean.loc[rewards_mask, 'unique_time_bin_type'] = beh_clean.loc[rewards_mask, 'task_config_ex'] + '_' + beh_clean.loc[rewards_mask, 'state']+ '_reward'
 
-
+        # import pdb; pdb.set_trace()
         # 12) session [1/2]
         beh_clean['task_half'] = task_half
         

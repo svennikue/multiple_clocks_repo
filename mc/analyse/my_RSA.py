@@ -255,6 +255,7 @@ def compute_crosscorr_and_filter(data_chunk, labels = None, full_mask=None, mask
 
     return RDM
 
+
 def make_categorical_RDM(data_chunk, plotting = False, include_diagonal = True):
     RDM = []
     if not isinstance(data_chunk, (list, tuple)):
@@ -338,6 +339,94 @@ def make_distance_RDM(data_chunk, plotting = False, include_diagonal = True):
 
     return RDM
     
+
+
+def make_distance_RDM_cosine_normratio(data_chunk, plotting=False, include_diagonal=True):
+    RDM = []
+    # penalises pressing different buttons
+    # then scales with frequency of pressing the buttons
+    #
+    if not isinstance(data_chunk, (list, tuple)):
+        data_chunk = [data_chunk]
+
+    for data in data_chunk:
+        X = np.asarray(data, dtype=float)
+        dot = X @ X.T
+        norms = np.linalg.norm(X, axis=1)
+        denom = np.outer(norms, norms)
+        # safe cosine: when denom == 0 -> 0
+        cosine = np.nan_to_num(dot / denom, nan=0.0, posinf=0.0, neginf=0.0)
+        # norm ratio: min/max, safe when max == 0 -> 0
+        nmin = np.minimum.outer(norms, norms)
+        nmax = np.maximum.outer(norms, norms)
+        norm_ratio = np.where(nmax > 0, nmin / nmax, 0.0)
+        sim = cosine * norm_ratio
+        dist = (1.0 - sim) * 2.0   # 0 = most similar, 2 = most dissimilar
+
+        P = dist.shape[0]
+        half = P // 2
+        rdm_small = dist[half:, :half]
+        rdm = (rdm_small + rdm_small.T) / 2.0
+
+        # scale to ensure max -> 2 (keeps original convention)
+        maxd = rdm.max()
+        rdm = rdm if maxd == 0 else rdm * (2.0 / maxd)
+
+        n = rdm.shape[1]
+        k = 0 if include_diagonal else 1
+        RDM.append(rdm[np.triu_indices(n, k=k)])
+
+        if plotting:
+            plt.figure(); plt.title('Symmetric RDM'); plt.imshow(rdm, aspect='auto', cmap='coolwarm', vmin=0, vmax=2); plt.colorbar()
+
+    return RDM
+
+
+def make_category_masks(data_chunk, plotting=False, include_diagonal=True):
+    if not isinstance(data_chunk, (list, tuple)):
+        data_chunk = [data_chunk]
+
+    outputs = []
+    for data in data_chunk:
+        labels = np.asarray(data).squeeze()
+
+        # pairwise label comparisons
+        same = labels[:, None] == labels[None, :]
+        path = labels == 'path'
+        reward = labels == 'reward'
+
+        masks_full = {
+            'path-path':   path[:, None] & path[None, :],
+            'reward-reward': reward[:, None] & reward[None, :],
+            'reward-path':  ~same
+        }
+
+        # cut lower-left quadrant and symmetrize (to match your pipeline)
+        P = labels.size
+        half = P // 2
+        masks_sym = {}
+        for key, M in masks_full.items():
+            M_small = M[half:, :half]
+            masks_sym[key] = M_small | M_small.T
+
+        # vectorize upper triangle
+        n = next(iter(masks_sym.values())).shape[0]
+        k = 0 if include_diagonal else 1
+        tri = np.triu_indices(n, k=k)
+
+        masks_vec = {key: M[tri] for key, M in masks_sym.items()}
+        outputs.append(masks_vec)
+
+        if plotting:
+            plt.figure(figsize=(9,3))
+            for i, (key, M) in enumerate(masks_sym.items(), 1):
+                plt.subplot(1,3,i)
+                plt.title(key)
+                plt.imshow(M.astype(int), aspect='auto', cmap='Greys')
+                plt.axis('off')
+            plt.show()
+
+    return outputs[0] if len(outputs) == 1 else outputs
 
 
 def compute_crosscorr(data_chunk, plotting = False, include_diagonal = True):  
@@ -446,7 +535,7 @@ def evaluate_model(model_rdm, data_rdm):
 def plot_model_correlations(stacked_model_RDMs, model_names,
                             figsize=(8, 6), cmap='coolwarm', annot=True,
                             fmt='.2f', vmin=-1, vmax=1, cmap_center=0,
-                            show=True, save_path=None):
+                            show=True, save_path=None, conditions_masking = None):
     """
     Plot Pearson correlations between model RDMs.
 
@@ -478,46 +567,92 @@ def plot_model_correlations(stacked_model_RDMs, model_names,
     fig, ax : matplotlib objects
         Figure and axes (for further customization).
     """
-    X = np.asarray(stacked_model_RDMs)
-    if X.ndim != 2:
-        raise ValueError("stacked_model_RDMs must be 2D (n_entries, n_models).")
-    if X.shape[1] != len(model_names):
-        raise ValueError("Length of model_names must match number of model columns.")
-
-    # correlation matrix (columns are variables)
-    corr = np.corrcoef(X, rowvar=False)
-
-    fig, ax = plt.subplots(figsize=figsize)
-    im = ax.imshow(corr, interpolation='nearest', cmap=cmap, vmin=vmin, vmax=vmax)
-
-    # ticks / labels
-    ax.set_xticks(np.arange(len(model_names)))
-    ax.set_yticks(np.arange(len(model_names)))
-    ax.set_xticklabels(model_names, rotation=45, ha='right', rotation_mode='anchor')
-    ax.set_yticklabels(model_names)
-
-    # annotations
-    if annot:
-        # choose contrasting text color depending on background brightness
-        for i in range(corr.shape[0]):
-            for j in range(corr.shape[1]):
-                val = corr[i, j]
-                txt = format(val, fmt)
-                # white text for strong colors, black otherwise
-                text_color = 'white' if abs(val) > 0.5 else 'black'
-                ax.text(j, i, txt, ha='center', va='center', color=text_color, fontsize=9)
-
-    # colorbar and layout
-    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label('Pearson r', rotation=270, labelpad=12)
-
-    ax.set_title('Model RDM correlations (Pearson r)')
-    plt.tight_layout()
-
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-
-    if show:
-        plt.show()
+    if conditions_masking:
+        for cond in conditions_masking:
+            X = np.asarray(stacked_model_RDMs)
+            X = X[conditions_masking[cond]]
+    
+            if X.ndim != 2:
+                raise ValueError("stacked_model_RDMs must be 2D (n_entries, n_models).")
+            if X.shape[1] != len(model_names):
+                raise ValueError("Length of model_names must match number of model columns.")
+        
+            # correlation matrix (columns are variables)
+            corr = np.corrcoef(X, rowvar=False)
+        
+            fig, ax = plt.subplots(figsize=figsize)
+            im = ax.imshow(corr, interpolation='nearest', cmap=cmap, vmin=vmin, vmax=vmax)
+        
+            # ticks / labels
+            ax.set_xticks(np.arange(len(model_names)))
+            ax.set_yticks(np.arange(len(model_names)))
+            ax.set_xticklabels(model_names, rotation=45, ha='right', rotation_mode='anchor')
+            ax.set_yticklabels(model_names)
+        
+            # annotations
+            if annot:
+                # choose contrasting text color depending on background brightness
+                for i in range(corr.shape[0]):
+                    for j in range(corr.shape[1]):
+                        val = corr[i, j]
+                        txt = format(val, fmt)
+                        # white text for strong colors, black otherwise
+                        text_color = 'white' if abs(val) > 0.5 else 'black'
+                        ax.text(j, i, txt, ha='center', va='center', color=text_color, fontsize=9)
+        
+            # colorbar and layout
+            cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+            cbar.set_label('Pearson r', rotation=270, labelpad=12)
+        
+            ax.set_title(f"Model RDM correlations (Pearson r), only {cond}")
+            plt.tight_layout()
+        
+            if save_path:
+                plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        
+            if show:
+                plt.show()
+    else:
+        X = np.asarray(stacked_model_RDMs)
+        if X.ndim != 2:
+            raise ValueError("stacked_model_RDMs must be 2D (n_entries, n_models).")
+        if X.shape[1] != len(model_names):
+            raise ValueError("Length of model_names must match number of model columns.")
+    
+        # correlation matrix (columns are variables)
+        corr = np.corrcoef(X, rowvar=False)
+    
+        fig, ax = plt.subplots(figsize=figsize)
+        im = ax.imshow(corr, interpolation='nearest', cmap=cmap, vmin=vmin, vmax=vmax)
+    
+        # ticks / labels
+        ax.set_xticks(np.arange(len(model_names)))
+        ax.set_yticks(np.arange(len(model_names)))
+        ax.set_xticklabels(model_names, rotation=45, ha='right', rotation_mode='anchor')
+        ax.set_yticklabels(model_names)
+    
+        # annotations
+        if annot:
+            # choose contrasting text color depending on background brightness
+            for i in range(corr.shape[0]):
+                for j in range(corr.shape[1]):
+                    val = corr[i, j]
+                    txt = format(val, fmt)
+                    # white text for strong colors, black otherwise
+                    text_color = 'white' if abs(val) > 0.5 else 'black'
+                    ax.text(j, i, txt, ha='center', va='center', color=text_color, fontsize=9)
+    
+        # colorbar and layout
+        cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        cbar.set_label('Pearson r', rotation=270, labelpad=12)
+    
+        ax.set_title('Model RDM correlations (Pearson r)')
+        plt.tight_layout()
+    
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    
+        if show:
+            plt.show() 
 
     return corr, fig, ax
