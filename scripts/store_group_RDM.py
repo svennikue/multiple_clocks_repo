@@ -238,8 +238,8 @@ for sub in subjects:
     func_vox_rounded  = np.round(func_vox).astype(int)
 
     # data RDM will be stored in original format (108, 108, 64 x n-datapoints of the RDM)
-    # ADD THE DATE HERE!!
-    hits = sorted(glob.glob(f"{data_dir}/func/data_RDMs_{RSA_version}_glmbase_{glm_version}/data_RDM.nii.gz"))
+    # hits = sorted(glob.glob(f"{data_dir}/func/data_RDMs_{RSA_version}_glmbase_{glm_version}/data_RDM.nii.gz"))
+    hits = sorted(glob.glob(f"{data_dir}/func/data_RDMs_glmbase_{glm_version}/data_RDM.nii.gz"))
     data_RDM_nifti = nib.load(hits[-1])
     
     

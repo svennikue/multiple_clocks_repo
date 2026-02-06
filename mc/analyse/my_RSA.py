@@ -429,6 +429,39 @@ def make_category_masks(data_chunk, plotting=False, include_diagonal=True):
     return outputs[0] if len(outputs) == 1 else outputs
 
 
+def compute_hamming_distance(data_chunk, plotting = False, include_diagonal = True): 
+    RDM = []
+    #
+    if not isinstance(data_chunk, (list, tuple)):
+        data_chunk = [data_chunk]
+    for data in data_chunk:
+        import pdb; pdb.set_trace()
+        # this is currently task_half 1 and task_half 2 concatenated.
+        overlap = data[:,None,:] == data[None, :, :]
+        hamming_sim_matrix = overlap.mean(axis = 2)
+        rdm_both_halves = 1 - hamming_sim_matrix
+        rdm_small = rdm_both_halves[int(len(rdm_both_halves)/2):,0:int(len(rdm_both_halves)/2)]
+        
+        # making the matrix symmetric
+        rdm = (rdm_small + rdm_small.T)/2
+        
+        # lastly, only store the part of the RDM I am actually interested in 
+        # i.e. the upper triangle, including the diagonal.
+        n = rdm.shape[1]
+        if include_diagonal:
+            RDM.append(rdm[np.triu_indices(n, k=0)]) 
+        else:
+            RDM.append(rdm[np.triu_indices(n, k=1)]) 
+            
+        if plotting == True:
+            plt.figure()
+            plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm', vmax=2, vmin=0)
+            plt.figure()
+            plt.imshow(rdm_both_halves, aspect = 'auto', cmap = 'coolwarm')
+    return RDM
+        
+
+
 def compute_crosscorr(data_chunk, plotting = False, include_diagonal = True):  
     RDM = []
     #import pdb; pdb.set_trace()

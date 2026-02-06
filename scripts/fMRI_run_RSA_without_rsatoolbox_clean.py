@@ -131,7 +131,7 @@ for sub in subjects:
         print(f"Running on Cluster, setting {data_dir} as data directory")
       
     modelled_conditions_dir = f"{data_dir}/beh/modelled_EVs"
-    data_rdm_dir = f"{data_dir}/func/data_RDMs_{RDM_version}_glmbase_{regression_version}"
+    data_rdm_dir = f"{data_dir}/func/data_RDMs_glmbase_{regression_version}"
 
     results_dir = f"{data_dir}/func/RSA_{RDM_version}_{today_str}_glmbase_{regression_version}/results" 
     if smoothing == True:
@@ -273,23 +273,24 @@ for sub in subjects:
             #     plt.figure()
             #     plt.imshow(rdm_recon)
             #     plt.title(model)
-    #import pdb; pdb.set_trace()
 
-    
+    # ideally, i can recycle the RDMs.
+    # but currently they are too big to be lioaded in memory.
+    # if not os.path.exists(f"{data_rdm_dir}/data_RDM.nii.gz"):
+    #       # # and searchlight-wise for data RDMs
+    #       # if masked_conditions:
+    #       #     # here, I want to now mask all within-task similarities.
+    #       #     data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr_and_filter', labels = paired_labels, mask_pairs= masked_conditions, include_diagonal=include_diagonal)
+    #       # else:
+    data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr', include_diagonal=include_diagonal) 
+    mc.analyse.handle_MRI_files.save_data_RDM_as_nifti(data_RDMs, data_rdm_dir, "data_RDM", ref_img, centers) 
+
+    # # actually, it seems like it's not possible to load these.
+    # else:
+    #     # maybe nib.load would be better
+    #     data_RMDs_nifti = load_img(f"{data_rdm_dir}/data_RDM.nii.gz")
+    #     data_RMDs = data_RMDs_nifti.get_fdata()
         
-    
-    if not os.path.exists(f"{data_rdm_dir}/data_RDM.npy"):
-          # # and searchlight-wise for data RDMs
-          # if masked_conditions:
-          #     # here, I want to now mask all within-task similarities.
-          #     data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr_and_filter', labels = paired_labels, mask_pairs= masked_conditions, include_diagonal=include_diagonal)
-          # else:
-        data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr', include_diagonal=include_diagonal) 
-        mc.analyse.handle_MRI_files.save_data_RDM_as_nifti(data_RDMs, data_rdm_dir, "data_RDM", ref_img, centers) 
-    else:
-          data_RDMs = np.load(f"{data_rdm_dir}/data_RDM.npy")
-
-
     if smoothing == True:
         if not os.path.exists(f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}.npy"):
             path_to_save_smooth = f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}"
@@ -314,7 +315,7 @@ for sub in subjects:
             RSA_results[model] = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(model_RDM_dir[model][0], d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {model}"))
             mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=RSA_results[model], centers=centers, file_path = results_dir, file_name= f"{model}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
 
-
+    import pdb; pdb.set_trace()
     run_combo_models = config.get("run_combo_models", bool(config.get("combo_models")))
     if run_combo_models:
         combo_list = config["combo_models"]
@@ -355,13 +356,11 @@ for sub in subjects:
             
             if masked_conditions:
                 for cond in conditions_masking:
-                    estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs[conditions_masking[cond]], d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name} only including {cond}"))
+                    estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs[conditions_masking[cond]], d[conditions_masking[cond]]) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name} only including {cond}"))
                     for i, model in enumerate(models_to_combine):
                         mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}-{cond}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
       
-                
-        
-        
+ 
     # --- SETTINGS SUMMARY (per subject) ---
     summary = {
         "subject": sub,

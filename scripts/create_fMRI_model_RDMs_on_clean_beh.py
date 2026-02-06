@@ -8,7 +8,17 @@ create regressors that I want to use for the fMRI.
 I will store a standard set of models 
 (currently "location", "curr_rew", "next_rew", "two_next_rew", "three_next_rew", "state"
  DSR, l2_norm, A_state)
+
 in all possible regressors: both task halves, path x rewards x unique_tasks
+
+note on 05th of feb 2026:
+    there are now quite a lot of models. At the same time, this script is very fast
+    and the stored models aren't very big. so In a way, it doesn't matter in which folder they
+    are stored and how many i produce here.
+    maybe adjust such that it's just always the same folder
+    and always produce all?
+    because you select later anyways
+
 You can choose later which regressors you want to use.
 
 
@@ -34,14 +44,16 @@ from sklearn.linear_model import LinearRegression
 import json
 from fnmatch import fnmatch
 import ast
+from collections import Counter
+
 
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
     subj_no = '02'
 
-# subjects = [f"sub-{subj_no}"]
-subjects = subs_list = [f'sub-{i:02}' for i in range(1, 35)]
+subjects = [f"sub-{subj_no}"]
+# subjects = subs_list = [f'sub-{i:02}' for i in range(1, 35)]
 
 # --- Load configuration ---
 source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks"
@@ -65,8 +77,8 @@ with open(f"{config_path}/{config_file}", "r") as f:
 #regression_version = '03-4' 
 #RDM_version = '03-1'
 # no_phase_neurons = 3
-plot_RDMs = False 
-save_RDMs = True
+plot_RDMs = True 
+save_RDMs = False
 EV_string = config.get("load_EVs_from", "DSR_loc-fut-rews-state-dur-type")
 plot_DSR_task_matrices = False
 plot_DSR_tasks = [] # fill this with eg tasks[14]
@@ -78,6 +90,14 @@ coord_to_loc = {
     (-0.21, -0.29): 7, (0.0, -0.29): 8, (0.21, -0.29): 9,
 }
 loc_to_coord = {v:k for k,v in coord_to_loc.items()}
+
+
+
+def resample_locations(path, T=12):
+    n = len(path)
+    reps = [T // n + (i < T % n) for i in range(n)]
+    return np.repeat(path, reps)
+
 
 #models_I_want = mc.analyse.analyse_MRI_behav.select_models_I_want(RDM_version)
    
@@ -112,6 +132,7 @@ for sub in subjects:
     for reg in regs:
         regressors[reg] = np.zeros(len(beh_df))
         regressors[reg][beh_df['unique_time_bin_type'] == reg] = 1
+
 
     # select which EVs are included in the RDM (same logic as fMRI_run_RSA_without_rsatoolbox_clean.py)
     conditions = config.get("EV_condition_selection", {})
@@ -159,7 +180,7 @@ for sub in subjects:
     for key in ["location", "curr_rew", "next_rew", "two_next_rew", "three_next_rew", "l2_norm", "curr_path", "DSR_onefut", "DSR_twofut", "DSR_threefut","DSR_fourfut", "DSR_fivefut", "DSR_sixfut", "DSR_sevenfut"]:
         models[key] = np.zeros((len(locations), len(beh_df)), dtype=float)
     
-
+    
     for i_loc, loc in enumerate(locations):
         models['location'][i_loc][beh_df['curr_loc'] == loc] = 1
         models['curr_rew'][i_loc][beh_df['curr_rew'] == loc] = 1
@@ -167,6 +188,75 @@ for sub in subjects:
         # models['rew'][i_loc][(beh_df['curr_rew'] == loc) & (beh_df['time_bin_type'] == 'reward')] = 1
         for idx_inner_loc, inner_loc in enumerate(locations):
             models['l2_norm'][idx_inner_loc][beh_df['curr_loc'] == loc] = -np.linalg.norm(coordinates[i_loc] - coordinates[idx_inner_loc])
+
+
+     
+    
+    # start again!
+    # look  at how you do the buttons. it'll probably be similar???
+    # forget about the 1-hot-encdings.
+    # #
+    # #
+    
+    # first, build lists of paths per reg.
+    loc_dict, raw_loc_dict = {}, {}
+    for reg in regs:
+        raw_loc_dict[reg] = []
+        loc_dict[reg]=[]
+        df_reg = beh_df[beh_df['unique_time_bin_type']==reg]
+        for rep in range(0,5):
+            raw_loc_dict[reg].append(df_reg[df_reg['repeat']==rep]['curr_loc'].to_numpy())
+        # instead of choosing the average, choose the path that occured most often
+        # as the represenative plan.
+        most_common_path = np.array(Counter(map(lambda x: tuple(x), raw_loc_dict[reg])).most_common(1)[0][0])
+        # next, upsample the path to a shared length = 12.
+        loc_dict[reg] = resample_locations(most_common_path)
+        
+        
+        
+    
+    
+    import pdb; pdb.set_trace()          
+    # next, choose the path that has been chosen
+    
+    
+    
+    
+    # # phase-location combination.
+    # curr_loc = beh_df['curr_loc'].to_numpy()
+    # # 4 ordinal positions per subpath
+    # n_phases = 4
+    # models['loc_phase'] = np.zeros((len(locations)*n_phases, len(beh_df)))
+    # is_reward = (beh_df['time_bin_type'] == 'reward').to_numpy()
+    # reward_idxs = np.where(is_reward)
+    
+
+    # # build runs (contiguous runs of same break / non-break status)
+    # bin_difference = beh_df['time_bin_type'].eq('reward')
+    # i_seg = bin_difference.ne(bin_difference.shift(fill_value=False)).cumsum()
+    
+    # # position p and segment length S
+    # p_in_seg = beh_df.groupby(i_seg).cumcount().to_numpy()
+    # run_size = beh_df.groupby(i_seg)['curr_loc'].transform('size').to_numpy()
+    
+    # # normalised interval
+    # a0 = p_in_seg/run_size
+    # a1= (p_in_seg+1)/run_size
+    # #intervals of each phase
+    # phase_edges = np.linspace(0,1, n_phases+1)
+    
+    # # which row/'neuron' each location corresponds to
+    # loc_idx = np.array([loc_to_row[x] for x in curr_loc])
+    
+    # for k in range(n_phases):
+    #     # decide if this step is in the respective phase (overlap)
+    #     mask = (a0 < phase_edges[k+1]) & (a1 > phase_edges[k])
+    #     # times as columns: wherever the step overlaps with current phase
+    #     times = np.nonzero(mask)[0]
+    #     # phase-loc neurons as rows: select the ones that are 'on' in this phase 
+    #     phase_loc_neurons = loc_idx[times] * n_phases + k
+    #     models['loc_phase'][phase_loc_neurons, times] = 1
+
 
 
     # this is for the future reward location models.
@@ -266,7 +356,8 @@ for sub in subjects:
     # previous buttons are the ones you pressed on the previous locations.
     
     models['DSR'] = np.zeros((len(temp_order)*len(locations)))
-    EVs['DSR'] = {}
+    models['DSR_phase'] = np.zeros((len(temp_order)*len(locations)*n_phases))
+    EVs['DSR'], EVs['DSR_phase'] = {}, {}
     for task in tasks:
         # build base matrix (8 x 9) in canonical order
         bins_curr_task = [f"{task}_{temp_bin}" for temp_bin in temp_order]
@@ -275,12 +366,17 @@ for sub in subjects:
             # this will read: 0-8 = now. 9-18 = next subpath. 19-27 = subpath after, etc.
             # each EVs['location'][k] has 9 location 
             firing_for_subpath_A = np.concatenate([EVs['location'][k] for k in bins_curr_task], axis=0)  # shape (72,)
+            firing_for_subpath_A_phase = np.concatenate([EVs['loc_phase'][k] for k in bins_curr_task], axis=0)  # shape (72*4,)
         except KeyError:
             continue
-    
+        # import pdb; pdb.set_trace()
         n_bins = len(temp_order)  # 8 (4 x subpaths, 4x rewards)
-        n_locations = firing_for_subpath_A.size // n_bins   # 9 locations
-        assert n_locations * n_bins == firing_for_subpath_A.size
+        
+        # n_locations = firing_for_subpath_A.size // n_bins   # 9 locations
+        # n_loc_phases = firing_for_subpath_A.size // n_bins   # 9 locations
+        # assert n_locations * n_bins == firing_for_subpath_A.size
+        
+        
         # for each position, rotate by whole blocks of `block_len` so subpath-chunks move together
         for pos, temp_bin in enumerate(temp_order):
             bin_curr_task = f"{task}_{temp_bin}"
@@ -289,9 +385,16 @@ for sub in subjects:
             EVs['prev_buttons'][bin_shifted_task] = EVs['buttons_out'][bin_curr_task].copy()
             
             # left-roll by pos blocks: multiply by block_len to rotate whole 9-element blocks
-            rotated = np.roll(firing_for_subpath_A, -pos * n_locations).copy()  # shape (72,)
+            rotated_loc = np.roll(firing_for_subpath_A, -pos * len(locations)).copy()  # shape (72,)
+            rotated_loc_phase = np.roll(firing_for_subpath_A_phase, -pos * len(locations)*n_phases).copy()  # shape # shape (72*4,)
+            
             # store as 1D vector of length 72; if you want shape (1,72) use rotated.reshape(1,-1)
-            EVs['DSR'][bin_curr_task] = rotated
+            EVs['DSR'][bin_curr_task] = rotated_loc
+            EVs['DSR_phase'][bin_curr_task] = rotated_loc_phase
+            
+            
+
+    
 
     if plot_DSR_task_matrices and plot_DSR_tasks:
         mc.plotting.results.plot_dsr_task_matrices(
@@ -340,6 +443,36 @@ for sub in subjects:
                 group_size=8,
                 title=model,
             )
+            
+            
+            
+    #
+    # #
+    # # TEST
+    # # this doesnt work.
+    # just compute literally 2,5 vs 5,2!!!!
+    # # paths one will be the same as for paths two
+    # path_one = [2,5]
+    # path_two = [5,2]
+    # #
+    # loc_one = np.zeros((5,2))
+    # loc_phas_one = np.zeros((20, 2))
+    # loc_one[1,0]=1
+    # loc_one[4,1]=1
+    # loc_phas_one[4,0]=1
+    # loc_phas_one[5,0]=1
+    # loc_phas_one[18,1]=1
+    # loc_phas_one[19,1]=1
+    
+    # loc_two = np.zeros((5,2))
+    # loc_phas_two = np.zeros((20, 2))
+    # loc_two[4,0]=1
+    # loc_two[1,1]=1
+    # loc_phas_two[18,0]=1
+    # loc_phas_two[19,0]=1
+    # loc_phas_two[4,1]=1
+    # loc_phas_two[5,1]=1
+    
 
     # import pdb; pdb.set_trace()          
     if save_RDMs: 
