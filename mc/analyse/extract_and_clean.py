@@ -79,11 +79,16 @@ def _to_float_list(vals):
 
 
 def match_buttons_to_steps(df, beh_raw, beh_clean):
+    # not sure if it would be recommendable to use.
+    # the problem is that the buttons sometimes differ in how the list has been recorded vs.
+    # those that actually advance the list.
+    # thus, it seems better to just use the globally recorded ones and infer the button type (up/down/left/right)
     
+    # rows in which button info is stored
     end_rows = df[df['nav_key_task.rt'].notna()].reset_index(drop=True)
 
     # this is 5 repeats x 10 tasks.
-    repeat_block = (
+    idx_new_task_rep = (
         beh_raw['repeat'].ne(beh_raw['repeat'].shift())
         | beh_raw['task_config'].ne(beh_raw['task_config'].shift())
         | beh_raw['type'].ne(beh_raw['type'].shift())
@@ -93,31 +98,24 @@ def match_buttons_to_steps(df, beh_raw, beh_clean):
     button_keys_per_step = {idx: [] for idx in beh_clean.index}
     
     # loop through the list of blocks repeats across all tasks
-    block_ids = repeat_block.drop_duplicates().tolist()
+    all_rep_idx = idx_new_task_rep.drop_duplicates().tolist()
+
     prev_block_last_step_idx = None
     prev_block_task = None
-    for block_idx, block_id in enumerate(block_ids):
+    
+    for block_idx, curr_rep in enumerate(all_rep_idx):
         if block_idx >= len(end_rows):
             break
+        
         # list of button press times in current repeat
         rts = _to_float_list(_parse_list(end_rows.at[block_idx, 'nav_key_task.rt']))
         # list of key idenitites in current repeat
         keys = [int(k) for k in _parse_list(end_rows.at[block_idx, 'nav_key_task.keys'])]
-        # if len(rts) != len(keys):
-        #     print(
-        #         f"Warning: RT/key length mismatch in block {block_idx} "
-        #         f"(rts={len(rts)} keys={len(keys)}). Padding shorter list."
-        #     )
-        #     if len(rts) > len(keys):
-        #         keys = keys + [None] * (len(rts) - len(keys))
-        #     else:
-        #         rts = rts + [np.nan] * (len(keys) - len(rts))
-
 
         # consider only the steps taken in this particular repeat
-        step_indices = beh_clean.index[repeat_block == block_id]
-        if len(step_indices) == 0:
-            continue
+        step_indices = beh_clean.index[idx_new_task_rep == curr_rep]
+        # if len(step_indices) == 0:
+        #     continue
 
         block_repeat = beh_raw.at[step_indices[0], 'repeat']
         block_task = (
@@ -133,12 +131,13 @@ def match_buttons_to_steps(df, beh_raw, beh_clean):
             
             # for each step, find the button-press that matches this time
             curr_rt = beh_raw.at[idx, 't_step_press_curr_run']
-            if pd.isna(curr_rt):
-                continue
+            # if pd.isna(curr_rt):
+            #     continue
             # which index matches the current button press?
             curr_matches = np.where(np.isclose(rts, float(curr_rt), atol=1e-4))[0]
             curr_matches = [m for m in curr_matches if m > prev_idx]
             if not curr_matches:
+                # import pdb; pdb.set_trace()
                 continue
             curr_idx = curr_matches[0]
             
@@ -175,9 +174,9 @@ def match_buttons_to_steps(df, beh_raw, beh_clean):
         prev_block_last_step_idx = step_indices[-1]
         prev_block_task = block_task
       
-    return button_rts_per_step, button_keys_per_step
+    return button_rts_per_step, button_keys_per_step    
 
-    
+
 
 
 def define_futsteps_x_locs_regressors(beh_df):

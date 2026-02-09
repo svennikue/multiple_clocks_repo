@@ -1,0 +1,36 @@
+{
+  "name_of_RSA": "DSR_hamming_path-rew-sep_combos",
+  "load_EVs_from": "DSR_loc-fut-rews-state-dur-type",
+  "regression_version": "all-paths-fixed_stickrews_split-buttons",
+    "EV_condition_selection": {
+    "parts": {
+      "task":      { "include": [],          "exclude": []},
+      "direction": { "include": [],          "exclude": [] },
+      "state":     { "include": [], "exclude": [] },
+      "phase":     { "include": [],   "exclude": [] }
+    }
+  },
+  "models": [
+    "DSR", "location", "l2_norm", "A-state","prev_buttons", "buttons_out", "state"
+  ],
+  "smoothing": false,
+  "diagonal_included": false,
+  "fwhm": 5,
+  "load_searchlights": true,
+  "visualise_RDMs": false,
+  "run_single_models": false,
+  "masked_conds": true,
+  "run_comobo_models": true,
+  "split_rew_from_path": true,
+  "combo_models": [
+    {
+      "name": "DSR_all_controls",
+      "regressors": ["DSR", "location", "l2_norm", "A-state", "path_rew", "prev_buttons", "buttons_out"]
+    },
+    {
+      "name": "State_all_controls",
+      "regressors": ["state", "location", "l2_norm", "A-state", "buttons_out", "prev_buttons"]
+    }
+
+  ]
+}

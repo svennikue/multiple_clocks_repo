@@ -41,7 +41,30 @@ coord_to_loc = {
     (-0.21, -0.29): 7, (0.0, -0.29): 8, (0.21, -0.29): 9,
 }
 
-        
+loc_to_button = {
+    # right
+    (1, 2): 'right', (2, 3): 'right',
+    (4, 5): 'right', (5, 6): 'right',
+    (7, 8): 'right', (8, 9): 'right',
+
+    # left (reverse)
+    (2, 1): 'left', (3, 2): 'left',
+    (5, 4): 'left', (6, 5): 'left',
+    (8, 7): 'left', (9, 8): 'left',
+
+    # down
+    (1, 4): 'down', (4, 7): 'down',
+    (2, 5): 'down', (5, 8): 'down',
+    (3, 6): 'down', (6, 9): 'down',
+
+    # up (reverse)
+    (4, 1): 'up', (7, 4): 'up',
+    (5, 2): 'up', (8, 5): 'up',
+    (6, 3): 'up', (9, 6): 'up',
+}
+
+
+     
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
@@ -74,7 +97,6 @@ subjects.remove('sub-29')
 for sub in subjects:
     out_dir = f"{source_dir}/derivatives/{sub}/beh"
     
-
     print(f"Now subject {sub}")
     
     both_halves = []   # collect cleaned tables for both halves
@@ -156,6 +178,24 @@ for sub in subjects:
         # press to leave the location 
         beh_clean['t_press_leave_curr_loc'] = beh_raw['t_step_press_global'] 
         
+        
+        # and also fill the empty last press times:
+        # this is a bit long and dirty but whatever
+        new_rep = (
+            beh_raw['repeat'].ne(beh_raw['repeat'].shift())
+            | beh_raw['task_config'].ne(beh_raw['task_config'].shift())
+            | beh_raw['type'].ne(beh_raw['type'].shift())
+        ).cumsum()
+        for rep in range(1, np.max(new_rep)+1):
+            curr_rep = beh_raw[new_rep == rep]
+            local_global_delta_t = curr_rep.iloc[0]['t_step_press_global']- curr_rep.iloc[0]['t_step_press_curr_run']
+            idx_last_step_rep = curr_rep.index[-1]
+            if pd.isna(beh_raw.loc[idx_last_step_rep]['t_step_press_curr_run']):
+                last_press_local_t = beh_raw.loc[idx_last_step_rep]['t_step_press_global']-local_global_delta_t
+                beh_raw.loc[idx_last_step_rep, 't_step_press_curr_run'] = last_press_local_t
+
+        # press to leave the location local time (per run)
+        beh_clean['t_press_leave_curr_loc_per_rep'] = beh_raw['t_step_press_curr_run']
         # -> dwell time at location = t_step_press_global- t_step_end_global
         beh_clean['t_dwell_curr_loc'] =  beh_clean['t_press_leave_curr_loc'] - beh_clean['t_curr_loc']
         # -> walking time to next location = length_step
@@ -173,17 +213,18 @@ for sub in subjects:
         # 8) button press for respective loc [1/4 keys]
         # leave this for now!
         # a bit more complicated given there might have been more buttons stored
-        # than only the ones executed.
-        # x = beh_raw[beh_clean['repeat'] == 1][beh_clean['task_config_ex']=='B1_backw']
-        #timings = beh_clean[beh_clean['repeat'] == 1][beh_clean['task_config_ex']=='B1_backw']['t_curr_loc'].to_numpy()
-        #import ast; press_timings_local = ast.literal_eval(x['nav_key_task.rt'][x['nav_key_task.rt'].notna()].iloc[0])
-        
+        # this one is safe to use as all buttons are present.
+        # note that the last repeat will always have a strange button press, but that shouldnt matter too much.
+        previous_loc = beh_clean['curr_loc'].shift(1)
+        buttons = [loc_to_button.get((prev, curr), None) for prev, curr in zip(previous_loc, beh_clean['curr_loc'])]
+        beh_clean['button_exec'] = pd.Series(buttons, index=beh_clean.index).shift(-1)
 
-        button_rts_per_step, button_keys_per_step = mc.analyse.extract_and_clean.match_buttons_to_steps(df=df, beh_raw=beh_raw, beh_clean=beh_clean)
-        
+        button_rts_per_step, button_keys_per_step = mc.analyse.extract_and_clean.match_buttons_to_steps(df=df, beh_raw = beh_raw, beh_clean=beh_clean)
+        # import pdb; pdb.set_trace()
         beh_clean['button_rts'] = beh_clean.index.map(button_rts_per_step.get)
         beh_clean['button_keys'] = beh_clean.index.map(button_keys_per_step.get)
         
+
         #beh_clean['old_button_rts']  = beh_raw['nav_key_task.rt']
         #beh_clean['old_button_keys'] = beh_raw['nav_key_task.keys']
         
@@ -215,7 +256,7 @@ for sub in subjects:
     
     # concatenate both halves and save
     beh_both = pd.concat(both_halves, ignore_index=True)
-    
+
     # import pdb; pdb.set_trace()
     # store where same reward-states appear at the same locations for later masking
     # mc.analyse.extract_and_clean.store_same_locs_in_same_state(beh_both, out_dir)

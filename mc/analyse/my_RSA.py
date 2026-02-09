@@ -435,9 +435,14 @@ def compute_hamming_distance(data_chunk, plotting = False, include_diagonal = Tr
     if not isinstance(data_chunk, (list, tuple)):
         data_chunk = [data_chunk]
     for data in data_chunk:
-        import pdb; pdb.set_trace()
-        # this is currently task_half 1 and task_half 2 concatenated.
-        overlap = data[:,None,:] == data[None, :, :]
+        # import pdb; pdb.set_trace()
+        data = np.asarray(data, dtype=object)
+        # data task_half 1 and task_half 2 concatenated.
+        # overlap: are values the same if you stack rows vertically vs horizontally?
+        # overlap = data[:,None,:] == data[None, :, :]
+        overlap = np.equal(data[:, None, :], data[None, :,:])
+        # axis 0 = row A, axis 1 = row B, axis 2 = element-wise overlap
+        # mean of axis 2 = fraction of positions where row i and row j are identical
         hamming_sim_matrix = overlap.mean(axis = 2)
         rdm_both_halves = 1 - hamming_sim_matrix
         rdm_small = rdm_both_halves[int(len(rdm_both_halves)/2):,0:int(len(rdm_both_halves)/2)]
@@ -458,6 +463,7 @@ def compute_hamming_distance(data_chunk, plotting = False, include_diagonal = Tr
             plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm', vmax=2, vmin=0)
             plt.figure()
             plt.imshow(rdm_both_halves, aspect = 'auto', cmap = 'coolwarm')
+            
     return RDM
         
 

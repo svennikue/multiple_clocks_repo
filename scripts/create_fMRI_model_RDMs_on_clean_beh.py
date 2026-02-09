@@ -83,6 +83,7 @@ EV_string = config.get("load_EVs_from", "DSR_loc-fut-rews-state-dur-type")
 plot_DSR_task_matrices = False
 plot_DSR_tasks = [] # fill this with eg tasks[14]
 plot_DSR_rotation_bins = None
+len_standardised_path = 12
 
 coord_to_loc = {
     (-0.21,  0.29): 1, (0.0,  0.29): 2, (0.21,  0.29): 3,
@@ -93,7 +94,7 @@ loc_to_coord = {v:k for k,v in coord_to_loc.items()}
 
 
 
-def resample_locations(path, T=12):
+def resample_locations(path, T=len_standardised_path):
     n = len(path)
     reps = [T // n + (i < T % n) for i in range(n)]
     return np.repeat(path, reps)
@@ -168,8 +169,7 @@ for sub in subjects:
     models['A-state'] = np.zeros((len(states), len(beh_df)))
     models['duration'] = np.expand_dims(beh_df['t_spent_at_curr_loc'].to_numpy(), axis=0)
     models['path_rew'] = np.expand_dims(beh_df['time_bin_type'].to_numpy(), axis=0)
-    models['prev_buttons'] = np.zeros((len(buttons), len(beh_df)))
-    models['buttons_out'] = np.zeros((len(buttons), len(beh_df)))
+    models['prev_buttons'], models['buttons_out'], models['location'] = np.zeros((len_standardised_path, len(beh_df))), np.zeros((len_standardised_path, len(beh_df))), np.zeros((len_standardised_path, len(beh_df)))
     
     for s_i, state in enumerate(states):
         # import pdb; pdb.set_trace()
@@ -177,85 +177,17 @@ for sub in subjects:
             models['A-state'][s_i][(beh_df['state'] == state)& (beh_df['time_bin_type'] == 'reward')] = 1
         models['state'][s_i][beh_df['state'] == state] = 1
     
-    for key in ["location", "curr_rew", "next_rew", "two_next_rew", "three_next_rew", "l2_norm", "curr_path", "DSR_onefut", "DSR_twofut", "DSR_threefut","DSR_fourfut", "DSR_fivefut", "DSR_sixfut", "DSR_sevenfut"]:
-        models[key] = np.zeros((len(locations), len(beh_df)), dtype=float)
+    for key in ["curr_rew", "next_rew", "two_next_rew", "three_next_rew", "l2_norm", "curr_path", "DSR_onefut", "DSR_twofut", "DSR_threefut","DSR_fourfut", "DSR_fivefut", "DSR_sixfut", "DSR_sevenfut"]:
+        models[key] = np.zeros((len_standardised_path, len(beh_df)), dtype=float)
     
     
     for i_loc, loc in enumerate(locations):
-        models['location'][i_loc][beh_df['curr_loc'] == loc] = 1
+        # models['location'][i_loc][beh_df['curr_loc'] == loc] = 1
         models['curr_rew'][i_loc][beh_df['curr_rew'] == loc] = 1
         # models['path'][i_loc][(beh_df['curr_loc'] == loc) & (beh_df['time_bin_type'] == 'path')] = 1
         # models['rew'][i_loc][(beh_df['curr_rew'] == loc) & (beh_df['time_bin_type'] == 'reward')] = 1
         for idx_inner_loc, inner_loc in enumerate(locations):
             models['l2_norm'][idx_inner_loc][beh_df['curr_loc'] == loc] = -np.linalg.norm(coordinates[i_loc] - coordinates[idx_inner_loc])
-
-
-     
-    
-    # start again!
-    # look  at how you do the buttons. it'll probably be similar???
-    # forget about the 1-hot-encdings.
-    # #
-    # #
-    
-    # first, build lists of paths per reg.
-    loc_dict, raw_loc_dict = {}, {}
-    for reg in regs:
-        raw_loc_dict[reg] = []
-        loc_dict[reg]=[]
-        df_reg = beh_df[beh_df['unique_time_bin_type']==reg]
-        for rep in range(0,5):
-            raw_loc_dict[reg].append(df_reg[df_reg['repeat']==rep]['curr_loc'].to_numpy())
-        # instead of choosing the average, choose the path that occured most often
-        # as the represenative plan.
-        most_common_path = np.array(Counter(map(lambda x: tuple(x), raw_loc_dict[reg])).most_common(1)[0][0])
-        # next, upsample the path to a shared length = 12.
-        loc_dict[reg] = resample_locations(most_common_path)
-        
-        
-        
-    
-    
-    import pdb; pdb.set_trace()          
-    # next, choose the path that has been chosen
-    
-    
-    
-    
-    # # phase-location combination.
-    # curr_loc = beh_df['curr_loc'].to_numpy()
-    # # 4 ordinal positions per subpath
-    # n_phases = 4
-    # models['loc_phase'] = np.zeros((len(locations)*n_phases, len(beh_df)))
-    # is_reward = (beh_df['time_bin_type'] == 'reward').to_numpy()
-    # reward_idxs = np.where(is_reward)
-    
-
-    # # build runs (contiguous runs of same break / non-break status)
-    # bin_difference = beh_df['time_bin_type'].eq('reward')
-    # i_seg = bin_difference.ne(bin_difference.shift(fill_value=False)).cumsum()
-    
-    # # position p and segment length S
-    # p_in_seg = beh_df.groupby(i_seg).cumcount().to_numpy()
-    # run_size = beh_df.groupby(i_seg)['curr_loc'].transform('size').to_numpy()
-    
-    # # normalised interval
-    # a0 = p_in_seg/run_size
-    # a1= (p_in_seg+1)/run_size
-    # #intervals of each phase
-    # phase_edges = np.linspace(0,1, n_phases+1)
-    
-    # # which row/'neuron' each location corresponds to
-    # loc_idx = np.array([loc_to_row[x] for x in curr_loc])
-    
-    # for k in range(n_phases):
-    #     # decide if this step is in the respective phase (overlap)
-    #     mask = (a0 < phase_edges[k+1]) & (a1 > phase_edges[k])
-    #     # times as columns: wherever the step overlaps with current phase
-    #     times = np.nonzero(mask)[0]
-    #     # phase-loc neurons as rows: select the ones that are 'on' in this phase 
-    #     phase_loc_neurons = loc_idx[times] * n_phases + k
-    #     models['loc_phase'][phase_loc_neurons, times] = 1
 
 
 
@@ -304,15 +236,50 @@ for sub in subjects:
     
     
     # create regressors.
-    EVs = {}
+    EVs, raw_loc_dict, raw_button_dict = {},{}, {}
     for model in models:
         EVs[model] = {}
-        if model == 'prev_buttons' or model == 'buttons_out':
-            continue
+        # if model == 'prev_buttons' or model == 'buttons_out':
+        #     continue
         for reg in regressors:
             if model == 'path_rew':
                 label = 'reward' if reg.endswith('reward') else 'path' if reg.endswith('path') else None
                 EVs[model][reg] = np.full(len(models[model]), label, dtype=object)
+            elif model == 'location':
+                raw_loc_dict[reg] = []
+                EVs[model][reg]=[]
+                df_reg = beh_df[beh_df['unique_time_bin_type']==reg]
+                for rep in range(0,5):
+                    raw_loc_dict[reg].append(df_reg[df_reg['repeat']==rep]['curr_loc'].to_numpy())
+                # instead of choosing the average, choose the path that occured most often
+                # as the represenative plan.
+                most_common_path = np.array(Counter(map(lambda x: tuple(x), raw_loc_dict[reg])).most_common(1)[0][0])
+                # next, upsample the path to a shared length = 12.
+                EVs[model][reg] = resample_locations(most_common_path)
+            
+            elif model == 'buttons_out':
+                raw_button_dict[reg] = []
+                EVs[model][reg]=[]
+                df_reg = beh_df[beh_df['unique_time_bin_type']==reg]
+                # NEW
+                for rep in range(0,5):
+                    raw_button_dict[reg].append(df_reg[df_reg['repeat']==rep]['button_exec'].to_list())
+                most_common_button_sequence = np.array(Counter(map(lambda x: tuple(x), raw_button_dict[reg])).most_common(1)[0][0])
+                
+                # # OLD
+                # curr_button_string_list = df_reg['button_keys'].to_list()
+                # for repeat in curr_button_string_list:
+                #     raw_button_dict[reg].append(ast.literal_eval(repeat))
+                # # instead of choosing the average, choose the button sequence that occured most often
+                # # as the represenative plan.
+                # most_common_button_sequence = np.array(Counter(map(lambda x: tuple(x), raw_button_dict[reg])).most_common(1)[0][0])
+                # # next, upsample the path to a shared length = 12.
+                
+                EVs[model][reg] = resample_locations(most_common_button_sequence)
+                if most_common_button_sequence == []:
+                    import pdb; pdb.set_trace()
+                    # this should never happen, only the very last sequence should be []
+                
             else:
                 EVs[model][reg] = np.zeros((len(models[model])))  
                 for index, row in enumerate(models[model]):
@@ -325,20 +292,27 @@ for sub in subjects:
                         # this is because the way I use ithem, the regressors would be a linear combination of the intercept ([11111] vector)
                         EVs[model][reg][index] = LinearRegression(fit_intercept=False).fit(regressors[reg].reshape(-1,1), row.reshape(-1,1)).coef_
 
-    # treat the button ones differently (just count how many times each button occured)
+
+    # import pdb; pdb.set_trace()
+    # just in case I want to go back to this frequency way of coding for buttons.
+    # maybe, as a motor regressor, it is actually relevant to include the frequency of the buttons somehow? 
+    # also think about the fact that if 1. button != 2. button, what happens for 22 vs 2222? currently they are the same.
+    # maybe some frequency weighting???
     
-    n_reps = int(np.max(beh_df['repeat'].unique()))+1
-    for reg in regressors:
-        EVs['buttons_out'][reg] = np.zeros((len(buttons)))
-        EVs['prev_buttons'][reg] =  np.zeros((len(buttons)))
-        # filter for the current reg
-        curr_button_string_list = beh_df[beh_df['unique_time_bin_type'] == reg]['button_keys'].to_list()
-        curr_buttons = [x for s in curr_button_string_list for x in ast.literal_eval(s)]
-        for b_idx, button in enumerate(buttons):
-            curr_buttons = np.array(curr_buttons)
-            # just count the buttons in this regressor!
-            # check for how many rows you're in the regressor
-            EVs['buttons_out'][reg][b_idx] = np.sum(curr_buttons[curr_buttons == (b_idx + 1)])/n_reps
+    
+    # # treat the button ones differently (just count how many times each button occured)
+    # n_reps = int(np.max(beh_df['repeat'].unique()))+1
+    # for reg in regressors:
+    #     EVs['buttons_out'][reg] = np.zeros((len(buttons)))
+    #     EVs['prev_buttons'][reg] =  np.zeros((len(buttons)))
+    #     # filter for the current reg
+    #     curr_button_string_list = beh_df[beh_df['unique_time_bin_type'] == reg]['button_keys'].to_list()
+    #     curr_buttons = [x for s in curr_button_string_list for x in ast.literal_eval(s)]
+    #     for b_idx, button in enumerate(buttons):
+    #         curr_buttons = np.array(curr_buttons)
+    #         # just count the buttons in this regressor!
+    #         # check for how many rows you're in the regressor
+    #         EVs['buttons_out'][reg][b_idx] = np.sum(curr_buttons[curr_buttons == (b_idx + 1)])/n_reps
             
     
     
@@ -355,18 +329,22 @@ for sub in subjects:
     # this is to do the rotation as well for the buttons:
     # previous buttons are the ones you pressed on the previous locations.
     
-    models['DSR'] = np.zeros((len(temp_order)*len(locations)))
-    models['DSR_phase'] = np.zeros((len(temp_order)*len(locations)*n_phases))
-    EVs['DSR'], EVs['DSR_phase'] = {}, {}
+    models['DSR'] = np.zeros((len(temp_order)*len_standardised_path))
+    #models['DSR_phase'] = np.zeros((len(temp_order)*len(locations)*n_phases))
+    # EVs['DSR'], EVs['DSR_phase'] = {}, {}
+    EVs['DSR']= {}
     for task in tasks:
         # build base matrix (8 x 9) in canonical order
         bins_curr_task = [f"{task}_{temp_bin}" for temp_bin in temp_order]
         try:
+            # OLD
             # concatenate the 8 bins x 9-element vectors into a single 72-element vector
             # this will read: 0-8 = now. 9-18 = next subpath. 19-27 = subpath after, etc.
             # each EVs['location'][k] has 9 location 
+            
+            # NEW: each subpath has lenght 12 x 8 = 96
             firing_for_subpath_A = np.concatenate([EVs['location'][k] for k in bins_curr_task], axis=0)  # shape (72,)
-            firing_for_subpath_A_phase = np.concatenate([EVs['loc_phase'][k] for k in bins_curr_task], axis=0)  # shape (72*4,)
+            # firing_for_subpath_A_phase = np.concatenate([EVs['loc_phase'][k] for k in bins_curr_task], axis=0)  # shape (72*4,)
         except KeyError:
             continue
         # import pdb; pdb.set_trace()
@@ -375,8 +353,7 @@ for sub in subjects:
         # n_locations = firing_for_subpath_A.size // n_bins   # 9 locations
         # n_loc_phases = firing_for_subpath_A.size // n_bins   # 9 locations
         # assert n_locations * n_bins == firing_for_subpath_A.size
-        
-        
+
         # for each position, rotate by whole blocks of `block_len` so subpath-chunks move together
         for pos, temp_bin in enumerate(temp_order):
             bin_curr_task = f"{task}_{temp_bin}"
@@ -386,11 +363,11 @@ for sub in subjects:
             
             # left-roll by pos blocks: multiply by block_len to rotate whole 9-element blocks
             rotated_loc = np.roll(firing_for_subpath_A, -pos * len(locations)).copy()  # shape (72,)
-            rotated_loc_phase = np.roll(firing_for_subpath_A_phase, -pos * len(locations)*n_phases).copy()  # shape # shape (72*4,)
+            #rotated_loc_phase = np.roll(firing_for_subpath_A_phase, -pos * len(locations)*n_phases).copy()  # shape # shape (72*4,)
             
             # store as 1D vector of length 72; if you want shape (1,72) use rotated.reshape(1,-1)
             EVs['DSR'][bin_curr_task] = rotated_loc
-            EVs['DSR_phase'][bin_curr_task] = rotated_loc_phase
+            #EVs['DSR_phase'][bin_curr_task] = rotated_loc_phase
             
             
 
@@ -408,6 +385,8 @@ for sub in subjects:
     if plot_RDMs == True:
         for model in models:
             if model == 'path_rew':
+                continue
+            if 'button' in model:
                 continue
             #ev_array = np.zeros((int(len(EVs[model])/2), len(models[model])))
             # if model == 'DSR':
@@ -434,7 +413,16 @@ for sub in subjects:
             # for idx, ev in enumerate(EVs[model]):
             #     y_labels_all.append(ev)
             #     ev_array_all[idx] = EVs[model][ev]
-    
+            # if model == 'DSR':
+            #     mc.plotting.results.plot_model_rdm_half(
+            #         ev_array,
+            #         labels=y_labels,
+            #         method="crosscorr",
+            #         label_half="first",
+            #         group_size=8,
+            #         title=model,
+            #     )
+            print(f"now plotting RDM for {model} model")
             mc.plotting.results.plot_model_rdm_half(
                 ev_array,
                 labels=y_labels,

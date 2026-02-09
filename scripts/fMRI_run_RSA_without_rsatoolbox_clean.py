@@ -76,18 +76,18 @@ else:
     config_path = f"{source_dir}/analysis/multiple_clocks_repo/condition_files"
     print(f"Running on Cluster, setting {source_dir} as data directory")
        
-      
+
 # --- Load configuration ---
 # config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
 #config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_DSR_rew_vs_path_interaction_vis_combos.json"
-config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_DSR_bias-path-rew-splitfuts_combos.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_DSR_hamming_path_rew_sep_combos.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
 # SETTINGS
 EV_string = config.get("load_EVs_from")
 regression_version = config.get("regression_version")
-
+split_rew_from_path = config.get("split_rew_from_path", False)
 
 today_str = date.today().strftime("%d-%m-%Y")
 name_RSA = config.get("name_of_RSA")
@@ -239,8 +239,11 @@ for sub in subjects:
             model_RDM_dir[model] = mc.analyse.my_RSA.make_categorical_RDM(models_concat[model], plotting = False, include_diagonal=include_diagonal)
         elif model == 'duration':
             model_RDM_dir[model] = mc.analyse.my_RSA.make_distance_RDM(models_concat[model], plotting = False, include_diagonal=include_diagonal)
-        elif model.startswith('button'):
-            model_RDM_dir[model] = mc.analyse.my_RSA.make_distance_RDM_cosine_normratio(models_concat[model], plotting = False, include_diagonal=include_diagonal)
+        elif model in ['location', 'DSR', 'prev_buttons', 'buttons_out']:
+            model_RDM_dir[model] = mc.analyse.my_RSA.compute_hamming_distance(models_concat[model], plotting = False, include_diagonal=include_diagonal)
+
+        #elif model.startswith('button'):
+        #    model_RDM_dir[model] = mc.analyse.my_RSA.make_distance_RDM_cosine_normratio(models_concat[model], plotting = False, include_diagonal=include_diagonal)
         else:
             model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr(models_concat[model], plotting= False, include_diagonal=include_diagonal)
             if model == 'A-state':
@@ -337,12 +340,12 @@ for sub in subjects:
             
             stacked_model_RDMs = np.stack([model_RDM_dir[m][0] for m in models_to_combine], axis=1)
             
-            # # check how correlated each model is whith each other.
-            # corr = np.corrcoef(stacked_model_RDMs, rowvar=False)
-            # for i in range(len(models_to_combine)):
-            #     for j in range(i+1, len(models_to_combine)):
-            #         print(f"{models_to_combine[i]} vs {models_to_combine[j]}: r={corr[i,j]:.3f}")
-            # corr, fig, ax = mc.analyse.my_RSA.plot_model_correlations(stacked_model_RDMs, models_to_combine, conditions_masking=conditions_masking)
+            # check how correlated each model is whith each other.
+            corr = np.corrcoef(stacked_model_RDMs, rowvar=False)
+            for i in range(len(models_to_combine)):
+                for j in range(i+1, len(models_to_combine)):
+                    print(f"{models_to_combine[i]} vs {models_to_combine[j]}: r={corr[i,j]:.3f}")
+            corr, fig, ax = mc.analyse.my_RSA.plot_model_correlations(stacked_model_RDMs, models_to_combine, conditions_masking=conditions_masking)
             
             # import pdb; pdb.set_trace()
             # if masked_conditions == True:
