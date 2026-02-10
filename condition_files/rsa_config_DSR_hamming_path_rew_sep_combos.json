@@ -11,7 +11,7 @@
     }
   },
   "models": [
-    "DSR", "location", "l2_norm", "A-state","prev_buttons", "buttons_out", "state"
+    "DSR", "location", "l2_norm", "A-state","prev_buttons", "buttons_out", "next_buttons", "state", "state_action_glob", "state_action_loc"
   ],
   "smoothing": false,
   "diagonal_included": false,
@@ -23,14 +23,29 @@
   "run_comobo_models": true,
   "split_rew_from_path": true,
   "combo_models": [
-    {
-      "name": "DSR_all_controls",
-      "regressors": ["DSR", "location", "l2_norm", "A-state", "path_rew", "prev_buttons", "buttons_out"]
+      {
+      "name": "state_action_all_controls",
+      "regressors": ["state_action_glob", "location", "l2_norm", "A-state","prev_buttons", "buttons_out", "next_buttons"]
     },
     {
-      "name": "State_all_controls",
-      "regressors": ["state", "location", "l2_norm", "A-state", "buttons_out", "prev_buttons"]
+      "name": "DSR_all_controls",
+      "regressors": ["DSR", "l2_norm", "A-state", "buttons_out", "prev_buttons", "next_buttons"]
+    },
+    {
+      "name": "DSR_vis-mot-controls",
+      "regressors": ["DSR", "l2_norm", "A-state", "buttons_out", "prev_buttons", "next_buttons"]
+    },
+    {
+      "name": "state_controls",
+      "regressors": ["state", "l2_norm", "A-state", "buttons_out", "prev_buttons", "next_buttons"]
+    },
+    {
+      "name": "buttons_vis_controls",
+      "regressors": ["buttons_out", "next_buttons","prev_buttons", "l2_norm", "A-state"]
+    },
+    {
+      "name": "state_action_now",
+      "regressors": ["state_action_loc", "l2_norm", "A-state"]
     }
-
   ]
 }

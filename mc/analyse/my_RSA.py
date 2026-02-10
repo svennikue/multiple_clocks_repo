@@ -382,7 +382,7 @@ def make_distance_RDM_cosine_normratio(data_chunk, plotting=False, include_diago
     return RDM
 
 
-def make_category_masks(data_chunk, plotting=False, include_diagonal=True):
+def make_category_masks(data_chunk, plotting=False, include_diagonal=True, mask_only_path_rew_combos=True):
     if not isinstance(data_chunk, (list, tuple)):
         data_chunk = [data_chunk]
 
@@ -398,7 +398,8 @@ def make_category_masks(data_chunk, plotting=False, include_diagonal=True):
         masks_full = {
             'path-path':   path[:, None] & path[None, :],
             'reward-reward': reward[:, None] & reward[None, :],
-            'reward-path':  ~same
+            'reward-path':  ~same,
+            'mask_reward-path': same
         }
 
         # cut lower-left quadrant and symmetrize (to match your pipeline)
@@ -425,7 +426,12 @@ def make_category_masks(data_chunk, plotting=False, include_diagonal=True):
                 plt.imshow(M.astype(int), aspect='auto', cmap='Greys')
                 plt.axis('off')
             plt.show()
-
+    # import pdb; pdb.set_trace()
+    # make sure to make this reversed: only exclude path-reward, inlude everything else.
+    if mask_only_path_rew_combos == True:
+        for k in ['path-path', 'reward-reward', 'reward-path']:
+                outputs[0].pop(k, None)
+    
     return outputs[0] if len(outputs) == 1 else outputs
 
 
@@ -460,7 +466,7 @@ def compute_hamming_distance(data_chunk, plotting = False, include_diagonal = Tr
             
         if plotting == True:
             plt.figure()
-            plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm', vmax=2, vmin=0)
+            plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm', vmax=1, vmin=0)
             plt.figure()
             plt.imshow(rdm_both_halves, aspect = 'auto', cmap = 'coolwarm')
             
