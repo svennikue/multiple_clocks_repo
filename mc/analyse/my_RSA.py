@@ -429,8 +429,9 @@ def make_category_masks(data_chunk, plotting=False, include_diagonal=True, mask_
     # import pdb; pdb.set_trace()
     # make sure to make this reversed: only exclude path-reward, inlude everything else.
     if mask_only_path_rew_combos == True:
-        for k in ['path-path', 'reward-reward', 'reward-path']:
-                outputs[0].pop(k, None)
+        outputs[0].pop('reward-path')
+        # for k in ['path-path', 'reward-reward', 'reward-path']:
+        #         outputs[0].pop(k, None)
     
     return outputs[0] if len(outputs) == 1 else outputs
 

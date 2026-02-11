@@ -50,10 +50,12 @@ from collections import Counter
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '02'
+    subj_no = '01'
 
 subjects = [f"sub-{subj_no}"]
 # subjects = subs_list = [f'sub-{i:02}' for i in range(1, 35)]
+# subjects.remove('sub-29')
+# subjects.remove('sub-21')
 
 # --- Load configuration ---
 source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks"
@@ -243,14 +245,14 @@ for sub in subjects:
         # if model == 'prev_buttons' or model == 'buttons_out':
         #     continue
         for reg in regressors:
+            df_reg = beh_df[beh_df['unique_time_bin_type']==reg]
             if model == 'path_rew':
                 label = 'reward' if reg.endswith('reward') else 'path' if reg.endswith('path') else None
                 EVs[model][reg] = np.full(len(models[model]), label, dtype=object)
             elif model == 'location':
                 raw_loc_dict[reg] = []
                 EVs[model][reg]=[]
-                df_reg = beh_df[beh_df['unique_time_bin_type']==reg]
-                for rep in range(0,5):
+                for rep in range(0,int(np.max(df_reg['repeat']))+1):
                     raw_loc_dict[reg].append(df_reg[df_reg['repeat']==rep]['curr_loc'].to_numpy())
                 # instead of choosing the average, choose the path that occured most often
                 # as the represenative plan.
@@ -261,9 +263,8 @@ for sub in subjects:
             elif model == 'buttons_out':
                 raw_button_dict[reg] = []
                 EVs[model][reg]=[]
-                df_reg = beh_df[beh_df['unique_time_bin_type']==reg]
                 # NEW
-                for rep in range(0,5):
+                for rep in range(0,int(np.max(df_reg['repeat']))+1):
                     raw_button_dict[reg].append(df_reg[df_reg['repeat']==rep]['button_exec'].to_list())
                 most_common_button_sequence = np.array(Counter(map(lambda x: tuple(x), raw_button_dict[reg])).most_common(1)[0][0])
                 

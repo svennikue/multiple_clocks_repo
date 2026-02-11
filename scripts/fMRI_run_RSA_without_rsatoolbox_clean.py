@@ -277,22 +277,11 @@ for sub in subjects:
             #     plt.imshow(rdm_recon)
             #     plt.title(model)
 
-    # ideally, i can recycle the RDMs.
-    # but currently they are too big to be lioaded in memory.
-    # if not os.path.exists(f"{data_rdm_dir}/data_RDM.nii.gz"):
-    #       # # and searchlight-wise for data RDMs
-    #       # if masked_conditions:
-    #       #     # here, I want to now mask all within-task similarities.
-    #       #     data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr_and_filter', labels = paired_labels, mask_pairs= masked_conditions, include_diagonal=include_diagonal)
-    #       # else:
-    data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr', include_diagonal=include_diagonal) 
-    mc.analyse.handle_MRI_files.save_data_RDM_as_nifti(data_RDMs, data_rdm_dir, "data_RDM", ref_img, centers) 
-
-    # # actually, it seems like it's not possible to load these.
-    # else:
-    #     # maybe nib.load would be better
-    #     data_RMDs_nifti = load_img(f"{data_rdm_dir}/data_RDM.nii.gz")
-    #     data_RMDs = data_RMDs_nifti.get_fdata()
+    if not os.path.exists(f"{data_rdm_dir}/data_RDM.npy"):
+        data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr', include_diagonal=include_diagonal) 
+        mc.analyse.handle_MRI_files.save_data_RDM_as_nifti(data_RDMs, data_rdm_dir, "data_RDM", ref_img, centers) 
+    else:
+        data_RDMs = np.load(f"{data_rdm_dir}/data_RDM.npy")
         
     if smoothing == True:
         if not os.path.exists(f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}.npy"):
