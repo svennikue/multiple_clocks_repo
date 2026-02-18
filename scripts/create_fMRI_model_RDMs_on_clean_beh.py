@@ -50,7 +50,7 @@ from collections import Counter
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '01'
+    subj_no = '05'
 
 subjects = [f"sub-{subj_no}"]
 # subjects = subs_list = [f'sub-{i:02}' for i in range(1, 35)]
@@ -178,12 +178,15 @@ for sub in subjects:
             models['A-state'][s_i][(beh_df['state'] == state)& (beh_df['time_bin_type'] == 'reward')] = 1
         models['state'][s_i][beh_df['state'] == state] = 1
     
-    for key in ["curr_rew", "next_rew", "two_next_rew", "three_next_rew", "l2_norm", "curr_path", 
-                "DSR_onefut", "DSR_twofut", "DSR_threefut","DSR_fourfut", "DSR_fivefut", "DSR_sixfut", "DSR_sevenfut",
-                'next_buttons', 'prev_buttons', 'buttons_out', 'location', 'state_action_loc']:
+    # these models are order-preserving encodings which will be computed based on hamming-distance
+    for key in ['next_buttons', 'prev_buttons', 'buttons_out', 'location', 'state_action_loc']:
         models[key] = np.zeros((len_standardised_path, len(beh_df)), dtype=float)
 
-    
+    # these models are one-hot encodings of locations which will be computes based on cosine similarity
+    for key in ["curr_rew", "next_rew", "two_next_rew", "three_next_rew", "l2_norm", "curr_path", 
+                "DSR_onefut", "DSR_twofut", "DSR_threefut","DSR_fourfut", "DSR_fivefut", "DSR_sixfut", "DSR_sevenfut"]:
+        models[key] = np.zeros((len(locations), len(beh_df)), dtype=float)
+        
     
     for i_loc, loc in enumerate(locations):
         # models['location'][i_loc][beh_df['curr_loc'] == loc] = 1

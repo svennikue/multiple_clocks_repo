@@ -50,7 +50,7 @@ def load_data_EVs(data_dir, regression_version, old=False, only_load_labels = Fa
                     # import pdb; pdb.set_trace()
                 if name not in ['press_EV', 'up', 'down', 'left', 'right']:
                     list_loaded.append(name)
-    print(f"loaded the following data EVs in dict: {list_loaded}")
+    # print(f"loaded the following data EVs in dict: {list_loaded}")
     return EV_dict, list_loaded
     
 def load_data_EVs_th(data_dir, regression_version):

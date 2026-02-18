@@ -1,0 +1,39 @@
+{
+  "name_of_RSA": "DSR_state-action_hamming_state",
+  "load_EVs_from": "DSR_loc-fut-rews-state-dur-type",
+  "regression_version": "all-paths-fixed_stickrews_split-buttons",
+    "EV_condition_selection": {
+    "parts": {
+      "task":      { "include": [],          "exclude": []},
+      "direction": { "include": [],          "exclude": [] },
+      "state":     { "include": [], "exclude": [] },
+      "phase":     { "include": [],   "exclude": [] }
+    }
+  },
+  "models": [
+    "DSR", "location", "l2_norm", "A-state", "state", "state_action_glob", "state_action_loc"
+  ],
+  "smoothing": false,
+  "diagonal_included": false,
+  "fwhm": 5,
+  "load_searchlights": true,
+  "visualise_RDMs": false,
+  "run_single_models": false,
+  "masked_conds": true,
+  "run_comobo_models": true,
+  "split_rew_from_path": true,
+  "combo_models": [
+      {
+      "name": "DSR_stateaction_now_controls",
+      "regressors": ["state_action_glob", "location", "DSR", "state_action_loc"]
+    },
+    {
+      "name": "DSR_stateaction",
+      "regressors": ["DSR", "state_action_glob"]
+    },
+    {
+      "name": "state_controls",
+      "regressors": ["state", "l2_norm", "A-state"]
+    }
+  ]
+}

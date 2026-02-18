@@ -104,7 +104,12 @@ subjects = [f"sub-{subj_no}"]
 # Flags
 smoothing = config.get("smoothing", True)
 fwhm = config.get("fwhm", 5)
-load_searchlights = config.get("load_searchlights", False)
+
+# this should better be: what kind of searchlight_mask do you want?
+# make sure to change this in the config files!
+#load_searchlights = config.get("load_searchlights", False)
+searchlight_mask = config.get("searchlight_mask", None)
+
 masked_conditions = config.get("masked_conds", None)
 conditions_masking = None
 include_diagonal = config.get("diagonal_included", True)
@@ -153,23 +158,30 @@ for sub in subjects:
     # Step 1: creating the searchlights
     # mask will define the searchlight positions, in pt01 space because that is 
     # where the functional files have been registered to.
-    mask_file = load_img(f"{data_dir}/anat/{sub}_T1w_noCSF_brain_mask_bin_func_01.nii.gz")
-    mask = mask_file.get_fdata()  
-    # save this file to save time
-    if load_searchlights:
-        with open(f"{data_dir}/func/searchlight_centers.pkl", 'rb') as file:
-            centers = pickle.load(file)
-        with open(f"{data_dir}/func/searchlight_neighbors.pkl", 'rb') as file:
-            neighbors = pickle.load(file)
+    if searchlight_mask:
+        if searchlight_mask == 'no_CSF':
+            mask_file = load_img(f"{data_dir}/anat/{sub}_T1w_noCSF_brain_mask_bin_func_01.nii.gz")
+            mask_name = '_no_CSF' # Found 166.240 searchlights with no CSF mask
+        elif searchlight_mask == 'grey_matter':
+            mask_file = load_img(f"{data_dir}/anat/grey_matter_mask_func_01.nii.gz")
+            mask_name = '_grey_matter'  # Found 126.404 searchlights with gm mask 
     else:
-        # creating the searchlights
-        centers, neighbors = get_volume_searchlight(mask, radius=3, threshold=0.5) # Found 175.483 searchlights
-        # if I use the grey matter mask, then I find 144.905 searchlights
-        # save this structure
-        with open(f"{data_dir}/func/searchlight_centers.pkl", 'wb') as file:
+        mask_file = ref_img.copy() # full BOLD Found 175.483 searchlights
+        mask_name = ''
+    mask = mask_file.get_fdata()  
+    path_to_searchlight_centers = f"{data_dir}/func/searchlight_centers{mask_name}.pkl"
+    path_to_searchlight_neighbours = f"{data_dir}/func/searchlight_neighbors{mask_name}.pkl"
+    if os.path.exists(path_to_searchlight_centers):
+        with open(path_to_searchlight_centers, "rb") as f:
+            centers = pickle.load(f)
+        with open(path_to_searchlight_neighbours, "rb") as f:
+            neighbors = pickle.load(f)
+    else:
+        centers, neighbors = get_volume_searchlight(mask, radius=3, threshold=0.5)
+        with open(path_to_searchlight_centers, 'wb') as file:
             pickle.dump(centers, file)
             print("stored searchlight centres")
-        with open(f"{data_dir}/func/searchlight_neighbors.pkl", 'wb') as file:
+        with open(path_to_searchlight_neighbours, 'wb') as file:
             pickle.dump(neighbors, file)   
             print("stored searchlight neighbors")
 
@@ -259,6 +271,7 @@ for sub in subjects:
     if masked_conditions:
         conditions_masking = mc.analyse.my_RSA.make_category_masks(models_concat['path_rew'], plotting = False, include_diagonal=include_diagonal, mask_only_path_rew_combos=True)
     
+    import pdb; pdb.set_trace()
     if 'A-state-ones' in selected_models:
         model_RDM_dir['state'][0][A_state_mask] = model_RDM_dir['state'][0][3]
         print(f"set state A in state regressor to {model_RDM_dir['state'][0][3]}")
