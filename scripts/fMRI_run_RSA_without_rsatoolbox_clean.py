@@ -80,7 +80,7 @@ else:
 # --- Load configuration ---
 # config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
 #config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_DSR_rew_vs_path_interaction_vis_combos.json"
-config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_DSR_hamming_path_rew_sep_combos.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_state-action-playaround.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
@@ -109,6 +109,7 @@ fwhm = config.get("fwhm", 5)
 # make sure to change this in the config files!
 #load_searchlights = config.get("load_searchlights", False)
 searchlight_mask = config.get("searchlight_mask", None)
+models_reverse = config.get("models_reverse", None)
 
 masked_conditions = config.get("masked_conds", None)
 conditions_masking = None
@@ -192,6 +193,16 @@ for sub in subjects:
     with open(f"{modelled_conditions_dir}/{sub}_modelled_EVs_{EV_string}.pkl", 'rb') as file:
         model_EVs = pickle.load(file)
     selected_models = config.get("models", list(model_EVs.keys()))
+    if models_reverse:
+        for m in ["state_action_glob"]:
+            for rev in models_reverse:
+                new_model = m + '-' + rev
+                model_EVs[new_model] = model_EVs['state_action_glob'].copy()
+                
+                
+    
+    
+    
     # loading the data EVs into dict
     data_EVs, all_EV_keys = mc.analyse.my_RSA.load_data_EVs(data_dir, regression_version=regression_version, only_load_labels = only_load_labels)
     # if you don't want all conditions created through FSL, exclude some here!
@@ -238,22 +249,15 @@ for sub in subjects:
         model_th1, model_th2, model_paired_labels = pair_correct_tasks(model_EVs[model], EV_keys)
         # finally, concatenate th1 and th2 to do the cross-correlation after
         models_concat[model] = np.concatenate((model_th1, model_th2), axis = 0)
-        
-        # if masked_conditions:
-        #     # here, I want to now mask all within-task similarities.
-        #     import pdb; pdb.set_trace()
-        #     # THIS IS OLD AND SHOULDNT BE CALLED
-        #     model_RDM_dir[model] = mc.analyse.my_RSA.compute_crosscorr_and_filter(models_concat[model], plotting = False, labels = model_paired_labels, mask_pairs= masked_conditions, full_mask=None, binarise = False)
-        #     print(f"excluding n = {np.sum(np.isnan(model_RDM_dir[model]))} datapoints from {len(model_RDM_dir[model][0])}.")
-            
-        # else:  
         if model == 'path_rew':
             model_RDM_dir[model] = mc.analyse.my_RSA.make_categorical_RDM(models_concat[model], plotting = False, include_diagonal=include_diagonal)
         elif model == 'duration':
             model_RDM_dir[model] = mc.analyse.my_RSA.make_distance_RDM(models_concat[model], plotting = False, include_diagonal=include_diagonal)
         elif model in ['location', 'DSR', 'prev_buttons', 'buttons_out', 'next_buttons', 'state_action_glob', 'state_action_loc']:
             model_RDM_dir[model] = mc.analyse.my_RSA.compute_hamming_distance(models_concat[model], plotting = False, include_diagonal=include_diagonal)
-
+        elif model.endswith('diff'):
+            cond = model.split('-')[1]
+            model_RDM_dir[model] = mc.analyse.my_RSA.compute_hamming_difference(models_concat[model],combination = cond, plotting = False, include_diagonal=include_diagonal)
         #elif model.startswith('button'):
         #    model_RDM_dir[model] = mc.analyse.my_RSA.make_distance_RDM_cosine_normratio(models_concat[model], plotting = False, include_diagonal=include_diagonal)
         else:
@@ -271,7 +275,7 @@ for sub in subjects:
     if masked_conditions:
         conditions_masking = mc.analyse.my_RSA.make_category_masks(models_concat['path_rew'], plotting = False, include_diagonal=include_diagonal, mask_only_path_rew_combos=True)
     
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     if 'A-state-ones' in selected_models:
         model_RDM_dir['state'][0][A_state_mask] = model_RDM_dir['state'][0][3]
         print(f"set state A in state regressor to {model_RDM_dir['state'][0][3]}")
@@ -340,7 +344,7 @@ for sub in subjects:
                     print(f"running combo model {combo_model_name}, including {models_to_combine}")
                     
                     # check if these models have been computed in model_EVs
-                    missing = [m for m in models_to_combine if m not in model_EVs]
+                    missing = [m for m in models_to_combine if m not in model_RDM_dir]
                     if missing:
                         for m_int in missing:
                             if m_int.endswith('interaction'):
@@ -352,6 +356,13 @@ for sub in subjects:
                                 raise ValueError(f"Combo model {combo_model_name} not possible, as {missing} not computed")
                     
                     stacked_model_RDMs = np.stack([model_RDM_dir[m][0] for m in models_to_combine], axis=1)
+                    # check how correlated each model is whith each other.
+                    # corr = np.corrcoef(stacked_model_RDMs, rowvar=False)
+                    # for i in range(len(models_to_combine)):
+                    #     for j in range(i+1, len(models_to_combine)):
+                    #         print(f"{models_to_combine[i]} vs {models_to_combine[j]}: r={corr[i,j]:.3f}")
+                    # corr, fig, ax = mc.analyse.my_RSA.plot_model_correlations(stacked_model_RDMs, models_to_combine, conditions_masking=conditions_masking)
+                    
                     estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs[conditions_masking[cond]], d[conditions_masking[cond]]) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name} only including {cond}"))
                     for i, model in enumerate(models_to_combine):
                         mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}-{cond}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
@@ -359,7 +370,7 @@ for sub in subjects:
                 models_to_combine = combo["regressors"]
                 print(f"running combo model {combo_model_name}")
                 # check if these models have been computed in model_EVs
-                missing = [m for m in models_to_combine if m not in model_EVs]
+                missing = [m for m in models_to_combine if m not in model_RDM_dir]
                 if missing:
                     for m_int in missing:
                         if m_int.endswith('interaction'):
@@ -369,14 +380,15 @@ for sub in subjects:
                             # model_RDM_dir[m_int] = [model_RDM_dir[curr_m][0]*model_RDM_dir['path_rew'][0]]
                         else:
                             raise ValueError(f"Combo model {combo_model_name} not possible, as {missing} not computed")
-                # # check how correlated each model is whith each other.
+  
+                stacked_model_RDMs = np.stack([model_RDM_dir[m][0] for m in models_to_combine], axis=1)
+                # check how correlated each model is whith each other.
                 # corr = np.corrcoef(stacked_model_RDMs, rowvar=False)
                 # for i in range(len(models_to_combine)):
                 #     for j in range(i+1, len(models_to_combine)):
                 #         print(f"{models_to_combine[i]} vs {models_to_combine[j]}: r={corr[i,j]:.3f}")
                 # corr, fig, ax = mc.analyse.my_RSA.plot_model_correlations(stacked_model_RDMs, models_to_combine, conditions_masking=conditions_masking)
-                
-                stacked_model_RDMs = np.stack([model_RDM_dir[m][0] for m in models_to_combine], axis=1)
+                  
                 estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs, d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name}"))
                 for i, model in enumerate(models_to_combine):
                     mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
@@ -394,7 +406,7 @@ for sub in subjects:
         "RDM_version": RDM_version,
         "smoothing": smoothing,
         "fwhm": fwhm,
-        "load_searchlights": load_searchlights,
+        "searchlight_mask": searchlight_mask,
         "n_all_EVs": len(all_EV_keys),
         "n_selected_EVs": len(EV_keys),
         "models_evaluated": selected_models,

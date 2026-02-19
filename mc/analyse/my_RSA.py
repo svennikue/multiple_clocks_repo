@@ -473,6 +473,71 @@ def compute_hamming_distance(data_chunk, plotting = False, include_diagonal = Tr
             
     return RDM
         
+def compute_hamming_difference(data_chunk, combination, plotting = False, include_diagonal = True): 
+    RDM = []
+    #
+    if not isinstance(data_chunk, (list, tuple)):
+        data_chunk = [data_chunk]
+    for data in data_chunk:
+        
+        data = np.asarray(data, dtype=object)
+        # data task_half 1 and task_half 2 concatenated.
+        # overlap: are values the same if you stack rows vertically vs horizontally?
+        # overlap = data[:,None,:] == data[None, :, :]
+        # overlap = np.equal(data[:, None, :], data[None, :,:])
+        
+        
+        # split into state and action
+        states  = np.char.partition(data.astype(str), '-')[..., 0]
+        actions = np.char.partition(data.astype(str), '-')[..., 2]
+        
+        # state similarity
+        state_sim = states[:, None, :] == states[None, :, :]
+        # state dissimilarity
+        state_dissim = states[:, None, :] != states[None, :, :]
+        
+        # action similarity
+        action_sim = actions[:, None, :] == actions[None, :, :]
+        # action dissimilarity
+        action_dissim = actions[:, None, :] != actions[None, :, :]
+        
+        # combine (both must be true)
+        # import pdb; pdb.set_trace()
+        if combination.startswith('sa_ss'):
+            overlap = action_sim & state_sim 
+        elif combination.startswith('sa_ds'):
+            overlap = action_sim & state_dissim
+        elif combination.startswith('da_ss'):
+            overlap = action_dissim & state_sim
+        elif combination.startswith('da_ds'):
+            overlap = action_dissim & state_dissim
+
+        
+        # axis 0 = row A, axis 1 = row B, axis 2 = element-wise overlap
+        # mean of axis 2 = fraction of positions where row i and row j are identical
+        hamming_sim_matrix = overlap.mean(axis = 2)
+        rdm_both_halves = 1 - hamming_sim_matrix
+        rdm_small = rdm_both_halves[int(len(rdm_both_halves)/2):,0:int(len(rdm_both_halves)/2)]
+        
+        # making the matrix symmetric
+        rdm = (rdm_small + rdm_small.T)/2
+        
+        # lastly, only store the part of the RDM I am actually interested in 
+        # i.e. the upper triangle, including the diagonal.
+        n = rdm.shape[1]
+        if include_diagonal:
+            RDM.append(rdm[np.triu_indices(n, k=0)]) 
+        else:
+            RDM.append(rdm[np.triu_indices(n, k=1)]) 
+            
+        if plotting == True:
+            plt.figure()
+            plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm', vmax=1, vmin=0)
+            plt.figure()
+            plt.imshow(rdm_both_halves, aspect = 'auto', cmap = 'coolwarm')
+            
+    return RDM
+
 
 
 def compute_crosscorr(data_chunk, plotting = False, include_diagonal = True):  
@@ -572,7 +637,7 @@ def evaluate_model(model_rdm, data_rdm):
     
 
     est = sm.OLS(filtered_Y, filtered_X).fit()
-    # import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
     return est.tvalues[1:], est.params[1:], est.pvalues[1:]
 
 

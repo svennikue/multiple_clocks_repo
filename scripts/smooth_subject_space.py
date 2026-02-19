@@ -45,6 +45,8 @@ with open(f"{config_path}/{config_file}", "r") as f:
 regression_version = config.get("regression_version")
 fwhm = config.get("fwhm", 5)
 name_RSA = config.get("name_of_RSA")
+searchlight_mask = config.get("searchlight_mask", None)
+
 
 # NOTE: change the today string into pattern completion!
 #RDM_version = f"{name_RSA}_{today_str}"
@@ -61,7 +63,14 @@ for sub in subjects:
     
     # find all matching RDM folders (date varies)
     rsa_dirs = glob(f"{data_dir}/func/RSA_{RSA_pattern}_glmbase_{regression_version}")
-    mask = nilearn.image.load_img(f"{data_dir}/anat/{sub}_T1w_noCSF_brain_mask_bin_func_01.nii.gz")
+    
+    if searchlight_mask == 'grey_matter':
+        mask = nilearn.image.load_img(f"{data_dir}/anat/grey_matter_mask_func_01.nii.gz")
+    elif searchlight_mask == 'no_CSF':
+        mask = nilearn.image.load_img(f"{data_dir}/anat/{sub}_T1w_noCSF_brain_mask_bin_func_01.nii.gz")
+    else:
+        mask = nilearn.image.load_img(f"{data_dir}/func/preproc_clean_01.feat/example_func.nii.gz")
+    
     
     print(f"these are the rsa_dirs we found: {rsa_dirs}")
     for RSA_dir in rsa_dirs:

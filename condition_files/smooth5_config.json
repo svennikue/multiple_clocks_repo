@@ -1,5 +1,6 @@
 {
   "name_of_RSA": "state_and_combo",
-  "regression_version": "all_paths-stickrews-split_buttons",
-  "fwhm": 5
+  "regression_version": "all-paths-fixed_stickrews_split-buttons",
+  "fwhm": 5,
+  "searchlight_mask":"grey_matter"
 }
