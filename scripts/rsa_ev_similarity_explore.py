@@ -19,8 +19,21 @@ from datetime import date
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 
 import mc
+
+# Optional: set this to True when running directly from Spyder and you want
+# explicit scripted args instead of CLI args.
+SPYDER_RUN_SETTINGS = {
+    "enabled": False,
+    "args": [
+        # Example:
+        # "--config", "condition_files/rsa_config_state-action-playaround.json",
+        # "--subject", "02",
+        # "--only-reward-evs",
+    ],
+}
 
 
 def pair_correct_tasks(data_dict, keys_list):
@@ -109,6 +122,10 @@ def filter_ev_keys(all_ev_keys, parts_to_use, include_patterns=None, exclude_pat
     return ev_keys
 
 
+def filter_reward_evs(ev_keys):
+    return [k for k in ev_keys if k.endswith("reward")]
+
+
 def infer_n_from_labels(labels):
     return len(labels)
 
@@ -144,11 +161,36 @@ def build_model_rdms(model_evs, ev_keys, include_diagonal=True):
             model_rdms[model] = mc.analyse.my_RSA.make_categorical_RDM(models_concat[model], plotting=False, include_diagonal=include_diagonal)
         elif model == 'duration':
             model_rdms[model] = mc.analyse.my_RSA.make_distance_RDM(models_concat[model], plotting=False, include_diagonal=include_diagonal)
+        elif model in ['location', 'DSR', 'prev_buttons', 'buttons_out', 'next_buttons', 'state_action_glob', 'state_action_loc']:
+            model_rdms[model] = mc.analyse.my_RSA.compute_hamming_distance(models_concat[model], plotting=False, include_diagonal=include_diagonal)
+        elif model.endswith('diff'):
+            cond = model.split('-')[1]
+            model_rdms[model] = mc.analyse.my_RSA.compute_hamming_difference(models_concat[model], combination=cond, plotting=False, include_diagonal=include_diagonal)
         elif model.startswith('button'):
             model_rdms[model] = mc.analyse.my_RSA.make_distance_RDM_cosine_normratio(models_concat[model], plotting=False, include_diagonal=include_diagonal)
         else:
             model_rdms[model] = mc.analyse.my_RSA.compute_crosscorr(models_concat[model], plotting=False, include_diagonal=include_diagonal)
     return model_rdms
+
+
+def prepare_selected_model_evs(selected_models, model_evs):
+    """
+    Build a model dict that supports diff-model aliases even when only the base
+    EV key exists in model_evs (e.g. state_action_glob-da_ss_diff -> state_action_glob).
+    """
+    prepared = {}
+    missing = []
+    for model in selected_models:
+        if model in model_evs:
+            prepared[model] = model_evs[model]
+            continue
+        if model.endswith('diff'):
+            base_model = model.split('-')[0]
+            if base_model in model_evs:
+                prepared[model] = model_evs[base_model]
+                continue
+        missing.append(model)
+    return prepared, missing
 
 
 def select_ev_by_task(ev_keys, task_pattern):
@@ -159,12 +201,25 @@ def plot_ev_matrix(ev_dict, ev_keys, title, save_path=None, show=True):
     mat = np.vstack([np.asarray(ev_dict[k]).squeeze() for k in ev_keys])
     if mat.ndim == 1:
         mat = mat[:, None]
+    is_numeric = np.issubdtype(mat.dtype, np.number)
 
     plt.figure(figsize=(max(6, mat.shape[1] / 6), max(4, mat.shape[0] / 3)))
-    if mat.shape[1] == 1:
+    if is_numeric and mat.shape[1] == 1:
         plt.bar(np.arange(mat.shape[0]), mat[:, 0])
         plt.xticks(np.arange(mat.shape[0]), ev_keys, rotation=90, fontsize=6)
         plt.ylabel('EV value')
+    elif not is_numeric:
+        # Categorical EVs (e.g. state-action labels): encode to integer IDs for plotting.
+        flat = mat.astype(str).ravel()
+        uniq = sorted(np.unique(flat).tolist())
+        enc_map = {u: i for i, u in enumerate(uniq)}
+        mat_enc = np.vectorize(enc_map.get)(mat.astype(str))
+        plt.imshow(mat_enc, aspect='auto', cmap='tab20')
+        cbar = plt.colorbar(label='Category')
+        cbar.set_ticks(np.arange(len(uniq)))
+        cbar.set_ticklabels(uniq)
+        plt.yticks(np.arange(mat.shape[0]), ev_keys, fontsize=6)
+        plt.xlabel('Feature index')
     else:
         plt.imshow(mat, aspect='auto', cmap='viridis')
         plt.colorbar(label='EV value')
@@ -250,6 +305,73 @@ def model_rdm_correlation(model_vec_a, model_vec_b):
     return float(np.corrcoef(model_vec_a[mask], model_vec_b[mask])[0, 1])
 
 
+def load_and_average_data_rdm(path):
+    arr = np.load(path)
+    if arr.ndim == 1:
+        return arr.astype(float), arr.shape
+    if arr.ndim == 2:
+        # Typical group format: (n_subs, n_pairs)
+        return np.nanmean(arr.astype(float), axis=0), arr.shape
+    raise ValueError(f"Unsupported data RDM array shape: {arr.shape}")
+
+
+def top_contributing_points(data_vec, model_vec, topk=100):
+    valid = np.isfinite(data_vec) & np.isfinite(model_vec)
+    if valid.sum() == 0:
+        raise ValueError("No finite overlapping entries between data and model RDM vectors.")
+
+    z_data = np.full_like(data_vec, np.nan, dtype=float)
+    z_model = np.full_like(model_vec, np.nan, dtype=float)
+    z_data[valid] = zscore_vec(data_vec[valid])
+    z_model[valid] = zscore_vec(model_vec[valid])
+
+    contributions = z_data * z_model
+    valid_idx = np.where(valid)[0]
+    order_local = np.argsort(contributions[valid])[::-1]
+    topk = min(topk, order_local.size)
+    top_idx = valid_idx[order_local[:topk]]
+    return contributions, top_idx, valid
+
+
+def contribution_summary_table(top_idx, contributions, labels, include_diagonal=True):
+    n = infer_n_from_labels(labels)
+    tri = np.triu_indices(n, k=0 if include_diagonal else 1)
+    rows = []
+    for rank, vec_idx in enumerate(top_idx, start=1):
+        i = int(tri[0][vec_idx])
+        j = int(tri[1][vec_idx])
+        rows.append({
+            "rank": rank,
+            "vec_index": int(vec_idx),
+            "row": i,
+            "col": j,
+            "label_row": labels[i],
+            "label_col": labels[j],
+            "contribution": float(contributions[vec_idx]),
+        })
+    return rows
+
+
+def plot_rdm_with_highlights(rdm_vec, labels, highlight_idx, include_diagonal, title, ax):
+    n = infer_n_from_labels(labels)
+    mat = vec_to_rdm(rdm_vec, n, include_diagonal=include_diagonal)
+    img = ax.imshow(mat, aspect='auto', cmap='coolwarm')
+    ax.set_xticks(np.arange(n))
+    ax.set_yticks(np.arange(n))
+    ax.set_xticklabels(labels, rotation=90, fontsize=5)
+    ax.set_yticklabels(labels, fontsize=5)
+    ax.set_title(title)
+
+    tri = np.triu_indices(n, k=0 if include_diagonal else 1)
+    for vec_idx in highlight_idx:
+        i = int(tri[0][vec_idx])
+        j = int(tri[1][vec_idx])
+        ax.add_patch(Rectangle((j - 0.5, i - 0.5), 1, 1, fill=False, edgecolor='red', linewidth=1.0))
+        if i != j:
+            ax.add_patch(Rectangle((i - 0.5, j - 0.5), 1, 1, fill=False, edgecolor='red', linewidth=1.0))
+    return img
+
+
 def extract_tasks_from_label(label):
     left, right = label.split(" with ")
     def parse_side(side):
@@ -287,7 +409,7 @@ def task_contribution_analysis(model_vec_a, model_vec_b, labels, include_diagona
     return ranked
 
 
-def main():
+def main(cli_args=None):
     parser = argparse.ArgumentParser(description="Explore RSA EVs and similarity matrices.")
     parser.add_argument("--config", default=None, help="Path to RSA config JSON.")
     parser.add_argument("--subject", default="02", help="Subject number (e.g., 02).")
@@ -295,6 +417,7 @@ def main():
     parser.add_argument("--ev-include", action="append", default=[], help="Glob pattern(s) to include EVs.")
     parser.add_argument("--ev-exclude", action="append", default=[], help="Glob pattern(s) to exclude EVs.")
     parser.add_argument("--ev-list", default=None, help="Comma-separated explicit EV keys to use.")
+    parser.add_argument("--only-reward-evs", action="store_true", help="Only include EVs whose name ends with 'reward'.")
     parser.add_argument("--task-pattern", default=None, help="Glob for plotting EVs (e.g., 'A1_forw_*').")
     parser.add_argument("--plot-evs-model", default=None, help="Model name whose EVs to plot.")
     parser.add_argument("--plot-task-rdm", default=None, help="Glob for plotting RDM for a single task.")
@@ -302,10 +425,15 @@ def main():
     parser.add_argument("--plot-full-rdm", action="append", default=[], help="Model name(s) to plot full RDM for.")
     parser.add_argument("--compare-models", nargs=2, default=None, help="Two model names to compare covariation.")
     parser.add_argument("--topk", type=int, default=10, help="Top-k covarying pairs to list.")
+    parser.add_argument("--data-rdm-path", default=None, help="Path to data RDM .npy (1D vector or 2D subject x vector).")
+    parser.add_argument("--diagnostic-model", default="state_action_glob-da_ss_diff", help="Model name for data-vs-model diagnostic.")
+    parser.add_argument("--diagnostic-topk", type=int, default=100, help="Top-k datapoints to highlight in data-vs-model diagnostic.")
     parser.add_argument("--save-dir", default=None, help="Directory to save plots.")
     parser.add_argument("--no-show", action="store_true", help="Do not call plt.show().")
 
-    args = parser.parse_args()
+    # parse_known_args keeps this script runnable in Spyder/IPython where extra
+    # kernel args can be injected automatically.
+    args, _ = parser.parse_known_args(cli_args)
 
     config_path_base, data_root = resolve_source_dirs()
     config_path = args.config or os.path.join(config_path_base, "rsa_config_DSR_bias-path-rew-splitfuts_combos.json")
@@ -328,6 +456,8 @@ def main():
     selected_models = config.get("models", list(model_evs.keys()))
     if args.models:
         selected_models = [m.strip() for m in args.models.split(",") if m.strip()]
+    if args.data_rdm_path and args.diagnostic_model not in selected_models:
+        selected_models.append(args.diagnostic_model)
 
     _, all_ev_keys = mc.analyse.my_RSA.load_data_EVs(
         data_dir,
@@ -351,10 +481,21 @@ def main():
         exclude_patterns=args.ev_exclude or None,
         explicit_list=explicit_list,
     )
+    if args.only_reward_evs:
+        ev_keys = filter_reward_evs(ev_keys)
+        if not ev_keys:
+            raise ValueError("No EVs left after applying reward-only filter.")
+        print("Applied reward-only EV filter (suffix: 'reward').")
     print(f"Including {len(ev_keys)} EVs.")
 
+    selected_model_evs, missing_models = prepare_selected_model_evs(selected_models, model_evs)
+    if missing_models:
+        print(f"Skipping unavailable model keys: {missing_models}")
+    if not selected_model_evs:
+        raise ValueError("No valid models available after resolving selected models.")
+
     # Build model RDMs (full selection)
-    model_rdms = build_model_rdms({m: model_evs[m] for m in selected_models}, ev_keys, include_diagonal=include_diagonal)
+    model_rdms = build_model_rdms(selected_model_evs, ev_keys, include_diagonal=include_diagonal)
 
     # Labels for RDM axes
     paired_labels = build_paired_labels(ev_keys, all_ev_keys)
@@ -377,7 +518,7 @@ def main():
         plot_ev_matrix(model_evs[model_name], task_keys, ev_title, save_path=save_path, show=show_plots)
 
     # If no actions specified, default to comparing l2_norm vs prev_buttons
-    if not any([args.task_pattern, args.plot_evs_model, args.plot_task_rdm, args.plot_rdm_model, args.plot_full_rdm, args.compare_models]):
+    if not any([args.task_pattern, args.plot_evs_model, args.plot_task_rdm, args.plot_rdm_model, args.plot_full_rdm, args.compare_models, args.data_rdm_path]):
         # args.compare_models = ["l2_norm", "prev_buttons"]
         # args.plot_full_rdm = ["l2_norm", "prev_buttons"]
         args.compare_models = ["l2_norm", "buttons_out"]
@@ -458,7 +599,79 @@ def main():
                         ev_title = f"EVs {model_name} ({top_task})"
                         plot_ev_matrix(model_evs[model_name], task_keys, ev_title, show=show_plots)
                             
-    import pdb; pdb.set_trace()
+    if args.data_rdm_path:
+        model_name = args.diagnostic_model
+        if model_name not in model_rdms:
+            if model_name not in model_evs:
+                raise ValueError(f"Diagnostic model '{model_name}' not found in loaded model EVs.")
+            extra_rdms = build_model_rdms({model_name: model_evs[model_name]}, ev_keys, include_diagonal=include_diagonal)
+            model_rdms[model_name] = extra_rdms[model_name]
+
+        data_vec, data_shape = load_and_average_data_rdm(args.data_rdm_path)
+        model_vec = np.asarray(model_rdms[model_name][0], dtype=float)
+        if data_vec.shape[0] != model_vec.shape[0]:
+            raise ValueError(
+                f"Length mismatch between averaged data RDM ({data_vec.shape[0]}) "
+                f"and model RDM ({model_vec.shape[0]})."
+            )
+
+        contributions, top_idx, valid = top_contributing_points(data_vec, model_vec, topk=args.diagnostic_topk)
+        corr = model_rdm_correlation(data_vec, model_vec)
+        print(f"\nData-vs-model diagnostic for '{model_name}'")
+        print(f"Input data RDM shape: {data_shape} -> averaged vector length {data_vec.shape[0]}")
+        print(f"Finite overlapping pairs: {int(valid.sum())}")
+        print(f"Pearson r(data, model): {corr:.4f}")
+        print(f"Top highlighted datapoints: {len(top_idx)}")
+
+        rows = contribution_summary_table(top_idx, contributions, paired_labels, include_diagonal=include_diagonal)
+        print("\nTop contributing datapoints:")
+        for row in rows[:10]:
+            print(
+                f"{row['rank']:>3}. ({row['row']:>2}, {row['col']:>2}) "
+                f"{row['label_row']} <-> {row['label_col']} "
+                f"contrib={row['contribution']:.4f}"
+            )
+
+        fig, axes = plt.subplots(1, 2, figsize=(18, 8), constrained_layout=True)
+        img0 = plot_rdm_with_highlights(
+            data_vec,
+            paired_labels,
+            top_idx,
+            include_diagonal=include_diagonal,
+            title="Average Data RDM (top contributions in red)",
+            ax=axes[0],
+        )
+        img1 = plot_rdm_with_highlights(
+            model_vec,
+            paired_labels,
+            top_idx,
+            include_diagonal=include_diagonal,
+            title=f"Model RDM: {model_name} (top contributions in red)",
+            ax=axes[1],
+        )
+        fig.colorbar(img0, ax=axes[0], fraction=0.046, pad=0.04)
+        fig.colorbar(img1, ax=axes[1], fraction=0.046, pad=0.04)
+
+        if save_dir:
+            diagnostic_png = os.path.join(save_dir, f"diagnostic_data_vs_{model_name}_top{len(top_idx)}.png")
+            fig.savefig(diagnostic_png, dpi=300, bbox_inches="tight")
+            print(f"Saved diagnostic figure: {diagnostic_png}")
+
+            out_tsv = os.path.join(save_dir, f"diagnostic_data_vs_{model_name}_top{len(top_idx)}.tsv")
+            with open(out_tsv, "w") as f:
+                f.write("rank\tvec_index\trow\tcol\tlabel_row\tlabel_col\tcontribution\n")
+                for row in rows:
+                    f.write(
+                        f"{row['rank']}\t{row['vec_index']}\t{row['row']}\t{row['col']}\t"
+                        f"{row['label_row']}\t{row['label_col']}\t{row['contribution']}\n"
+                    )
+            print(f"Saved top datapoints table: {out_tsv}")
+
+        if show_plots:
+            plt.show()
+        else:
+            plt.close(fig)
+
     # Quick summary
     print("\n=== SETTINGS SUMMARY ===")
     print(f"subject: {sub}")
@@ -472,4 +685,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if SPYDER_RUN_SETTINGS["enabled"]:
+        main(cli_args=SPYDER_RUN_SETTINGS["args"])
+    else:
+        main()

@@ -1,5 +1,5 @@
 {
-  "name_of_RSA": "state_action_playaround",
+  "name_of_RSA": "diffactDSR_path_vs_rew",
   "load_EVs_from": "DSR_loc-fut-rews-state-dur-type",
   "regression_version": "all-paths-fixed_stickrews_split-buttons",
     "EV_condition_selection": {
@@ -11,9 +11,10 @@
     }
   },
   "models": [
-    "DSR", "location", "l2_norm", "A-state","prev_buttons", "buttons_out", "next_buttons", "state", "state_action_glob", "state_action_loc", "state_action_glob-sa_ss_diff", "state_action_glob-sa_ds_diff", "state_action_glob-da_ss_diff", "state_action_glob-da_ds_diff"
+    "DSR", "state_action_glob", "state_action_glob-da_ss_diff", "rewDSR", "pathDSR", "rew_stateactionDSR", "path_stateactionDSR",
+    "rew_stateactionDSR-da_ss_diff", "path_stateactionDSR-da_ss_diff"
   ],
-  "models_reverse":["sa_ss_diff", "sa_ds_diff", "da_ss_diff", "da_ds_diff"],
+  "models_reverse":["sa_ss_diff", "da_ss_diff"],
   "smoothing": false,
   "diagonal_included": false,
   "fwhm": 5,
@@ -24,8 +25,14 @@
   "run_comobo_models": true,
   "split_rew_from_path": true,
   "combo_models": [
-      {
-      "name": "state_DSR_state_action",
+    {
+      "name": "sA_dA_rews",
+      "regressors": ["rew_stateactionDSR", "rew_stateactionDSR-da_ss_diff"]    },
+    {
+      "name": "sA_dA_paths",
+      "regressors": ["path_stateactionDSR", "path_stateactionDSR-da_ss_diff"]    },
+    {
+      "name": "sA_dA_all",
       "regressors": ["state_action_glob", "state_action_glob-da_ss_diff"]    }
   ]
 }

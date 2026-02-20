@@ -436,7 +436,7 @@ def make_category_masks(data_chunk, plotting=False, include_diagonal=True, mask_
     return outputs[0] if len(outputs) == 1 else outputs
 
 
-def compute_hamming_distance(data_chunk, plotting = False, include_diagonal = True): 
+def compute_hamming_distance(data_chunk, plotting = False, include_diagonal = True, model_name = None): 
     RDM = []
     #
     if not isinstance(data_chunk, (list, tuple)):
@@ -468,12 +468,18 @@ def compute_hamming_distance(data_chunk, plotting = False, include_diagonal = Tr
         if plotting == True:
             plt.figure()
             plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm', vmax=1, vmin=0)
-            plt.figure()
-            plt.imshow(rdm_both_halves, aspect = 'auto', cmap = 'coolwarm')
+            plt.title(model_name)
+            for i in range(0,n,int(n/10)):
+                plt.axvline(i-0.5, color='white', ls = 'dashed')
+            for i in range(0,n,int(n/10)):
+                plt.axhline(i-0.5, color='white', ls = 'dashed')
+            labels = ['A1_backw', 'A1_forw', 'B1_backw', 'B1_forw', 'C1_backw', 'C1_forw', 'D1_back', 'D1_forw', 'E1_backw', 'E1_forw']
+            plt.yticks(np.arange(2, rdm.shape[1], int(n/10)), labels)
+            plt.colorbar()
             
     return RDM
         
-def compute_hamming_difference(data_chunk, combination, plotting = False, include_diagonal = True): 
+def compute_hamming_difference(data_chunk, combination, plotting = False, include_diagonal = True, model_name = None): 
     RDM = []
     #
     if not isinstance(data_chunk, (list, tuple)):
@@ -485,8 +491,6 @@ def compute_hamming_difference(data_chunk, combination, plotting = False, includ
         # overlap: are values the same if you stack rows vertically vs horizontally?
         # overlap = data[:,None,:] == data[None, :, :]
         # overlap = np.equal(data[:, None, :], data[None, :,:])
-        
-        
         # split into state and action
         states  = np.char.partition(data.astype(str), '-')[..., 0]
         actions = np.char.partition(data.astype(str), '-')[..., 2]
@@ -533,8 +537,17 @@ def compute_hamming_difference(data_chunk, combination, plotting = False, includ
         if plotting == True:
             plt.figure()
             plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm', vmax=1, vmin=0)
-            plt.figure()
-            plt.imshow(rdm_both_halves, aspect = 'auto', cmap = 'coolwarm')
+            plt.title(model_name)
+            for i in range(0,n,int(n/10)):
+                plt.axvline(i-0.5, color='white', ls = 'dashed')
+            for i in range(0,n,int(n/10)):
+                plt.axhline(i-0.5, color='white', ls = 'dashed')
+            labels = ['A1_backw', 'A1_forw', 'B1_backw', 'B1_forw', 'C1_backw', 'C1_forw', 'D1_back', 'D1_forw', 'E1_backw', 'E1_forw']
+            plt.yticks(np.arange(2, rdm.shape[1], int(n/10)), labels)
+            plt.colorbar()
+            
+            #plt.figure()
+            #plt.imshow(rdm_both_halves, aspect = 'auto', cmap = 'coolwarm')
             
     return RDM
 

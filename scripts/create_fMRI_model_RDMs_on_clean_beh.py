@@ -6,8 +6,36 @@ Based on clean behavioural tables,
 create regressors that I want to use for the fMRI.
 
 I will store a standard set of models 
-(currently "location", "curr_rew", "next_rew", "two_next_rew", "three_next_rew", "state"
- DSR, l2_norm, A_state)
+
+state
+A-state
+duration
+path_rew
+next_buttons
+prev_buttons
+buttons_out
+location
+state_action_loc
+curr_rew
+next_rew
+two_next_rew
+three_next_rew
+l2_norm
+curr_path
+DSR_onefut
+DSR_twofut
+DSR_threefut
+DSR_fourfut
+DSR_fivefut
+DSR_sixfut
+DSR_sevenfut
+rewDSR
+pathDSR
+rew_stateactionDSR
+path_stateactionDSR
+DSR
+state_action_glob
+
 
 in all possible regressors: both task halves, path x rewards x unique_tasks
 
@@ -50,7 +78,7 @@ from collections import Counter
 if len (sys.argv) > 1:
     subj_no = sys.argv[1]
 else:
-    subj_no = '05'
+    subj_no = '02'
 
 subjects = [f"sub-{subj_no}"]
 # subjects = subs_list = [f'sub-{i:02}' for i in range(1, 35)]
@@ -76,9 +104,6 @@ with open(f"{config_path}/{config_file}", "r") as f:
 #
 # SETTINGS
 #
-#regression_version = '03-4' 
-#RDM_version = '03-1'
-# no_phase_neurons = 3
 plot_RDMs = False 
 save_RDMs = True
 EV_string = config.get("load_EVs_from", "DSR_loc-fut-rews-state-dur-type")
@@ -102,8 +127,6 @@ def resample_locations(path, T=len_standardised_path):
     return np.repeat(path, reps)
 
 
-#models_I_want = mc.analyse.analyse_MRI_behav.select_models_I_want(RDM_version)
-   
 # import pdb; pdb.set_trace()
         
 for sub in subjects:
@@ -166,7 +189,6 @@ for sub in subjects:
 
     # define models.
     models = {}
-    # ['location', 'curr_rew', 'next_rew', 'second_next_rew', 'third_next_rew', 'state', 'clocks']
     models['state'] = np.zeros((len(states), len(beh_df)))
     models['A-state'] = np.zeros((len(states), len(beh_df)))
     models['duration'] = np.expand_dims(beh_df['t_spent_at_curr_loc'].to_numpy(), axis=0)
@@ -297,41 +319,15 @@ for sub in subjects:
                         # this is because the way I use ithem, the regressors would be a linear combination of the intercept ([11111] vector)
                         EVs[model][reg][index] = LinearRegression(fit_intercept=False).fit(regressors[reg].reshape(-1,1), row.reshape(-1,1)).coef_
 
-
     for r in regs:
         locs_str = EVs['location'][r].astype(str)
         EVs['state_action_loc'][r] = np.char.add(np.char.add(locs_str, '-'), EVs['buttons_out'][r])
-    
-    # just in case I want to go back to this frequency way of coding for buttons.
-    # maybe, as a motor regressor, it is actually relevant to include the frequency of the buttons somehow? 
-    # also think about the fact that if 1. button != 2. button, what happens for 22 vs 2222? currently they are the same.
-    # maybe some frequency weighting???
-    
-    
-    # # treat the button ones differently (just count how many times each button occured)
-    # n_reps = int(np.max(beh_df['repeat'].unique()))+1
-    # for reg in regressors:
-    #     EVs['buttons_out'][reg] = np.zeros((len(buttons)))
-    #     EVs['prev_buttons'][reg] =  np.zeros((len(buttons)))
-    #     # filter for the current reg
-    #     curr_button_string_list = beh_df[beh_df['unique_time_bin_type'] == reg]['button_keys'].to_list()
-    #     curr_buttons = [x for s in curr_button_string_list for x in ast.literal_eval(s)]
-    #     for b_idx, button in enumerate(buttons):
-    #         curr_buttons = np.array(curr_buttons)
-    #         # just count the buttons in this regressor!
-    #         # check for how many rows you're in the regressor
-    #         EVs['buttons_out'][reg][b_idx] = np.sum(curr_buttons[curr_buttons == (b_idx + 1)])/n_reps
-            
-    
-    
+
     # additionally, add the simple musicbox: at each of the 8 timebins, the future is already encoded.
     # order inside a task
-    temp_order = [
-        "A_path", "A_reward",
-        "B_path", "B_reward",
-        "C_path", "C_reward",
-        "D_path", "D_reward"
-    ]
+    temp_order = ["A_path", "A_reward","B_path", "B_reward","C_path", "C_reward","D_path", "D_reward"]
+    temp_order_rew = ["A_reward","B_reward","C_reward","D_reward"]
+    temp_order_path = ["A_path","B_path","C_path","D_path"]
     
     temp_order_shifted_prev = np.roll(temp_order, 1).copy()
     temp_order_shifted_next = np.roll(temp_order, -1).copy()
@@ -339,57 +335,74 @@ for sub in subjects:
     # previous buttons are the ones you pressed on the previous locations.
     
     models['DSR'], models['state_action_glob'] = np.zeros((len(temp_order)*len_standardised_path)), np.zeros((len(temp_order)*len_standardised_path))
-    
+    split_models = ['rewDSR', 'pathDSR', 'rew_stateactionDSR', 'path_stateactionDSR']
+    for s in split_models:
+        models[s] = np.zeros((int(len(temp_order)/2)*len_standardised_path))
+        EVs[s] = {}
     
     #models['DSR_phase'] = np.zeros((len(temp_order)*len(locations)*n_phases))
-    # EVs['DSR'], EVs['DSR_phase'] = {}, {}
     EVs['DSR'], EVs['state_action_glob']= {}, {}
     for task in tasks:
         # build base matrix (8 x 9) in canonical order
         bins_curr_task = [f"{task}_{temp_bin}" for temp_bin in temp_order]
+        bins_curr_task_rew = [f"{task}_{temp_bin}" for temp_bin in temp_order if temp_bin.endswith('reward')]
+        bins_curr_task_path = [f"{task}_{temp_bin}" for temp_bin in temp_order if temp_bin.endswith('path')]
         try:
-            # OLD
-            # concatenate the 8 bins x 9-element vectors into a single 72-element vector
-            # this will read: 0-8 = now. 9-18 = next subpath. 19-27 = subpath after, etc.
+            # concatenate the 8 bins x 12-element vectors into a single 96-element vector
+            # this will read: 0-12 = now. 12-24 = next subpath. 24-36 = subpath after, etc.
             # each EVs['location'][k] has 9 location 
+            DSR_firing_for_subpath_A = np.concatenate([EVs['location'][k] for k in bins_curr_task], axis=0)  # shape (96,)
+            rewDSR_firing_for_subpath_A = np.concatenate([EVs['location'][k] for k in bins_curr_task_rew], axis=0)  # shape (48,)
+            pathDSR_firing_for_subpath_A = np.concatenate([EVs['location'][k] for k in bins_curr_task_path], axis=0)  # shape (48,)
             
-            # NEW: each subpath has lenght 12 x 8 = 96
-            DSR_firing_for_subpath_A = np.concatenate([EVs['location'][k] for k in bins_curr_task], axis=0)  # shape (72,)
-            stact_firing_for_subpath_A = np.concatenate([EVs['state_action_loc'][k] for k in bins_curr_task], axis=0)  # shape (72,)
-            # firing_for_subpath_A_phase = np.concatenate([EVs['loc_phase'][k] for k in bins_curr_task], axis=0)  # shape (72*4,)
+            stact_firing_for_subpath_A = np.concatenate([EVs['state_action_loc'][k] for k in bins_curr_task], axis=0)  # shape (96,)
+            rew_stact_firing_for_subpath_A = np.concatenate([EVs['state_action_loc'][k] for k in bins_curr_task_rew], axis=0)  # shape (48,)
+            path_stact_firing_for_subpath_A = np.concatenate([EVs['state_action_loc'][k] for k in bins_curr_task_path], axis=0)  # shape (48,)
+            
         except KeyError:
             continue
         # import pdb; pdb.set_trace()
         n_bins = len(temp_order)  # 8 (4 x subpaths, 4x rewards)
-        
-        # n_locations = firing_for_subpath_A.size // n_bins   # 9 locations
-        # n_loc_phases = firing_for_subpath_A.size // n_bins   # 9 locations
-        # assert n_locations * n_bins == firing_for_subpath_A.size
-
         # for each position, rotate by whole blocks of `block_len` so subpath-chunks move together
         for pos, temp_bin in enumerate(temp_order):
             bin_curr_task = f"{task}_{temp_bin}"
             # for the buttons:
             bin_shifted_task_prev = f"{task}_{temp_order_shifted_prev[pos]}"
             bin_shifted_task_next = f"{task}_{temp_order_shifted_next[pos]}"
-            
             EVs['prev_buttons'][bin_shifted_task_prev] = EVs['buttons_out'][bin_curr_task].copy()
             EVs['next_buttons'][bin_shifted_task_next] = EVs['buttons_out'][bin_curr_task].copy()
-            # import pdb; pdb.set_trace()
-            
-            # left-roll by pos blocks: multiply by block_len to rotate whole 9-element blocks
-            rotated_loc = np.roll(DSR_firing_for_subpath_A, -pos * len(locations)).copy()  # shape (72,)
-            #rotated_loc_phase = np.roll(firing_for_subpath_A_phase, -pos * len(locations)*n_phases).copy()  # shape # shape (72*4,)
-            
-            # store as 1D vector of length 72; if you want shape (1,72) use rotated.reshape(1,-1)
+
+            # left-roll by pos blocks: multiply by block_len to rotate whole 12-element blocks
+            rotated_loc = np.roll(DSR_firing_for_subpath_A, -pos * len_standardised_path).copy()
             EVs['DSR'][bin_curr_task] = rotated_loc
-            #EVs['DSR_phase'][bin_curr_task] = rotated_loc_phase
-            
+        
             # and the same for the state-action DSR
-            rotated_state_action = np.roll(stact_firing_for_subpath_A, -pos * len(locations)).copy()  # shape (72,)
+            rotated_state_action = np.roll(stact_firing_for_subpath_A, -pos * len_standardised_path).copy()
             EVs['state_action_glob'][bin_curr_task] = rotated_state_action
             
-
+        for pos, rew_bin in enumerate(temp_order_rew):
+            # import pdb; pdb.set_trace()
+            bin_curr_rew = f"{task}_{rew_bin}"
+            bin_curr_path = f"{task}_{temp_order_path[pos]}"
+            
+            # left-roll by pos blocks: multiply by block_len to rotate whole 12-element blocks
+            rotated_rew_loc = np.roll(rewDSR_firing_for_subpath_A, -pos * len_standardised_path).copy()
+            rotated_path_loc = np.roll(pathDSR_firing_for_subpath_A, -pos * len_standardised_path).copy()
+            # fill rewards and paths times with the same model
+            EVs['rewDSR'][bin_curr_path] = rotated_rew_loc
+            EVs['rewDSR'][bin_curr_rew] = rotated_rew_loc
+            
+            EVs['pathDSR'][bin_curr_path] = rotated_path_loc
+            EVs['pathDSR'][bin_curr_rew] = rotated_path_loc
+            
+            rotated_state_action_rew = np.roll(rew_stact_firing_for_subpath_A, -pos * len_standardised_path).copy()
+            rotated_state_action_path = np.roll(path_stact_firing_for_subpath_A, -pos * len_standardised_path).copy()
+            # fill rewards and path times with the same model
+            EVs['rew_stateactionDSR'][bin_curr_path] = rotated_state_action_rew
+            EVs['rew_stateactionDSR'][bin_curr_rew] = rotated_state_action_rew
+            
+            EVs['path_stateactionDSR'][bin_curr_path] = rotated_state_action_path
+            EVs['path_stateactionDSR'][bin_curr_rew] = rotated_state_action_path
     
 
     if plot_DSR_task_matrices and plot_DSR_tasks:
@@ -450,35 +463,6 @@ for sub in subjects:
                 group_size=8,
                 title=model,
             )
-            
-            
-            
-    #
-    # #
-    # # TEST
-    # # this doesnt work.
-    # just compute literally 2,5 vs 5,2!!!!
-    # # paths one will be the same as for paths two
-    # path_one = [2,5]
-    # path_two = [5,2]
-    # #
-    # loc_one = np.zeros((5,2))
-    # loc_phas_one = np.zeros((20, 2))
-    # loc_one[1,0]=1
-    # loc_one[4,1]=1
-    # loc_phas_one[4,0]=1
-    # loc_phas_one[5,0]=1
-    # loc_phas_one[18,1]=1
-    # loc_phas_one[19,1]=1
-    
-    # loc_two = np.zeros((5,2))
-    # loc_phas_two = np.zeros((20, 2))
-    # loc_two[4,0]=1
-    # loc_two[1,1]=1
-    # loc_phas_two[18,0]=1
-    # loc_phas_two[19,0]=1
-    # loc_phas_two[4,1]=1
-    # loc_phas_two[5,1]=1
     
 
     # import pdb; pdb.set_trace()          

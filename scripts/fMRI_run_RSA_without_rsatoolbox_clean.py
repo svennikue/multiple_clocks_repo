@@ -80,7 +80,7 @@ else:
 # --- Load configuration ---
 # config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
 #config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_DSR_rew_vs_path_interaction_vis_combos.json"
-config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_state-action-playaround.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_diffactDSR_path_vs_rew.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
@@ -194,15 +194,12 @@ for sub in subjects:
         model_EVs = pickle.load(file)
     selected_models = config.get("models", list(model_EVs.keys()))
     if models_reverse:
-        for m in ["state_action_glob"]:
+        for m in ["state_action_glob", "rew_stateactionDSR", "path_stateactionDSR"]:
             for rev in models_reverse:
                 new_model = m + '-' + rev
-                model_EVs[new_model] = model_EVs['state_action_glob'].copy()
+                model_EVs[new_model] = model_EVs[m].copy()
                 
                 
-    
-    
-    
     # loading the data EVs into dict
     data_EVs, all_EV_keys = mc.analyse.my_RSA.load_data_EVs(data_dir, regression_version=regression_version, only_load_labels = only_load_labels)
     # if you don't want all conditions created through FSL, exclude some here!
@@ -230,6 +227,8 @@ for sub in subjects:
             # only append if none of the 4 parts triggered 'break'
             EV_keys.append(ev)
     
+
+    
     print(f"including the following EVs in the RDMs: {EV_keys}")
     data_th1, data_th2, paired_labels = pair_correct_tasks(data_EVs, EV_keys)
     data_concat = np.concatenate((data_th1, data_th2), axis = 0)
@@ -253,11 +252,12 @@ for sub in subjects:
             model_RDM_dir[model] = mc.analyse.my_RSA.make_categorical_RDM(models_concat[model], plotting = False, include_diagonal=include_diagonal)
         elif model == 'duration':
             model_RDM_dir[model] = mc.analyse.my_RSA.make_distance_RDM(models_concat[model], plotting = False, include_diagonal=include_diagonal)
-        elif model in ['location', 'DSR', 'prev_buttons', 'buttons_out', 'next_buttons', 'state_action_glob', 'state_action_loc']:
-            model_RDM_dir[model] = mc.analyse.my_RSA.compute_hamming_distance(models_concat[model], plotting = False, include_diagonal=include_diagonal)
+        elif model in ['location', 'DSR', 'prev_buttons', 'buttons_out', 'next_buttons', 
+                       'state_action_glob', 'state_action_loc', "rewDSR", "pathDSR", "rew_stateactionDSR", "path_stateactionDSR"]:
+            model_RDM_dir[model] = mc.analyse.my_RSA.compute_hamming_distance(models_concat[model], plotting = False, include_diagonal=include_diagonal, model_name=model)
         elif model.endswith('diff'):
             cond = model.split('-')[1]
-            model_RDM_dir[model] = mc.analyse.my_RSA.compute_hamming_difference(models_concat[model],combination = cond, plotting = False, include_diagonal=include_diagonal)
+            model_RDM_dir[model] = mc.analyse.my_RSA.compute_hamming_difference(models_concat[model],combination = cond, plotting = False, include_diagonal=include_diagonal, model_name=model)
         #elif model.startswith('button'):
         #    model_RDM_dir[model] = mc.analyse.my_RSA.make_distance_RDM_cosine_normratio(models_concat[model], plotting = False, include_diagonal=include_diagonal)
         else:
@@ -274,6 +274,24 @@ for sub in subjects:
     
     if masked_conditions:
         conditions_masking = mc.analyse.my_RSA.make_category_masks(models_concat['path_rew'], plotting = False, include_diagonal=include_diagonal, mask_only_path_rew_combos=True)
+    
+    # n = 40
+    # rdm = np.zeros((n,n))
+    # rdm[np.triu_indices(n, 1)] = model_RDM_dir['state_action_glob-sa_ss_diff'][0]
+    # plt.figure(); plt.imshow(rdm, cmap='coolwarm', vmin=0, vmax=1); plt.title('Same Action, Same State')
+    # for i in range(0,n,4):
+    #     plt.axvline(i-0.5, color='white', ls = 'dashed')
+    # for i in range(0,n,4):
+    #     plt.axhline(i-0.5, color='white', ls = 'dashed')
+    # labels = ['A1_backw', 'A1_forw', 'B1_backw', 'B1_forw', 'C1_backw', 'C1_forw', 'D1_back', 'D1_forw', 'E1_backw', 'E1_forw']
+    # plt.yticks(np.arange(2, rdm.shape[1], 4), labels)
+    # plt.colorbar()
+    
+    # rew_EVs = []
+    # for e in EV_keys:
+    #     if e.endswith('reward'):
+    #         rew_EVs.append(e)
+    
     
     # import pdb; pdb.set_trace()
     if 'A-state-ones' in selected_models:
@@ -356,12 +374,12 @@ for sub in subjects:
                                 raise ValueError(f"Combo model {combo_model_name} not possible, as {missing} not computed")
                     
                     stacked_model_RDMs = np.stack([model_RDM_dir[m][0] for m in models_to_combine], axis=1)
-                    # check how correlated each model is whith each other.
-                    # corr = np.corrcoef(stacked_model_RDMs, rowvar=False)
-                    # for i in range(len(models_to_combine)):
-                    #     for j in range(i+1, len(models_to_combine)):
-                    #         print(f"{models_to_combine[i]} vs {models_to_combine[j]}: r={corr[i,j]:.3f}")
-                    # corr, fig, ax = mc.analyse.my_RSA.plot_model_correlations(stacked_model_RDMs, models_to_combine, conditions_masking=conditions_masking)
+                    #check how correlated each model is whith each other.
+                    corr = np.corrcoef(stacked_model_RDMs, rowvar=False)
+                    for i in range(len(models_to_combine)):
+                        for j in range(i+1, len(models_to_combine)):
+                            print(f"{models_to_combine[i]} vs {models_to_combine[j]}: r={corr[i,j]:.3f}")
+                    corr, fig, ax = mc.analyse.my_RSA.plot_model_correlations(stacked_model_RDMs, models_to_combine, conditions_masking=conditions_masking)
                     
                     estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs[conditions_masking[cond]], d[conditions_masking[cond]]) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name} only including {cond}"))
                     for i, model in enumerate(models_to_combine):
