@@ -430,6 +430,7 @@ def make_category_masks(data_chunk, plotting=False, include_diagonal=True, mask_
     # make sure to make this reversed: only exclude path-reward, inlude everything else.
     if mask_only_path_rew_combos == True:
         outputs[0].pop('reward-path')
+        # outputs[0].pop('path-path')
         # for k in ['path-path', 'reward-reward', 'reward-path']:
         #         outputs[0].pop(k, None)
     
@@ -452,6 +453,7 @@ def compute_hamming_distance(data_chunk, plotting = False, include_diagonal = Tr
         # mean of axis 2 = fraction of positions where row i and row j are identical
         hamming_sim_matrix = overlap.mean(axis = 2)
         rdm_both_halves = 1 - hamming_sim_matrix
+        # rdm = 1 - hamming_sim_matrix
         rdm_small = rdm_both_halves[int(len(rdm_both_halves)/2):,0:int(len(rdm_both_halves)/2)]
         
         # making the matrix symmetric
@@ -473,6 +475,10 @@ def compute_hamming_distance(data_chunk, plotting = False, include_diagonal = Tr
                 plt.axvline(i-0.5, color='white', ls = 'dashed')
             for i in range(0,n,int(n/10)):
                 plt.axhline(i-0.5, color='white', ls = 'dashed')
+            # for i in range(0,n,8):
+            #     plt.axvline(i-0.5, color='white', ls = 'dashed')
+            # for i in range(0,n,8):
+            #     plt.axhline(i-0.5, color='white', ls = 'dashed')
             labels = ['A1_backw', 'A1_forw', 'B1_backw', 'B1_forw', 'C1_backw', 'C1_forw', 'D1_back', 'D1_forw', 'E1_backw', 'E1_forw']
             plt.yticks(np.arange(2, rdm.shape[1], int(n/10)), labels)
             plt.colorbar()

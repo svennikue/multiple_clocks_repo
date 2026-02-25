@@ -70,6 +70,10 @@ if len (sys.argv) > 1:
 else:
     subj_no = '02'  
 subjects = [f"sub-{subj_no}"]
+subjects = [f"sub-{subj_no}"]
+subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36)]
+subjects.remove('sub-29')
+subjects.remove('sub-21')
 
 for sub in subjects:
     # load the cleaned behavioural table.

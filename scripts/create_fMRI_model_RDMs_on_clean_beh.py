@@ -7,15 +7,16 @@ create regressors that I want to use for the fMRI.
 
 I will store a standard set of models 
 
-state
-A-state
-duration
-path_rew
-next_buttons
-prev_buttons
-buttons_out
-location
-state_action_loc
+state # abstract task structure
+A-state # visual control for feedback print
+duration # distance between how long each bin takes
+path_rew # are we comparing same-with-same or different conditions
+next_buttons # buttons that you'll press next
+prev_buttons # buttons that brough you here
+buttons_out # buttons that bring you out of the current state
+location # phase-encoded location
+state_action_loc # current phase-action
+phys_abstr_space # physical space (location) x abstract task space (prev. state) combination
 curr_rew
 next_rew
 two_next_rew
@@ -34,7 +35,8 @@ pathDSR
 rew_stateactionDSR
 path_stateactionDSR
 DSR
-state_action_glob
+state_action_DSR
+action_DSR
 
 
 in all possible regressors: both task halves, path x rewards x unique_tasks
@@ -81,7 +83,7 @@ else:
     subj_no = '02'
 
 subjects = [f"sub-{subj_no}"]
-# subjects = subs_list = [f'sub-{i:02}' for i in range(1, 35)]
+# subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36)]
 # subjects.remove('sub-29')
 # subjects.remove('sub-21')
 
@@ -119,6 +121,7 @@ coord_to_loc = {
 }
 loc_to_coord = {v:k for k,v in coord_to_loc.items()}
 
+state_onehot_to_str = {0:'A', 1:'B', 2:'C', 3:'D'}
 
 
 def resample_locations(path, T=len_standardised_path):
@@ -201,7 +204,7 @@ for sub in subjects:
         models['state'][s_i][beh_df['state'] == state] = 1
     
     # these models are order-preserving encodings which will be computed based on hamming-distance
-    for key in ['next_buttons', 'prev_buttons', 'buttons_out', 'location', 'state_action_loc']:
+    for key in ['next_buttons', 'prev_buttons', 'buttons_out', 'location', 'state_action_loc', 'phys_abstr_space']:
         models[key] = np.zeros((len_standardised_path, len(beh_df)), dtype=float)
 
     # these models are one-hot encodings of locations which will be computes based on cosine similarity
@@ -319,9 +322,17 @@ for sub in subjects:
                         # this is because the way I use ithem, the regressors would be a linear combination of the intercept ([11111] vector)
                         EVs[model][reg][index] = LinearRegression(fit_intercept=False).fit(regressors[reg].reshape(-1,1), row.reshape(-1,1)).coef_
 
+
+    # make a new state-location regressor. First, make state a string.
     for r in regs:
+        for idx in state_onehot_to_str:
+            if round(EVs['state'][r][idx]) == 1:
+                state_str = state_onehot_to_str[idx]
+        
         locs_str = EVs['location'][r].astype(str)
         EVs['state_action_loc'][r] = np.char.add(np.char.add(locs_str, '-'), EVs['buttons_out'][r])
+        EVs['phys_abstr_space'][r] = np.char.add(np.char.add(locs_str, '-'), state_str)
+
 
     # additionally, add the simple musicbox: at each of the 8 timebins, the future is already encoded.
     # order inside a task
@@ -334,14 +345,14 @@ for sub in subjects:
     # this is to do the rotation as well for the buttons:
     # previous buttons are the ones you pressed on the previous locations.
     
-    models['DSR'], models['state_action_glob'] = np.zeros((len(temp_order)*len_standardised_path)), np.zeros((len(temp_order)*len_standardised_path))
+    models['DSR'], models['state_action_DSR'], models['action_DSR']  = np.zeros((len(temp_order)*len_standardised_path)), np.zeros((len(temp_order)*len_standardised_path)), np.zeros((len(temp_order)*len_standardised_path))
     split_models = ['rewDSR', 'pathDSR', 'rew_stateactionDSR', 'path_stateactionDSR']
     for s in split_models:
         models[s] = np.zeros((int(len(temp_order)/2)*len_standardised_path))
         EVs[s] = {}
     
     #models['DSR_phase'] = np.zeros((len(temp_order)*len(locations)*n_phases))
-    EVs['DSR'], EVs['state_action_glob']= {}, {}
+    EVs['DSR'], EVs['state_action_DSR'], EVs['action_DSR'] = {}, {}, {}
     for task in tasks:
         # build base matrix (8 x 9) in canonical order
         bins_curr_task = [f"{task}_{temp_bin}" for temp_bin in temp_order]
@@ -355,6 +366,8 @@ for sub in subjects:
             rewDSR_firing_for_subpath_A = np.concatenate([EVs['location'][k] for k in bins_curr_task_rew], axis=0)  # shape (48,)
             pathDSR_firing_for_subpath_A = np.concatenate([EVs['location'][k] for k in bins_curr_task_path], axis=0)  # shape (48,)
             
+            actionDSR_firing_for_subpath_A = np.concatenate([EVs['buttons_out'][k] for k in bins_curr_task], axis=0)  # shape (96,)
+            
             stact_firing_for_subpath_A = np.concatenate([EVs['state_action_loc'][k] for k in bins_curr_task], axis=0)  # shape (96,)
             rew_stact_firing_for_subpath_A = np.concatenate([EVs['state_action_loc'][k] for k in bins_curr_task_rew], axis=0)  # shape (48,)
             path_stact_firing_for_subpath_A = np.concatenate([EVs['state_action_loc'][k] for k in bins_curr_task_path], axis=0)  # shape (48,)
@@ -362,6 +375,8 @@ for sub in subjects:
         except KeyError:
             continue
         # import pdb; pdb.set_trace()
+        # if 'D1_backw' in task:
+        #     import pdb; pdb.set_trace()
         n_bins = len(temp_order)  # 8 (4 x subpaths, 4x rewards)
         # for each position, rotate by whole blocks of `block_len` so subpath-chunks move together
         for pos, temp_bin in enumerate(temp_order):
@@ -378,7 +393,11 @@ for sub in subjects:
         
             # and the same for the state-action DSR
             rotated_state_action = np.roll(stact_firing_for_subpath_A, -pos * len_standardised_path).copy()
-            EVs['state_action_glob'][bin_curr_task] = rotated_state_action
+            EVs['state_action_DSR'][bin_curr_task] = rotated_state_action
+            
+            # and the same for action DSR
+            rotated_action = np.roll(actionDSR_firing_for_subpath_A, -pos * len_standardised_path).copy()
+            EVs['action_DSR'][bin_curr_task] = rotated_action
             
         for pos, rew_bin in enumerate(temp_order_rew):
             # import pdb; pdb.set_trace()

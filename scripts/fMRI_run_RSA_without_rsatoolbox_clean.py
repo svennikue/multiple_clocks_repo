@@ -80,7 +80,7 @@ else:
 # --- Load configuration ---
 # config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
 #config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_DSR_rew_vs_path_interaction_vis_combos.json"
-config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_diffactDSR_path_vs_rew.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_fixed_DSR-physabst-state.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
@@ -192,9 +192,11 @@ for sub in subjects:
     # loading the model EVs into dict
     with open(f"{modelled_conditions_dir}/{sub}_modelled_EVs_{EV_string}.pkl", 'rb') as file:
         model_EVs = pickle.load(file)
+        
+    # these are the models that will be evaluated INDIVIDUALLY
     selected_models = config.get("models", list(model_EVs.keys()))
     if models_reverse:
-        for m in ["state_action_glob", "rew_stateactionDSR", "path_stateactionDSR"]:
+        for m in ["state_action_DSR", "rew_stateactionDSR", "path_stateactionDSR"]:
             for rev in models_reverse:
                 new_model = m + '-' + rev
                 model_EVs[new_model] = model_EVs[m].copy()
@@ -232,17 +234,12 @@ for sub in subjects:
     print(f"including the following EVs in the RDMs: {EV_keys}")
     data_th1, data_th2, paired_labels = pair_correct_tasks(data_EVs, EV_keys)
     data_concat = np.concatenate((data_th1, data_th2), axis = 0)
+    
     # import pdb; pdb.set_trace()
     # 
     # Step 3: compute the model and data RDMs.
     models_concat = {}
     model_RDM_dir = {}
-    
-    #
-    #
-    # TODO: add a setting where I can choose whether i do or don't want to consider the diagonal!
-    #
-    #
     
     for model in model_EVs:
         model_th1, model_th2, model_paired_labels = pair_correct_tasks(model_EVs[model], EV_keys)
@@ -252,9 +249,9 @@ for sub in subjects:
             model_RDM_dir[model] = mc.analyse.my_RSA.make_categorical_RDM(models_concat[model], plotting = False, include_diagonal=include_diagonal)
         elif model == 'duration':
             model_RDM_dir[model] = mc.analyse.my_RSA.make_distance_RDM(models_concat[model], plotting = False, include_diagonal=include_diagonal)
-        elif model in ['location', 'DSR', 'prev_buttons', 'buttons_out', 'next_buttons', 
+        elif model in ['location', 'DSR', 'prev_buttons', 'buttons_out', 'next_buttons', 'phys_abstr_space', 'action_DSR', 'state_action_DSR',
                        'state_action_glob', 'state_action_loc', "rewDSR", "pathDSR", "rew_stateactionDSR", "path_stateactionDSR"]:
-            model_RDM_dir[model] = mc.analyse.my_RSA.compute_hamming_distance(models_concat[model], plotting = False, include_diagonal=include_diagonal, model_name=model)
+            model_RDM_dir[model] = mc.analyse.my_RSA.compute_hamming_distance(models_concat[model], plotting = True, include_diagonal=include_diagonal, model_name=model)
         elif model.endswith('diff'):
             cond = model.split('-')[1]
             model_RDM_dir[model] = mc.analyse.my_RSA.compute_hamming_difference(models_concat[model],combination = cond, plotting = False, include_diagonal=include_diagonal, model_name=model)
@@ -302,15 +299,6 @@ for sub in subjects:
         for model in model_RDM_dir:
             model_RDM_dir[model][0][A_state_mask] = np.nan
             print(f"excluding n = {np.sum(np.isnan(model_RDM_dir[model]))} datapoints from {len(model_RDM_dir[model][0])} because of state-A masking.")
-            # if plotting == True:
-            #     # plot to test how it looks like
-            #     rdm_recon = np.zeros((40, 40))
-            #     tri_u = np.triu_indices(40, k=0)
-            #     # fill upper triangle
-            #     rdm_recon[tri_u] = model_RDM_dir[model][0]
-            #     plt.figure()
-            #     plt.imshow(rdm_recon)
-            #     plt.title(model)
 
     if not os.path.exists(f"{data_rdm_dir}/data_RDM.npy"):
         data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr', include_diagonal=include_diagonal) 
@@ -374,12 +362,12 @@ for sub in subjects:
                                 raise ValueError(f"Combo model {combo_model_name} not possible, as {missing} not computed")
                     
                     stacked_model_RDMs = np.stack([model_RDM_dir[m][0] for m in models_to_combine], axis=1)
-                    #check how correlated each model is whith each other.
-                    corr = np.corrcoef(stacked_model_RDMs, rowvar=False)
-                    for i in range(len(models_to_combine)):
-                        for j in range(i+1, len(models_to_combine)):
-                            print(f"{models_to_combine[i]} vs {models_to_combine[j]}: r={corr[i,j]:.3f}")
-                    corr, fig, ax = mc.analyse.my_RSA.plot_model_correlations(stacked_model_RDMs, models_to_combine, conditions_masking=conditions_masking)
+                    # #check how correlated each model is whith each other.
+                    # corr = np.corrcoef(stacked_model_RDMs, rowvar=False)
+                    # for i in range(len(models_to_combine)):
+                    #     for j in range(i+1, len(models_to_combine)):
+                    #         print(f"{models_to_combine[i]} vs {models_to_combine[j]}: r={corr[i,j]:.3f}")
+                    # corr, fig, ax = mc.analyse.my_RSA.plot_model_correlations(stacked_model_RDMs, models_to_combine, conditions_masking=conditions_masking)
                     
                     estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs[conditions_masking[cond]], d[conditions_masking[cond]]) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name} only including {cond}"))
                     for i, model in enumerate(models_to_combine):
@@ -431,6 +419,7 @@ for sub in subjects:
         "diagonal is included": include_diagonal,
         "run_combo_models": run_combo_models,
         "combo_model_names": [c["name"] for c in config.get("combo_models", [])] if run_combo_models else [],
+        "combo_model_regs_per_combo": [c["regressors"] for c in config.get("combo_models", [])] if run_combo_models else [],
         "data_dir": data_dir,
         "results_dir": results_dir
     }
