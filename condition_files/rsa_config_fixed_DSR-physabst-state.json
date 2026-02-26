@@ -18,7 +18,7 @@
   "fwhm": 5,
   "searchlight_mask": "grey_matter",
   "visualise_RDMs": false,
-  "run_single_models": false,
+  "run_single_models": true,
   "masked_conds": true,
   "run_comobo_models": true,
   "split_rew_from_path": true,

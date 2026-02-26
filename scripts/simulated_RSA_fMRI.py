@@ -1,22 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on 17th of October 2025.
+Created on Thu Feb 26 10:23:53 2026
 
 Running the RSA [mainly] without RSA toolbox,
 based on 
 1. clean_fmri_behaviour
 2. create_fMRI_model_RDMs_on_clean_beh
-
-
-# this is the old GLM I used:
-GLM ('regression') settings (creating the 'bins'):
-    03-4 -24 regressors; for the tasks where every reward is at a different location (A,C,E), only the rewards are modelled (stick function)
-# this is the new GLM I want to use:
-    # glm_all-rews-split_buttons
     
     
-@author: Svenja Küchenhoff, 2025
+@author: Svenja Küchenhoff, 2026
 """
 
 
@@ -80,7 +73,7 @@ else:
 # --- Load configuration ---
 # config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
 #config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_DSR_rew_vs_path_interaction_vis_combos.json"
-config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_onlyrew_tasksACE_weighted.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_fixed_DSR-physabst-state.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
@@ -115,11 +108,10 @@ masked_conditions = config.get("masked_conds", None)
 conditions_masking = None
 include_diagonal = config.get("diagonal_included", True)
 
-weighted_models = config.get("weighted_models", None)
 # conditions selection
 conditions = config.get("EV_condition_selection")
 parts_to_use = conditions["parts"]
-parts_to_include_name = config.get("parts_to_include_name", None)
+
 # model selection happens later in script
 
 print(f"Now running RSA based on subj GLM {regression_version} for subj {subj_no}")
@@ -139,8 +131,7 @@ for sub in subjects:
       
     modelled_conditions_dir = f"{data_dir}/beh/modelled_EVs"
     data_rdm_dir = f"{data_dir}/func/data_RDMs_glmbase_{regression_version}_{searchlight_mask}"
-    if parts_to_include_name:
-        data_rdm_dir = f"{data_dir}/func/data_RDMs_glmbase_{regression_version}_{searchlight_mask}_{parts_to_include_name}"
+
     results_dir = f"{data_dir}/func/RSA_{RDM_version}_{today_str}_glmbase_{regression_version}/results" 
     if smoothing == True:
        results_dir = f"{data_dir}/func/RSA_{RDM_version}_{today_str}_glmbase_{regression_version}_smooth{fwhm}/results" 
@@ -153,42 +144,8 @@ for sub in subjects:
     #         masked_conditions = json_mask.get("masked_conditions")
         
 
-    # get a reference image to later project the results onto. This is usually
-    # example_func from half 1, as this is where the data is corrected to.
-    ref_img = load_img(f"{data_dir}/func/preproc_clean_01.feat/example_func.nii.gz")
-    
-    
-    # Step 1: creating the searchlights
-    # mask will define the searchlight positions, in pt01 space because that is 
-    # where the functional files have been registered to.
-    if searchlight_mask:
-        if searchlight_mask == 'no_CSF':
-            mask_file = load_img(f"{data_dir}/anat/{sub}_T1w_noCSF_brain_mask_bin_func_01.nii.gz")
-            mask_name = '_no_CSF' # Found 166.240 searchlights with no CSF mask
-        elif searchlight_mask == 'grey_matter':
-            mask_file = load_img(f"{data_dir}/anat/grey_matter_mask_func_01.nii.gz")
-            mask_name = '_grey_matter'  # Found 126.404 searchlights with gm mask 
-    else:
-        mask_file = ref_img.copy() # full BOLD Found 175.483 searchlights
-        mask_name = ''
-    mask = mask_file.get_fdata()  
-    path_to_searchlight_centers = f"{data_dir}/func/searchlight_centers{mask_name}.pkl"
-    path_to_searchlight_neighbours = f"{data_dir}/func/searchlight_neighbors{mask_name}.pkl"
-    if os.path.exists(path_to_searchlight_centers):
-        with open(path_to_searchlight_centers, "rb") as f:
-            centers = pickle.load(f)
-        with open(path_to_searchlight_neighbours, "rb") as f:
-            neighbors = pickle.load(f)
-    else:
-        centers, neighbors = get_volume_searchlight(mask, radius=3, threshold=0.5)
-        with open(path_to_searchlight_centers, 'wb') as file:
-            pickle.dump(centers, file)
-            print("stored searchlight centres")
-        with open(path_to_searchlight_neighbours, 'wb') as file:
-            pickle.dump(neighbors, file)   
-            print("stored searchlight neighbors")
 
-    #
+
     # Step 2: loading conditions for model and data RDMs
     #
     # loading the model EVs into dict
@@ -202,14 +159,10 @@ for sub in subjects:
             for rev in models_reverse:
                 new_model = m + '-' + rev
                 model_EVs[new_model] = model_EVs[m].copy()
-    if weighted_models:
-        for m in ["DSR", "rewDSR"]:
-            for w in weighted_models:
-                new_model = m + '-' + w + '-' + 'weighted'
-                model_EVs[new_model] = model_EVs[m].copy()
                 
-    # loading the data EVs into dict
-    data_EVs, all_EV_keys = mc.analyse.my_RSA.load_data_EVs(data_dir, regression_version=regression_version, only_load_labels = only_load_labels)
+                
+    # loading the EV labels 
+    data_EVs, all_EV_keys = mc.analyse.my_RSA.load_data_EVs(data_dir, regression_version=regression_version, only_load_labels = True)
     # if you don't want all conditions created through FSL, exclude some here!
     # based on config file:
     # Ensure all four parts exist in config
@@ -238,10 +191,11 @@ for sub in subjects:
 
     
     print(f"including the following EVs in the RDMs: {EV_keys}")
-    data_th1, data_th2, paired_labels = pair_correct_tasks(data_EVs, EV_keys)
-    data_concat = np.concatenate((data_th1, data_th2), axis = 0)
+    # simulate data here!
+    import pdb; pdb.set_trace()
+    # data_concat = np.concatenate((data_th1, data_th2), axis = 0)
     
-    # 
+
     # Step 3: compute the model and data RDMs.
     models_concat = {}
     model_RDM_dir = {}
@@ -260,11 +214,6 @@ for sub in subjects:
         elif model.endswith('diff'):
             cond = model.split('-')[1]
             model_RDM_dir[model] = mc.analyse.my_RSA.compute_hamming_difference(models_concat[model],combination = cond, plotting = False, include_diagonal=include_diagonal, model_name=model)
-        elif model.endswith('weighted'):
-            weight = model.split('-')[1]
-            model_RDM_dir[model] = mc.analyse.my_RSA.compute_hamming_distance_weighted(models_concat[model], weight = weight, plotting = False, include_diagonal=include_diagonal, model_name=model)
-
-        
         #elif model.startswith('button'):
         #    model_RDM_dir[model] = mc.analyse.my_RSA.make_distance_RDM_cosine_normratio(models_concat[model], plotting = False, include_diagonal=include_diagonal)
         else:
@@ -310,22 +259,13 @@ for sub in subjects:
             model_RDM_dir[model][0][A_state_mask] = np.nan
             print(f"excluding n = {np.sum(np.isnan(model_RDM_dir[model]))} datapoints from {len(model_RDM_dir[model][0])} because of state-A masking.")
 
-    if not os.path.exists(f"{data_rdm_dir}/data_RDM.npy"):
-        data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr', include_diagonal=include_diagonal) 
-        mc.analyse.handle_MRI_files.save_data_RDM_as_nifti(data_RDMs, data_rdm_dir, "data_RDM", ref_img, centers) 
-    else:
-        data_RDMs = np.load(f"{data_rdm_dir}/data_RDM.npy")
-        
-    if smoothing == True:
-        if not os.path.exists(f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}.npy"):
-            path_to_save_smooth = f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}"
-            print(f"now smoothing the RDM and saving it here: {path_to_save_smooth}")
-            data_RDMs = mc.analyse.handle_MRI_files.smooth_RDMs(data_RDMs, ref_img, fwhm,use_rsa_toolbox = False, path_to_save=path_to_save_smooth,centers=centers)
-        else:
-            data_RDMs = np.load(f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}.npy")
 
 
-    # import pdb; pdb.set_trace()
+
+    import pdb; pdb.set_trace()
+    # here simulate the data_RDMs !
+
+
     # STEP 4: evaluate the model fit between model and data RDMs.
     #
     RSA_results = {}
@@ -340,22 +280,21 @@ for sub in subjects:
             # ACTUAL RSA - single regressors
             # for d in data_RDMs:
             #     RSA_results[model] = mc.analyse.my_RSA.evaluate_model(model_RDM_dir[model][0], d)
-            #  RSA_results[model] = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(model_RDM_dir[model][0][0:171], d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {model}"))
-            
             
             RSA_results[model] = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(model_RDM_dir[model][0], d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {model}"))
-            mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=RSA_results[model], centers=centers, file_path = results_dir, file_name= f"{model}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+            #mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=RSA_results[model], centers=centers, file_path = results_dir, file_name= f"{model}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
 
-    # import pdb; pdb.set_trace()
+
+    import pdb; pdb.set_trace()
     run_combo_models = config.get("run_combo_models", bool(config.get("combo_models")))
     if run_combo_models:
         combo_list = config["combo_models"]
         for combo in combo_list:
-            combo_model_name = combo["name"]
-            models_to_combine = combo["regressors"].copy()
             if masked_conditions:
                 for cond in conditions_masking:
                     print(f"now computing combo model, only considering conditions {cond}")
+                    combo_model_name = combo["name"]
+                    models_to_combine = combo["regressors"].copy()
                     if cond == 'path-path':
                         if 'A-state' in models_to_combine:
                             models_to_combine.remove('A-state')
@@ -386,8 +325,8 @@ for sub in subjects:
                     # corr, fig, ax = mc.analyse.my_RSA.plot_model_correlations(stacked_model_RDMs, models_to_combine, conditions_masking=conditions_masking)
                     
                     estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs[conditions_masking[cond]], d[conditions_masking[cond]]) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name} only including {cond}"))
-                    for i, model in enumerate(models_to_combine):
-                        mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}-{cond}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+                    #for i, model in enumerate(models_to_combine):
+                        #mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}-{cond}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
 
             else:
                 models_to_combine = combo["regressors"]
@@ -413,8 +352,8 @@ for sub in subjects:
                 # corr, fig, ax = mc.analyse.my_RSA.plot_model_correlations(stacked_model_RDMs, models_to_combine, conditions_masking=conditions_masking)
                   
                 estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs, d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name}"))
-                for i, model in enumerate(models_to_combine):
-                    mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+                #for i, model in enumerate(models_to_combine):
+                    #mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
                 
     
  

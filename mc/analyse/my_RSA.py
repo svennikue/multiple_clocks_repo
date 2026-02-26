@@ -429,14 +429,94 @@ def make_category_masks(data_chunk, plotting=False, include_diagonal=True, mask_
     # import pdb; pdb.set_trace()
     # make sure to make this reversed: only exclude path-reward, inlude everything else.
     if mask_only_path_rew_combos == True:
-        outputs[0].pop('reward-path')
+        # outputs[0].pop('reward-path')
         # outputs[0].pop('path-path')
-        # for k in ['path-path', 'reward-reward', 'reward-path']:
-        #         outputs[0].pop(k, None)
+        for k in ['path-path', 'reward-reward', 'reward-path']:
+            outputs[0].pop(k, None)
     
     return outputs[0] if len(outputs) == 1 else outputs
 
+def compute_hamming_distance_weighted(data_chunk, plotting = False, weight= 'now_to_fut', include_diagonal = True, model_name = None): 
+    RDM = []
+    #
+    print(f"weight is {weight}")
+    if not isinstance(data_chunk, (list, tuple)):
+        data_chunk = [data_chunk]
+    for data in data_chunk:
+        data = np.asarray(data, dtype=object) # data has dimensions (160, 96) -> i want to compare the 160 conditions with each other
+        
+        len_th = len(data)/2
+        if len_th == 24 or len_th == 48:
+            no_tasks = 6
+        elif len_th == 40:
+            no_tasks = 10
+        #import pdb; pdb.set_trace()
+        # data task_half 1 and task_half 2 concatenated.
+        overlap = np.equal(data[:, None, :], data[None, :,:])
+        len_rep = 8
+        if model_name.startswith('rew') or model_name.startswith('path'):
+            len_rep = 4
+        
+        # ----- CREATE WEIGHTS -----
+        if weight == 'now_to_fut':
+            # 8 futures decreasing by decay = .75
+            base = 0.5 ** np.arange(len_rep)
+            weights = np.repeat(base, 12)   # 8 × 12 = 96
+            
+        elif weight == 'close_to_far_fut':
+            # highest weight near center, lowest at extremes
+            dist = np.minimum(np.arange(len_rep), len_rep - np.arange(len_rep))
+            base = 0.5 ** dist
+            weights = np.repeat(base, 12)
+        else:
+            # no weighting (standard Hamming similarity)
+            weights = np.ones(data.shape[1])
+            
+        # normalize so weights sum to 1
+        weights = weights / weights.sum()
 
+        # ----- WEIGHTED SIMILARITY -----
+        hamming_sim_matrix = (overlap * weights).sum(axis=2)
+        
+        # convert to distance
+        rdm_both_halves = 1 - hamming_sim_matrix
+        
+        # rdm = 1 - hamming_sim_matrix
+        rdm_small = rdm_both_halves[int(len(rdm_both_halves)/2):,0:int(len(rdm_both_halves)/2)]
+        
+        # making the matrix symmetric
+        rdm = (rdm_small + rdm_small.T)/2
+        
+        # lastly, only store the part of the RDM I am actually interested in 
+        # i.e. the upper triangle, including the diagonal.
+        n = rdm.shape[1]
+        if include_diagonal:
+            RDM.append(rdm[np.triu_indices(n, k=0)]) 
+        else:
+            RDM.append(rdm[np.triu_indices(n, k=1)]) 
+         
+        if plotting == True:
+            plt.figure()
+            plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm', vmax=1, vmin=0)
+            plt.title(model_name)
+            for i in range(0,n,int(n/no_tasks)):
+                plt.axvline(i-0.5, color='white', ls = 'dashed')
+            for i in range(0,n,int(n/no_tasks)):
+                plt.axhline(i-0.5, color='white', ls = 'dashed')
+            # for i in range(0,n,8):
+            #     plt.axvline(i-0.5, color='white', ls = 'dashed')
+            # for i in range(0,n,8):
+            #     plt.axhline(i-0.5, color='white', ls = 'dashed')
+            if no_tasks == 10:
+                labels = ['A1_backw', 'A1_forw', 'B1_backw', 'B1_forw', 'C1_backw', 'C1_forw', 'D1_back', 'D1_forw', 'E1_backw', 'E1_forw']
+            elif no_tasks == 6:
+                labels = ['A1_backw', 'A1_forw', 'C1_backw', 'C1_forw', 'E1_backw', 'E1_forw']
+            plt.yticks(np.arange(2, rdm.shape[1], int(n/no_tasks)), labels)
+            plt.colorbar()
+            
+    return RDM
+    
+    
 def compute_hamming_distance(data_chunk, plotting = False, include_diagonal = True, model_name = None): 
     RDM = []
     #
@@ -466,21 +546,29 @@ def compute_hamming_distance(data_chunk, plotting = False, include_diagonal = Tr
             RDM.append(rdm[np.triu_indices(n, k=0)]) 
         else:
             RDM.append(rdm[np.triu_indices(n, k=1)]) 
+        len_th = len(data)/2
+        if len_th == 24 or len_th == 48:
+            no_tasks = 6
+        elif len_th == 40:
+            no_tasks = 10
             
         if plotting == True:
             plt.figure()
             plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm', vmax=1, vmin=0)
             plt.title(model_name)
-            for i in range(0,n,int(n/10)):
+            for i in range(0,n,int(n/no_tasks)):
                 plt.axvline(i-0.5, color='white', ls = 'dashed')
-            for i in range(0,n,int(n/10)):
+            for i in range(0,n,int(n/no_tasks)):
                 plt.axhline(i-0.5, color='white', ls = 'dashed')
             # for i in range(0,n,8):
             #     plt.axvline(i-0.5, color='white', ls = 'dashed')
             # for i in range(0,n,8):
             #     plt.axhline(i-0.5, color='white', ls = 'dashed')
-            labels = ['A1_backw', 'A1_forw', 'B1_backw', 'B1_forw', 'C1_backw', 'C1_forw', 'D1_back', 'D1_forw', 'E1_backw', 'E1_forw']
-            plt.yticks(np.arange(2, rdm.shape[1], int(n/10)), labels)
+            if no_tasks == 10:
+                labels = ['A1_backw', 'A1_forw', 'B1_backw', 'B1_forw', 'C1_backw', 'C1_forw', 'D1_back', 'D1_forw', 'E1_backw', 'E1_forw']
+            elif no_tasks == 6:
+                labels = ['A1_backw', 'A1_forw', 'C1_backw', 'C1_forw', 'E1_backw', 'E1_forw']
+            plt.yticks(np.arange(2, rdm.shape[1], int(n/no_tasks)), labels)
             plt.colorbar()
             
     return RDM
@@ -656,7 +744,7 @@ def evaluate_model(model_rdm, data_rdm):
     
 
     est = sm.OLS(filtered_Y, filtered_X).fit()
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     return est.tvalues[1:], est.params[1:], est.pvalues[1:]
 
 
