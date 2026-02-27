@@ -75,12 +75,11 @@ else:
     source_dir = "/home/fs0/xpsy1114/scratch"
     config_path = f"{source_dir}/analysis/multiple_clocks_repo/condition_files"
     print(f"Running on Cluster, setting {source_dir} as data directory")
-       
 
 # --- Load configuration ---
 # config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
 #config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_DSR_rew_vs_path_interaction_vis_combos.json"
-config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_onlyrew_tasksACE_weighted.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_which-fut-isin-DSR.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 
@@ -255,7 +254,9 @@ for sub in subjects:
         elif model == 'duration':
             model_RDM_dir[model] = mc.analyse.my_RSA.make_distance_RDM(models_concat[model], plotting = False, include_diagonal=include_diagonal)
         elif model in ['location', 'DSR', 'prev_buttons', 'buttons_out', 'next_buttons', 'phys_abstr_space', 'action_DSR', 'state_action_DSR',
-                       'state_action_glob', 'state_action_loc', "rewDSR", "pathDSR", "rew_stateactionDSR", "path_stateactionDSR"]:
+                       'state_action_glob', 'state_action_loc', "rewDSR", "pathDSR", "rew_stateactionDSR", "path_stateactionDSR",
+                       'DSR_onefut', 'DSR_twofut','DSR_threefut','DSR_fourfut','DSR_fivefut','DSR_sixfut','DSR_sevenfut',
+                       'curr_quarter','next_quarter','next2_quarter','next3_quarter']:
             model_RDM_dir[model] = mc.analyse.my_RSA.compute_hamming_distance(models_concat[model], plotting = False, include_diagonal=include_diagonal, model_name=model)
         elif model.endswith('diff'):
             cond = model.split('-')[1]

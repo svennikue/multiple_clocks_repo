@@ -34,6 +34,10 @@ rewDSR
 pathDSR
 rew_stateactionDSR
 path_stateactionDSR
+curr_quarter
+next_quarter
+next2_quarter
+next3_quarter
 DSR
 state_action_DSR
 action_DSR
@@ -211,7 +215,7 @@ for sub in subjects:
     for key in ["curr_rew", "next_rew", "two_next_rew", "three_next_rew", "l2_norm", "curr_path", 
                 "DSR_onefut", "DSR_twofut", "DSR_threefut","DSR_fourfut", "DSR_fivefut", "DSR_sixfut", "DSR_sevenfut"]:
         models[key] = np.zeros((len(locations), len(beh_df)), dtype=float)
-        
+
     
     for i_loc, loc in enumerate(locations):
         # models['location'][i_loc][beh_df['curr_loc'] == loc] = 1
@@ -238,6 +242,7 @@ for sub in subjects:
         return np.repeat(rot_vals, lens)
 
 
+    # future reward encodings 
     for task in tasks:
         idx  = (beh_df["task_config_ex"] == task)
         cols = np.flatnonzero(idx)
@@ -245,25 +250,12 @@ for sub in subjects:
         locs = beh_df.loc[idx, "curr_loc"].to_numpy()
         
         fut1_rew = rotate_runs(rews, 1)  # +1 run
-        fut1 = rotate_runs(locs, 1)  # +1 run
         fut2_rew = rotate_runs(rews, 2)  # +2 runs
-        fut2 = rotate_runs(locs, 2)  # +2 runs
         fut3_rew = rotate_runs(rews, 3)  # +3 runs
-        fut3 = rotate_runs(locs, 3)  # +3 runs
-        
-        fut4 = rotate_runs(locs, 4)  # +3 runs
-        fut5 = rotate_runs(locs, 5)  # +3 runs
-        fut6 = rotate_runs(locs, 6)  # +3 runs
-        fut7 = rotate_runs(locs, 7)  # +3 runs
 
         for fut, name in [(fut1_rew,"next_rew"), (fut2_rew,"two_next_rew"), (fut3_rew,"three_next_rew")]:
             rows = np.fromiter((loc_to_row[v] for v in fut), dtype=int, count=fut.size)
             models[name][rows, cols] = 1.0
-            
-        for fut, name in [(fut1,"DSR_onefut"), (fut2,"DSR_twofut"), (fut3,"DSR_threefut"), (fut4,"DSR_fourfut"), (fut5,"DSR_fivefut"), (fut6,"DSR_sixfut"), (fut7,"DSR_sevenfut")]:
-            rows = np.fromiter((loc_to_row[v] for v in fut), dtype=int, count=fut.size)
-            models[name][rows, cols] = 1.0
-            
     
     
     # create regressors.
@@ -273,11 +265,13 @@ for sub in subjects:
         # if model == 'prev_buttons' or model == 'buttons_out':
         #     continue
         for reg in regressors:
+            # import pdb; pdb.set_trace()
             df_reg = beh_df[beh_df['unique_time_bin_type']==reg]
             if model == 'path_rew':
                 label = 'reward' if reg.endswith('reward') else 'path' if reg.endswith('path') else None
                 EVs[model][reg] = np.full(len(models[model]), label, dtype=object)
             elif model == 'location':
+                # import pdb; pdb.set_trace()
                 raw_loc_dict[reg] = []
                 EVs[model][reg]=[]
                 for rep in range(0,int(np.max(df_reg['repeat']))+1):
@@ -295,21 +289,8 @@ for sub in subjects:
                 for rep in range(0,int(np.max(df_reg['repeat']))+1):
                     raw_button_dict[reg].append(df_reg[df_reg['repeat']==rep]['button_exec'].to_list())
                 most_common_button_sequence = np.array(Counter(map(lambda x: tuple(x), raw_button_dict[reg])).most_common(1)[0][0])
-                
-                # # OLD
-                # curr_button_string_list = df_reg['button_keys'].to_list()
-                # for repeat in curr_button_string_list:
-                #     raw_button_dict[reg].append(ast.literal_eval(repeat))
-                # # instead of choosing the average, choose the button sequence that occured most often
-                # # as the represenative plan.
-                # most_common_button_sequence = np.array(Counter(map(lambda x: tuple(x), raw_button_dict[reg])).most_common(1)[0][0])
-                # # next, upsample the path to a shared length = 12.
-                
                 EVs[model][reg] = resample_locations(most_common_button_sequence)
-                if most_common_button_sequence == []:
-                    import pdb; pdb.set_trace()
-                    # this should never happen, only the very last sequence should be []
-                
+
             else:
                 EVs[model][reg] = np.zeros((len(models[model])))  
                 for index, row in enumerate(models[model]):
@@ -333,7 +314,7 @@ for sub in subjects:
         EVs['state_action_loc'][r] = np.char.add(np.char.add(locs_str, '-'), EVs['buttons_out'][r])
         EVs['phys_abstr_space'][r] = np.char.add(np.char.add(locs_str, '-'), state_str)
 
-
+    
     # additionally, add the simple musicbox: at each of the 8 timebins, the future is already encoded.
     # order inside a task
     temp_order = ["A_path", "A_reward","B_path", "B_reward","C_path", "C_reward","D_path", "D_reward"]
@@ -345,24 +326,40 @@ for sub in subjects:
     # this is to do the rotation as well for the buttons:
     # previous buttons are the ones you pressed on the previous locations.
     
+    # initialise split models
     models['DSR'], models['state_action_DSR'], models['action_DSR']  = np.zeros((len(temp_order)*len_standardised_path)), np.zeros((len(temp_order)*len_standardised_path)), np.zeros((len(temp_order)*len_standardised_path))
+    
     split_models = ['rewDSR', 'pathDSR', 'rew_stateactionDSR', 'path_stateactionDSR']
     for s in split_models:
         models[s] = np.zeros((int(len(temp_order)/2)*len_standardised_path))
         EVs[s] = {}
     
-    #models['DSR_phase'] = np.zeros((len(temp_order)*len(locations)*n_phases))
+    split8_DSR_keys = ["location", "DSR_onefut", "DSR_twofut", "DSR_threefut","DSR_fourfut", "DSR_fivefut", "DSR_sixfut", "DSR_sevenfut"]
+    for s8 in split8_DSR_keys:
+        if s8 == 'location':
+            continue
+        else:
+            models[s] = np.zeros((int(len(temp_order)/8)*len_standardised_path))
+            EVs[s8] = {}
+    
+    split4_DSR_keys = ["curr_quarter", "next_quarter", "next2_quarter", "next3_quarter"]
+    for s4 in split4_DSR_keys:
+        models[s4] = np.zeros((int(len(temp_order)/4)*len_standardised_path))
+        EVs[s4] = {}
+    
     EVs['DSR'], EVs['state_action_DSR'], EVs['action_DSR'] = {}, {}, {}
     for task in tasks:
         # build base matrix (8 x 9) in canonical order
         bins_curr_task = [f"{task}_{temp_bin}" for temp_bin in temp_order]
         bins_curr_task_rew = [f"{task}_{temp_bin}" for temp_bin in temp_order if temp_bin.endswith('reward')]
         bins_curr_task_path = [f"{task}_{temp_bin}" for temp_bin in temp_order if temp_bin.endswith('path')]
+    
         try:
             # concatenate the 8 bins x 12-element vectors into a single 96-element vector
             # this will read: 0-12 = now. 12-24 = next subpath. 24-36 = subpath after, etc.
             # each EVs['location'][k] has 9 location 
             DSR_firing_for_subpath_A = np.concatenate([EVs['location'][k] for k in bins_curr_task], axis=0)  # shape (96,)
+
             rewDSR_firing_for_subpath_A = np.concatenate([EVs['location'][k] for k in bins_curr_task_rew], axis=0)  # shape (48,)
             pathDSR_firing_for_subpath_A = np.concatenate([EVs['location'][k] for k in bins_curr_task_path], axis=0)  # shape (48,)
             
@@ -374,9 +371,7 @@ for sub in subjects:
             
         except KeyError:
             continue
-        # import pdb; pdb.set_trace()
-        # if 'D1_backw' in task:
-        #     import pdb; pdb.set_trace()
+        
         n_bins = len(temp_order)  # 8 (4 x subpaths, 4x rewards)
         # for each position, rotate by whole blocks of `block_len` so subpath-chunks move together
         for pos, temp_bin in enumerate(temp_order):
@@ -391,6 +386,21 @@ for sub in subjects:
             rotated_loc = np.roll(DSR_firing_for_subpath_A, -pos * len_standardised_path).copy()
             EVs['DSR'][bin_curr_task] = rotated_loc
         
+            # also create the split DSRs 
+            for idx8, s8 in enumerate(split8_DSR_keys):
+                if s8 == 'location':
+                    continue
+                else:
+                    start_idx = idx8*12
+                    end_idx = idx8*12+12
+                    EVs[s8][bin_curr_task] = rotated_loc[start_idx:end_idx]
+        
+            
+            for idx4, s4 in enumerate(split4_DSR_keys):
+                start_idx = idx4*24
+                end_idx = idx4*12*2+24
+                EVs[s4][bin_curr_task] = rotated_loc[start_idx:end_idx]
+                
             # and the same for the state-action DSR
             rotated_state_action = np.roll(stact_firing_for_subpath_A, -pos * len_standardised_path).copy()
             EVs['state_action_DSR'][bin_curr_task] = rotated_state_action

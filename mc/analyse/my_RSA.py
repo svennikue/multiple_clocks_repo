@@ -463,11 +463,23 @@ def compute_hamming_distance_weighted(data_chunk, plotting = False, weight= 'now
             base = 0.5 ** np.arange(len_rep)
             weights = np.repeat(base, 12)   # 8 × 12 = 96
             
+        elif weight == 'fut_to_now':
+            # future is weighted the strongest, now the least
+            base = np.flip(0.5 ** np.arange(len_rep))
+            weights = np.repeat(base, 12)   # 8 × 12 = 96
+            
         elif weight == 'close_to_far_fut':
             # highest weight near center, lowest at extremes
             dist = np.minimum(np.arange(len_rep), len_rep - np.arange(len_rep))
             base = 0.5 ** dist
             weights = np.repeat(base, 12)
+            
+        elif weight == 'far_to_close_fut':
+            # lowest weight near center, highest at extremes
+            dist = np.minimum(np.arange(len_rep), len_rep - np.arange(len_rep))
+            base = np.flip(0.5 ** dist)
+            weights = np.repeat(base, 12)
+            
         else:
             # no weighting (standard Hamming similarity)
             weights = np.ones(data.shape[1])
@@ -858,7 +870,7 @@ def plot_model_correlations(stacked_model_RDMs, model_names,
                     txt = format(val, fmt)
                     # white text for strong colors, black otherwise
                     text_color = 'white' if abs(val) > 0.5 else 'black'
-                    ax.text(j, i, txt, ha='center', va='center', color=text_color, fontsize=9)
+                    ax.text(j, i, txt, ha='center', va='center', color=text_color, fontsize=4)
     
         # colorbar and layout
         cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
