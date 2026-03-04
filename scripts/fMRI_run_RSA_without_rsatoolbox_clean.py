@@ -79,7 +79,7 @@ else:
 # --- Load configuration ---
 # config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_simple.json"
 #config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_DSR_rew_vs_path_interaction_vis_combos.json"
-config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_which-fut-isin-DSR.json"
+config_file = sys.argv[2] if len(sys.argv) > 2 else "rsa_config_quarters_DSR_controls.json"
 with open(f"{config_path}/{config_file}", "r") as f:
     config = json.load(f)
 

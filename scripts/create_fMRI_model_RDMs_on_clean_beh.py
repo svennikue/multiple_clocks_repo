@@ -87,9 +87,9 @@ else:
     subj_no = '02'
 
 subjects = [f"sub-{subj_no}"]
-# subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36)]
-# subjects.remove('sub-29')
-# subjects.remove('sub-21')
+subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36)]
+subjects.remove('sub-29')
+subjects.remove('sub-21')
 
 # --- Load configuration ---
 source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks"
@@ -110,7 +110,7 @@ with open(f"{config_path}/{config_file}", "r") as f:
 #
 # SETTINGS
 #
-plot_RDMs = True 
+plot_RDMs = False 
 save_RDMs = True
 EV_string = config.get("load_EVs_from", "DSR_loc-fut-rews-state-dur-type")
 plot_DSR_task_matrices = False
