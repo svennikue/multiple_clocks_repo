@@ -80,12 +80,13 @@ def plot_model_rdm_half(
     show : bool
         Whether to call plt.show().
     """
-    ev_array = np.asarray(ev_array, dtype=float)
+    
     if labels is None:
         labels = [str(i) for i in range(ev_array.shape[0])]
     labels = list(labels)
 
     if method == "crosscorr":
+        ev_array = np.asarray(ev_array, dtype=float)
         if ev_array.shape[0] % 2 != 0:
             raise ValueError("crosscorr expects an even number of conditions.")
         vec = mc.analyse.my_RSA.compute_crosscorr(ev_array, include_diagonal=True)[0]
@@ -100,8 +101,26 @@ def plot_model_rdm_half(
         else:
             labels = labels[:n]
     elif method == "corrcoef":
+        ev_array = np.asarray(ev_array, dtype=float)
         corr = np.corrcoef(ev_array)
         rdm = 1.0 - corr
+        n_total = rdm.shape[0]
+        half_n = n_total // 2
+        if label_half == "first":
+            rdm = rdm[:half_n, :half_n]
+            labels = labels[:half_n]
+        elif label_half == "second":
+            rdm = rdm[half_n:half_n * 2, half_n:half_n * 2]
+            labels = labels[half_n:half_n * 2]
+        elif label_half in ("full", None):
+            pass
+        else:
+            raise ValueError(f"Unknown label_half: {label_half}")
+    elif method == 'hamming_distance':
+        data = np.asarray(ev_array, dtype=object)
+        overlap = np.equal(data[:, None, :], data[None, :,:])
+        hamming_sim_matrix = overlap.mean(axis = 2)
+        rdm = 1.0 - hamming_sim_matrix
         n_total = rdm.shape[0]
         half_n = n_total // 2
         if label_half == "first":

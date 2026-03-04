@@ -86,7 +86,6 @@ with open(f"{config_path}/{config_file}", "r") as f:
 # SETTINGS
 EV_string = config.get("load_EVs_from")
 regression_version = config.get("regression_version")
-split_rew_from_path = config.get("split_rew_from_path", False)
 
 today_str = date.today().strftime("%d-%m-%Y")
 name_RSA = config.get("name_of_RSA")

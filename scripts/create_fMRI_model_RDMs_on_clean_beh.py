@@ -110,7 +110,7 @@ with open(f"{config_path}/{config_file}", "r") as f:
 #
 # SETTINGS
 #
-plot_RDMs = False 
+plot_RDMs = True 
 save_RDMs = True
 EV_string = config.get("load_EVs_from", "DSR_loc-fut-rews-state-dur-type")
 plot_DSR_task_matrices = False
@@ -208,12 +208,12 @@ for sub in subjects:
         models['state'][s_i][beh_df['state'] == state] = 1
     
     # these models are order-preserving encodings which will be computed based on hamming-distance
-    for key in ['next_buttons', 'prev_buttons', 'buttons_out', 'location', 'state_action_loc', 'phys_abstr_space']:
+    for key in ['next_buttons', 'prev_buttons', 'buttons_out', 'location', 'state_action_loc', 'phys_abstr_space',
+                "curr_path","DSR_onefut", "DSR_twofut", "DSR_threefut","DSR_fourfut", "DSR_fivefut", "DSR_sixfut", "DSR_sevenfut"]:
         models[key] = np.zeros((len_standardised_path, len(beh_df)), dtype=float)
 
     # these models are one-hot encodings of locations which will be computes based on cosine similarity
-    for key in ["curr_rew", "next_rew", "two_next_rew", "three_next_rew", "l2_norm", "curr_path", 
-                "DSR_onefut", "DSR_twofut", "DSR_threefut","DSR_fourfut", "DSR_fivefut", "DSR_sixfut", "DSR_sevenfut"]:
+    for key in ["curr_rew", "next_rew", "two_next_rew", "three_next_rew", "l2_norm"]:
         models[key] = np.zeros((len(locations), len(beh_df)), dtype=float)
 
     
@@ -333,6 +333,12 @@ for sub in subjects:
     for s in split_models:
         models[s] = np.zeros((int(len(temp_order)/2)*len_standardised_path))
         EVs[s] = {}
+        
+    # split_models = ['rew_stateactionDSR', 'path_stateactionDSR']
+    # for s in split_models:
+    #     models[s] = np.zeros((int(len(temp_order)/2)*len_standardised_path*4))
+    #     EVs[s] = {}
+        
     
     split8_DSR_keys = ["location", "DSR_onefut", "DSR_twofut", "DSR_threefut","DSR_fourfut", "DSR_fivefut", "DSR_sixfut", "DSR_sevenfut"]
     for s8 in split8_DSR_keys:
@@ -346,6 +352,11 @@ for sub in subjects:
     for s4 in split4_DSR_keys:
         models[s4] = np.zeros((int(len(temp_order)/4)*len_standardised_path))
         EVs[s4] = {}
+        
+    rot_split4_DSR_keys = ["rot_curr_quarter", "rot_next_quarter", "rot_next2_quarter", "rot_next3_quarter"]
+    for rs4 in rot_split4_DSR_keys:
+        models[rs4] = np.zeros((int(len(temp_order)/4)*len_standardised_path))
+        EVs[rs4] = {}
     
     EVs['DSR'], EVs['state_action_DSR'], EVs['action_DSR'] = {}, {}, {}
     for task in tasks:
@@ -400,7 +411,13 @@ for sub in subjects:
                 start_idx = idx4*24
                 end_idx = idx4*12*2+24
                 EVs[s4][bin_curr_task] = rotated_loc[start_idx:end_idx]
-                
+            
+            # import pdb; pdb.set_trace()
+            for idxr4, rs4 in enumerate(rot_split4_DSR_keys):
+                r_start_idx = idxr4*24
+                r_end_idx = idxr4*12*2+24
+                EVs[rs4][bin_curr_task] = rotated_loc[r_start_idx:r_end_idx]
+                    
             # and the same for the state-action DSR
             rotated_state_action = np.roll(stact_firing_for_subpath_A, -pos * len_standardised_path).copy()
             EVs['state_action_DSR'][bin_curr_task] = rotated_state_action
@@ -454,7 +471,15 @@ for sub in subjects:
             #     ev_array = np.zeros((int(len(EVs[model])), len(EVs['DSR'][bin_curr_task])))
             # else:
             evs_for_model = [ev for ev in EV_keys if ev in EVs[model]]
-            ev_array = np.zeros((int(len(evs_for_model)), len(models[model])))
+            if model in ['location', 'DSR', 'prev_buttons', 'buttons_out', 'next_buttons', 'phys_abstr_space', 'action_DSR', 'state_action_DSR',
+                           'state_action_glob', 'state_action_loc', "rewDSR", "pathDSR", "rew_stateactionDSR", "path_stateactionDSR",
+                           'DSR_onefut', 'DSR_twofut','DSR_threefut','DSR_fourfut','DSR_fivefut','DSR_sixfut','DSR_sevenfut',
+                           'curr_quarter','next_quarter','next2_quarter','next3_quarter']:
+                ev_array = np.zeros((int(len(evs_for_model)), len(models[model])), dtype = object)
+                method = 'hamming_distance'
+            else:
+                ev_array = np.empty((int(len(evs_for_model)), len(models[model])), dtype = float)
+                method = 'crosscorr'
             idx = -1
             y_labels = []
             for ev in evs_for_model:
@@ -462,32 +487,12 @@ for sub in subjects:
                 idx = idx +1
                 y_labels.append(ev)
                 ev_array[idx] = EVs[model][ev]
-                    
-            # for ev in EVs[model]:
-            #     if ev.endswith('reward'):
-            #         idx = idx +1
-            #         y_labels.append(ev)
-            #         ev_array[idx] = EVs[model][ev]
-            
-            # ev_array_all = np.zeros((int(len(EVs[model])), len(models[model])))
-            # y_labels_all = []
-            # for idx, ev in enumerate(EVs[model]):
-            #     y_labels_all.append(ev)
-            #     ev_array_all[idx] = EVs[model][ev]
-            # if model == 'DSR':
-            #     mc.plotting.results.plot_model_rdm_half(
-            #         ev_array,
-            #         labels=y_labels,
-            #         method="crosscorr",
-            #         label_half="first",
-            #         group_size=8,
-            #         title=model,
-            #     )
+                
             print(f"now plotting RDM for {model} model")
             mc.plotting.results.plot_model_rdm_half(
                 ev_array,
                 labels=y_labels,
-                method="crosscorr",
+                method=method,
                 label_half="first",
                 group_size=8,
                 title=model,
