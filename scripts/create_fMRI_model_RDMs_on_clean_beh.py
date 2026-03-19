@@ -110,7 +110,7 @@ with open(f"{config_path}/{config_file}", "r") as f:
 #
 # SETTINGS
 #
-plot_RDMs = False 
+plot_RDMs = True 
 save_RDMs = True
 EV_string = config.get("load_EVs_from", "DSR_loc-fut-rews-state-dur-type")
 plot_DSR_task_matrices = False

@@ -969,8 +969,8 @@ def compute_fut_spatial_tunings(sessions, trials = 'all_minus_explore', plotting
                 "avg_consistency_at_peak": avg_consistency_at_peak,
                 "count_mode_peak": f"{frequency_peak_shift_validated} out of {len(validate_peak_lag[:,1])}",
                 "perm_idx": perm_idx,
-                "mean_firing_rate": beh_df[f'mean_FR_{curr_neuron}'].to_numpy()[0],
-                "sparse_repeats": sum(~beh_df[f'consistent_FR_{curr_neuron}'])
+                # "mean_firing_rate": beh_df[f'mean_FR_{curr_neuron}'].to_numpy()[0],
+                # "sparse_repeats": sum(~beh_df[f'consistent_FR_{curr_neuron}'])
                 })
                 
                 if not no_perms:
@@ -1064,7 +1064,9 @@ if __name__ == "__main__":
     # For debugging, bypass Fire and call compute_one_subject directly.
     # trials can be 'all', 'all_correct', 'early', 'late', 'all_minus_explore', 'residualised'
     # compute_fut_spatial_tunings(sessions=[3], trials = 'all', plotting=False, no_perms = None, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=False)
-    compute_fut_spatial_tunings(sessions=list(range(0,64)), trials = 'residualised', no_perms = None, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=True)
+    # OG one
+    # compute_fut_spatial_tunings(sessions=list(range(0,64)), trials = 'residualised', no_perms = None, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=True)
+    compute_fut_spatial_tunings(sessions=list(range(7,8)), trials = 'residualised', no_perms = None, combine_two_grids = True, sparsity_c = 'gridwise_qc', weighted = True, save_all=True, plotting=True)
     # compute_fut_spatial_tunings(sessions=list(range(0,60)), trials = 'all', no_perms = 200, combine_two_grids = True)
     # compute_fut_spatial_tunings(sessions=[31], trials = 'all', plotting = False, no_perms = None, combine_two_grids = True)
     

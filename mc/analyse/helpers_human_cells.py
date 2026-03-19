@@ -78,6 +78,13 @@ def button_change_indices(buttons):
     changes = np.where(arr[:-1] != arr[1:])[0] + 1
     return changes
 
+def get_data(sub):
+    data_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives"
+    if not os.path.isdir(data_folder):
+        print("running on ceph")
+        data_folder = "/ceph/behrens/svenja/human_ABCD_ephys/derivatives"
+    data_norm = mc.analyse.helpers_human_cells.load_norm_data(data_folder, [f"{sub:02}"])
+    return data_norm, data_folder
 
 
 def filter_data(data, session, rep_filter):

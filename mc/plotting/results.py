@@ -133,6 +133,9 @@ def plot_model_rdm_half(
             pass
         else:
             raise ValueError(f"Unknown label_half: {label_half}")
+        vmin = 0
+        vmax = 1
+        vcenter = 0.5
     else:
         raise ValueError(f"Unknown method: {method}")
 
