@@ -1,7 +1,44 @@
+import os
 import mc
 import pandas as pd
 import numpy as np
 from matplotlib import pyplot as plt
+
+# -----------------------------------------------------------------------
+# Part 1 – Heatmap: location frequency as A/B/C/D across top configs
+# -----------------------------------------------------------------------
+PIVOT_CSV   = "/Users/xpsy1114/Documents/projects/multiple_clocks/results/config_pivot_table.csv"
+RESULTS_DIR = "/Users/xpsy1114/Documents/projects/multiple_clocks/results"
+
+df_pivot = pd.read_csv(PIVOT_CSV)
+
+# Keep configs with at least 21 total runs
+top = df_pivot[df_pivot['total_runs'] >= 21].copy()
+top[['A', 'B', 'C', 'D']] = top['sequence'].str.split('-', expand=True).astype(int)
+
+# Build 9x4 frequency matrix (locations 1-9 × rewards A/B/C/D),
+# weighted by total_runs so more-repeated configs count more.
+freq = np.zeros((9, 4))
+for _, row in top.iterrows():
+    for j, rew in enumerate(['A', 'B', 'C', 'D']):
+        loc_idx = row[rew] - 1          # location 1-9 → index 0-8
+        freq[loc_idx, j] += row['total_runs']
+
+fig, ax = plt.subplots(figsize=(4, 6))
+im = ax.imshow(freq, aspect='auto', cmap='YlOrRd')
+ax.set_xticks(range(4));  ax.set_xticklabels(['A', 'B', 'C', 'D'], fontsize=12)
+ax.set_yticks(range(9));  ax.set_yticklabels(range(1, 10))
+ax.set_xlabel('Reward position');  ax.set_ylabel('Location (1–9)')
+ax.set_title(f'Location frequency per reward\n(top {len(top)} configs, ≥21 runs)')
+plt.colorbar(im, ax=ax, label='Total runs (weighted)')
+plt.tight_layout()
+plt.savefig(os.path.join(RESULTS_DIR, 'top_config_location_heatmap.png'), dpi=150)
+plt.close()
+print(f"Heatmap saved.  Top configs: {len(top)},  total runs covered: {top['total_runs'].sum()}")
+
+# -----------------------------------------------------------------------
+# Part 2 – Per-session reward and step tables
+# -----------------------------------------------------------------------
 
 
 def runs_for_row(row):
@@ -89,6 +126,9 @@ def detect_bins_matrix(df_locs, df_beh):
         # flatten this block into one step sequence, but do not cross block boundary
         for trial_in_block, trial_idx in enumerate(beh_block.index):
             row = df_locs.loc[trial_idx]
+            if row.isna().all():
+                print(f"  [flag] trial {trial_idx} has all-NaN locations (recording dropout), skipping")
+                continue
             runs = runs_for_row(row).copy()
 
             runs["trial_index"] = trial_idx
@@ -103,6 +143,8 @@ def detect_bins_matrix(df_locs, df_beh):
 
             block_rows.append(runs)
 
+        if not block_rows:
+            continue   # entire block was NaN dropout trials
         block_df = pd.concat(block_rows, ignore_index=True)
 
         # add lookahead columns, only within this block
@@ -119,6 +161,8 @@ def detect_bins_matrix(df_locs, df_beh):
         # trial summary table
         for trial_in_block, trial_idx in enumerate(beh_block.index):
             row = df_locs.loc[trial_idx]
+            if row.isna().all():
+                continue   # already flagged in the step loop above
             runs = runs_for_row(row).copy()
 
             rec = {
@@ -128,21 +172,29 @@ def detect_bins_matrix(df_locs, df_beh):
                 "grid_no": beh.loc[trial_idx, "grid_no"],
             }
 
+            is_correct = beh.loc[trial_idx, "correct"] == 1
             for name, t in targets.items():
                 run = find_run(runs, t)
                 val = int(run.val)
                 expected = beh.loc[trial_idx, f"loc_{name}"]
 
                 if pd.notna(expected) and int(expected) != val:
-                    raise ValueError(
-                        f"Mismatch at trial {trial_idx} "
-                        f"(grid_block={block_id}, grid_no={beh.loc[trial_idx, 'grid_no']}), "
-                        f"{name}: expected {expected}, got {val}"
-                    )
+                    if is_correct:
+                        # Mismatch on a correct trial is a real data problem — raise
+                        raise ValueError(
+                            f"Mismatch on CORRECT trial {trial_idx} "
+                            f"(grid_block={block_id}, grid_no={beh.loc[trial_idx, 'grid_no']}), "
+                            f"{name}: expected {expected}, got {val}"
+                        )
+                    else:
+                        # On incorrect trials the subject didn't reach the reward,
+                        # so the location at the target bin won't match — expected behaviour.
+                        print(f"  [flag] incorrect trial {trial_idx}, {name}: "
+                              f"locations bin says {val}, beh expected {int(expected)}")
 
                 rec[f"{name}_start"] = int(run.start)
-                rec[f"{name}_end"] = int(run.end)
-                rec[f"{name}_val"] = val
+                rec[f"{name}_end"]   = int(run.end)
+                rec[f"{name}_val"]   = val
 
             rec["D_wrap"] = rec["D_start"] > rec["D_end"]
             rew_rows.append(rec)
@@ -160,18 +212,28 @@ def detect_bins_matrix(df_locs, df_beh):
     return all_steps_df, rew_df
 
 
-for sub in range(20, 22):
+skipped = []
+for sub in range(1, 64):
     data_dict, source_path = mc.analyse.helpers_human_cells.get_data(sub)
-    curr_sub_beh = data_dict[f"sub-{sub:02}"]["beh"]
+    if f"sub-{sub:02}" not in data_dict:
+        print(f"s{sub:02}: data not found, skipping.")
+        skipped.append(sub)
+        continue
+
+    curr_sub_beh  = data_dict[f"sub-{sub:02}"]["beh"]
     curr_sub_locs = data_dict[f"sub-{sub:02}"]["locations"]
 
-    plt.figure()
-    plt.imshow(curr_sub_locs, aspect="auto")
-    for i in [90, 180, 270]:
-        plt.axvline(i, color="white")
-    plt.title(f"locations for subject {sub}")
+    try:
+        all_steps_df, rew_df = detect_bins_matrix(curr_sub_locs, curr_sub_beh)
+    except ValueError as e:
+        print(f"s{sub:02}: ERROR (correct-trial mismatch) — {e}")
+        skipped.append(sub)
+        continue
 
-    all_steps_df, rew_df = detect_bins_matrix(curr_sub_locs, curr_sub_beh)
+    # Save both tables next to the existing cells_and_beh files
+    out_dir = os.path.join(source_path, f"s{sub:02}", "cells_and_beh")
+    all_steps_df.to_csv(os.path.join(out_dir, f"all_steps_sub{sub:02}.csv"),    index=False)
+    rew_df.to_csv(       os.path.join(out_dir, f"reward_bins_sub{sub:02}.csv"), index=False)
+    print(f"s{sub:02}: saved all_steps ({len(all_steps_df)} rows) and reward_bins ({len(rew_df)} rows)")
 
-    print(rew_df.head())
-    print(all_steps_df.head())
+print(f"\nDone.  Flagged+skipped sessions: {skipped if skipped else 'none'}")

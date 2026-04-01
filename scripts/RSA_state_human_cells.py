@@ -32,7 +32,7 @@ import pickle
 data_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives"
 group_folder = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group"
 
-subjects = [f"{i:02}" for i in range(1, 59) if i not in [6, 9, 27, 44]]
+subjects = [f"{i:02}" for i in range(1, 64) if i not in [6, 9, 27, 44]]
 
 
 save_results = True
