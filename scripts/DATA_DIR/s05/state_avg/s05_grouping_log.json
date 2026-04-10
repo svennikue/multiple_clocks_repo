@@ -1,0 +1,145 @@
+{
+  "session": "05",
+  "n_neurons": 4,
+  "n_correct_trials": 121,
+  "groups": [
+    {
+      "group_idx": 0,
+      "configs": [
+        [
+          6,
+          4,
+          2,
+          1
+        ]
+      ],
+      "blocks": [
+        1,
+        7
+      ],
+      "run1_blocks": [
+        1
+      ],
+      "run2_blocks": [
+        7
+      ],
+      "n_trials_run1": 10,
+      "n_trials_run2": 10
+    },
+    {
+      "group_idx": 1,
+      "configs": [
+        [
+          5,
+          9,
+          8,
+          6
+        ]
+      ],
+      "blocks": [
+        2,
+        9
+      ],
+      "run1_blocks": [
+        2
+      ],
+      "run2_blocks": [
+        9
+      ],
+      "n_trials_run1": 10,
+      "n_trials_run2": 11
+    },
+    {
+      "group_idx": 2,
+      "configs": [
+        [
+          5,
+          8,
+          9,
+          7
+        ]
+      ],
+      "blocks": [
+        3,
+        12
+      ],
+      "run1_blocks": [
+        3
+      ],
+      "run2_blocks": [
+        12
+      ],
+      "n_trials_run1": 10,
+      "n_trials_run2": 10
+    },
+    {
+      "group_idx": 3,
+      "configs": [
+        [
+          9,
+          5,
+          8,
+          1
+        ]
+      ],
+      "blocks": [
+        4,
+        11
+      ],
+      "run1_blocks": [
+        4
+      ],
+      "run2_blocks": [
+        11
+      ],
+      "n_trials_run1": 10,
+      "n_trials_run2": 10
+    },
+    {
+      "group_idx": 4,
+      "configs": [
+        [
+          3,
+          4,
+          2,
+          7
+        ]
+      ],
+      "blocks": [
+        5,
+        8
+      ],
+      "run1_blocks": [
+        5
+      ],
+      "run2_blocks": [
+        8
+      ],
+      "n_trials_run1": 10,
+      "n_trials_run2": 10
+    },
+    {
+      "group_idx": 5,
+      "configs": [
+        [
+          3,
+          7,
+          2,
+          6
+        ]
+      ],
+      "blocks": [
+        6,
+        10
+      ],
+      "run1_blocks": [
+        6
+      ],
+      "run2_blocks": [
+        10
+      ],
+      "n_trials_run1": 10,
+      "n_trials_run2": 10
+    }
+  ]
+}

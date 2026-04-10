@@ -1,0 +1,35 @@
+{
+  "neuron_names": [
+    "02_01-01-chan104-EC",
+    "02_02-02-chan106-EC",
+    "02_03-03-chan109-EC",
+    "02_04-04-chan112-EC",
+    "02_05-05-chan112-EC",
+    "02_06-06-chan113-EC",
+    "02_07-07-chan114-EC",
+    "02_08-08-chan114-EC",
+    "02_09-09-chan116-EC"
+  ],
+  "cell_labels": [
+    "EC",
+    "EC",
+    "EC",
+    "EC",
+    "EC",
+    "EC",
+    "EC",
+    "EC",
+    "EC"
+  ],
+  "electrode_labels": [
+    "01-chan104",
+    "02-chan106",
+    "03-chan109",
+    "04-chan112",
+    "05-chan112",
+    "06-chan113",
+    "07-chan114",
+    "08-chan114",
+    "09-chan116"
+  ]
+}

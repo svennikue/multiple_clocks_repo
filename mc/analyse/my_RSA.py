@@ -426,6 +426,7 @@ def make_category_masks(data_chunk, plotting=False, include_diagonal=True, mask_
                 plt.imshow(M.astype(int), aspect='auto', cmap='Greys')
                 plt.axis('off')
             plt.show()
+            
     # import pdb; pdb.set_trace()
     # make sure to make this reversed: only exclude path-reward, inlude everything else.
     if mask_only_path_rew_combos == True:
@@ -559,10 +560,16 @@ def compute_hamming_distance(data_chunk, plotting = False, include_diagonal = Tr
         else:
             RDM.append(rdm[np.triu_indices(n, k=1)]) 
         len_th = len(data)/2
+        # import pdb; pdb.set_trace()
         if len_th == 24 or len_th == 48:
             no_tasks = 6
+            len_task = 8
         elif len_th == 40:
             no_tasks = 10
+            len_task = 8
+        elif len_th == 2880:
+            no_tasks = 8
+            len_task = 360
             
         if plotting == True:
             plt.figure()
@@ -572,15 +579,19 @@ def compute_hamming_distance(data_chunk, plotting = False, include_diagonal = Tr
                 plt.axvline(i-0.5, color='white', ls = 'dashed')
             for i in range(0,n,int(n/no_tasks)):
                 plt.axhline(i-0.5, color='white', ls = 'dashed')
-            # for i in range(0,n,8):
-            #     plt.axvline(i-0.5, color='white', ls = 'dashed')
-            # for i in range(0,n,8):
-            #     plt.axhline(i-0.5, color='white', ls = 'dashed')
+            for i in range(0,n,len_task):
+                plt.axvline(i-0.5, color='white', ls = 'dashed')
+            for i in range(0,n,len_task):
+                plt.axhline(i-0.5, color='white', ls = 'dashed')
             if no_tasks == 10:
                 labels = ['A1_backw', 'A1_forw', 'B1_backw', 'B1_forw', 'C1_backw', 'C1_forw', 'D1_back', 'D1_forw', 'E1_backw', 'E1_forw']
             elif no_tasks == 6:
                 labels = ['A1_backw', 'A1_forw', 'C1_backw', 'C1_forw', 'E1_backw', 'E1_forw']
+            elif no_tasks == 8:
+                labels = ['3-7-9-5', '8-2-6-7', '1-9-5-8', '4-8-1-3', '6-4-2-9', '9-1-3-4', '7-3-4-2', '2-5-7-6']
+                
             plt.yticks(np.arange(2, rdm.shape[1], int(n/no_tasks)), labels)
+            # plt.xticks(np.arange(2, rdm.shape[1], int(n/no_tasks)), labels)
             plt.colorbar()
             
     return RDM
@@ -661,7 +672,7 @@ def compute_hamming_difference(data_chunk, combination, plotting = False, includ
 
 def compute_crosscorr(data_chunk, plotting = False, include_diagonal = True):  
     RDM = []
-    #import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     if not isinstance(data_chunk, (list, tuple)):
         data_chunk = [data_chunk]
     
@@ -688,8 +699,19 @@ def compute_crosscorr(data_chunk, plotting = False, include_diagonal = True):
             RDM.append(rdm[np.triu_indices(n, k=1)]) 
             
         if plotting == True:
+            # import pdb; pdb.set_trace()
             plt.figure()
             plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm', vmax=2, vmin=0)
+            
+            plt.figure()
+            plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm')
+            plt.title('across half RDM, random threshold.')
+            plt.colorbar()
+            # delete this again.
+            for i in range(0,8):
+                plt.axhline(i*360)
+                plt.axvline(i*360)
+            
             plt.figure()
             plt.imshow(rdm_both_halves, aspect = 'auto', cmap = 'coolwarm')
             

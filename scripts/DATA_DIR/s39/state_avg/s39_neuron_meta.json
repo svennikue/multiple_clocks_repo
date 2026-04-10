@@ -1,0 +1,47 @@
+{
+  "neuron_names": [
+    "39_01-01-chan101-OFC",
+    "39_02-02-chan107-ACC",
+    "39_03-03-chan107-ACC",
+    "39_04-04-chan108-ACC",
+    "39_05-05-chan108-ACC",
+    "39_06-06-chan109-ACC",
+    "39_07-07-chan110-ACC",
+    "39_08-08-chan110-ACC",
+    "39_09-09-chan112-ACC",
+    "39_10-10-chan112-ACC",
+    "39_11-11-chan112-ACC",
+    "39_12-12-chan115-HC",
+    "39_13-13-chan115-HC"
+  ],
+  "cell_labels": [
+    "OFC",
+    "ACC",
+    "ACC",
+    "ACC",
+    "ACC",
+    "ACC",
+    "ACC",
+    "ACC",
+    "ACC",
+    "ACC",
+    "ACC",
+    "HC",
+    "HC"
+  ],
+  "electrode_labels": [
+    "01-chan101",
+    "02-chan107",
+    "03-chan107",
+    "04-chan108",
+    "05-chan108",
+    "06-chan109",
+    "07-chan110",
+    "08-chan110",
+    "09-chan112",
+    "10-chan112",
+    "11-chan112",
+    "12-chan115",
+    "13-chan115"
+  ]
+}

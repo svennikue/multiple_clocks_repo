@@ -7,6 +7,7 @@ Documents all modules within sub-package simulation
 #import mc.simulation.set_location_matrix
 import mc.plotting.results
 import mc.plotting.deep_data_plt
+import mc.plotting.cell_results
 
 #import mc.set_clocks
 #import mc.set_location_matrix

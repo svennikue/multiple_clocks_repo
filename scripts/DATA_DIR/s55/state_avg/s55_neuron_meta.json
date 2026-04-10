@@ -1,0 +1,32 @@
+{
+  "neuron_names": [
+    "55_01-01-chan102-OFC",
+    "55_02-02-chan113-ACC",
+    "55_03-03-chan117-HC",
+    "55_04-04-chan118-HC",
+    "55_05-05-chan119-HC",
+    "55_06-06-chan120-HC",
+    "55_07-07-chan120-HC",
+    "55_08-08-chan120-HC"
+  ],
+  "cell_labels": [
+    "OFC",
+    "ACC",
+    "HC",
+    "HC",
+    "HC",
+    "HC",
+    "HC",
+    "HC"
+  ],
+  "electrode_labels": [
+    "01-chan102",
+    "02-chan113",
+    "03-chan117",
+    "04-chan118",
+    "05-chan119",
+    "06-chan120",
+    "07-chan120",
+    "08-chan120"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "neuron_names": [
+    "47_01-01-chan97-OFC",
+    "47_02-02-chan102-OFC",
+    "47_03-03-chan102-OFC"
+  ],
+  "cell_labels": [
+    "OFC",
+    "OFC",
+    "OFC"
+  ],
+  "electrode_labels": [
+    "01-chan97",
+    "02-chan102",
+    "03-chan102"
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "neuron_names": [
+    "56_01-01-manual-HC",
+    "56_02-02-manual-HC",
+    "56_03-03-manual-HC",
+    "56_04-04-manual-HC",
+    "56_05-05-manual-HC",
+    "56_06-06-manual-HC",
+    "56_07-07-manual-HC",
+    "56_08-08-manual-HC",
+    "56_09-09-manual-HC"
+  ],
+  "cell_labels": [
+    "HC",
+    "HC",
+    "HC",
+    "HC",
+    "HC",
+    "HC",
+    "HC",
+    "HC",
+    "HC",
+    "HC"
+  ],
+  "electrode_labels": [
+    "01-manual",
+    "02-manual",
+    "03-manual",
+    "04-manual",
+    "05-manual",
+    "06-manual",
+    "07-manual",
+    "08-manual",
+    "09-manual",
+    "10-manual"
+  ]
+}

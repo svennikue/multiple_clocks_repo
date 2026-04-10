@@ -1,0 +1,35 @@
+{
+  "neuron_names": [
+    "26_01-01-mLT2aHa05-HC",
+    "26_02-02-mLT2aHa05-HC",
+    "26_03-03-mLT2aHa05-HC",
+    "26_04-04-mLT2bHbE01-EC",
+    "26_05-05-mLT2bHbE07-EC",
+    "26_06-06-mLT2bHbE07-EC",
+    "26_07-07-mLT2bHbE07-EC",
+    "26_08-08-mRT2aHa05-HC",
+    "26_09-09-mRT2aHa05-HC"
+  ],
+  "cell_labels": [
+    "HC",
+    "HC",
+    "HC",
+    "EC",
+    "EC",
+    "EC",
+    "EC",
+    "HC",
+    "HC"
+  ],
+  "electrode_labels": [
+    "01-mLT2aHa05",
+    "02-mLT2aHa05",
+    "03-mLT2aHa05",
+    "04-mLT2bHbE01",
+    "05-mLT2bHbE07",
+    "06-mLT2bHbE07",
+    "07-mLT2bHbE07",
+    "08-mRT2aHa05",
+    "09-mRT2aHa05"
+  ]
+}

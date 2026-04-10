@@ -354,7 +354,9 @@ for sub in subjects:
             combo_model_name = combo["name"]
             models_to_combine = combo["regressors"].copy()
             if masked_conditions:
+                masked_conds = []
                 for cond in conditions_masking:
+                    masked_conds.append(cond)
                     print(f"now computing combo model, only considering conditions {cond}")
                     if cond == 'path-path':
                         if 'A-state' in models_to_combine:
@@ -430,6 +432,7 @@ for sub in subjects:
         "smoothing": smoothing,
         "fwhm": fwhm,
         "searchlight_mask": searchlight_mask,
+        "masked conditions": masked_conds,
         "n_all_EVs": len(all_EV_keys),
         "n_selected_EVs": len(EV_keys),
         "models_evaluated": selected_models,

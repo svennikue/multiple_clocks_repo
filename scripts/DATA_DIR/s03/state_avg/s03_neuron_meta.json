@@ -1,0 +1,24 @@
+{
+  "neuron_names": [
+    "03_01-01-GA1-RAC1-ACC",
+    "03_02-02-GA1-RAC4-ACC",
+    "03_03-03-GA1-RAC5-ACC",
+    "03_04-04-GA1-RAC6-ACC"
+  ],
+  "cell_labels": [
+    "ACC",
+    "ACC",
+    "ACC",
+    "ACC",
+    "ACC",
+    "ACC"
+  ],
+  "electrode_labels": [
+    "01-GA1-RAC1",
+    "02-GA1-RAC1",
+    "03-GA1-RAC4",
+    "04-GA1-RAC5",
+    "05-GA1-RAC6",
+    "06-GA1-RAC6"
+  ]
+}

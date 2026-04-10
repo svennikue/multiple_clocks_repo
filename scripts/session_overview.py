@@ -8,18 +8,23 @@ Collects per-session metadata:
   - Neuron counts per ROI
   - Cross-session config overlap
 
+Also reports location frequency for A, B, C pooled across all sessions
+(for decoding analysis of current reward location).
+
 Reads only lightweight metadata files (no neuron firing data).
 """
 
 import os
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 from collections import defaultdict
 
 DATA_FOLDER  = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives"
-OUTPUT_CSV   = "/Users/xpsy1114/Documents/projects/multiple_clocks/results/session_overview.csv"
-CONFIG_CSV   = "/Users/xpsy1114/Documents/projects/multiple_clocks/results/config_cross_session_overview.csv"
-PIVOT_CSV    = "/Users/xpsy1114/Documents/projects/multiple_clocks/results/config_pivot_table.csv"
+OUTPUT_CSV   = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/session_overview.csv"
+CONFIG_CSV   = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/config_cross_session_overview.csv"
+PIVOT_CSV    = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/config_pivot_table.csv"
 
 ROIS = ('entorhinal', 'hippocampus', 'ACC', 'amygdala', 'PCC', 'OFC', 'other')
 
@@ -189,7 +194,7 @@ df = pd.DataFrame(rows)
 config_summary_rows = []
 for cfg, entries in sorted(global_registry.items(), key=lambda x: -sum(n for _, n in x[1])):
     total_runs     = sum(n for _, n in entries)
-    sessions_list  = str([s for s, _ in entries])           # e.g. "['s02', 's04', ...]"
+    sessions_list  = [s for s, _ in entries]  # e.g. ['s02', 's04', ...]
     run_details    = ', '.join(f"{s}({n})" for s, n in entries)
     config_summary_rows.append({
         'sequence':           config_label(cfg),
@@ -246,3 +251,64 @@ print(df_pivot[summary_cols].head(10).to_string(index=False))
 print(f"\nSession overview saved to:   {OUTPUT_CSV}")
 print(f"Config summary saved to:     {CONFIG_CSV}")
 print(f"Config pivot table saved to: {PIVOT_CSV}")
+
+# -----------------------------------------------------------------------
+# Location frequency analysis (for decoding of current reward location)
+#   Pool locations A, B, C across all sessions and all grid blocks.
+#   D is excluded (the final/terminal reward location, not a 'current' one
+#   during traversal — adjust if needed).
+# -----------------------------------------------------------------------
+
+# Collect all A, B, C location values across every session
+loc_counts = np.zeros(10, dtype=int)   # index 0 unused; locations 1-9
+
+for sub_str in session_dirs:
+    data = load_session(sub_str)
+    if data is None:
+        continue
+    configs = data['configs']   # shape: (n_blocks, 4); columns = A,B,C,D
+    for abc_col in range(3):    # columns 0,1,2 → A, B, C
+        for val in configs[:, abc_col]:
+            if 1 <= val <= 9:
+                loc_counts[val] += 1
+
+loc_freq = loc_counts[1:]   # locations 1–9
+total_abc = loc_freq.sum()
+
+print("\n=== Location Frequency: A, B, C pooled across all sessions ===")
+print(f"{'Location':>10}  {'Count':>7}  {'Fraction':>9}")
+for loc, cnt in enumerate(loc_freq, start=1):
+    print(f"{loc:>10}  {cnt:>7}  {cnt/total_abc:>9.3f}")
+print(f"{'TOTAL':>10}  {total_abc:>7}  {'1.000':>9}")
+
+# Heat-map on a 3×3 grid (locations numbered 1-9, row-major)
+grid_vals = loc_freq.reshape(3, 3).astype(float)
+
+fig, ax = plt.subplots(figsize=(5, 4.5))
+im = ax.imshow(grid_vals, cmap='YlOrRd', aspect='equal',
+               vmin=0, vmax=grid_vals.max())
+
+# Annotate each cell with count and fraction
+for row in range(3):
+    for col in range(3):
+        loc = row * 3 + col + 1
+        cnt = int(grid_vals[row, col])
+        frac = cnt / total_abc
+        ax.text(col, row, f"loc {loc}\n{cnt}\n({frac:.2f})",
+                ha='center', va='center', fontsize=9,
+                color='black' if frac < 0.6 * grid_vals.max() / total_abc else 'white')
+
+cbar = fig.colorbar(im, ax=ax, shrink=0.85)
+cbar.set_label('Count (A+B+C pooled)', fontsize=10)
+
+ax.set_xticks([])
+ax.set_yticks([])
+ax.set_title('Reward location frequency (A, B, C pooled)\nacross all sessions', fontsize=11)
+
+plt.tight_layout()
+heatmap_path = os.path.join(
+    os.path.dirname(OUTPUT_CSV), 'location_frequency_ABC_heatmap.png'
+)
+plt.savefig(heatmap_path, dpi=150)
+plt.show()
+print(f"\nHeat-map saved to: {heatmap_path}")

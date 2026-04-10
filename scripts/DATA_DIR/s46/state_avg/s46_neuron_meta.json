@@ -1,0 +1,42 @@
+{
+  "neuron_names": [
+    "46_01-01-mLF2C02-ACC",
+    "46_02-02-mLF2C06-ACC",
+    "46_03-03-mLT2dHa01-HC",
+    "46_04-04-mLT2dHa03-HC",
+    "46_05-05-mLT2dHa07-HC",
+    "46_06-06-mLT2dHa07-HC",
+    "46_07-07-mRT2aHa03-HC",
+    "46_08-08-mRT2aHa05-HC",
+    "46_09-09-mRT2aHa05-HC",
+    "46_10-10-mRT2bHb07-HC"
+  ],
+  "cell_labels": [
+    "ACC",
+    "ACC",
+    "ACC",
+    "HC",
+    "HC",
+    "HC",
+    "HC",
+    "HC",
+    "HC",
+    "HC",
+    "HC",
+    "HC"
+  ],
+  "electrode_labels": [
+    "01-mLF2C02",
+    "02-mLF2C06",
+    "03-mLF2C06",
+    "04-mLT2dHa01",
+    "05-mLT2dHa03",
+    "06-mLT2dHa07",
+    "07-mLT2dHa07",
+    "08-mRT2aHa03",
+    "09-mRT2aHa05",
+    "10-mRT2aHa05",
+    "11-mRT2bHb07",
+    "12-mRT2bHb08"
+  ]
+}

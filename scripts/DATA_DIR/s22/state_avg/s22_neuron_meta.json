@@ -1,0 +1,36 @@
+{
+  "neuron_names": [
+    "22_01-01-mLF3Ca05-ACC",
+    "22_02-02-mLF3Ca05-ACC",
+    "22_03-03-mLF3Ca06-ACC",
+    "22_04-04-mLF3Ca06-ACC",
+    "22_05-05-mLT2bHaEa04-EC",
+    "22_06-06-mRT2bHaEa05-EC",
+    "22_07-07-mRT2cHbEb01-EC",
+    "22_08-08-mRT2cHbEb04-EC"
+  ],
+  "cell_labels": [
+    "ACC",
+    "ACC",
+    "ACC",
+    "ACC",
+    "ACC",
+    "EC",
+    "EC",
+    "EC",
+    "EC",
+    "EC"
+  ],
+  "electrode_labels": [
+    "01-mLF3Ca02",
+    "02-mLF3Ca05",
+    "03-mLF3Ca05",
+    "04-mLF3Ca06",
+    "05-mLF3Ca06",
+    "06-mLT2bHaEa04",
+    "07-mRT2bHaEa05",
+    "08-mRT2cHbEb01",
+    "09-mRT2cHbEb01",
+    "10-mRT2cHbEb04"
+  ]
+}

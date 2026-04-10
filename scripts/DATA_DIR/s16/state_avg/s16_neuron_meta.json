@@ -1,0 +1,26 @@
+{
+  "neuron_names": [
+    "16_01-01-mLT2cHaEa03-EC",
+    "16_02-02-mLT2cHaEa06-EC",
+    "16_03-03-mLT2cHaEa07-EC",
+    "16_04-04-mLT2cHaEa08-EC",
+    "16_05-05-mLT2dHbEb04-EC",
+    "16_06-06-mLT2dHbEb05-EC"
+  ],
+  "cell_labels": [
+    "EC",
+    "EC",
+    "EC",
+    "EC",
+    "EC",
+    "EC"
+  ],
+  "electrode_labels": [
+    "01-mLT2cHaEa03",
+    "02-mLT2cHaEa06",
+    "03-mLT2cHaEa07",
+    "04-mLT2cHaEa08",
+    "05-mLT2dHbEb04",
+    "06-mLT2dHbEb05"
+  ]
+}

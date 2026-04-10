@@ -1,0 +1,26 @@
+{
+  "neuron_names": [
+    "28_01-01-mLF2aCa05-ACC",
+    "28_02-02-mLF3OFC01-OFC",
+    "28_03-03-mLF3OFC07-OFC",
+    "28_04-04-mLF3OFC07-OFC",
+    "28_05-05-mRF2aCa02-ACC",
+    "28_06-06-mRF2aCa02-ACC"
+  ],
+  "cell_labels": [
+    "ACC",
+    "OFC",
+    "OFC",
+    "OFC",
+    "ACC",
+    "ACC"
+  ],
+  "electrode_labels": [
+    "01-mLF2aCa05",
+    "02-mLF3OFC01",
+    "03-mLF3OFC07",
+    "04-mLF3OFC07",
+    "05-mRF2aCa02",
+    "06-mRF2aCa02"
+  ]
+}

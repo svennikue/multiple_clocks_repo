@@ -1,0 +1,20 @@
+{
+  "neuron_names": [
+    "05_01-01-mLT1Ha04-HC",
+    "05_02-02-mRT2bHaEa02-EC",
+    "05_03-03-mRT2bHaEa04-EC",
+    "05_04-04-mRT2bHaEa04-EC"
+  ],
+  "cell_labels": [
+    "HC",
+    "EC",
+    "EC",
+    "EC"
+  ],
+  "electrode_labels": [
+    "01-mLT1Ha04",
+    "02-mRT2bHaEa02",
+    "03-mRT2bHaEa04",
+    "04-mRT2bHaEa04"
+  ]
+}

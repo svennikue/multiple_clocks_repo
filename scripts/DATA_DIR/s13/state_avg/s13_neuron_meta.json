@@ -1,0 +1,49 @@
+{
+  "neuron_names": [
+    "13_01-01-mLT2bHb07-HC",
+    "13_02-02-mRF2aCa03-OFC",
+    "13_03-03-mRF2aCa03-OFC",
+    "13_04-04-mRT2aHa06-HC",
+    "13_05-05-mRT2aHa06-HC",
+    "13_06-06-mRF2aCa08-OFC",
+    "13_07-07-mRT2bHb05-HC",
+    "13_08-08-mRT2bHb05-HC",
+    "13_09-09-mRT2bHb05-HC",
+    "13_10-10-mRT2bHb08-HC",
+    "13_11-11-mRT2bHb08-HC",
+    "13_12-12-mRT2bHb08-HC",
+    "13_13-13-mRT2bHb08-HC"
+  ],
+  "cell_labels": [
+    "HC",
+    "OFC",
+    "OFC",
+    "HC",
+    "HC",
+    "OFC",
+    "HC",
+    "HC",
+    "HC",
+    "HC",
+    "HC",
+    "HC",
+    "HC",
+    "HC"
+  ],
+  "electrode_labels": [
+    "01-mLT2bHb07",
+    "02-mRF2aCa03",
+    "03-mRF2aCa03",
+    "04-mRT2aHa06",
+    "05-mRT2aHa06",
+    "06-mRF2aCa08",
+    "07-mRT2bHb05",
+    "08-mRT2bHb05",
+    "09-mRT2bHb05",
+    "10-mRT2bHb05",
+    "11-mRT2bHb08",
+    "12-mRT2bHb08",
+    "13-mRT2bHb08",
+    "14-mRT2bHb08"
+  ]
+}

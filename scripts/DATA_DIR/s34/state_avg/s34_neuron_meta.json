@@ -1,0 +1,23 @@
+{
+  "neuron_names": [
+    "34_01-01-mLF1aCb02-ACC",
+    "34_02-02-mLT2bHa05-HC",
+    "34_03-03-mLT2bHa05-HC",
+    "34_04-04-mRT2cHb07-HC",
+    "34_05-05-mRT2cHb07-HC"
+  ],
+  "cell_labels": [
+    "ACC",
+    "HC",
+    "HC",
+    "HC",
+    "HC"
+  ],
+  "electrode_labels": [
+    "01-mLF1aCb02",
+    "02-mLT2bHa05",
+    "03-mLT2bHa05",
+    "04-mRT2cHb07",
+    "05-mRT2cHb07"
+  ]
+}

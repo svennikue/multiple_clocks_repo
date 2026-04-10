@@ -1,0 +1,20 @@
+{
+  "neuron_names": [
+    "53_01-01-chan116-HC",
+    "53_02-02-chan116-HC",
+    "53_03-03-chan119-HC",
+    "53_04-04-chan119-HC"
+  ],
+  "cell_labels": [
+    "HC",
+    "HC",
+    "HC",
+    "HC"
+  ],
+  "electrode_labels": [
+    "01-chan116",
+    "02-chan116",
+    "03-chan119",
+    "04-chan119"
+  ]
+}
