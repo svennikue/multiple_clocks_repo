@@ -6,7 +6,7 @@ Created on Wed Apr  5 15:58:33 2023
 @author: Svenja Küchenhoff
 This script validates my models with Mohamadys ephys data, making use of an RSA.
 This is the plan:
- 1.  Based on a location file (do you have something like that?),  model how the mouse was running: where was it for how long
+ 1.  Based on a location file,  model how the mouse was running: where was it for how long
  2.  Create a model RDM (time x time) based on my model using the coordinates from step (1)
  3.  Run an RSA where I compute data a RDM from all of your neuron time-series (all neurons across time, then correlate the time x time axes for the RDM)
  4.  Run a regression between my model RDM and your data RDM

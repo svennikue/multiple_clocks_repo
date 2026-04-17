@@ -44,6 +44,7 @@ import sys
 import json
 import numpy as np
 import pandas as pd
+from scipy.ndimage import gaussian_filter1d
 
 sys.path.insert(0, '/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_clocks_repo')
 from mc.analyse.helpers_human_cells import load_norm_data
@@ -128,11 +129,21 @@ def assign_blocks_to_runs_balanced(blocks, beh_correct, counters):
     return run1, run2, n1, n2
 
 
+# Gaussian smoothing applied to each trial before averaging
+# width = 4 bins (truncate at 2σ from centre), σ = 2 bins
+_GAUSS_SIGMA    = 2    # bins
+_GAUSS_TRUNCATE = 2.0  # kernel extends 2σ = 4 bins from centre
+
 def avg_neuron(neuron_df, trial_indices):
     valid = [i for i in trial_indices if i < len(neuron_df)]
     if not valid:
         return np.full(N_BINS, np.nan)
-    return np.nanmean(neuron_df.iloc[valid].to_numpy(), axis=0)
+    trials = neuron_df.iloc[valid].to_numpy().astype(float)
+    smoothed = np.array([
+        gaussian_filter1d(row, sigma=_GAUSS_SIGMA, truncate=_GAUSS_TRUNCATE)
+        for row in trials
+    ])
+    return np.nanmean(smoothed, axis=0)
 
 
 # ══════════════════════════════════════════════════════════════════════

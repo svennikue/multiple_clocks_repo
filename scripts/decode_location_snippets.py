@@ -518,8 +518,11 @@ def plot_tuning_curves(train_df):
         row_std[row_std == 0] = 1.0
         sub_z = (sub - row_mean) / row_std
 
-        mean_tc = sub_z.mean(axis=0)
-        sem_tc  = sub_z.std(axis=0) / np.sqrt(sub_z.shape[0])
+       # mean_tc = sub_z.mean(axis=0)
+        mean_tc = np.nanmean(sub_z,axis=0)
+        
+        #sem_tc  = sub_z.std(axis=0) / np.sqrt(sub_z.shape[0])
+        sem_tc  = np.nanstd(sub_z,axis=0) / np.sqrt(sub_z.shape[0])
 
         ax.fill_between(x, mean_tc - sem_tc, mean_tc + sem_tc, alpha=0.3)
         ax.plot(x, mean_tc, linewidth=1.5)
@@ -534,7 +537,7 @@ def plot_tuning_curves(train_df):
     plt.tight_layout()
     out = os.path.join(RESULTS_DIR, 'snippet_tuning_curves.png')
     plt.savefig(out, dpi=150)
-    plt.close()
+    # plt.close()
     print(f"\nSaved tuning curves: {out}")
 
 
@@ -684,7 +687,7 @@ for target_name, raw_col in DECODE_TARGETS:
                         fontsize=7, color='white' if mean_conf_norm[i,j] > 0.5 else 'black')
         plt.tight_layout()
         plt.savefig(os.path.join(RESULTS_DIR, f'snippet_decode_{target_name}_confusion.png'), dpi=150)
-        plt.close()
+        # plt.close()
 
     # ---- future-location extras -------------------------------------------
     if is_future:
@@ -838,7 +841,7 @@ if all_summaries:
     plt.tight_layout()
     combined_path = os.path.join(RESULTS_DIR, 'snippet_decode_all_targets.png')
     plt.savefig(combined_path, dpi=150)
-    plt.close()
+    #plt.close()
     print(f"\nSaved combined plot: {combined_path}")
 
 

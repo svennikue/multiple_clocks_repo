@@ -530,7 +530,7 @@ def compute_hamming_distance_weighted(data_chunk, plotting = False, weight= 'now
     return RDM
     
     
-def compute_hamming_distance(data_chunk, plotting = False, include_diagonal = True, model_name = None): 
+def compute_hamming_distance(data_chunk, plotting = False, include_diagonal = True, model_name = None, no_tasks = 10): 
     RDM = []
     #
     if not isinstance(data_chunk, (list, tuple)):
@@ -574,7 +574,11 @@ def compute_hamming_distance(data_chunk, plotting = False, include_diagonal = Tr
         if plotting == True:
             plt.figure()
             plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm', vmax=1, vmin=0)
-            plt.title(model_name)
+            if model_name:
+                plt.title(f'across half RDM for {model_name} based on hamming distance, random threshold.')
+            else:
+                plt.title('across half RDM based on hamming distance, random threshold.')
+            len_task = int(n/no_tasks)
             for i in range(0,n,int(n/no_tasks)):
                 plt.axvline(i-0.5, color='white', ls = 'dashed')
             for i in range(0,n,int(n/no_tasks)):
@@ -596,7 +600,43 @@ def compute_hamming_distance(data_chunk, plotting = False, include_diagonal = Tr
             
     return RDM
         
-def compute_hamming_difference(data_chunk, combination, plotting = False, include_diagonal = True, model_name = None): 
+def compute_hamming_distance_within(data_chunk, plotting=False, include_diagonal=True, model_name=None, no_tasks=10):
+    """Within-run Hamming distance. Input is (N, features), not (2N, features)."""
+    RDM = []
+    if not isinstance(data_chunk, (list, tuple)):
+        data_chunk = [data_chunk]
+    for data in data_chunk:
+        data = np.asarray(data, dtype=object)
+        overlap = np.equal(data[:, None, :], data[None, :, :])
+        hamming_sim_matrix = overlap.mean(axis=2)
+        rdm = 1 - hamming_sim_matrix
+
+        n = rdm.shape[0]
+        if include_diagonal:
+            RDM.append(rdm[np.triu_indices(n, k=0)])
+        else:
+            RDM.append(rdm[np.triu_indices(n, k=1)])
+
+        if plotting:
+            plt.figure()
+            plt.imshow(rdm, aspect='auto', cmap='coolwarm', vmax=1, vmin=0)
+            if model_name:
+                plt.title(f'within-run RDM for {model_name} (Hamming)')
+            else:
+                plt.title('within-run RDM (Hamming)')
+            len_task = int(n / no_tasks)
+            for i in range(0, n, len_task):
+                plt.axvline(i - 0.5, color='white', ls='dashed')
+                plt.axhline(i - 0.5, color='white', ls='dashed')
+            if no_tasks == 8:
+                labels = ['3-7-9-5', '8-2-6-7', '1-9-5-8', '4-8-1-3', '6-4-2-9', '9-1-3-4', '7-3-4-2', '2-5-7-6']
+                plt.yticks(np.arange(2, n, int(n / no_tasks)), labels)
+            plt.colorbar()
+
+    return RDM
+
+
+def compute_hamming_difference(data_chunk, combination, plotting = False, include_diagonal = True, model_name = None):
     RDM = []
     #
     if not isinstance(data_chunk, (list, tuple)):
@@ -670,7 +710,7 @@ def compute_hamming_difference(data_chunk, combination, plotting = False, includ
 
 
 
-def compute_crosscorr(data_chunk, plotting = False, include_diagonal = True):  
+def compute_crosscorr(data_chunk, plotting = False, include_diagonal = True, no_tasks = 10, model = None):  
     RDM = []
     # import pdb; pdb.set_trace()
     if not isinstance(data_chunk, (list, tuple)):
@@ -697,26 +737,79 @@ def compute_crosscorr(data_chunk, plotting = False, include_diagonal = True):
             RDM.append(rdm[np.triu_indices(n, k=0)]) 
         else:
             RDM.append(rdm[np.triu_indices(n, k=1)]) 
-            
+        
         if plotting == True:
-            # import pdb; pdb.set_trace()
-            plt.figure()
-            plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm', vmax=2, vmin=0)
-            
+        
+            # # import pdb; pdb.set_trace()
+            # plt.figure()
+            # plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm', vmax=2, vmin=0)
+            # plt.title('RDM, threshold at 2 and 0.')
+        
             plt.figure()
             plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm')
-            plt.title('across half RDM, random threshold.')
+            if model:
+                plt.title(f'across th RDM for {model}, random threshold.')
+            else:
+                plt.title('across half RDM, random threshold.')
             plt.colorbar()
-            # delete this again.
-            for i in range(0,8):
-                plt.axhline(i*360)
-                plt.axvline(i*360)
-            
-            plt.figure()
-            plt.imshow(rdm_both_halves, aspect = 'auto', cmap = 'coolwarm')
+
+            len_task = int(n/no_tasks)
+            for i in range(0,n,int(n/no_tasks)):
+                plt.axvline(i-0.5, color='white', ls = 'dashed')
+            for i in range(0,n,int(n/no_tasks)):
+                plt.axhline(i-0.5, color='white', ls = 'dashed')
+            for i in range(0,n,len_task):
+                plt.axvline(i-0.5, color='white', ls = 'dashed')
+            for i in range(0,n,len_task):
+                plt.axhline(i-0.5, color='white', ls = 'dashed')
+            if no_tasks == 10:
+                labels = ['A1_backw', 'A1_forw', 'B1_backw', 'B1_forw', 'C1_backw', 'C1_forw', 'D1_back', 'D1_forw', 'E1_backw', 'E1_forw']
+            elif no_tasks == 6:
+                labels = ['A1_backw', 'A1_forw', 'C1_backw', 'C1_forw', 'E1_backw', 'E1_forw']
+            elif no_tasks == 8:
+                labels = ['3-7-9-5', '8-2-6-7', '1-9-5-8', '4-8-1-3', '6-4-2-9', '9-1-3-4', '7-3-4-2', '2-5-7-6']
+            plt.yticks(np.arange(2, rdm.shape[1], int(n/no_tasks)), labels)
             
     return RDM
 
+
+def compute_crosscorr_within(data_chunk, plotting=False, include_diagonal=True, no_tasks=10, model=None):
+    """Within-run cosine dissimilarity. Input is (N, features), not (2N, features)."""
+    RDM = []
+    if not isinstance(data_chunk, (list, tuple)):
+        data_chunk = [data_chunk]
+
+    for data in data_chunk:
+        data_demeaned = data - data.mean(axis=1, keepdims=True)
+        norms = np.sqrt(np.einsum('ij,ij->i', data_demeaned, data_demeaned))
+        norms[norms == 0] = 1
+        data_demeaned /= norms[:, None]
+        rdm = 1 - np.einsum('ik,jk', data_demeaned, data_demeaned)
+
+        n = rdm.shape[0]
+        if include_diagonal:
+            RDM.append(rdm[np.triu_indices(n, k=0)])
+        else:
+            RDM.append(rdm[np.triu_indices(n, k=1)])
+
+        if plotting:
+            plt.figure()
+            plt.imshow(rdm, aspect='auto', cmap='coolwarm')
+            if model:
+                plt.title(f'within-run RDM for {model}')
+            else:
+                plt.title('within-run RDM')
+            plt.colorbar()
+            len_task = int(n / no_tasks)
+            for i in range(0, n, len_task):
+                plt.axvline(i - 0.5, color='white', ls='dashed')
+                plt.axhline(i - 0.5, color='white', ls='dashed')
+            if no_tasks == 8:
+                labels = ['3-7-9-5', '8-2-6-7', '1-9-5-8', '4-8-1-3',
+                           '6-4-2-9', '9-1-3-4', '7-3-4-2', '2-5-7-6']
+                plt.yticks(np.arange(2, n, int(n / no_tasks)), labels)
+
+    return RDM
 
 
 def mask_RDM(lower_tri, n, labels, mask=None, binarise = False, plotting = False):

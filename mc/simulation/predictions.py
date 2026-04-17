@@ -1875,7 +1875,7 @@ def set_clocks_raw_ephys(walked_path, subpath_timings, step_indices, step_number
                 
     # this is just the first row of the clocks matrix - neurons that are forced to 
     # fire for the whole phase.
-    alternative_midnight = full_clock_matrix[::12, :].copy()
+    alternative_midnight = full_clock_matrix[::no_neurons, :].copy()
     
     # this is the reverse - replacing the midnight neurons in the clocks matrix with
     # neurons that are being turned on consequetively, not simultaneously.
@@ -1946,15 +1946,17 @@ def set_clocks_ephys(walked_path, reward_fields, grid_size = 3, phases = 3, plot
     # and number of rows is fields*phase*neurons per clock 
     n_rows = no_fields*phases*no_neurons 
     
-    clocks_matrix = np.empty([n_rows,n_columns]) # fields times phases.
+    clocks_matrix = np.zeros([n_rows,n_columns]) # fields times phases.
     clocks_matrix[:] = np.nan
     
     bins_per_reward = int(n_columns/no_rewards)
     curr_rew_vector = np.repeat([0,1,2,3], repeats = bins_per_reward)
     bins_per_phase = int(bins_per_reward/phases)
-    curr_phase_vector = np.repeat([0,1,2], repeats = bins_per_phase)
+    
+    
+    curr_phase_vector = np.repeat([range(0,phases)], repeats = bins_per_phase)
     curr_phase_vector = np.tile(curr_phase_vector, reps = no_rewards)
-    neuron_vector = np.repeat([0,1,2,3,4,5,6,7,8,9,10,11], repeats = bins_per_phase)
+    neuron_vector = np.repeat([range(0,no_neurons)], repeats = bins_per_phase)
     # set up neurons of a clock.
     clock_neurons = np.zeros([no_neurons,n_columns])
     for i in range(0,len(clock_neurons[0])):
@@ -1966,7 +1968,7 @@ def set_clocks_ephys(walked_path, reward_fields, grid_size = 3, phases = 3, plot
         # exception for first field.
         if i == 0:
             curr_midnight_clock_neuron = field*no_neurons*phases + curr_phase_vector[i]*no_neurons
-            clocks_matrix[curr_midnight_clock_neuron : (curr_midnight_clock_neuron+12), 0:None] = clock_neurons
+            clocks_matrix[curr_midnight_clock_neuron : (curr_midnight_clock_neuron+no_neurons), 0:None] = clock_neurons
         # assumption: after the first field, I only turn on a new clock if the phase or the field changes. 
         # first: check if the field changed.
         elif field != walked_path[i-1]:
@@ -1990,7 +1992,7 @@ def set_clocks_ephys(walked_path, reward_fields, grid_size = 3, phases = 3, plot
             # then check if clock has been initiated already
             is_initiated = clocks_matrix[curr_midnight_clock_neuron, 0]
             if np.isnan(is_initiated): # if not initiated yet
-                clocks_matrix[curr_midnight_clock_neuron:(curr_midnight_clock_neuron+12), 0:None]= fill_clock_neurons
+                clocks_matrix[curr_midnight_clock_neuron:(curr_midnight_clock_neuron+no_neurons), 0:None]= fill_clock_neurons
             else:
                 # if the clock has already been initiated and thus is NOT nan
                 # only add the 1s
@@ -2010,7 +2012,7 @@ def set_clocks_ephys(walked_path, reward_fields, grid_size = 3, phases = 3, plot
                 # then check if clock has been initiated already
                 is_initiated = clocks_matrix[curr_midnight_clock_neuron, 0]
                 if np.isnan(is_initiated): # if not initiated yet
-                    clocks_matrix[curr_midnight_clock_neuron:(curr_midnight_clock_neuron+12), 0:None]= fill_clock_neurons
+                    clocks_matrix[curr_midnight_clock_neuron:(curr_midnight_clock_neuron+no_neurons), 0:None]= fill_clock_neurons
                 else:
                     # if the clock has already been initiated and thus is NOT nan
                     # only add the 1s
@@ -2020,7 +2022,7 @@ def set_clocks_ephys(walked_path, reward_fields, grid_size = 3, phases = 3, plot
     
     # use start:stop:step slicing in np
     # midnight matrix is always the anchored neuron of the clocks matrix > every 12th row
-    midnight_matrix = clocks_matrix[0::12,:]
+    midnight_matrix = clocks_matrix[0::no_neurons,:]
     
     if plotting == True:
         fig, axs = plt.subplots(nrows =1, ncols = 2)
@@ -2124,7 +2126,7 @@ def set_location_ephys(walked_path, reward_fields, grid_size = 3, plotting = Fal
     # import pdb; pdb.set_trace()
     n_rows = grid_size*grid_size
     n_columns = len(walked_path)
-    loc_matrix = np.empty([n_rows,n_columns]) # fields times steps
+    loc_matrix = np.zeros([n_rows,n_columns]) # fields times steps
     loc_matrix[:] = np.nan
     walked_path = [int(field_no) for field_no in walked_path]
     for i, field in enumerate(walked_path):
