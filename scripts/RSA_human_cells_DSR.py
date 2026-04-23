@@ -49,6 +49,8 @@ INCLUDE_DIAG = False
 
 PLOT_FIGS = True
 
+KEEP_RUNS_SEPRATE = True
+
 # ── Permutation settings ───────────────────────────────────────────────
 RUN_PERMUTATIONS = False    # set False to skip permutation testing
 N_PERMS          = 500     # number of circular-shift permutations
@@ -109,21 +111,41 @@ os.makedirs(OUT_DIR, exist_ok=True)
 rows = []
 for sub in SUBJECTS:
     SUB_DIR = f"{DATA_DIR}/s{sub}/dsr_avg"
-    sesh_neurons = np.load(os.path.join(SUB_DIR, f's{sub}_dsr_neural_avg.npy'))
-    with open(os.path.join(SUB_DIR, f's{sub}_dsr_neuron_meta.json'), 'r') as f:
-        nmeta = json.load(f)
+    if KEEP_RUNS_SEPRATE == True:
+        sesh_neurons = np.load(os.path.join(f"{SUB_DIR}_runs_separate", f's{sub}_dsr_neural_avg.npz'))
+        with open(os.path.join(SUB_DIR, f's{sub}_dsr_neuron_meta.json'), 'r') as f:
+            nmeta = json.load(f)
+        
+        configs = sesh_neurons.files
+        for conf in configs:
+            for n_idx, n in enumerate(sesh_neurons[conf]):
+                rows.append({
+                    'session':        sub,
+                    'neuron_idx':     n_idx,
+                    'neuron_label':   nmeta['neuron_names'][n_idx],
+                    'roi':            nmeta['cell_labels'][n_idx],
+                    'electrode_label': nmeta['electrode_labels'][n_idx],
+                    'neuron_data':    n,   # n_neurons, n_runs, N_BINS
+                    'n_reps': n.shape[0],
+                    'config':         conf
+                })
+            
+    if KEEP_RUNS_SEPRATE == False:
+        sesh_neurons = np.load(os.path.join(SUB_DIR, f's{sub}_dsr_neural_avg_two_runs.npy'))
+        with open(os.path.join(SUB_DIR, f's{sub}_dsr_neuron_meta_two_runs.json'), 'r') as f:
+            nmeta = json.load(f)
 
-    for n_idx, n in enumerate(sesh_neurons):
-        for conf in config_summary[sub]:
-            rows.append({
-                'session':        sub,
-                'neuron_idx':     n_idx,
-                'neuron_label':   nmeta['neuron_names'][n_idx],
-                'roi':            nmeta['cell_labels'][n_idx],
-                'electrode_label': nmeta['electrode_labels'][n_idx],
-                'neuron_data':    n[conf['config_idx'], :, :],   # (2, 360)
-                'config':         conf['config'],
-            })
+        for n_idx, n in enumerate(sesh_neurons):
+            for conf in config_summary[sub]:
+                rows.append({
+                    'session':        sub,
+                    'neuron_idx':     n_idx,
+                    'neuron_label':   nmeta['neuron_names'][n_idx],
+                    'roi':            nmeta['cell_labels'][n_idx],
+                    'electrode_label': nmeta['electrode_labels'][n_idx],
+                    'neuron_data':    n[conf['config_idx'], :, :],   # (2, 360)
+                    'config':         conf['config']
+                })
 
 neurons = pd.DataFrame(rows)
 print(f"Loaded {len(neurons['neuron_label'].unique())} unique neurons "
@@ -139,8 +161,10 @@ print("Building mode-location arrays...")
 accum = {c: {1: [], 2: []} for c in configs}
 
 for sub in SUBJECTS:
-    glog_path = os.path.join(DATA_DIR, f's{sub}', 'dsr_avg',
-                             f's{sub}_dsr_grouping_log.json')
+    if KEEP_RUNS_SEPRATE == True:
+        glog_path = os.path.join(DATA_DIR, f's{sub}', 'dsr_avg_runs_separate', f's{sub}_dsr_grouping_log.json')
+    else:
+        glog_path = os.path.join(DATA_DIR, f's{sub}', 'dsr_avg', f's{sub}_dsr_grouping_log_two_runs.json')
     if not os.path.exists(glog_path):
         continue
     with open(glog_path) as f:
@@ -511,6 +535,7 @@ def build_neuron_matrix(neuron_subset: pd.DataFrame, roi_name=None,
             if len(rows) == 0:
                 continue
             n_data = rows['neuron_data'].to_numpy()[0]   # (2, 360)
+            import pdb; pdb.set_trace()
             raw0 = np.roll(n_data[0, :], shift) if shift else n_data[0, :]
             raw1 = np.roll(n_data[1, :], shift) if shift else n_data[1, :]
             th1[c_idx * N_CONDS_PER_CONF:(c_idx + 1) * N_CONDS_PER_CONF, n_idx] = downsample_mean(raw0, target_len=N_CONDS_PER_CONF)

@@ -45,15 +45,28 @@ import json
 import numpy as np
 import pandas as pd
 from scipy.ndimage import gaussian_filter1d
+from matplotlib import pyplot as plt
 
 sys.path.insert(0, '/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_clocks_repo')
 from mc.analyse.helpers_human_cells import load_norm_data
+# import pdb; pdb.set_trace()
+
 
 # ══════════════════════════════════════════════════════════════════════
 # ── Settings  ─────────────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════
 
 MODE = 'dsr'     # 'state'  or  'dsr'
+
+# If True, skip run-balancing entirely: for each config, average correct
+# trials within each grid_no block separately and stack the per-block
+# averages. Output per config is (n_neurons, n_runs_for_this_config, N_BINS),
+# with n_runs varying across configs — saved as an .npz with one array per
+# config label. Currently supported for MODE='dsr' only.
+KEEP_RUNS_SEPRATE = True
+
+# If True, apply Gaussian smoothing to each trial before averaging.
+SMOOTH_DATA = True
 
 DATA_DIR = '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives'
 N_BINS   = 360
@@ -139,11 +152,12 @@ def avg_neuron(neuron_df, trial_indices):
     if not valid:
         return np.full(N_BINS, np.nan)
     trials = neuron_df.iloc[valid].to_numpy().astype(float)
-    smoothed = np.array([
-        gaussian_filter1d(row, sigma=_GAUSS_SIGMA, truncate=_GAUSS_TRUNCATE)
-        for row in trials
-    ])
-    return np.nanmean(smoothed, axis=0)
+    if SMOOTH_DATA:
+        trials = np.array([
+            gaussian_filter1d(row, sigma=_GAUSS_SIGMA, truncate=_GAUSS_TRUNCATE)
+            for row in trials
+        ])
+    return np.nanmean(trials, axis=0)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -364,6 +378,7 @@ def prepare_dsr_session(sub_str, plan):
         for n_idx, name in enumerate(neuron_names):
             ndf = neurons[name]
             # neuron, config, run, data
+            # import pdb; pdb.set_trace()
             avg_array[n_idx, c_idx, 0, :] = avg_neuron(ndf, run1_idx)
             avg_array[n_idx, c_idx, 1, :] = avg_neuron(ndf, run2_idx)
 
@@ -378,14 +393,14 @@ def prepare_dsr_session(sub_str, plan):
 
     out_dir = os.path.join(DATA_DIR, f's{sub_str}', 'dsr_avg')
     os.makedirs(out_dir, exist_ok=True)
-    np.save(os.path.join(out_dir, f's{sub_str}_dsr_neural_avg.npy'), avg_array)
+    np.save(os.path.join(out_dir, f's{sub_str}_dsr_neural_avg_two_runs.npy'), avg_array)
     # axis legend saved alongside so downstream code is self-documenting
-    with open(os.path.join(out_dir, f's{sub_str}_dsr_grouping_log.json'), 'w') as f:
+    with open(os.path.join(out_dir, f's{sub_str}_dsr_grouping_log_two_runs.json'), 'w') as f:
         json.dump({'session': sub_str, 'n_neurons': n_neurons,
                    'n_correct_trials': int(len(beh_correct)),
                    'config_axis_order': DSR_CONFIG_LABELS,
                    'configs': log_configs}, f, indent=2)
-    with open(os.path.join(out_dir, f's{sub_str}_dsr_neuron_meta.json'), 'w') as f:
+    with open(os.path.join(out_dir, f's{sub_str}_dsr_neuron_meta_two_runs.json'), 'w') as f:
         json.dump({'neuron_names': neuron_names,
                    'cell_labels': cell_labels,
                    'electrode_labels': elec_labels}, f, indent=2)
@@ -395,9 +410,110 @@ def prepare_dsr_session(sub_str, plan):
     return log_configs
 
 
+def prepare_dsr_session_separate_runs(sub_str):
+    """
+    KEEP_RUNS_SEPRATE path: one 'run' == one grid_no block.
+    For each config, average correct trials within each block and stack the
+    per-block averages. n_runs varies by config, so we save one (n_neurons,
+    n_runs, N_BINS) array per config in an .npz.
+    """
+    print(f"\n--- s{sub_str} ---")
+    sub_data = load_norm_data(DATA_DIR, [sub_str])
+    key = f'sub-{sub_str}'
+    if key not in sub_data:
+        print("  data not found, skipping"); return None
+
+    beh          = sub_data[key]['beh']
+    neurons      = sub_data[key]['normalised_neurons']
+    cell_labels  = sub_data[key]['cell_labels']
+    elec_labels  = sub_data[key]['electrode_labels']
+    neuron_names = sorted(neurons.keys())
+    n_neurons    = len(neuron_names)
+
+    beh_correct = _tag_config(beh[beh['correct'] == 1].copy())
+    if beh_correct.empty:
+        print("  no correct trials, skipping"); return None
+
+    per_config_arrays = {}
+    log_configs = []
+
+    for c_idx, cfg in enumerate(DSR_CONFIGS):
+        label  = DSR_CONFIG_LABELS[c_idx]
+        blocks = sorted(beh_correct[beh_correct['config'] == cfg]['grid_no'].unique().tolist())
+        if not blocks:
+            print(f"  config {label}: no blocks — skipping")
+            log_configs.append({'config_idx': c_idx, 'config': label,
+                                'blocks': [], 'n_runs': 0,
+                                'n_trials_per_run': []})
+            continue
+
+        n_runs   = len(blocks)
+        cfg_arr  = np.full((n_neurons, n_runs, N_BINS), np.nan)
+        n_trials = []
+
+        for r_idx, block in enumerate(blocks):
+            block_idx = beh_correct[beh_correct['grid_no'] == block].index.tolist()
+            n_trials.append(len(block_idx))
+            for n_idx, name in enumerate(neuron_names):
+                cfg_arr[n_idx, r_idx, :] = avg_neuron(neurons[name], block_idx)
+
+        per_config_arrays[label] = cfg_arr
+        log_configs.append({'config_idx': c_idx, 'config': label,
+                            'blocks': blocks, 'n_runs': n_runs,
+                            'n_trials_per_run': n_trials})
+        print(f"  config {label}: {blocks} → {n_runs} runs, trials={n_trials}")
+
+    out_dir = os.path.join(DATA_DIR, f's{sub_str}', 'dsr_avg_runs_separate')
+    os.makedirs(out_dir, exist_ok=True)
+    
+    np.savez(os.path.join(out_dir, f's{sub_str}_dsr_neural_avg'),
+             **per_config_arrays)
+    with open(os.path.join(out_dir, f's{sub_str}_dsr_grouping_log.json'), 'w') as f:
+        json.dump({'session': sub_str, 'n_neurons': n_neurons,
+                   'n_correct_trials': int(len(beh_correct)),
+                   'config_axis_order': DSR_CONFIG_LABELS,
+                   'smooth_data': SMOOTH_DATA,
+                   'configs': log_configs}, f, indent=2)
+    with open(os.path.join(out_dir, f's{sub_str}_dsr_neuron_meta.json'), 'w') as f:
+        json.dump({'neuron_names': neuron_names,
+                   'cell_labels': cell_labels,
+                   'electrode_labels': elec_labels}, f, indent=2)
+
+    total_runs = sum(lg['n_runs'] for lg in log_configs)
+    print(f"  saved → {len(per_config_arrays)} configs, {total_runs} total runs")
+    return log_configs
+
+
 # ══════════════════════════════════════════════════════════════════════
 # ── Main: choose pipeline based on MODE ───────────────────────────────
 # ══════════════════════════════════════════════════════════════════════
+
+if KEEP_RUNS_SEPRATE and MODE != 'dsr':
+    raise NotImplementedError(
+        "KEEP_RUNS_SEPRATE is currently implemented only for MODE='dsr'."
+    )
+
+if KEEP_RUNS_SEPRATE:
+    # Skip planning entirely — every grid_no block is its own run.
+    SUBJECTS = DSR_SUBJECTS
+    print("=" * 100)
+    print("EXECUTION  [DSR RSA, KEEP_RUNS_SEPRATE=True] — no session planning")
+    print(f"SMOOTH_DATA = {SMOOTH_DATA}")
+    print("=" * 100)
+
+    all_logs = {}
+    for sub in SUBJECTS:
+        result = prepare_dsr_session_separate_runs(sub)
+        if result is not None:
+            all_logs[sub] = result
+
+    summary_path = os.path.join(
+        DATA_DIR, 'all_sessions_dsrRSA_separateRuns_grouping_summary.json')
+    with open(summary_path, 'w') as f:
+        json.dump(all_logs, f, indent=2)
+
+    print('\nAll done.')
+    sys.exit(0)
 
 if MODE == 'state':
     SUBJECTS      = STATE_SUBJECTS
