@@ -49,7 +49,7 @@ INCLUDE_DIAG = False
 
 PLOT_FIGS = True
 
-KEEP_RUNS_SEPRATE = True
+KEEP_RUNS_SEPRATE = False
 
 # ── Permutation settings ───────────────────────────────────────────────
 RUN_PERMUTATIONS = False    # set False to skip permutation testing

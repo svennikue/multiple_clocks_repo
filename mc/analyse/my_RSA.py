@@ -600,9 +600,9 @@ def compute_hamming_distance(data_chunk, plotting = False, include_diagonal = Tr
             
     return RDM
         
-def compute_hamming_distance_within(data_chunk, plotting=False, include_diagonal=True, model_name=None, no_tasks=10):
+def compute_hamming_distance_within(data_chunk, plotting=False, include_diagonal=True, model_name=None, no_tasks=10, block_size = None):
     """Within-run Hamming distance. Input is (N, features), not (2N, features)."""
-    RDM = []
+    RDM_within, RDM_between = [], []
     if not isinstance(data_chunk, (list, tuple)):
         data_chunk = [data_chunk]
     for data in data_chunk:
@@ -612,11 +612,15 @@ def compute_hamming_distance_within(data_chunk, plotting=False, include_diagonal
         rdm = 1 - hamming_sim_matrix
 
         n = rdm.shape[0]
-        if include_diagonal:
-            RDM.append(rdm[np.triu_indices(n, k=0)])
-        else:
-            RDM.append(rdm[np.triu_indices(n, k=1)])
-
+        k = 0 if include_diagonal else 1
+        i, j = np.triu_indices(n, k=k)
+        
+        rdm_flat = rdm[i, j]
+        within_block_idx = (i // block_size) == (j // block_size)
+        
+        RDM_within.append(rdm_flat[within_block_idx])
+        RDM_between.append(rdm_flat[~within_block_idx])
+    
         if plotting:
             plt.figure()
             plt.imshow(rdm, aspect='auto', cmap='coolwarm', vmax=1, vmin=0)
@@ -633,7 +637,7 @@ def compute_hamming_distance_within(data_chunk, plotting=False, include_diagonal
                 plt.yticks(np.arange(2, n, int(n / no_tasks)), labels)
             plt.colorbar()
 
-    return RDM
+    return RDM_within, RDM_between
 
 
 def compute_hamming_difference(data_chunk, combination, plotting = False, include_diagonal = True, model_name = None):
@@ -773,9 +777,9 @@ def compute_crosscorr(data_chunk, plotting = False, include_diagonal = True, no_
     return RDM
 
 
-def compute_crosscorr_within(data_chunk, plotting=False, include_diagonal=True, no_tasks=10, model=None):
+def compute_crosscorr_within(data_chunk, plotting=False, include_diagonal=True, no_tasks=10, model=None, block_size=None):
     """Within-run cosine dissimilarity. Input is (N, features), not (2N, features)."""
-    RDM = []
+    RDM_within, RDM_between = [], []
     if not isinstance(data_chunk, (list, tuple)):
         data_chunk = [data_chunk]
 
@@ -787,18 +791,23 @@ def compute_crosscorr_within(data_chunk, plotting=False, include_diagonal=True, 
         rdm = 1 - np.einsum('ik,jk', data_demeaned, data_demeaned)
 
         n = rdm.shape[0]
-        if include_diagonal:
-            RDM.append(rdm[np.triu_indices(n, k=0)])
-        else:
-            RDM.append(rdm[np.triu_indices(n, k=1)])
+
+        k = 0 if include_diagonal else 1
+        i, j = np.triu_indices(n, k=k)
+        
+        rdm_flat = rdm[i, j]
+        within_block_idx = (i // block_size) == (j // block_size)
+        
+        RDM_within.append(rdm_flat[within_block_idx])
+        RDM_between.append(rdm_flat[~within_block_idx])
 
         if plotting:
             plt.figure()
             plt.imshow(rdm, aspect='auto', cmap='coolwarm')
             if model:
-                plt.title(f'within-run RDM for {model}')
+                plt.title(f'RDM within and across tasks for {model}')
             else:
-                plt.title('within-run RDM')
+                plt.title('RDM within and across tasks RDM')
             plt.colorbar()
             len_task = int(n / no_tasks)
             for i in range(0, n, len_task):
@@ -809,7 +818,7 @@ def compute_crosscorr_within(data_chunk, plotting=False, include_diagonal=True, 
                            '6-4-2-9', '9-1-3-4', '7-3-4-2', '2-5-7-6']
                 plt.yticks(np.arange(2, n, int(n / no_tasks)), labels)
 
-    return RDM
+    return RDM_within, RDM_between
 
 
 def mask_RDM(lower_tri, n, labels, mask=None, binarise = False, plotting = False):

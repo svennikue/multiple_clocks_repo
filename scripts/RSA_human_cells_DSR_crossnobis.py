@@ -61,17 +61,11 @@ _GAUSS_TRUNCATE = 2.0
 # Crossnobis shrinkage
 SHRINKAGE_ALPHA = 0.1
 
-# If True, concatenate every session's neurons into a single pseudo-population
-# (block-diagonal Σ⁻¹ since sessions share no trials) and compute ONE RDM,
-# treating all neurons as if recorded from the same subject.  K = min n_runs
-# across configs AND sessions.
-# If False, compute one RDM per session and average across sessions.
-POOL_PSEUDO_POP = True
-
-# Only include sessions where every config has at least this many runs.
-# Sessions below the threshold are dropped entirely (so the surviving
-# neurons all have ≥MIN_RUNS_PER_NEURON runs for every config).
-MIN_RUNS_PER_NEURON = 3
+# Pseudo-population 1-Pearson RDM: only sessions where every config has at
+# least this many runs contribute.  The first K_PSEUDO_POP runs of each
+# config are used, and neurons are concatenated across sessions to form a
+# single pseudo-population.
+K_PSEUDO_POP = 3
 
 # Must match the model-RDM resolution
 N_PHASES               = 3
@@ -82,7 +76,8 @@ N_CONDS_PER_CONF       = N_PHASES * len(states) * RESOLUTIONx
 
 # Within-run style for model RDMs (crossnobis already supplies its own
 # cross-validation structure, so we pair it with averaged-half model RDMs).
-WITHIN_RUN = True
+# WITHIN_RUN = True
+# only allows for within-run
 
 MASK_CROSS_PHASE = False
 
@@ -254,7 +249,7 @@ for c_idx, c in enumerate(configs):
                 curr_task, task_config, grid_size=3, plotting=False)
             clocks_matrix, midnight_matrix = mc.simulation.predictions.set_clocks_ephys(
                 curr_task, task_config, grid_size=3, phases=N_PHASES, plotting=False)
-
+        # import pdb; pdb.set_trace()
         for n_sp in range(N_CONDS_PER_CONF):
             t0 = n_sp * LEN_OG_SUBPATH
             t1 = (n_sp + 1) * LEN_OG_SUBPATH
@@ -265,49 +260,52 @@ for c_idx, c in enumerate(configs):
                 prep_models[mat_name][run_id][row_start + n_sp, :] = np.where(
                     np.isnan(sub_sp), 0.0, sub_sp)
 
-if WITHIN_RUN:
-    model_concat = {
-        'location': (loc_th1 + loc_th2) / 2,
-        'dsr':      (dsr_th1 + dsr_th2) / 2,
-        'state':    state_half,
-        'feedback': feedback_half,
-        'clocks':   (prep_models['clocks'][1]   + prep_models['clocks'][2])   / 2,
-        'loc_og':   (prep_models['loc_og'][1]   + prep_models['loc_og'][2])   / 2,
-        'midnight': (prep_models['midnight'][1] + prep_models['midnight'][2]) / 2,
-        'phase':    phase_half,
-    }
-else:
-    model_concat = {
-        'location': np.concatenate([loc_th1,    loc_th2],    axis=0),
-        'dsr':      np.concatenate([dsr_th1,    dsr_th2],    axis=0),
-        'state':    np.tile(state_half,    (2, 1)),
-        'feedback': np.tile(feedback_half, (2, 1)),
-        'clocks':   np.concatenate([prep_models['clocks'][1],   prep_models['clocks'][2]],   axis=0),
-        'loc_og':   np.concatenate([prep_models['loc_og'][1],   prep_models['loc_og'][2]],   axis=0),
-        'midnight': np.concatenate([prep_models['midnight'][1], prep_models['midnight'][2]], axis=0),
-        'phase':    np.tile(phase_half,    (2, 1)),
-    }
+model_concat = {
+    'location': (loc_th1 + loc_th2) / 2,
+    'dsr':      (dsr_th1 + dsr_th2) / 2,
+    'state':    state_half,
+    'feedback': feedback_half,
+    'clocks':   (prep_models['clocks'][1]   + prep_models['clocks'][2])   / 2,
+    'loc_og':   (prep_models['loc_og'][1]   + prep_models['loc_og'][2])   / 2,
+    'midnight': (prep_models['midnight'][1] + prep_models['midnight'][2]) / 2,
+    'phase':    phase_half,
+}
+# else:
+#     model_concat = {
+#         'location': np.concatenate([loc_th1,    loc_th2],    axis=0),
+#         'dsr':      np.concatenate([dsr_th1,    dsr_th2],    axis=0),
+#         'state':    np.tile(state_half,    (2, 1)),
+#         'feedback': np.tile(feedback_half, (2, 1)),
+#         'clocks':   np.concatenate([prep_models['clocks'][1],   prep_models['clocks'][2]],   axis=0),
+#         'loc_og':   np.concatenate([prep_models['loc_og'][1],   prep_models['loc_og'][2]],   axis=0),
+#         'midnight': np.concatenate([prep_models['midnight'][1], prep_models['midnight'][2]], axis=0),
+#         'phase':    np.tile(phase_half,    (2, 1)),
+#     }
 
 print("Computing model RDMs...")
-model_RDMs = {}
+model_RDMs_within = {}
+model_RDMs_across = {}
 for m in models:
     if m in ('location', 'dsr'):
-        fn = (mc.analyse.my_RSA.compute_hamming_distance_within if WITHIN_RUN
-              else mc.analyse.my_RSA.compute_hamming_distance)
-        model_RDMs[m] = fn(model_concat[m], plotting=PLOT_FIGS,
+        # CONTINUE HERE!
+        # first, no cross-run RSA anymore.
+        # second, store both: within and across-run-data.
+    
+        model_RDMs_within[m], model_RDMs_across[m] = mc.analyse.my_RSA.compute_hamming_distance_within(model_concat[m], plotting=PLOT_FIGS,
                            include_diagonal=INCLUDE_DIAG,
-                           model_name=m, no_tasks=len(configs))
+                           model_name=m, no_tasks=len(configs), block_size = N_CONDS_PER_CONF)
     else:
-        fn = (mc.analyse.my_RSA.compute_crosscorr_within if WITHIN_RUN
-              else mc.analyse.my_RSA.compute_crosscorr)
-        model_RDMs[m] = fn(model_concat[m], plotting=PLOT_FIGS,
+        model_RDMs_within[m], model_RDMs_across[m] = mc.analyse.my_RSA.compute_crosscorr_within(model_concat[m], plotting=PLOT_FIGS,
                            include_diagonal=INCLUDE_DIAG,
-                           no_tasks=len(configs), model=m)
+                           no_tasks=len(configs), model=m, block_size = N_CONDS_PER_CONF)
+        
+    # import pdb; pdb.set_trace()
 
-nan_mask_feedback = np.isnan(model_RDMs['feedback'][0])
-model_RDMs['feedback'][0][nan_mask_feedback] = 1
+nan_mask_feedback = np.isnan(model_RDMs_within['feedback'][0])
+model_RDMs_within['feedback'][0][nan_mask_feedback] = 1
 for m in models:
-    print(f"  {m:12s} RDM vec length: {len(model_RDMs[m][0])}")
+    print(f" {m:12s} within RDM vec length: {len(model_RDMs_within[m][0]) }, across RDM vec lenght: {len(model_RDMs_across[m][0])}")
+
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -547,120 +545,171 @@ def _triu_vec(mat, include_diag):
     return mat[np.triu_indices(n, k=k)]
 
 
-def _collect_session_groups(roi_filter, sessions_data):
+def _split_triu_blocks_vec(mat, include_diag, block_size):
+    n = mat.shape[0]
+    k = 0 if include_diag else 1
+    
+    block_mask = (np.arange(n)[:, None] // block_size) == (np.arange(n)[None, :] // block_size)
+    np.fill_diagonal(block_mask, False)   # exclude exact diagonal
+    
+    i, j = np.triu_indices(n, k=k)
+    triangle_vec = mat[i, j]
+    same_block = (i // block_size) == (j // block_size)
+    
+    return triangle_vec[same_block], triangle_vec[~same_block], (i, j), same_block
+    
+    
+
+
+def _roi_keep_idx(cell_labels, roi_filter):
+    if roi_filter == 'whole_brain':
+        return np.arange(len(cell_labels))
+    return np.array([i for i, lb in enumerate(cell_labels) if lb == roi_filter])
+
+
+def group_data_rdm_for_roi(roi_filter, sessions_data, compute_stability=False):
     """
-    For each session, build the per-(config, run) repeat tensor limited to
-    neurons in `roi_filter`.  Also report each session's min-runs-across-configs
-    so the caller can pick a global K.
+    Per-session crossnobis RDM, averaged across sessions.
+    Returns (rdm_full, n_sessions_used, n_neurons_total, stability_avg).
     """
-    out = []
+    rdm_mats, n_neurons_total, stabilities = [], 0, []
     for sd in sessions_data:
-        cell_labels = sd['cell_labels']
-        if roi_filter == 'whole_brain':
-            keep = np.arange(len(cell_labels))
-        else:
-            keep = np.array([i for i, lb in enumerate(cell_labels)
-                             if lb == roi_filter])
+        keep = _roi_keep_idx(sd['cell_labels'], roi_filter)
         if len(keep) == 0:
             continue
         groups = _build_run_groups(sd['beh'], sd['smooth_tensor'], keep)
-        run_counts = [len(groups.get(c, {})) for c in range(N_CONFIGS)]
-        if not run_counts or min(run_counts) < max(2, MIN_RUNS_PER_NEURON):
+        rdm, stab, n_used, K = compute_crossnobis_session(
+            groups, compute_stability=compute_stability)
+        if rdm is None:
             continue
-        out.append({'sub': sd['sub'], 'groups': groups,
-                    'K_session': min(run_counts)})
-    return out
-
-
-def _plot_data_rdm(rdm_group, roi_filter):
-    plt.figure()
-    plt.imshow(rdm_group, aspect='auto', cmap='coolwarm')
-    plt.title(f'Crossnobis data RDM — {roi_filter}')
-    plt.colorbar()
-    n = rdm_group.shape[0]
-    for i in range(0, n, N_CONDS_PER_CONF):
-        plt.axvline(i - 0.5, color='white', ls='dashed')
-        plt.axhline(i - 0.5, color='white', ls='dashed')
-    plt.yticks(np.arange(N_CONDS_PER_CONF // 2, n, N_CONDS_PER_CONF),
-               configs, fontsize=7)
-    save = os.path.join(OUT_DIR, f'data_rdm_{roi_filter}.png')
-    plt.savefig(save, dpi=150, bbox_inches='tight')
-
-
-def group_data_rdm_for_roi(roi_filter, sessions_data, compute_stability=False,
-                           plot_first=False):
-    """
-    Build the data RDM for one ROI.  Two modes:
-
-    - POOL_PSEUDO_POP=True (default): concatenate every session's neurons
-      along the neuron axis to form one pseudo-population.  Σ is
-      block-diagonal across sessions (no shared trials), so the pooled
-      crossnobis RDM is the sum of per-session crossnobis RDMs computed
-      with a shared global K = min_runs across sessions × configs.  One
-      RDM, all neurons treated as if from the same subject.
-    - POOL_PSEUDO_POP=False: compute one RDM per session (each with its
-      own K) and average across sessions.
-
-    Returns (data_rdm_vec, n_sessions_used, n_neurons_total, stability_avg).
-    """
-    sess_groups = _collect_session_groups(roi_filter, sessions_data)
-    if not sess_groups:
-        return None, 0, 0, None
-
-    if POOL_PSEUDO_POP:
-        K = min(sg['K_session'] for sg in sess_groups)
-        if K < 2:
-            return None, 0, 0, None
-
-        n_cond = N_CONFIGS * N_CONDS_PER_CONF
-        rdm_pool = np.zeros((n_cond, n_cond), dtype=float)
-        stab_pool = (np.zeros((N_CONFIGS, N_CONDS_PER_CONF), dtype=float)
-                     if compute_stability else None)
-        # import pdb; pdb.set_trace()
-        n_neurons_total = 0
-        n_sessions_used = 0
-        for sg in sess_groups:
-            X, Sigma_inv, n_neurons = _session_X_and_sigma(sg['groups'], K)
-            if X is None:
-                continue
-            # block-diagonal Σ⁻¹ ⇒ pooled RDM equals the sum of per-session
-            # contributions; likewise for the bilinear stability metric.
-            rdm_pool += _crossnobis_rdm_from_X(X, Sigma_inv, K)
-            if compute_stability:
-                stab_pool += _stability_from_X(X, Sigma_inv, K)
-            n_neurons_total += n_neurons
-            n_sessions_used += 1
-
-        if n_sessions_used == 0:
-            return None, 0, 0, None
-
-        rdm_group = rdm_pool
-        if plot_first and PLOT_FIGS:
-            _plot_data_rdm(rdm_group, roi_filter)
-        data_vec = _triu_vec(rdm_group, INCLUDE_DIAG)
-        return data_vec, n_sessions_used, n_neurons_total, stab_pool
-
-    # per-session averaging path
-    rdm_mats, n_neurons_total, stabilities = [], 0, []
-    for sg in sess_groups:
-        K_s = sg['K_session']
-        X, Sigma_inv, n_neurons = _session_X_and_sigma(sg['groups'], K_s)
-        if X is None:
-            continue
-        rdm_mats.append(_crossnobis_rdm_from_X(X, Sigma_inv, K_s))
-        n_neurons_total += n_neurons
-        if compute_stability:
-            stabilities.append(_stability_from_X(X, Sigma_inv, K_s))
+        rdm_mats.append(rdm)
+        n_neurons_total += n_used
+        if stab is not None:
+            stabilities.append(stab)
 
     if not rdm_mats:
         return None, 0, 0, None
 
     rdm_group = np.mean(rdm_mats, axis=0)
-    if plot_first and PLOT_FIGS:
-        _plot_data_rdm(rdm_group, roi_filter)
-    data_vec = _triu_vec(rdm_group, INCLUDE_DIAG)
-    stab_avg = np.mean(stabilities, axis=0) if stabilities else None
-    return data_vec, len(rdm_mats), n_neurons_total, stab_avg
+    stab_avg  = np.mean(stabilities, axis=0) if stabilities else None
+    return rdm_group, len(rdm_mats), n_neurons_total, stab_avg
+
+
+# ══════════════════════════════════════════════════════════════════════
+# ── Pseudo-population 1-Pearson RDM ───────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════
+
+def _pool_pseudo_population(roi_filter, sessions_data, K):
+    """
+    Concatenate neurons across sessions that have ≥K runs for every config.
+    Returns (X_pool, n_neurons_total, n_sessions_used) where
+    X_pool shape = (N_CONFIGS, K, N_CONDS_PER_CONF, n_total_neurons).
+    """
+    X_parts = []
+    n_neurons_total = 0
+    n_sessions_used = 0
+    for sd in sessions_data:
+        keep = _roi_keep_idx(sd['cell_labels'], roi_filter)
+        if len(keep) == 0:
+            continue
+        groups = _build_run_groups(sd['beh'], sd['smooth_tensor'], keep)
+        run_counts = [len(groups.get(c, {})) for c in range(N_CONFIGS)]
+        if not run_counts or min(run_counts) < K:
+            continue
+        first = next(iter(next(iter(groups.values())).values()))
+        n_neurons = first.shape[1]
+        X = np.full((N_CONFIGS, K, N_CONDS_PER_CONF, n_neurons), np.nan)
+        for c in range(N_CONFIGS):
+            for k in range(K):
+                reps = groups[c][k]                         # (n_reps, n_neurons, n_tb)
+                X[c, k] = reps.mean(axis=0).T               # (n_tb, n_neurons)
+        X_parts.append(X)
+        n_neurons_total += n_neurons
+        n_sessions_used += 1
+    if not X_parts:
+        return None, 0, 0
+    X_pool = np.concatenate(X_parts, axis=-1)
+    return X_pool, n_neurons_total, n_sessions_used
+
+
+def _one_minus_pearson_rdm(patterns):
+    """1 - Pearson correlation RDM. patterns: (n_cond, n_features)."""
+    X = patterns - patterns.mean(axis=1, keepdims=True)
+    norms = np.sqrt(np.einsum('ij,ij->i', X, X))
+    norms[norms == 0] = 1
+    X = X / norms[:, None]
+    return 1.0 - X @ X.T
+
+
+def compute_pseudo_pop_rdms(X_pool):
+    """
+    X_pool shape: (N_CONFIGS, K, N_CONDS_PER_CONF, n_neurons).
+    Returns list of K per-run RDMs + averaged RDM, each (n_cond × n_cond).
+    """
+    K = X_pool.shape[1]
+    n_cond = N_CONFIGS * N_CONDS_PER_CONF
+    X_run = X_pool.transpose(1, 0, 2, 3).reshape(K, n_cond, -1)
+    # import pdb; pdb.set_trace()
+    per_run = [_one_minus_pearson_rdm(X_run[k]) for k in range(K)]
+    
+    # avg first, then compute the RDM.
+    X_avg = np.mean(X_run, axis = 0)
+    avg_rdm = _one_minus_pearson_rdm(X_avg)
+    # return per_run, np.mean(per_run, axis=0)
+    
+    return per_run, avg_rdm
+
+
+def plot_roi_rdm_comparison(roi, per_run_rdms, avg_pp_rdm, crossnobis_rdm,
+                            save_path):
+    """5 RDM panels + an RDM×RDM correlation table."""
+    vecs = {}
+    for k, r in enumerate(per_run_rdms):
+        vecs[f'run{k+1}'] = _triu_vec(r, INCLUDE_DIAG)
+    vecs['avg']        = _triu_vec(avg_pp_rdm,    INCLUDE_DIAG)
+    vecs['crossnobis'] = _triu_vec(crossnobis_rdm, INCLUDE_DIAG)
+    names = list(vecs.keys())
+    corr  = np.zeros((len(names), len(names)))
+    for i, a in enumerate(names):
+        for j, b in enumerate(names):
+            corr[i, j] = np.corrcoef(vecs[a], vecs[b])[0, 1]
+
+    n_mats = len(per_run_rdms) + 2
+    fig, axes = plt.subplots(1, n_mats + 1,
+                             figsize=(3.2 * (n_mats + 1), 3.6),
+                             constrained_layout=True)
+    fig.suptitle(f'{roi} — RDM comparison', fontsize=12, weight='bold')
+
+    mats   = list(per_run_rdms) + [avg_pp_rdm, crossnobis_rdm]
+    titles = [f'Run {k+1} (1-r)' for k in range(len(per_run_rdms))] + \
+             ['Avg run (1-r)', 'Crossnobis']
+    for i, (mat, title) in enumerate(zip(mats, titles)):
+        ax = axes[i]
+        im = ax.imshow(mat, aspect='auto', cmap='coolwarm')
+        ax.set_title(title, fontsize=9)
+        n = mat.shape[0]
+        for p in range(0, n, N_CONDS_PER_CONF):
+            ax.axvline(p - 0.5, color='white', ls='dashed', lw=0.5)
+            ax.axhline(p - 0.5, color='white', ls='dashed', lw=0.5)
+        ax.tick_params(labelsize=6)
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.02)
+
+    ax = axes[-1]
+    im = ax.imshow(corr, cmap='viridis', vmin=-1, vmax=1)
+    ax.set_xticks(range(len(names)))
+    ax.set_yticks(range(len(names)))
+    ax.set_xticklabels(names, rotation=45, fontsize=7)
+    ax.set_yticklabels(names, fontsize=7)
+    for i in range(len(names)):
+        for j in range(len(names)):
+            ax.text(j, i, f'{corr[i,j]:.2f}', ha='center', va='center',
+                    color='white' if abs(corr[i,j]) < 0.5 else 'black',
+                    fontsize=7)
+    ax.set_title('Pearson r between RDMs', fontsize=9)
+    plt.colorbar(im, ax=ax, fraction=0.046, pad=0.02)
+
+    fig.savefig(save_path, dpi=150, bbox_inches='tight')
+    return fig, corr
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -732,34 +781,80 @@ print(f"Loaded {len(sessions_data)} sessions.")
 # ── Run RSA per ROI ───────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════
 
-print("\nRunning crossnobis RSA per ROI...")
+print("\nRunning crossnobis + pseudo-pop RSA per ROI...")
 roi_results  = {}
-present_rois = []
+present_rois_crossnobis = []
+present_rois_pseudo_pop = []
 
 for roi in rois_of_interest:
     compute_stab = (roi == 'ACC')
-    data_vec, n_sessions, n_neurons, stab = group_data_rdm_for_roi(
-        roi, sessions_data, compute_stability=compute_stab,
-        plot_first=PLOT_FIGS)
-    if data_vec is None:
-        print(f"  {roi}: no valid sessions, skipping.")
-        continue
 
-    res = run_rsa(data_vec)
-    res['n_neurons'] = n_neurons
-    res['n_sessions'] = n_sessions
-    res['stability']  = stab
-    roi_results[roi]  = res
-    present_rois.append(roi)
-    print(f"  {roi:18s} (n_sessions={n_sessions}, n_neurons={n_neurons}) — "
-          + ', '.join(f"{m}={res['unique'][m][0]:.2f}" for m in models))
+    # 1) Per-session crossnobis RDM, averaged across sessions
+    cn_rdm, n_sessions_cn, n_neurons_cn, stab = group_data_rdm_for_roi(
+        roi, sessions_data, compute_stability=compute_stab)
+
+    # 2) Pseudo-pop 1-Pearson RDM (sessions with ≥K_PSEUDO_POP runs per config)
+    X_pool, n_neurons_pp, n_sessions_pp = _pool_pseudo_population(
+        roi, sessions_data, K=K_PSEUDO_POP)
+    # import pdb; pdb.set_trace()
+    per_run_rdms, avg_pp_rdm = (None, None)
+    if X_pool is not None:
+        per_run_rdms, avg_pp_rdm = compute_pseudo_pop_rdms(X_pool)
+
+    # 3) Per-ROI comparison figure (run RDMs + avg + crossnobis + correlations)
+    if (cn_rdm is not None) and (avg_pp_rdm is not None) and PLOT_FIGS:
+        cmp_path = os.path.join(OUT_DIR, f'rdm_comparison_{roi}.png')
+        plot_roi_rdm_comparison(roi, per_run_rdms, avg_pp_rdm, cn_rdm, cmp_path)
+        #plt.close('all')
+        print(f"  {roi}: RDM comparison → {cmp_path}")
+
+    entry = {'stability': stab}
+
+    # 4) RSA on crossnobis
+    if cn_rdm is not None:
+        cn_vec = _triu_vec(cn_rdm, INCLUDE_DIAG)
+        res_cn = run_rsa(cn_vec)
+        res_cn['n_neurons']  = n_neurons_cn
+        res_cn['n_sessions'] = n_sessions_cn
+        entry['crossnobis']  = res_cn
+        present_rois_crossnobis.append(roi)
+        print(f"  {roi:18s} crossnobis (n_sessions={n_sessions_cn}, "
+              f"n_neurons={n_neurons_cn}) — "
+              + ', '.join(f"{m}={res_cn['unique'][m][0]:.2f}" for m in models))
+    else:
+        print(f"  {roi}: no valid sessions for crossnobis.")
+
+    # 5) RSA on pseudo-pop avg RDM
+    if avg_pp_rdm is not None:
+        # instead of only excluding the diagonal, split in within and across tasks
+        pp_vec = _triu_vec(avg_pp_rdm, INCLUDE_DIAG)
+        
+        
+        within_config_vec, between_config_vec, _, same_config = _split_triu_blocks_vec(avg_pp_rdm, INCLUDE_DIAG, block_size=N_CONDS_PER_CONF)
+        
+        
+        
+        res_pp = run_rsa(pp_vec)
+        res_pp['n_neurons']  = n_neurons_pp
+        res_pp['n_sessions'] = n_sessions_pp
+        entry['pseudo_pop']  = res_pp
+        present_rois_pseudo_pop.append(roi)
+        print(f"  {roi:18s} pseudo_pop (n_sessions={n_sessions_pp}, "
+              f"n_neurons={n_neurons_pp}) — "
+              + ', '.join(f"{m}={res_pp['unique'][m][0]:.2f}" for m in models))
+    else:
+        print(f"  {roi}: <{K_PSEUDO_POP} runs/config in every session — "
+              f"skipping pseudo-pop.")
+
+    if 'crossnobis' in entry or 'pseudo_pop' in entry:
+        roi_results[roi] = entry
 
 
 # ══════════════════════════════════════════════════════════════════════
 # ── ACC stability plot ────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════
 
-if 'ACC' in roi_results and roi_results['ACC']['stability'] is not None:
+if 'ACC' in roi_results and roi_results['ACC'].get('stability') is not None:
     stab = roi_results['ACC']['stability']    # (N_CONFIGS, N_CONDS_PER_CONF)
     fig, axes = plt.subplots(1, 2, figsize=(14, 4.5), constrained_layout=True)
 
@@ -788,17 +883,37 @@ if 'ACC' in roi_results and roi_results['ACC']['stability'] is not None:
 
 
 # ══════════════════════════════════════════════════════════════════════
-# ── Summary heatmap ───────────────────────────────────────────────────
+# ── Summary heatmaps (one per metric) ─────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════
 
-fig_unique, fig_combined = mc.plotting.cell_results.plot_rsa_heatmap(
-    results      = roi_results,
-    models       = models,
-    combo_models = combo_models,
-    rois         = present_rois,
-    title        = 'DSR RSA (crossnobis) — beta per model × ROI',
-    save_path    = os.path.join(OUT_DIR, 'DSR_RSA_crossnobis_heatmap.png'),
-)
-plt.show()
+def _flatten_for_heatmap(metric_key, present):
+    flat = {}
+    for roi in present:
+        if metric_key in roi_results.get(roi, {}):
+            flat[roi] = roi_results[roi][metric_key]
+    return flat
+
+if present_rois_crossnobis:
+    mc.plotting.cell_results.plot_rsa_heatmap(
+        results      = _flatten_for_heatmap('crossnobis', present_rois_crossnobis),
+        models       = models,
+        combo_models = combo_models,
+        rois         = present_rois_crossnobis,
+        title        = 'DSR RSA (crossnobis) — beta per model × ROI',
+        save_path    = os.path.join(OUT_DIR, 'DSR_RSA_crossnobis_heatmap.png'),
+    )
+    plt.show()
+
+if present_rois_pseudo_pop:
+    mc.plotting.cell_results.plot_rsa_heatmap(
+        results      = _flatten_for_heatmap('pseudo_pop', present_rois_pseudo_pop),
+        models       = models,
+        combo_models = combo_models,
+        rois         = present_rois_pseudo_pop,
+        title        = f'DSR RSA (pseudo-pop, 1-Pearson, K={K_PSEUDO_POP}) '
+                       '— beta per model × ROI',
+        save_path    = os.path.join(OUT_DIR, 'DSR_RSA_pseudo_pop_heatmap.png'),
+    )
+    plt.show()
 
 print('\nAll done.')
