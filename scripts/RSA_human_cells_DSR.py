@@ -53,7 +53,7 @@ KEEP_RUNS_SEPRATE = False
 
 # ── Permutation settings ───────────────────────────────────────────────
 RUN_PERMUTATIONS = False    # set False to skip permutation testing
-N_PERMS          = 500     # number of circular-shift permutations
+N_PERMS          = 300     # number of circular-shift permutations
 PERM_SEED        = 42
 
 

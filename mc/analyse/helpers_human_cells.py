@@ -261,6 +261,26 @@ def rename_rois(df, collapse_pfc = False, plot_by_cingulate_and_MTL = False):
     return roi_label
 
 
+def convert_cell_label_in_roi(cell_label):
+    if 'ACC' in cell_label or 'vCC' in cell_label or 'AMC' in cell_label or 'vmPFC' in cell_label:
+        roi = 'ACC'
+    elif 'PCC' in cell_label:
+        roi = 'PCC'
+    elif 'OFC' in cell_label:
+        roi = 'OFC'
+    elif 'MCC' in cell_label or 'HC' in cell_label:
+        roi = 'HC'
+    elif 'EC' in cell_label:
+        roi = 'EC'
+    elif 'AMYG' in cell_label:
+        roi = 'AMY'
+    elif 'OCC' in cell_label:
+        roi = 'OCCIP'
+    else:
+        roi = 'mixed'
+    return roi
+    
+
 def extract_consistent_grids(neuron, cell_name, beh):
     # DIFFERENCE BETWEEN grid-blocks AND unique grids
     # goal: kick out grid-blocks that are unreliable.

@@ -38,9 +38,10 @@ from scipy import stats
 from scipy.ndimage import gaussian_filter1d
 from matplotlib import pyplot as plt
 import mc
+import math
 
 sys.path.insert(0, '/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_clocks_repo')
-
+# import pdb; pdb.set_trace()
 
 # ── Settings ──────────────────────────────────────────────────────────
 DATA_DIR     = '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives'
@@ -53,7 +54,7 @@ _GAUSS_TRUNCATE = 2.0
 
 # Only sessions with ≥ K_RUNS per config contribute.  All their neurons
 # are used — no per-neuron quality filtering.
-K_RUNS = 3
+K_RUNS = 'take_all' # 3 # 'take_all' # value between 1 and 4, or 'take_all'
 
 # Model-RDM resolution (must match RSA_human_cells_DSR.py)
 N_PHASES              = 3
@@ -62,11 +63,18 @@ LEN_STANDARDISED_PATH = 10
 RESOLUTIONx           = 2
 N_CONDS_PER_CONF      = N_PHASES * len(states) * RESOLUTIONx
 
+N_PERMUTATIONS = 3 # None or n e.g. 300 permutations
+
 rois_of_interest = ['whole_brain', 'OFC', 'EC', 'ACC', 'HC', 'PCC', 'AMY',
-                    'R-WHITE-MATTER', 'OCCIP']
-models           = ['location', 'dsr', 'state', 'feedback', 'clocks',
-                    'phase', 'midnight', 'loc_og']
-combo_models     = ['state', 'feedback', 'clocks', 'phase', 'midnight', 'loc_og']
+                    'OCCIP']
+
+models           = ['dsr', 'now_and_next','state', 'feedback',
+                     'midnight', 'location', 'phase',  'phase_state']
+
+combo_models     = ['feedback', 'dsr', 'midnight', 'location']
+#combo_models     = ['state', 'feedback', 'dsr', 'phase', 'midnight', 'location']
+
+
 
 configs = [
     '3-7-9-5', '8-2-6-7', '1-9-5-8', '4-8-1-3',
@@ -86,121 +94,196 @@ os.makedirs(OUT_DIR, exist_ok=True)
 # ── Trial-level helpers ───────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════
 
-def _downsample_mean_1d(x, target_len):
-    n = len(x)
-    edges = np.linspace(0, n, target_len + 1, dtype=int)
-    out = np.empty(target_len, dtype=float)
-    for i in range(target_len):
-        chunk = x[edges[i]:edges[i+1]]
-        out[i] = np.nan if len(chunk) == 0 else np.nanmean(chunk)
-    return out
+def _smooth_bin_axis(x, axis=-1):
+    """Vectorised gaussian smooth + bin to N_CONDS_PER_CONF along `axis`."""
+    sm = gaussian_filter1d(x, sigma=_GAUSS_SIGMA,
+                           truncate=_GAUSS_TRUNCATE, axis=axis)
+    sm = np.moveaxis(sm, axis, -1)
+    n_in  = sm.shape[-1]
+    edges = np.linspace(0, n_in, N_CONDS_PER_CONF + 1, dtype=int)
+    out   = np.empty(sm.shape[:-1] + (N_CONDS_PER_CONF,), dtype=float)
+    for i in range(N_CONDS_PER_CONF):
+        chunk = sm[..., edges[i]:edges[i+1]]
+        if chunk.shape[-1] == 0:
+            out[..., i] = np.nan
+        else:
+            out[..., i] = np.nanmean(chunk, axis=-1)
+    return np.moveaxis(out, -1, axis)
 
 
-def _smooth_and_bin(row):
-    sm = gaussian_filter1d(row, sigma=_GAUSS_SIGMA, truncate=_GAUSS_TRUNCATE)
-    return _downsample_mean_1d(sm, N_CONDS_PER_CONF)
+def _zscore_per_neuron(x, neuron_axis=0):
+    """Z-score each neuron across all other axes (vectorised)."""
+    x  = x.astype(float, copy=True)
+    other = tuple(i for i in range(x.ndim) if i != neuron_axis)
+    mu = np.nanmean(x, axis=other, keepdims=True)
+    sd = np.nanstd(x,  axis=other, keepdims=True)
+    sd = np.where(np.isfinite(sd) & (sd > 0), sd, 1.0)
+    return (x - mu) / sd
 
 
-def _zscore_session_neurons(smooth_tensor):
-    """Z-score each neuron across all trials × timebins in that session."""
-    x = smooth_tensor.astype(float).copy()
-    for n in range(x.shape[0]):
-        mu = np.nanmean(x[n])
-        sd = np.nanstd(x[n])
-        if not np.isfinite(sd) or sd == 0:
-            sd = 1.0
-        x[n] = (x[n] - mu) / sd
-    return x
+def _stack_raw_neurons(neurons_raw, neuron_names, n_trials):
+    """Build raw[n_neurons, n_trials, n_bins_raw] (NaN-padded across trials)."""
+    arrs   = []
+    n_bins = None
+    for name in neuron_names:
+        a = neurons_raw[name].to_numpy(dtype=float)
+        if n_bins is None:
+            n_bins = a.shape[1]
+        if a.shape[0] < n_trials:
+            pad = np.full((n_trials - a.shape[0], a.shape[1]), np.nan)
+            a   = np.vstack([a, pad])
+        elif a.shape[0] > n_trials:
+            a = a[:n_trials]
+        arrs.append(a)
+    return np.stack(arrs, axis=0), n_bins
 
 
-def load_session_trials(sub_str):
+def load_session_trials(sub_str, n_perms=None):
     """
-    Returns smooth_tensor (n_neurons, n_trials, N_CONDS_PER_CONF),
-    cell_labels, neuron_names, beh (with 'config' tuple + int 'grid_no'),
-    locations (n_trials, n_bins), ok flag.
+    Returns smooth (n_neurons, n_trials, N_CONDS_PER_CONF) [z-scored],
+            cell_labels, neuron_names, beh, locs, ok flag,
+            smooth_perm (n_neurons, n_trials, N_CONDS_PER_CONF, n_perms)
+            or None.  Each perm circularly shifts each (neuron, trial) raw
+            row by an independent random offset, then runs the same
+            vectorised smooth+bin+z-score pipeline.
     """
     data_dict = mc.analyse.helpers_human_cells.load_norm_data(DATA_DIR, [sub_str])
     key = f'sub-{sub_str}'
     if key not in data_dict:
-        return None, None, None, None, None, False
+        return None, None, None, None, None, False, None
 
-    beh         = data_dict[key]['beh'].copy()
+    beh = data_dict[key]['beh'].copy().reset_index(drop=True)
     neurons_raw = data_dict[key]['normalised_neurons']
-    cell_labels = data_dict[key]['cell_labels']
+    # cell_labels = data_dict[key]['cell_labels']
     locs        = data_dict[key]['locations']
+    locs = data_dict[key]['locations'].copy().reset_index(drop=True) 
+
     if not neurons_raw:
-        return None, None, None, None, None, False
+        return None, None, None, None, None, False, None
 
     neuron_names = sorted(neurons_raw.keys())
     n_neurons    = len(neuron_names)
     n_trials     = len(beh)
 
-    smooth_tensor = np.full((n_neurons, n_trials, N_CONDS_PER_CONF), np.nan)
-    for n_idx, name in enumerate(neuron_names):
-        arr = neurons_raw[name].to_numpy(dtype=float)
-        nt  = min(arr.shape[0], n_trials)
-        for t in range(nt):
-            smooth_tensor[n_idx, t, :] = _smooth_and_bin(arr[t])
+    # import pdb; pdb.set_trace() 
+    raw, n_bins_raw = _stack_raw_neurons(neurons_raw, neuron_names, n_trials)
+
+    smooth = _zscore_per_neuron(_smooth_bin_axis(raw, axis=-1), neuron_axis=0)
+
+    smooth_perm = None
+    
+    # # this is randomly rotating each neuron, across configs.
+    # if n_perms:
+    #     rng = np.random.default_rng()
+    #     n_flat = n_trials * n_bins_raw
+    #     flat_axis = np.arange(n_flat)
+    #     n_axis = np.arange(n_neurons)[:, None]
+        
+    #     smooth_perm = np.full((n_neurons, n_trials, N_CONDS_PER_CONF, n_perms), np.nan)
+    #     # flatten trials and bins: (8, 337, 24) -> (8, 337*24)
+    #     raw_flat = raw.reshape(n_neurons, n_flat)
+    #     for p in range(n_perms):
+    #         # one circular shift per neuron
+    #         ks = rng.integers(0, n_flat, size=(n_neurons, 1))
+    #         # shifted flattened indices
+    #         shift_flat = (flat_axis[None, :] + ks) % n_flat
+    #         # apply circular shift: shape (n_neurons, n_flat)
+    #         raw_p_flat = raw_flat[n_axis, shift_flat]
+    #         # reshape back: (8, 337*24) -> (8, 337, 24)
+    #         raw_p = raw_p_flat.reshape(n_neurons, n_trials, n_bins_raw)
+    #         smooth_perm[..., p] = _zscore_per_neuron(_smooth_bin_axis(raw_p, axis=-1),neuron_axis=0)
+    
+    # permuted data stays in the same config/run/trial bucket, but the within-trial temporal structure is scrambled
+    if n_perms:
+        # import pdb; pdb.set_trace() 
+        rng     = np.random.default_rng()
+        b_axis  = np.arange(n_bins_raw)
+        n_axis  = np.arange(n_neurons)[:, None, None]
+        t_axis  = np.arange(n_trials)[None, :, None]
+        smooth_perm = np.full(
+            (n_neurons, n_trials, N_CONDS_PER_CONF, n_perms), np.nan)
+        for p in range(n_perms):
+            # generates the shifts for all neurons and trials at the same time
+            ks       = rng.integers(0, n_bins_raw, size=(n_neurons, n_trials))
+            # circular shift of bin indices for all neurons and trials
+            shift_b  = (b_axis[None, None, :] + ks[:, :, None]) % n_bins_raw
+            # create the shift
+            raw_p    = raw[n_axis, t_axis, shift_b]
+            smooth_perm[..., p] = _zscore_per_neuron(
+                _smooth_bin_axis(raw_p, axis=-1), neuron_axis=0)
 
     beh['config'] = list(zip(
         beh['loc_A'].astype(int), beh['loc_B'].astype(int),
         beh['loc_C'].astype(int), beh['loc_D'].astype(int),
     ))
-    beh['grid_no'] = beh['grid_no'].astype(int)
+    beh['grid_no']    = beh['grid_no'].astype(int)
     beh['config_str'] = beh['config'].apply(
         lambda t: f'{t[0]}-{t[1]}-{t[2]}-{t[3]}')
 
-    if len(cell_labels) < n_neurons:
-        cell_labels = list(cell_labels) + ['UNKNOWN'] * (n_neurons - len(cell_labels))
-    else:
-        cell_labels = list(cell_labels[:n_neurons])
+    # if len(cell_labels) < n_neurons:
+    #     cell_labels = list(cell_labels) + ['UNKNOWN'] * (n_neurons - len(cell_labels))
+    # else:
+    #     cell_labels = list(cell_labels[:n_neurons])
 
-    smooth_tensor = _zscore_session_neurons(smooth_tensor)
-    return smooth_tensor, cell_labels, neuron_names, beh, locs, True
+    return smooth, neuron_names, beh, locs, True, smooth_perm
+    # return smooth, cell_labels, neuron_names, beh, locs, True, smooth_perm
 
 
-def _build_run_groups(beh, smooth_tensor, keep_idx):
-    """
-    Group trials by (cfg_idx, run_idx) where run_idx enumerates blocks of a
-    config in ascending grid_no.  Returns
-        groups[c_idx][r_idx] = ndarray (n_reps, n_kept_neurons, N_CONDS_PER_CONF)
-    """
+def _build_run_indices(beh, smooth, keep_idx):
+    """groups[c][r] = ndarray of valid trial indices into smooth's trial axis.
+    A trial is valid if no NaN appears across (kept neurons × time bins)."""
     groups = {}
     for c_idx, cfg_tup in enumerate(DSR_CONFIGS_TUP):
-        mask = (beh['config'] == cfg_tup) & (beh['correct'] == 1)
+        mask    = (beh['config'] == cfg_tup) & (beh['correct'] == 1)
         sub_beh = beh[mask]
         blocks  = sorted(sub_beh['grid_no'].unique().tolist())
         runs    = {}
         for r_idx, blk in enumerate(blocks):
-            tr_idx = sub_beh[sub_beh['grid_no'] == blk].index.tolist()
-            tr_idx = [t for t in tr_idx if t < smooth_tensor.shape[1]]
-            if not tr_idx:
+            tr = sub_beh[sub_beh['grid_no'] == blk].index.tolist()
+            tr = np.asarray(
+                [t for t in tr if t < smooth.shape[1]], dtype=int)
+            if tr.size == 0:
                 continue
-            reps = smooth_tensor[np.ix_(keep_idx, tr_idx, np.arange(N_CONDS_PER_CONF))]
-            reps = np.transpose(reps, (1, 0, 2))   # (n_reps, n_neurons, n_tb)
-            valid = ~np.isnan(reps).any(axis=(1, 2))
+            sub   = smooth[np.ix_(keep_idx, tr)]   # (n_kept, n_reps, n_tb)
+            valid = ~np.isnan(sub).any(axis=(0, 2))
             if not valid.any():
                 continue
-            runs[r_idx] = reps[valid]
+            runs[r_idx] = tr[valid]
         groups[c_idx] = runs
     return groups
 
 
-def _session_tensor(groups, K):
-    """
-    X[cfg, run, tb, neuron] = mean across correct repeats.
-    Requires ≥K runs for every config.  Returns (X, n_neurons) or (None, 0).
-    """
+def _session_tensor(smooth, groups, keep_idx, K):
+    """smooth : (n_neurons, n_trials, n_tb[, n_perms]).
+    Returns X (N_CONFIGS, K, n_tb, n_kept[, n_perms]) — mean across reps —
+    or None if any cfg has fewer than K runs."""
     run_counts = [len(groups.get(c, {})) for c in range(N_CONFIGS)]
-    if not run_counts or min(run_counts) < K:
-        return None, 0
-    first = next(iter(next(iter(groups.values())).values()))
-    n_neurons = first.shape[1]
-    X = np.full((N_CONFIGS, K, N_CONDS_PER_CONF, n_neurons), np.nan)
-    for c in range(N_CONFIGS):
-        for k in range(K):
-            X[c, k] = groups[c][k].mean(axis=0).T
-    return X, n_neurons
+
+    extra = smooth.shape[3:]
+    n_tb  = smooth.shape[2]
+    sub_smooth = smooth[keep_idx]
+    
+    # import pdb; pdb.set_trace() 
+    if K == 'take_all':
+        X_avg = np.full((N_CONFIGS, n_tb, len(keep_idx)) + extra, np.nan)
+        for c in range(N_CONFIGS):
+            all_reps = np.concatenate(list(groups[c].values()))
+            reps = sub_smooth[:, all_reps]
+            X_avg[c] = np.moveaxis(reps.mean(axis=1), 0,1)     
+
+    else:
+        if not run_counts or min(run_counts) < K:
+            return None
+        X = np.full((N_CONFIGS, K, n_tb, len(keep_idx)) + extra, np.nan)
+        for c in range(N_CONFIGS):
+            for k in range(K):
+                tr = groups[c][k] # indices for one config run
+                reps = sub_smooth[:, tr]  # (neurons, n_reps, n_taskbins)
+                X[c, k] = np.moveaxis(reps.mean(axis=1), 0, 1) # config, runs, bins, neurons
+        X_avg = X.mean(axis=1) # configs, bins, neurons
+    
+    # return an average across sessions
+    return X_avg
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -297,71 +380,74 @@ def build_model_rdms(mode_locs_single):
         state_config[start: RESOLUTIONx * (s_i + 1) * N_PHASES, s_i] = 1
         if s == 'A':
             feedback_config[0:RESOLUTIONx, s_i] = 1
+        if s == 'D':
+            feedback_config[-RESOLUTIONx:, s_i] = 1
         for p_i in range(N_PHASES):
             phase_config[start + p_i*RESOLUTIONx:
                          start + (p_i+1)*RESOLUTIONx, p_i] = 1
-
+    # import pdb; pdb.set_trace()
     feedback_half = np.tile(feedback_config, (len(configs), 1))
     state_half    = np.tile(state_config,    (len(configs), 1))
     phase_half    = np.tile(phase_config,    (len(configs), 1))
 
     _n_clock_neurons = 9 * N_PHASES * (N_PHASES * len(states))
-    clocks_mat   = np.zeros((N_CONFIGS * N_CONDS_PER_CONF, _n_clock_neurons), dtype=float)
-    midnight_mat = np.zeros((N_CONFIGS * N_CONDS_PER_CONF, 9 * N_PHASES),     dtype=float)
-    loc_og_mat   = np.zeros((N_CONFIGS * N_CONDS_PER_CONF, 9),                dtype=float)
+    dsr_mat   = np.zeros((N_CONFIGS * N_CONDS_PER_CONF, _n_clock_neurons),    dtype=float)
+    midnight_mat = np.zeros((N_CONFIGS * N_CONDS_PER_CONF, 9 * N_PHASES),        dtype=float)
+    loc_og_mat   = np.zeros((N_CONFIGS * N_CONDS_PER_CONF, 9),                   dtype=float)
+    phase_og_mat = np.zeros((N_CONFIGS * N_CONDS_PER_CONF, N_PHASES),            dtype=float)
+    state_og_mat = np.zeros((N_CONFIGS * N_CONDS_PER_CONF, len(states)),                   dtype=float)
+    now_and_next_mat = np.zeros((N_CONFIGS * N_CONDS_PER_CONF, _n_clock_neurons), dtype=float)
+    phas_stat_mat = np.zeros((N_CONFIGS * N_CONDS_PER_CONF, N_PHASES * len(states)), dtype=float)
+    
 
     for c_idx, c in enumerate(configs):
         row_start   = c_idx * N_CONDS_PER_CONF
         task_config = [int(int(x) - 1) for x in c.split('-')]
-        curr_task   = mode_locs_single.get(c)
-        if curr_task is None or np.all(np.isnan(curr_task)):
-            curr_task = np.full(N_BINS, float(task_config[0] + 1))
-        curr_task = curr_task.copy()
-        for i in range(len(curr_task)):
-            if np.isnan(curr_task[i]):
-                curr_task[i] = curr_task[i-1] if i > 0 else float(task_config[0] + 1)
-        curr_task = [int(field_no - 1) for field_no in curr_task]
-        LEN_OG_SUBPATH = int(len(curr_task) / N_CONDS_PER_CONF)
+        walked   = mode_locs_single.get(c)
+        walked = [int(w-1) for w in walked]
 
-        with contextlib.redirect_stdout(io.StringIO()):
-            loc_og_matrix = mc.simulation.predictions.set_location_ephys(
-                curr_task, task_config, grid_size=3, plotting=False)
-            
-            loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat = mc.simulation.predictions.model_DSR(locations = curr_task, no_phase_neurons=N_PHASES)
-            
-            # clocks_matrix, midnight_matrix = mc.simulation.predictions.set_clocks_ephys(
-            #     curr_task, task_config, grid_size=3, phases=N_PHASES, plotting=False)
-        import pdb; pdb.set_trace()
+        loc_og_matrix, phase_og_matrix, stat_matrix, midnight_matrix, dsr_matrix, phas_stat_matrix, clo_model_subpath = mc.simulation.predictions.model_DSR(locations = walked, no_phase_neurons=N_PHASES)
+        
+        
         for n_sp in range(N_CONDS_PER_CONF):
             t0 = n_sp * LEN_OG_SUBPATH
             t1 = (n_sp + 1) * LEN_OG_SUBPATH
-            for dst, src in [(clocks_mat,   clocks_matrix),
+            for dst, src in [(dsr_mat,   dsr_matrix),
                              (midnight_mat, midnight_matrix),
-                             (loc_og_mat,   loc_og_matrix)]:
+                             (loc_og_mat,   loc_og_matrix),
+                             (phase_og_mat, phase_og_matrix),
+                             (state_og_mat, stat_matrix),
+                             (now_and_next_mat, clo_model_subpath),
+                             (phas_stat_mat, phas_stat_matrix)
+                             ]:
                 sub_sp = np.nanmean(src[:, t0:t1], axis=1)
                 dst[row_start + n_sp, :] = np.where(np.isnan(sub_sp), 0.0, sub_sp)
 
     model_concat = {
-        'location': loc_th,
-        'dsr':      dsr_th,
+        'loc_hamming': loc_th,
+        'dsr_hamming': dsr_th,
         'state':    state_half,
         'feedback': feedback_half,
-        'clocks':   clocks_mat,
-        'loc_og':   loc_og_mat,
+        'dsr':   dsr_mat,
+        'location':   loc_og_mat,
         'midnight': midnight_mat,
         'phase':    phase_half,
+        'phase_og': phase_og_mat,
+        'state_og': state_og_mat,
+        'now_and_next': now_and_next_mat,
+        'phase_state': phas_stat_mat
     }
 
-    within, across = {}, {}
+    within, across, full = {}, {}, {}
     for m in models:
-        if m in ('location', 'dsr'):
-            w, a = mc.analyse.my_RSA.compute_hamming_distance_within(
+        if m in ('loc_hamming', 'dsr_hamming'):
+            w, a, full[m] = mc.analyse.my_RSA.compute_hamming_distance_within(
                 model_concat[m], plotting=False,
                 include_diagonal=INCLUDE_DIAG,
                 model_name=m, no_tasks=len(configs),
                 block_size=N_CONDS_PER_CONF)
         else:
-            w, a = mc.analyse.my_RSA.compute_crosscorr_within(
+            w, a, full[m] = mc.analyse.my_RSA.compute_crosscorr_within(
                 model_concat[m], plotting=False,
                 include_diagonal=INCLUDE_DIAG,
                 no_tasks=len(configs), model=m,
@@ -372,47 +458,14 @@ def build_model_rdms(mode_locs_single):
     # feedback: NaN → 1 (same convention as original script)
     within['feedback'] = np.where(np.isnan(within['feedback']), 1.0, within['feedback'])
     across['feedback'] = np.where(np.isnan(across['feedback']), 1.0, across['feedback'])
-
-    # also return full (N×N) model RDM matrices for plotting / model-corr
-    full = {}
-    for m in models:
-        data = model_concat[m]
-        if m in ('location', 'dsr'):
-            d = np.asarray(data, dtype=object)
-            overlap = np.equal(d[:, None, :], d[None, :, :])
-            full[m] = 1.0 - overlap.mean(axis=2)
-        else:
-            d = np.asarray(data, dtype=float)
-            dd = d - d.mean(axis=1, keepdims=True)
-            norms = np.sqrt(np.einsum('ij,ij->i', dd, dd))
-            norms[norms == 0] = 1
-            dd = dd / norms[:, None]
-            full[m] = 1.0 - dd @ dd.T
     full['feedback'] = np.where(np.isnan(full['feedback']), 1.0, full['feedback'])
+    
     return within, across, full
 
 
 # ══════════════════════════════════════════════════════════════════════
-# ── Data RDM helpers ─────────────────────────────────────────────────
+# ── RDM plotting helpers ─────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════
-
-def _one_minus_pearson_rdm(patterns):
-    """patterns: (n_cond, n_features)."""
-    X = patterns - patterns.mean(axis=1, keepdims=True)
-    norms = np.sqrt(np.einsum('ij,ij->i', X, X))
-    norms[norms == 0] = 1
-    X = X / norms[:, None]
-    return 1.0 - X @ X.T
-
-
-def _split_triu_blocks(mat, include_diag, block_size):
-    n = mat.shape[0]
-    k = 0 if include_diag else 1
-    i, j = np.triu_indices(n, k=k)
-    vec = mat[i, j]
-    same = (i // block_size) == (j // block_size)
-    return vec[same], vec[~same]
-
 
 def _apply_block_mask(mat, mode, block_size):
     """Return float copy with cells outside the requested region set to NaN.
@@ -437,9 +490,16 @@ def _add_block_lines(ax, n):
 
 
 def _roi_keep_idx(cell_labels, roi_filter):
+    # import pdb; pdb.set_trace() 
+
     if roi_filter == 'whole_brain':
         return np.arange(len(cell_labels))
-    return np.array([i for i, lb in enumerate(cell_labels) if lb == roi_filter])
+    roi_list = []
+    for cl in cell_labels:
+        roi = mc.analyse.helpers_human_cells.convert_cell_label_in_roi(cl)
+        roi_list.append(roi)
+    # import pdb; pdb.set_trace() 
+    return np.array([i for i, lb in enumerate(roi_list) if lb == roi_filter])
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -454,6 +514,7 @@ def run_rsa(data_vec, model_RDMs_vec):
     """Unique regression per model + combined regression (mirrors DSR script)."""
     unique = {}
     for m in models:
+        print(m)
         res = mc.analyse.my_RSA.evaluate_model(model_RDMs_vec[m], data_vec)
         unique[m] = (_scalar(res[0]), _scalar(res[1]), _scalar(res[2]))
 
@@ -474,31 +535,38 @@ def run_rsa(data_vec, model_RDMs_vec):
 print('\nLoading sessions...')
 sessions_data = []
 for sub in SUBJECTS:
-    smooth, cell_labels, names, beh, locs, ok = load_session_trials(sub)
+    smooth, names, beh, locs, ok, smooth_perm = (
+        load_session_trials(sub, n_perms=N_PERMUTATIONS))
     if not ok:
         print(f'  s{sub}: no data.')
         continue
 
     keep_all = np.arange(smooth.shape[0])
-    groups   = _build_run_groups(beh, smooth, keep_all)
-    X_sess, n_neurons = _session_tensor(groups, K_RUNS)
-    if X_sess is None:
+    groups   = _build_run_indices(beh, smooth, keep_all)
+    X_avg   = _session_tensor(smooth, groups, keep_all, K_RUNS)
+    if X_avg is None:
         print(f'  s{sub}: <{K_RUNS} runs per config, skipping session.')
         continue
 
     # average across runs → (N_CONFIGS, N_CONDS_PER_CONF, n_neurons)
-    X_avg = X_sess.mean(axis=1)
+    # X_avg      = X_sess.mean(axis=1)
+    X_avg_perm = None
+    if smooth_perm is not None:
+        X_avg_perm = _session_tensor(smooth_perm, groups, keep_all, K_RUNS)
 
+    n_neurons = int(smooth.shape[0])
     sessions_data.append({
-        'sub':         sub,
-        'X_avg':       X_avg,
-        'cell_labels': list(cell_labels),
+        'sub':          sub,
+        'X_avg':        X_avg,
+        'X_avg_perm':   X_avg_perm,
         'neuron_names': list(names),
-        'beh':         beh,
-        'locs':        locs,
-        'n_neurons':   int(n_neurons),
+        'beh':          beh,
+        'locs':         locs,
+        'n_neurons':    n_neurons,
     })
-    print(f'  s{sub}: {n_neurons} neurons, {K_RUNS}+ runs/config.')
+    msg_perm = (f', perms={X_avg_perm.shape[-1]}'
+                if X_avg_perm is not None else '')
+    print(f'  s{sub}: {n_neurons} neurons, {K_RUNS}+ runs/config{msg_perm}.')
 
 print(f'Loaded {len(sessions_data)} sessions.')
 
@@ -520,27 +588,39 @@ for sd in sessions_data:
 def _pool_roi(roi):
     """
     Pool averaged-across-runs patterns for neurons with label == roi.
-    Returns X_pool (n_cond, n_neurons_total), contributing_subs (list[str]),
-    n_neurons_per_sub dict.
+    Returns
+        X_pool       (n_cond, n_neurons_total),
+        X_pool_perm  (n_cond, n_neurons_total, n_perms) or None,
+        contributing_subs (list[str]),
+        n_neurons_per_sub (dict).
     """
-    parts = []
+    parts_emp, parts_perm = [], []
     contrib_subs = []
     per_sub_count = {}
     for sd in sessions_data:
         if 'X_avg' not in sd:
             continue
-        keep = _roi_keep_idx(sd['cell_labels'], roi)
+        keep = _roi_keep_idx(sd['neuron_names'], roi)
         if len(keep) == 0:
             continue
-        X = sd['X_avg'][..., keep]                     # (cfg, tb, n_kept)
+        X    = sd['X_avg'][..., keep]                     # (cfg, tb, n_kept)
         patt = X.reshape(N_CONFIGS * N_CONDS_PER_CONF, -1)
-        parts.append(patt)
+        parts_emp.append(patt)
+
+        if sd.get('X_avg_perm') is not None:
+            Xp = sd['X_avg_perm'][..., keep, :]            # (cfg, tb, n_kept, n_perms)
+            parts_perm.append(
+                Xp.reshape(N_CONFIGS * N_CONDS_PER_CONF, -1, Xp.shape[-1]))
+
         contrib_subs.append(sd['sub'])
         per_sub_count[sd['sub']] = int(X.shape[-1])
-    if not parts:
-        return None, [], {}
-    X_pool = np.concatenate(parts, axis=1)
-    return X_pool, contrib_subs, per_sub_count
+
+    if not parts_emp:
+        return None, None, [], {}
+    X_pool      = np.concatenate(parts_emp, axis=1)
+    X_pool_perm = (np.concatenate(parts_perm, axis=1)
+                   if parts_perm else None)
+    return X_pool, X_pool_perm, contrib_subs, per_sub_count
 
 
 def _mode_locs_for_subs(sub_list):
@@ -552,11 +632,58 @@ def _mode_locs_for_subs(sub_list):
     return build_mode_locs(collected)
 
 
+def _data_rdm_split(X):
+    """Run 1-Pearson RDM + within/between split for a single (n_cond, n_neurons)."""
+    d_w, d_a, full = mc.analyse.my_RSA.compute_crosscorr_within(
+        X, plotting=False,
+        include_diagonal=INCLUDE_DIAG,
+        no_tasks=len(configs), model='data',
+        block_size=N_CONDS_PER_CONF)
+    return (np.asarray(d_w[0], dtype=float),
+            np.asarray(d_a[0], dtype=float),
+            full)
+
+
+def _perm_betas(X_pool_perm, model_within, model_across):
+    """Run RSA on each perm.  Returns dicts of arrays keyed by mode/model
+    plus combined-regression beta arrays."""
+    n_perms = X_pool_perm.shape[-1]
+    betas_w = {m: np.full(n_perms, np.nan) for m in models}
+    betas_a = {m: np.full(n_perms, np.nan) for m in models}
+    combo_w = np.full((n_perms, len(combo_models)), np.nan)
+    combo_a = np.full((n_perms, len(combo_models)), np.nan)
+
+    stacked_w = np.stack([model_within[m] for m in combo_models], axis=1)
+    stacked_a = np.stack([model_across[m] for m in combo_models], axis=1)
+
+    for p in range(n_perms):
+        dwv, dav, _ = _data_rdm_split(X_pool_perm[..., p])
+        for m in models:
+            # import pdb; pdb.set_trace() 
+            _, bw, _ = mc.analyse.my_RSA.evaluate_model(model_within[m], dwv)
+            _, ba, _ = mc.analyse.my_RSA.evaluate_model(model_across[m], dav)
+            betas_w[m][p] = _scalar(bw)
+            betas_a[m][p] = _scalar(ba)
+        _, bw_c, _ = mc.analyse.my_RSA.evaluate_model(stacked_w, dwv)
+        _, ba_c, _ = mc.analyse.my_RSA.evaluate_model(stacked_a, dav)
+        combo_w[p] = np.asarray(bw_c, dtype=float).ravel()
+        combo_a[p] = np.asarray(ba_c, dtype=float).ravel()
+    return betas_w, betas_a, combo_w, combo_a
+
+
+def _two_sided_perm_p(empirical, perm_dist):
+    perm_dist = np.asarray(perm_dist, dtype=float)
+    perm_dist = perm_dist[np.isfinite(perm_dist)]
+    if perm_dist.size == 0 or not np.isfinite(empirical):
+        return np.nan
+    return float((np.abs(perm_dist) >= np.abs(empirical)).mean())
+
+
 print('\nRunning RSA per ROI...')
 roi_results = {}
 
 for roi in rois_of_interest:
-    X_pool, contrib_subs, per_sub_count = _pool_roi(roi)
+    X_pool, X_pool_perm, contrib_subs, per_sub_count = _pool_roi(roi)
     if X_pool is None:
         print(f'  {roi}: no neurons, skipping.')
         continue
@@ -565,22 +692,15 @@ for roi in rois_of_interest:
     mode_locs_roi = _mode_locs_for_subs(contrib_subs)
     model_within, model_across, model_full = build_model_rdms(mode_locs_roi)
 
-    # --- data RDM (1 - Pearson), split into within/between vectors -------
-    data_rdm = _one_minus_pearson_rdm(X_pool)
-    data_within, data_across = _split_triu_blocks(
-        data_rdm, INCLUDE_DIAG, block_size=N_CONDS_PER_CONF)
+    # --- empirical data RDM ---------------------------------------------
+    data_within, data_across, data_rdm = _data_rdm_split(X_pool)
 
-    # diagnostic: correlation between within and across vectors (only
-    # meaningful if both have the same length → they don't.  Instead, we
-    # report self-correlation by subsampling across to length of within.)
+    # diagnostic correlation (subsample data_across to match len)
     corr_wb = float(np.corrcoef(
-        data_within, np.random.default_rng(0).choice(
-            data_across, size=len(data_within), replace=False))[0, 1]) \
-        if len(data_within) > 2 and len(data_across) > 2 else float('nan')
+        data_within, data_across[:len(data_within)])[0, 1])
 
-    # --- RSA separately on within + between ------------------------------
-    res_within  = run_rsa(data_within, model_within)
-    res_across  = run_rsa(data_across, model_across)
+    res_within = run_rsa(data_within, model_within)
+    res_across = run_rsa(data_across, model_across)
 
     n_neurons_total = int(X_pool.shape[1])
     res_within['n_neurons']  = n_neurons_total
@@ -588,16 +708,47 @@ for roi in rois_of_interest:
     res_within['n_sessions'] = len(contrib_subs)
     res_across['n_sessions'] = len(contrib_subs)
 
+    # --- permutation RSA -------------------------------------------------
+    perm_w_betas = perm_a_betas = None
+    perm_w_combo = perm_a_combo = None
+    perm_p_w_unique = perm_p_a_unique = None
+    perm_p_w_combo  = perm_p_a_combo  = None
+    if X_pool_perm is not None:
+        perm_w_betas, perm_a_betas, perm_w_combo, perm_a_combo = _perm_betas(
+            X_pool_perm, model_within, model_across)
+        perm_p_w_unique = {
+            m: _two_sided_perm_p(res_within['unique'][m][1], perm_w_betas[m])
+            for m in models}
+        perm_p_a_unique = {
+            m: _two_sided_perm_p(res_across['unique'][m][1], perm_a_betas[m])
+            for m in models}
+        perm_p_w_combo = {
+            cm: _two_sided_perm_p(
+                res_within['combined']['beta'][i], perm_w_combo[:, i])
+            for i, cm in enumerate(combo_models)}
+        perm_p_a_combo = {
+            cm: _two_sided_perm_p(
+                res_across['combined']['beta'][i], perm_a_combo[:, i])
+            for i, cm in enumerate(combo_models)}
+
     roi_results[roi] = {
-        'within':            res_within,
-        'across':            res_across,
-        'n_neurons':         n_neurons_total,
-        'n_sessions':        len(contrib_subs),
-        'contrib_subs':      contrib_subs,
-        'per_sub_count':     per_sub_count,
-        'data_rdm':          data_rdm,
-        'model_full':        model_full,
-        'corr_within_across': corr_wb,
+        'within':              res_within,
+        'across':              res_across,
+        'n_neurons':           n_neurons_total,
+        'n_sessions':          len(contrib_subs),
+        'contrib_subs':        contrib_subs,
+        'per_sub_count':       per_sub_count,
+        'data_rdm':            data_rdm,
+        'model_full':          model_full,
+        'corr_within_across':  corr_wb,
+        'perm_within_betas':   perm_w_betas,
+        'perm_across_betas':   perm_a_betas,
+        'perm_within_combo':   perm_w_combo,
+        'perm_across_combo':   perm_a_combo,
+        'perm_p_within':       perm_p_w_unique,
+        'perm_p_across':       perm_p_a_unique,
+        'perm_p_within_combo': perm_p_w_combo,
+        'perm_p_across_combo': perm_p_a_combo,
     }
 
     print(f'  {roi:18s} n_neurons={n_neurons_total:4d} '
@@ -609,112 +760,115 @@ for roi in rois_of_interest:
               f"{m}={res_across['unique'][m][1]:.2f}" for m in models) + ')')
 
 
-# ══════════════════════════════════════════════════════════════════════
-# ── Per-ROI bar plots (within vs between) ────────────────────────────
-# ══════════════════════════════════════════════════════════════════════
-
-if PLOT_FIGS:
-    print('\nSaving per-ROI bar plots...')
-    for roi, res in roi_results.items():
-        w_betas = [res['within']['unique'][m][1]  for m in models]
-        a_betas = [res['across']['unique'][m][1]  for m in models]
-        w_p     = [res['within']['unique'][m][2]  for m in models]
-        a_p     = [res['across']['unique'][m][2]  for m in models]
-
-        x = np.arange(len(models)); width = 0.38
-        fig, ax = plt.subplots(figsize=(1.05 * len(models) + 2.5, 4.0),
-                               constrained_layout=True)
-        bars_w = ax.bar(x - width/2, w_betas, width,
-                        label='within config', color='#3b5bdb')
-        bars_a = ax.bar(x + width/2, a_betas, width,
-                        label='between configs', color='#fa5252')
-
-        for bar, p in zip(bars_w, w_p):
-            if p < 0.05:
-                ax.text(bar.get_x() + bar.get_width()/2, bar.get_height(),
-                        '*', ha='center', va='bottom', fontsize=11)
-        for bar, p in zip(bars_a, a_p):
-            if p < 0.05:
-                ax.text(bar.get_x() + bar.get_width()/2, bar.get_height(),
-                        '*', ha='center', va='bottom', fontsize=11)
-
-        ax.axhline(0, color='k', lw=0.6)
-        ax.set_xticks(x); ax.set_xticklabels(models, rotation=30, ha='right')
-        ax.set_ylabel('beta (unique regression)')
-        ax.set_title(
-            f'{roi} — within vs between-config RSA  '
-            f'(n_neurons={res["n_neurons"]}, n_sess={res["n_sessions"]})',
-            fontsize=10)
-        ax.legend(fontsize=8, frameon=False)
-        fig.savefig(os.path.join(OUT_DIR, f'rsa_within_across_{roi}.png'),
-                    dpi=150, bbox_inches='tight')
-        # plt.close(fig)
 
 
 # ══════════════════════════════════════════════════════════════════════
 # ── Block-diagonal vs between-block RDM overview figures ─────────────
 # ══════════════════════════════════════════════════════════════════════
 
-def _rdm_grid_figure(mode, save_path):
-    """mode ∈ {'within','between'}.  Top row: data RDMs per ROI (masked).
-    Bottom row: model RDMs per model (masked).  Model RDMs are taken from
-    the whole_brain ROI (falls back to the first ROI if missing)."""
+
+
+def _rdm_grid_figure(mode, save_path_prefix):
+    """
+    mode ∈ {'within','between'}
+
+    Creates TWO figures:
+    1. Data RDMs per ROI
+    2. Model RDMs
+
+    Max 4 matrices per row.
+    """
     present = list(roi_results.keys())
     if not present:
         return
+
     ref_roi = 'whole_brain' if 'whole_brain' in roi_results else present[0]
     model_full = roi_results[ref_roi]['model_full']
 
-    n_data  = len(present)
-    n_mdl   = len(models)
-    n_cols  = max(n_data, n_mdl)
+    max_cols = 4
 
-    fig, axes = plt.subplots(2, n_cols,
-                             figsize=(2.6 * n_cols, 5.6),
-                             constrained_layout=True)
+    # =========================
+    # ---- DATA RDM FIGURE ----
+    # =========================
+    n_data = len(present)
+    n_cols = min(max_cols, n_data)
+    n_rows = math.ceil(n_data / max_cols)
+
+    fig_data, axes = plt.subplots(n_rows, n_cols,
+                                 figsize=(3 * n_cols, 3 * n_rows),
+                                 constrained_layout=True)
+
     axes = np.atleast_2d(axes)
 
-    # top: data RDMs per ROI
-    for j in range(n_cols):
-        ax = axes[0, j]
-        if j < n_data:
-            roi = present[j]
-            mat = _apply_block_mask(roi_results[roi]['data_rdm'],
-                                    mode, N_CONDS_PER_CONF)
-            # vmax = np.nanpercentile(np.abs(mat), 99) if np.isfinite(
-            #     np.nanmean(mat)) else 1.0
-            # im = ax.imshow(mat, aspect='auto', cmap='coolwarm',
-            #                vmin=-vmax, vmax=vmax)
-            im = ax.imshow(mat, aspect='auto', cmap='coolwarm',
-                            vmin=0.9, vmax=1.1)
-            ax.set_title(f'{roi}  (n={roi_results[roi]["n_neurons"]})',
-                         fontsize=8)
-            _add_block_lines(ax, mat.shape[0])
-            plt.colorbar(im, ax=ax, fraction=0.046, pad=0.02)
-        else:
-            ax.set_visible(False)
+    for i, roi in enumerate(present):
+        r = i // max_cols
+        c = i % max_cols
+        ax = axes[r, c]
+
+        mat = _apply_block_mask(roi_results[roi]['data_rdm'],
+                               mode, N_CONDS_PER_CONF)
+
+        im = ax.imshow(mat, aspect='auto', cmap='coolwarm',
+                       vmin=0.7, vmax=1.3)
+
+        ax.set_title(f'{roi} (n={roi_results[roi]["n_neurons"]})',
+                     fontsize=8)
+        _add_block_lines(ax, mat.shape[0])
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.02)
         ax.tick_params(labelsize=6)
 
-    # bottom: model RDMs
-    for j in range(n_cols):
-        ax = axes[1, j]
-        if j < n_mdl:
-            m   = models[j]
-            mat = _apply_block_mask(model_full[m], mode, N_CONDS_PER_CONF)
-            im  = ax.imshow(mat, aspect='auto', cmap='coolwarm')
-            ax.set_title(f'model: {m}', fontsize=8)
-            _add_block_lines(ax, mat.shape[0])
-            plt.colorbar(im, ax=ax, fraction=0.046, pad=0.02)
-        else:
-            ax.set_visible(False)
-        ax.tick_params(labelsize=6)
+    # hide unused axes
+    for j in range(n_data, n_rows * n_cols):
+        r = j // max_cols
+        c = j % max_cols
+        axes[r, c].set_visible(False)
 
-    title = ('Within-config block RDMs (block-diagonal, excl. main diag.)'
+    title = ('Within-config block RDMs'
              if mode == 'within'
-             else 'Between-config blocks RDMs (off-block-diagonal)')
-    fig.suptitle(title + f'  [models from ROI={ref_roi}]',
-                 fontsize=12, weight='bold')
-    fig.savefig(save_path, dpi=150, bbox_inches='tight')
+             else 'Between-config block RDMs')
+
+    fig_data.suptitle(title + ' — DATA', fontsize=12, weight='bold')
+    fig_data.savefig(f'{save_path_prefix}_data.png',
+                     dpi=150, bbox_inches='tight')
+
+
+    # ==========================
+    # ---- MODEL RDM FIGURE ----
+    # ==========================
+    n_mdl = len(models)
+    n_cols = min(max_cols, n_mdl)
+    n_rows = math.ceil(n_mdl / max_cols)
+
+    fig_model, axes = plt.subplots(n_rows, n_cols,
+                                  figsize=(3 * n_cols, 3 * n_rows),
+                                  constrained_layout=True)
+
+    axes = np.atleast_2d(axes)
+
+    for i, m in enumerate(models):
+        r = i // max_cols
+        c = i % max_cols
+        ax = axes[r, c]
+
+        mat = _apply_block_mask(model_full[m], mode, N_CONDS_PER_CONF)
+
+        im = ax.imshow(mat, aspect='auto', cmap='coolwarm')
+
+        ax.set_title(f'model: {m}', fontsize=8)
+        _add_block_lines(ax, mat.shape[0])
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.02)
+        ax.tick_params(labelsize=6)
+
+    # hide unused axes
+    for j in range(n_mdl, n_rows * n_cols):
+        r = j // max_cols
+        c = j % max_cols
+        axes[r, c].set_visible(False)
+
+    fig_model.suptitle(title + f' — MODELS (ROI={ref_roi})',
+                       fontsize=12, weight='bold')
+    fig_model.savefig(f'{save_path_prefix}_models.png',
+                      dpi=150, bbox_inches='tight')
 
 
 if roi_results:
@@ -745,13 +899,9 @@ def _plot_model_corr_heatmap(save_path):
         vecs = {}
         for m in models:
             if mode == 'within':
-                w_vec, _ = _split_triu_blocks(
-                    model_full[m], INCLUDE_DIAG, N_CONDS_PER_CONF)
-                vecs[m] = w_vec
+                vecs[m] = model_within[m]
             else:
-                _, a_vec = _split_triu_blocks(
-                    model_full[m], INCLUDE_DIAG, N_CONDS_PER_CONF)
-                vecs[m] = a_vec
+                vecs[m] = model_across[m]
         corr = np.zeros((n_m, n_m))
         for i, a in enumerate(models):
             for j, b in enumerate(models):
@@ -784,6 +934,74 @@ if roi_results:
 
 
 # ══════════════════════════════════════════════════════════════════════
+# ── Permutation distribution figure ──────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════
+
+def _plot_perm_distribution(mode, save_path):
+    """mode ∈ {'within','across'}.  Rows = ROIs, cols = models.  Each cell
+    shows the histogram of permutation betas with the empirical beta as a
+    vertical line and the two-sided perm p-value annotated."""
+    rois_with_perm = [r for r, res in roi_results.items()
+                      if res.get(f'perm_{mode}_betas') is not None]
+    if not rois_with_perm:
+        return
+
+    n_rows = len(rois_with_perm)
+    n_cols = len(models)
+    fig, axes = plt.subplots(
+        n_rows, n_cols,
+        figsize=(2.0 * n_cols + 1.0, 1.6 * n_rows + 1.0),
+        constrained_layout=True, squeeze=False)
+
+    beta_key = 'within' if mode == 'within' else 'across'
+    p_key    = f'perm_p_{mode}'
+    b_key    = f'perm_{mode}_betas'
+
+    for i, roi in enumerate(rois_with_perm):
+        res        = roi_results[roi]
+        perm_betas = res[b_key]
+        perm_p     = res[p_key] or {}
+
+        for j, m in enumerate(models):
+            ax  = axes[i, j]
+            arr = np.asarray(perm_betas[m], dtype=float)
+            arr = arr[np.isfinite(arr)]
+            emp = float(res[beta_key]['unique'][m][1])
+
+            if arr.size:
+                ax.hist(arr, bins=min(20, max(3, arr.size // 2 + 1)),
+                        color='#bdbdbd', edgecolor='none')
+            ax.axvline(emp, color='#d62728', lw=1.4)
+            ax.axvline(0, color='grey', linestyle = '-')
+
+            pv = perm_p.get(m, np.nan)
+            ax.set_title(f'{m}  p={pv:.2g}' if np.isfinite(pv) else m,
+                         fontsize=7)
+            ax.tick_params(labelsize=6)
+            if j == 0:
+                ax.set_ylabel(
+                    f'{roi}\n(n={res["n_neurons"]})', fontsize=7)
+            if i < n_rows - 1:
+                ax.set_xticklabels([])
+
+    title = ('Within-config block — perm β distributions vs empirical'
+             if mode == 'within'
+             else 'Between-config blocks — perm β distributions vs empirical')
+    fig.suptitle(title, fontsize=12, weight='bold')
+    fig.savefig(save_path, dpi=150, bbox_inches='tight')
+
+
+if roi_results:
+    _plot_perm_distribution(
+        'within',
+        os.path.join(OUT_DIR, 'perm_distribution_within.png'))
+    _plot_perm_distribution(
+        'across',
+        os.path.join(OUT_DIR, 'perm_distribution_across.png'))
+    print('Saved permutation distribution figures.')
+
+
+# ══════════════════════════════════════════════════════════════════════
 # ── Summary heatmaps (within + between) ──────────────────────────────
 # ══════════════════════════════════════════════════════════════════════
 
@@ -797,23 +1015,42 @@ def _flatten(metric_key):
     return flat
 
 
+def _collect_perm_p(unique_key, combo_key):
+    """Returns (perm_p_unique, perm_p_combined) dicts in the format expected
+    by plot_rsa_heatmap, or (None, None) if no ROI has perm results."""
+    pu = {r: roi_results[r][unique_key]
+          for r in roi_results
+          if roi_results[r].get(unique_key) is not None}
+    pc = {r: roi_results[r][combo_key]
+          for r in roi_results
+          if roi_results[r].get(combo_key) is not None}
+    return (pu or None, pc or None)
+
+
 present_rois = list(roi_results.keys())
 if present_rois:
+    pu_w, pc_w = _collect_perm_p('perm_p_within', 'perm_p_within_combo')
+    pu_a, pc_a = _collect_perm_p('perm_p_across', 'perm_p_across_combo')
+
     mc.plotting.cell_results.plot_rsa_heatmap(
-        results      = _flatten('within'),
-        models       = models,
-        combo_models = combo_models,
-        rois         = present_rois,
-        title        = 'DSR RSA — within-config block — beta per model × ROI',
-        save_path    = os.path.join(OUT_DIR, 'DSR_RSA_within_heatmap.png'),
+        results        = _flatten('within'),
+        models         = models,
+        combo_models   = combo_models,
+        rois           = present_rois,
+        title          = 'DSR RSA — within-config block — beta per model × ROI',
+        save_path      = os.path.join(OUT_DIR, 'DSR_RSA_within_heatmap.png'),
+        perm_p_unique   = pu_w,
+        perm_p_combined = pc_w,
     )
     mc.plotting.cell_results.plot_rsa_heatmap(
-        results      = _flatten('across'),
-        models       = models,
-        combo_models = combo_models,
-        rois         = present_rois,
-        title        = 'DSR RSA — between-config blocks — beta per model × ROI',
-        save_path    = os.path.join(OUT_DIR, 'DSR_RSA_across_heatmap.png'),
+        results        = _flatten('across'),
+        models         = models,
+        combo_models   = combo_models,
+        rois           = present_rois,
+        title          = 'DSR RSA — between-config blocks — beta per model × ROI',
+        save_path      = os.path.join(OUT_DIR, 'DSR_RSA_across_heatmap.png'),
+        perm_p_unique   = pu_a,
+        perm_p_combined = pc_a,
     )
     if PLOT_FIGS:
         plt.show()

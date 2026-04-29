@@ -3666,84 +3666,84 @@ def model_DSR(locations, no_phase_neurons=3):
         neuron_phase_functions.append(scipy.stats.vonmises(1/(no_phase_neurons/10), loc=div))
     
     
-    # make the state continuum
-    neuron_state_functions = []
-    means_at_state = np.linspace((0,step_number-1), step_number)
-    for div in means_at_state:
-        neuron_state_functions.append(norm(loc = div, scale = 1/len(step_number)))
+    # # make the state continuum
+    # neuron_state_functions = []
+    # means_at_state = np.linspace((0,step_number-1), step_number)
+    # for div in means_at_state:
+    #     neuron_state_functions.append(norm(loc = div, scale = 1/step_number))
         
     
     cumsumsteps = [0,90,180,270,360]
-    
+    state, phase, location, midnight, state_phase = [],[], [],[], []
     # every 90 bins is one subpath.
     for path_idx, pathlength in enumerate(cumsumsteps):
         if path_idx == 0:
             continue
-        import pdb; pdb.set_trace()
-        curr_path = locations[cumsumsteps[path_idx-1]:pathlength]
         
-        # loc matrix: needed for midnight and clocks.
-        # make the location matrix
-        loc_matrix = np.empty([9,len(curr_path)])
-        loc_matrix[:] = np.nan
-        # and then simply fill the matrix with the respective functions
-        for timepoint, loc in enumerate(curr_path):
-            loc_matrix[loc, timepoint] = 1 
-            
+        state_subpath = np.zeros([4, step_number])
+        # put the entire subpath to 1.
+        state_subpath[path_idx-1,:] = 1
+        state.append(state_subpath)
+        
         # make phase neurons
         # fit subpaths into 0:1 trajectory
         samplepoints = np.linspace(-np.pi, np.pi, step_number)
-        
-        phase_matrix_subpath = np.empty([len(neuron_phase_functions), len(samplepoints)])
-        phase_matrix_subpath[:] = np.nan
+        phase_matrix_subpath = np.zeros([len(neuron_phase_functions), len(samplepoints)])
         # read out the respective phase coding 
         for timepoint, read_out_point in enumerate(samplepoints):
             for row in range(0, len(neuron_phase_functions)):
                 phase_matrix_subpath[row, timepoint] = neuron_phase_functions[row].pdf(read_out_point)
+        phase.append(phase_matrix_subpath)
+
+
+        curr_path = locations[cumsumsteps[path_idx-1]:pathlength]
+        
+        # loc matrix: needed for midnight and clocks.
+        # make the location matrix
+        loc_matrix = np.zeros([9,step_number])
+        # and then simply fill the matrix with the respective functions
+        for timepoint, loc in enumerate(curr_path):
+            loc_matrix[loc, timepoint] = 1 
+        
+        location.append(loc_matrix)
+        
+    
 
         # midnight model: loc x phase
         midnight_model_subpath = np.repeat(loc_matrix, repeats = no_phase_neurons, axis = 0)
         # multiply three rows of the location matrix (1 location)
         # with the phase_matrix_subpath, respectively
-        for location in range(0, len(midnight_model_subpath), no_phase_neurons):
-            midnight_model_subpath[location:location+no_phase_neurons] = midnight_model_subpath[location:location+no_phase_neurons] * phase_matrix_subpath
+        for loc in range(0, len(midnight_model_subpath), no_phase_neurons):
+            midnight_model_subpath[loc:loc+no_phase_neurons] = midnight_model_subpath[loc:loc+no_phase_neurons] * phase_matrix_subpath
         
-        
-        state_subpath = np.empty([len(neuron_state_functions), step_number])
-        state_subpath[:] = np.nan
-        # only consider the 1/no_states*count_paths+1 part of the functions
-        # then sample by timepoint
-        # ADJUST THIS!!! DON'T SAMPLE PER ROW. SAMPLE PER SECOND AS WELL!!
-        for row in range(0, len(neuron_state_functions)):
-            state_subpath[row] = neuron_state_functions[row].pdf(path_idx)
+        midnight.append(midnight_model_subpath)
         
         
         # FINALLY. make the clock model. 
         # solving 2 (see below): make the neurons within the clock.
         # phase state neurons.
         phase_state_subpath = np.repeat(state_subpath, repeats = len(phase_matrix_subpath), axis = 0)
-        for phase in range(0, len(phase_state_subpath), len(phase_matrix_subpath)):
-            phase_state_subpath[phase: phase+len(phase_matrix_subpath)] = phase_matrix_subpath * phase_state_subpath[phase: phase+len(phase_matrix_subpath)]
-        
-        # last step: put subpaths together and concat into a bigger matrix.
-        if path_idx == 1:
-            midn_model = midnight_model_subpath.copy()
-            phas_model = phase_matrix_subpath.copy()
-            loc_model = loc_matrix.copy()
-            phas_stat = phase_state_subpath.copy()
-            stat_model = state_subpath.copy()
-        elif path_idx > 1:
-            midn_model = np.concatenate((midn_model,midnight_model_subpath), axis = 1)
-            phas_model = np.concatenate((phas_model, phase_matrix_subpath), axis = 1)
-            loc_model = np.concatenate((loc_model, loc_matrix), axis = 1)
-            phas_stat = np.concatenate((phas_stat, phase_state_subpath), axis = 1)
-            stat_model = np.concatenate((stat_model, state_subpath), axis = 1)
-      
-    import pdb; pdb.set_trace()
+        for p_idx in range(0, len(phase_state_subpath), len(phase_matrix_subpath)):
+            phase_state_subpath[p_idx: p_idx+len(phase_matrix_subpath)] = phase_matrix_subpath * phase_state_subpath[p_idx: p_idx+len(phase_matrix_subpath)]
+        state_phase.append(phase_state_subpath)
+
+    midn_model = np.concatenate((midnight), axis = 1)
+    phas_model = np.concatenate((phase), axis = 1)
+    loc_model = np.concatenate((location), axis = 1)
+    phas_stat = np.concatenate((state_phase), axis = 1)
+    stat_model = np.concatenate((state), axis = 1)
+  
         
     # I am going to fuse the midnight and the phas_stat model. Thus they need to be equally 'strong' > normalise!
     norm_midn = (midn_model.copy()-np.min(midn_model))/(np.max(midn_model)-np.min(midn_model))
     norm_phas_stat = (phas_stat.copy()-np.min(phas_stat))/(np.max(phas_stat)-np.min(phas_stat))
+    
+    # norm_phas_stat is also an entire 'ring of the musicbox.
+    # if I only want to encode now and next, I can do so by only keeping a fraction of the neurons:
+    # e.g. only the next phase-range.
+    norm_phas_stat_currstate = np.zeros((4*no_phase_neurons, cumsumsteps[-1]))
+    norm_phas_stat_currstate[0:no_phase_neurons, :] = norm_phas_stat[0:no_phase_neurons, :]
+    
     
     # try with normalised model.
       # just with the adjustment that I will make the firing of the clocks less strong if
@@ -3762,9 +3762,11 @@ def model_DSR(locations, no_phase_neurons=3):
       # copy the neuron per clock firing pattern
       # I will manipulate clocks_per_step, and use clocks_per_step.dummy as control to check for overwritten stuff.
     clo_model =  full_clock_matrix_dummy.copy()
+    clo_model_subpath = full_clock_matrix_dummy.copy()
      
       # now loop through the already filled columns (every 12th one) and fill the clocks if activated.
     for row in range(0, len(norm_midn)):
+        
         local_maxima = argrelextrema(norm_midn[row,:], np.greater_equal, order = 5, mode = 'wrap')
         # delete if the local maxima are neighbouring
         local_maxima = local_maxima[0].copy()
@@ -3774,12 +3776,12 @@ def model_DSR(locations, no_phase_neurons=3):
                 local_maxima = np.delete(local_maxima, index)
             
         for activation_neuron in local_maxima:
-            # shift the clock around so that the activation neuron comes first
-            # DOES THIS HAVE TO BE *-1 or just activation neuron???
-            # CHECK!!!
-            shifted_clock = np.roll(norm_phas_stat, activation_neuron, axis = 0)
+            shifted_clock = np.roll(norm_phas_stat, activation_neuron, axis = 1)
+            shifted_subpath_clock = np.roll(norm_phas_stat_currstate, activation_neuron, axis = 1)
             # adjust the firing strength according to the local maxima
             firing_factor = norm_midn[row, activation_neuron].copy()
+            # if firing_factor > 0.5:
+            #     import pdb; pdb.set_trace()
             #firing_factor = norm_midn[row,activation_neuron]/ max_firing
             shifted_adjusted_clock = shifted_clock.copy()*firing_factor
             # delete row 0 bc I already have it from the midnight ones
@@ -3787,8 +3789,17 @@ def model_DSR(locations, no_phase_neurons=3):
             # then add the values to the existing clocks.
             # Q: IS THIS WAY OF DEALING WIHT DOUBLE ACTIVATION OK???
             clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()
+                
+            # do the same for partial clock:
+            shifted_adjusted_clock_partial = shifted_subpath_clock.copy()*firing_factor
+            # delete row 0 bc I already have it from the midnight ones
+            shifted_adjusted_clock_partial[0] = 0
+            # then add the values to the existing clocks.
+            # Q: IS THIS WAY OF DEALING WIHT DOUBLE ACTIVATION OK???
+            clo_model_subpath[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = clo_model_subpath[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock_partial.copy()
+
     
-    return loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat
+    return loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat, clo_model_subpath
 
 
 

@@ -637,7 +637,7 @@ def compute_hamming_distance_within(data_chunk, plotting=False, include_diagonal
                 plt.yticks(np.arange(2, n, int(n / no_tasks)), labels)
             plt.colorbar()
 
-    return RDM_within, RDM_between
+    return RDM_within, RDM_between, rdm
 
 
 def compute_hamming_difference(data_chunk, combination, plotting = False, include_diagonal = True, model_name = None):
@@ -818,7 +818,7 @@ def compute_crosscorr_within(data_chunk, plotting=False, include_diagonal=True, 
                            '6-4-2-9', '9-1-3-4', '7-3-4-2', '2-5-7-6']
                 plt.yticks(np.arange(2, n, int(n / no_tasks)), labels)
 
-    return RDM_within, RDM_between
+    return RDM_within, RDM_between, rdm
 
 
 def mask_RDM(lower_tri, n, labels, mask=None, binarise = False, plotting = False):
