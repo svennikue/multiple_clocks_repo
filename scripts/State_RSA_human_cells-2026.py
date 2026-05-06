@@ -399,6 +399,7 @@ if RUN_PERMUTATIONS:
     fig_hm = mc.plotting.cell_results.plot_rsa_heatmap(
         results         = roi_results,
         models          = models,
+        combo_models= [],
         rois            = present_rois,
         title           = (f'State RSA — t-values per model × ROI  '
                            f'(DS={LEN_STANDARDISED_PATH} bins/state)'),

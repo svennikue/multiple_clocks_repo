@@ -371,8 +371,8 @@ def load_norm_data(source_folder, subject_list, res_data = False):
         with open(f"{sub_folder}/all_electrode_labels_sub{sub}.txt", 'r') as file:
             data_dict[f"sub-{sub}"]["electrode_labels"] = [line.strip() for line in file]
         
-
         data_dict[f"sub-{sub}"]["locations"] = pd.read_csv(f"{sub_folder}/locations.csv", header=None)
+        data_dict[f"sub-{sub}"]["buttons"] = pd.read_csv(f"{sub_folder}/button_presses.csv", header=None)
         data_dict[f"sub-{sub}"]["timings"] = pd.read_csv(f"{sub_folder}/state_boundaries.csv", header=None)
         data_dict[f"sub-{sub}"]["normalised_neurons"] = {}
         data_dict[f"sub-{sub}"]['beh'] = pd.read_csv(f'{sub_folder}/all_trial_times_{sub}.csv', header = None)

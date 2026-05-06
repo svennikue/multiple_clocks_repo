@@ -31,14 +31,15 @@ n_bins_total = bins_per_state * n_states;
 
 
 % LOOP THROUGH SUBJECTS
-%for sub = 1:length(subject_list)
-for sub = 59
+for sub = 1:length(subject_list)
+    disp(['...now processing subject %s', sub]);
+    % for sub = 59
     subj = abcd_data.abcd_passed.abcd_data(sub);
     %subj = abcd_data.abcd_data(sub);
     subject_folder = sprintf("%ss%02d/cells_and_beh", deriv_dir, sub);
     if ~exist(subject_folder, 'dir')
         mkdir(subject_folder);
-        disp(['Folder created: ', subject_folder]);
+        disp(['Folder created: %s', subject_folder]);
     end
 
     if do_plot
@@ -61,6 +62,7 @@ for sub = 59
         if cell_idx == 1
             locations_all_reps = [];
             state_bounds_all_reps = [];
+            buttons_all_reps = [];
         end
 
 
@@ -113,17 +115,22 @@ for sub = 59
                     if cell_idx == 1
                         locations = subj.trial_vars(t).start_location;
                         loc_timings = subj.trial_vars(t).grid_onset_timestamp;
+                        buttons = string(subj.trial_vars(t).button_pressed);
                         if ~isempty(locations) && ~isempty(loc_timings) ...
-                                && numel(locations) == numel(loc_timings)
+                                && numel(locations) == numel(loc_timings) ...
+                                && numel(locations) == numel(buttons)
 
                             bin_centers = (bin_edges_total(1:end-1) + bin_edges_total(2:end)) / 2;
                             location_bins = nan(1, n_bins_total);
+                            buttons_bins   = strings(1, n_bins_total);
                             for b = 1:n_bins_total
                                 t_bin = bin_centers(b);
                                 idx = find(loc_timings <= t_bin, 1, 'last');
                                 location_bins(b) = locations(idx);
+                                buttons_bins(b) = buttons(idx);
                             end
                             location_bins_row = location_bins;
+                            button_bins_row = buttons_bins;
                         end
                     end
                 end
@@ -138,10 +145,10 @@ for sub = 59
             if cell_idx == 1
                 locations_all_reps   = [locations_all_reps;   location_bins_row];
                 state_bounds_all_reps = [state_bounds_all_reps; state_bounds_row];
+                buttons_all_reps = [buttons_all_reps;   button_bins_row];
             end
 
         end
-
 
         % === SAVE PER CELL ===
         if ~isempty(all_reps_curr_cell)
@@ -152,6 +159,7 @@ for sub = 59
             if cell_idx == 1
                 csvwrite(fullfile(subject_folder, 'locations.csv'), locations_all_reps);
                 csvwrite(fullfile(subject_folder, 'state_boundaries.csv'), state_bounds_all_reps);
+                writecell(cellstr(buttons_all_reps), fullfile(subject_folder, 'button_presses.csv'));
             end
         end
 

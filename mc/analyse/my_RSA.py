@@ -748,14 +748,24 @@ def compute_crosscorr(data_chunk, plotting = False, include_diagonal = True, no_
             # plt.figure()
             # plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm', vmax=2, vmin=0)
             # plt.title('RDM, threshold at 2 and 0.')
-        
+            # then z-score
+            rdm_z = (rdm - np.nanmean(rdm))/ np.nanstd(rdm)
             plt.figure()
             plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm')
             if model:
-                plt.title(f'across th RDM for {model}, random threshold.')
+                plt.title(f'across th z-scored RDM for {model}, random threshold.')
             else:
-                plt.title('across half RDM, random threshold.')
+                plt.title('across half z-scored RDM, random threshold.')
             plt.colorbar()
+            
+        
+            # plt.figure()
+            # plt.imshow(rdm, aspect = 'auto', cmap = 'coolwarm')
+            # if model:
+            #     plt.title(f'across th RDM for {model}, random threshold.')
+            # else:
+            #     plt.title('across half RDM, random threshold.')
+            # plt.colorbar()
 
             len_task = int(n/no_tasks)
             for i in range(0,n,int(n/no_tasks)):

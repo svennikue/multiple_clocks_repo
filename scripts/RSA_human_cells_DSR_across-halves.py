@@ -36,7 +36,7 @@ PLOT_FIGS    = True
 N_PHASES              = 3
 states                = ['A', 'B', 'C', 'D']
 LEN_STANDARDISED_PATH = 10
-RESOLUTIONx           = 2
+RESOLUTIONx           = 1
 N_CONDS_PER_CONF      = N_PHASES * len(states) * RESOLUTIONx
 N_PER_HALF            = None  # filled in below once N_CONFIGS is known
 
@@ -44,9 +44,9 @@ N_PERMUTATIONS = 300   # set to None to skip permutations
 
 rois_of_interest = ['whole_brain', 'OFC', 'EC', 'ACC', 'HC', 'PCC', 'AMY',
                     'OCCIP']
-models       = ['dsr', 'now_and_next', 'state', 'feedback',
-                'midnight', 'location', 'phase', 'phase_state']
-combo_models = ['feedback', 'dsr', 'midnight', 'location']
+models       = ['dsr_hamming', 'now_and_next', 'state', 'feedback',
+                'midnight', 'location', 'phase', 'phase_state', 'dsr']
+combo_models = ['feedback', 'dsr_hamming', 'midnight', 'location']
 
 configs = [
     '3-7-9-5', '8-2-6-7', '1-9-5-8', '4-8-1-3',
@@ -186,7 +186,7 @@ def load_session(sub):
 
     cell_labels  = list(nmeta['cell_labels'][:n_neurons])
     neuron_names = list(nmeta['neuron_names'][:n_neurons])
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     
     # to make sure, ignore cell_labels and rather rely on the dictionary keys.
     # roi = mc.analyse.helpers_human_cells.convert_cell_label_in_roi(cell_label)

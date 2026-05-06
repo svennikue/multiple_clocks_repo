@@ -40,9 +40,12 @@ for sub = 59
             loc_times = trial.grid_onset_timestamp;
             buttons = trial.button_pressed;
             reward_times = trial.state_change_times;
+            reward_locs = trial.sequence_locations;
 
             % === REJECTION of incomplete runs ===
             if isempty(locs) || isempty(loc_times) || sum(~isnan(reward_times)) < 4
+                disp('skipping in line 46 for trial n = ')
+                disp(t)
                 continue
             end
 
@@ -68,6 +71,10 @@ for sub = 59
                 end
 
                 curr_loc = locs(idx_loc);
+
+                % ok i don't get this. I dont think this is right.
+                % i think the initial idx should be the correct one!
+                % double check thi.s
                 idx_step = find(step_locs == curr_loc, 1);
 
                 if isempty(idx_step)
@@ -78,6 +85,7 @@ for sub = 59
             end
 
             if ~valid
+                disp('skipping in line 81')
                 continue
             end
 
@@ -146,7 +154,11 @@ for sub = 59
 
         % === PLOT ===
         if do_plot
-            subplot(ceil(sqrt(length(subj.neural_data))), [], cell_idx);
+            n_cells = length(subj.neural_data);
+            n_rows = ceil(sqrt(n_cells));
+            n_cols = ceil(n_cells / n_rows);
+        
+            subplot(n_rows, n_cols, cell_idx);
             plot(mean(all_reps,1,'omitnan'),'k')
             title(sprintf('Cell %d', cell_idx));
         end

@@ -63,7 +63,7 @@ MODE = 'dsr'     # 'state'  or  'dsr'
 # averages. Output per config is (n_neurons, n_runs_for_this_config, N_BINS),
 # with n_runs varying across configs — saved as an .npz with one array per
 # config label. Currently supported for MODE='dsr' only.
-KEEP_RUNS_SEPRATE = True
+KEEP_RUNS_SEPRATE = False
 
 # If True, apply Gaussian smoothing to each trial before averaging.
 SMOOTH_DATA = True

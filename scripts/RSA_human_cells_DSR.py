@@ -49,6 +49,8 @@ INCLUDE_DIAG = False
 
 PLOT_FIGS = True
 
+
+# this means that each run remains separate and is not divided into 2 halves.
 KEEP_RUNS_SEPRATE = False
 
 # ── Permutation settings ───────────────────────────────────────────────
@@ -65,7 +67,7 @@ LEN_STANDARDISED_PATH = 10
 
 # normally, n conditions in an RDM per config is 1x -> state*phases = e.g 12 conditions per config.
 # I can increase this easily to e.g. 24, such that I have finer detail of locations.
-RESOLUTIONx = 2
+RESOLUTIONx = 1
 
 # Feature 3: Phase mask flag
 MASK_CROSS_PHASE = False   # if True, mask RDM entries comparing different phases
@@ -87,7 +89,7 @@ N_CONDS_PER_CONF = N_PHASES * len(states) * RESOLUTIONx
 rois_of_interest = ['whole_brain', 'OFC', 'EC', 'ACC', 'HC', 'PCC', 'AMY', 'R-WHITE-MATTER', 'OCCIP']
 models           = ['location', 'dsr', 'state', 'feedback', 'clocks', 'phase', 'midnight', 'loc_og']
 
-combo_models = ['state', 'feedback', 'clocks', 'phase', 'midnight', 'loc_og']
+combo_models = ['state', 'feedback', 'dsr', 'phase', 'midnight', 'loc_og']
 
 
 
@@ -533,9 +535,10 @@ def build_neuron_matrix(neuron_subset: pd.DataFrame, roi_name=None,
                 (neuron_subset['config'] == c)
             ]
             if len(rows) == 0:
+                import pdb; pdb.set_trace()
                 continue
             n_data = rows['neuron_data'].to_numpy()[0]   # (2, 360)
-            import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()
             raw0 = np.roll(n_data[0, :], shift) if shift else n_data[0, :]
             raw1 = np.roll(n_data[1, :], shift) if shift else n_data[1, :]
             th1[c_idx * N_CONDS_PER_CONF:(c_idx + 1) * N_CONDS_PER_CONF, n_idx] = downsample_mean(raw0, target_len=N_CONDS_PER_CONF)
@@ -641,12 +644,12 @@ def build_neuron_matrix(neuron_subset: pd.DataFrame, roi_name=None,
     else:
         mat = np.concatenate([th1, th2], axis=0)
 
-    # z-score each neuron across conditions so the RDM reflects
-    # pattern variation, not amplitude differences between neurons
-    col_mu = mat.mean(axis=0)
-    col_sd = mat.std(axis=0)
-    col_sd[col_sd == 0] = 1   # avoid div-by-zero for constant neurons
-    mat = (mat - col_mu) / col_sd
+    # # z-score each neuron across conditions so the RDM reflects
+    # # pattern variation, not amplitude differences between neurons
+    # col_mu = mat.mean(axis=0)
+    # col_sd = mat.std(axis=0)
+    # col_sd[col_sd == 0] = 1   # avoid div-by-zero for constant neurons
+    # mat = (mat - col_mu) / col_sd
 
     return mat, n_excluded
 

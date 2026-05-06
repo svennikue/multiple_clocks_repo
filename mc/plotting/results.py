@@ -1294,4 +1294,124 @@ def overview_regression(results, rois, models, combo = False, only_reward_times 
     plt.tight_layout()
     # Show the plot
     plt.show()
-    
+
+
+def plot_model_rdm_correlation(
+    rdm_dict,
+    title=None,
+    corr_method='pearson',
+    save_path=None,
+    show=True,
+    figsize=None,
+    cmap='RdBu_r',
+    annot_fontsize=8,
+    model_order=None,
+):
+    """Heatmap of pairwise correlations between model RDMs.
+
+    Each model RDM is reduced to a 1-D vector (upper triangle if it is a
+    symmetric square matrix, else flattened in full) and all pairs are
+    correlated. Intended as a regressor-collinearity control, independent
+    of any ROI/data RDM.
+
+    Parameters
+    ----------
+    rdm_dict : dict[str, ndarray | tuple]
+        Mapping model_name -> RDM. If the value is a tuple/list (as returned
+        by `compute_crosscorr` / `compute_hamming_distance`), its first element
+        is taken as the RDM.
+    title : str, optional
+        Figure title.
+    corr_method : {'pearson', 'spearman'}
+    save_path : str, optional
+        If given, the figure is saved to this path with dpi=150.
+    show : bool
+        If True, calls plt.show() before returning.
+    figsize : tuple, optional
+    cmap : str
+    annot_fontsize : int
+        Font size of the per-cell correlation annotations.
+    model_order : list[str], optional
+        Force a specific row/column order. Defaults to insertion order.
+
+    Returns
+    -------
+    fig, ax, corr_matrix
+    """
+    model_names = list(model_order) if model_order is not None else list(rdm_dict.keys())
+
+    vectors = []
+    for name in model_names:
+        rdm = rdm_dict[name]
+        if isinstance(rdm, (tuple, list)):
+            rdm = rdm[0]
+        rdm = np.asarray(rdm, dtype=float)
+
+        # symmetric square: take strict upper triangle; else flatten
+        if (rdm.ndim == 2
+                and rdm.shape[0] == rdm.shape[1]
+                and np.allclose(rdm, rdm.T, equal_nan=True)):
+            iu = np.triu_indices_from(rdm, k=1)
+            vec = rdm[iu]
+        else:
+            vec = rdm.ravel()
+        vectors.append(vec)
+
+    lens = [len(v) for v in vectors]
+    if len(set(lens)) != 1:
+        raise ValueError(
+            f"RDMs have mismatching vectorized lengths: "
+            f"{dict(zip(model_names, lens))}"
+        )
+
+    M = np.stack(vectors, axis=0)  # (n_models, n_features)
+
+    if corr_method == 'pearson':
+        corr = np.corrcoef(M)
+    elif corr_method == 'spearman':
+        n_m = len(model_names)
+        corr = np.eye(n_m)
+        for i in range(n_m):
+            for j in range(i + 1, n_m):
+                r = st.spearmanr(M[i], M[j], nan_policy='omit').correlation
+                corr[i, j] = r
+                corr[j, i] = r
+    else:
+        raise ValueError(f"unknown corr_method: {corr_method}")
+
+    n = len(model_names)
+    if figsize is None:
+        figsize = (1.0 * n + 2, 1.0 * n + 1)
+
+    fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
+    im = ax.imshow(corr, cmap=cmap, vmin=-1, vmax=1, aspect='auto')
+
+    ax.set_xticks(np.arange(n))
+    ax.set_xticklabels(model_names, rotation=40, ha='right', fontsize=9)
+    ax.set_yticks(np.arange(n))
+    ax.set_yticklabels(model_names, fontsize=9)
+
+    for i in range(n):
+        for j in range(n):
+            val = corr[i, j]
+            if np.isfinite(val):
+                ax.text(
+                    j, i, f'{val:.2f}',
+                    ha='center', va='center',
+                    fontsize=annot_fontsize, color='black',
+                )
+
+    cbar = fig.colorbar(im, ax=ax, shrink=0.8)
+    cbar.set_label(f'{corr_method} r', fontsize=9)
+
+    if title is not None:
+        ax.set_title(title, fontsize=11)
+
+    if save_path is not None:
+        fig.savefig(save_path, dpi=150)
+
+    if show:
+        plt.show()
+
+    return fig, ax, corr
+

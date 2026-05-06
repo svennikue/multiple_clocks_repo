@@ -62,7 +62,9 @@ for sub = 1:length(subject_list)
     end_trials = [subj.trial_vars.end_trial_timestamp]';
     trial_correct = [subj.trial_vars.trial_correct]';
 
-    
+
+
+
     new_trial_onset = [arrayfun(@(s) s.grid_onset_timestamp(1), subj.trial_vars)]';
     %new_trial_onset = [subj.trial_vars(1).rule_onset_timestamp;end_trials(1:end-1,:)];
 
