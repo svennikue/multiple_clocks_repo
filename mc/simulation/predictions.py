@@ -3797,8 +3797,7 @@ def model_DSR(locations, no_phase_neurons=3):
             # then add the values to the existing clocks.
             # Q: IS THIS WAY OF DEALING WIHT DOUBLE ACTIVATION OK???
             clo_model_subpath[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = clo_model_subpath[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock_partial.copy()
-
-    
+    # import pdb; pdb.set_trace() 
     return loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat, clo_model_subpath
 
 
