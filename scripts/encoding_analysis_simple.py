@@ -72,10 +72,61 @@ N_JOBS = -1            # joblib parallelism over neurons
 #     'bttn_prev', 'bttn_next', 'bttn_curr', 'uncover',
 # ]
 models = [
-     'dsr','location',
+     'dsr','location', 'midnight',
      'phase', 'state', 'state_phase',
     'bttn_prev', 'bttn_next', 'bttn_curr', 'uncover',
 ]
+
+# ── Combination-model analysis settings ───────────────────────────────
+# Which analyses to run:
+#   'singles_only' -> original per-base-model loop only (legacy behaviour).
+#   'combos_only'  -> new combination + Δ-comparison loop only.
+#   'all'          -> both.
+COMBO_ANALYSIS_MODE = 'all'
+
+# Combination models: name -> list of base regressors to concatenate.
+# Each base name must be buildable by `build_single_trial_regressors`.
+COMBO_MODELS = {
+    'M_dsr':                ['dsr'],
+    'M_state':              ['state'],
+    'M_midnight':           ['midnight'],
+    'M_state_dsr':          ['state', 'dsr'],
+    'M_location_dsr':       ['midnight', 'dsr'],
+    'M_state_midnight':     ['state', 'midnight'],
+    'M_state_midnight_dsr': ['state', 'midnight', 'dsr'],
+}
+
+# Paired held-out comparisons.  Δ = score(test) - score(baseline),
+# computed fold-wise on the SAME CV splits; one-sided H1: Δ > 0.
+COMBO_COMPARISONS = [
+    # Q1: does another single model beat M_dsr?
+    ('M_state',              'M_dsr'),
+    ('M_midnight',           'M_dsr'),
+    # Q2: does DSR add unique held-out prediction over the other models?
+    ('M_state_dsr',          'M_state'),
+    ('M_midnight_dsr',       'M_midnight'),
+    ('M_state_midnight_dsr', 'M_state_midnight'),
+]
+
+# ROI-level alpha for the binomial + one-sample tests on Δ.
+COMBO_ROI_ALPHA = 0.05
+
+# Resolved at module level so the per-subject loop knows what regressors
+# to build and which analyses to dispatch.
+_combo_base_models = sorted({m for parts in COMBO_MODELS.values() for m in parts})
+run_singles = COMBO_ANALYSIS_MODE in ('singles_only', 'all')
+run_combos  = COMBO_ANALYSIS_MODE in ('combos_only', 'all')
+_models_to_build = sorted(
+    (set(models) if run_singles else set())
+    | (set(_combo_base_models) if run_combos else set())
+)
+print(f"COMBO_ANALYSIS_MODE = {COMBO_ANALYSIS_MODE}  "
+      f"(run_singles={run_singles}, run_combos={run_combos})")
+print(f"  base regressors to build: {_models_to_build}")
+if run_combos:
+    print(f"  combo models:   {list(COMBO_MODELS)}")
+    print(f"  Δ comparisons:  {COMBO_COMPARISONS}")
+
 
 # ROI labels are taken from the MNI-coordinate-based table produced by
 # scripts/cell_to_roi_MNI.py (column `final_roi`).  Rows are matched to
@@ -172,6 +223,10 @@ run_config = {
     'MAX_NEURONS_PER_SUBJECT': MAX_NEURONS_PER_SUBJECT,
     'SAVE_DIAGNOSTICS': SAVE_DIAGNOSTICS,
     'models':           models,
+    'combo_analysis_mode': COMBO_ANALYSIS_MODE,
+    'combo_models':     COMBO_MODELS,
+    'combo_comparisons': COMBO_COMPARISONS,
+    'combo_roi_alpha':  COMBO_ROI_ALPHA,
     'roi_table_path':   ROI_TABLE_PATH,
     'target_rois':      TARGET_ROIS,
     'glassbrain_p_threshold': GLASSBRAIN_P_THRESHOLD,
@@ -448,6 +503,7 @@ def build_design_and_neurons(beh, locs_df, buttons_df, neurons, configs,
             X_c = build_single_trial_regressors(
                 mode_loc, mode_btn, btn_alphabet, models_to_build,
             )
+            import pdb; pdb.set_trace()
             for m in models_to_build:
                 per_cfg_X[m].append(X_c[m])
             for n_lab, df in neurons.items():
@@ -543,7 +599,7 @@ def fit_encoding_cv(X, y, cfg_slices, alpha=ALPHA, l1_ratio=L1_RATIO,
         y_pred = X_test @ reg.coef_
         y_preds.append(y_pred)
         y_tests.append(y_test)
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         rs[fold_idx] = nan_safe_pearsonr(y_test, y_pred)
 
     return {
@@ -632,6 +688,215 @@ def analyse_one_neuron(neuron_label, roi_name, y, X_models, cfg_slices,
     return rows, diagnostics
 
 
+# ── Combination-model helpers ─────────────────────────────────────────
+def build_combo_X(X_models, base_names):
+    """Concatenate base-model regressors into one combo design matrix.
+
+    Each X_models[m] is (P_m, T); stack along feature axis (axis=0) so
+    every model uses the same time axis / CV splits.
+    """
+    return np.concatenate([X_models[m] for m in base_names], axis=0)
+
+
+def analyse_one_neuron_combo(neuron_label, roi_name, y, X_models, cfg_slices,
+                             combo_specs, comparison_specs,
+                             n_permutations, seed,
+                             save_diagnostics=False):
+    """Fit every combo + compute paired held-out Δ comparisons for ONE neuron.
+
+    Mirrors `analyse_one_neuron` but iterates over combination models
+    (concatenated base regressors).  All combos share the SAME outer CV
+    splits (cfg_slices) and the SAME circular-shift schedule within a
+    permutation, so the resulting Δ between two combos is a genuine
+    paired contrast against the same null.
+
+    Returns
+    -------
+    combo_rows : list of dicts — one per (neuron, combo).
+        Fields: neuron, roi, combo_model, mean_r, r_per_fold, p_perm,
+                all_coefs_zero, n_permutations.
+    delta_rows : list of dicts — one per (neuron, comparison).
+        Fields: neuron, roi, model_test, model_baseline, mean_delta,
+                delta_per_fold, p_perm_delta, n_permutations.
+    diagnostics : dict[combo_name] or None.
+    """
+    rng = np.random.default_rng(seed)
+    n_folds = len(cfg_slices)
+
+    # 1. Empirical fit + score per combo on identical CV folds.
+    emp = {}
+    for combo_name, base_names in combo_specs.items():
+        X_combo = build_combo_X(X_models, base_names)
+        emp[combo_name] = fit_encoding_cv(X_combo, y, cfg_slices)
+
+    # 2. Permutation r per (combo, perm, fold). Same shift schedule across
+    #    every combo within a permutation -> paired null.
+    perm_r_per_fold = {name: np.full((n_permutations, n_folds), np.nan)
+                       for name in combo_specs}
+    if n_permutations > 0:
+        ref = next(iter(emp.values()))
+        for fold_idx in range(n_folds):
+            y_test = ref['y_test_per_fold'][fold_idx]
+            if y_test.size <= 1:
+                continue
+            Y_shifted = make_circular_shifts(y_test, n_permutations, rng)
+            for combo_name, d in emp.items():
+                y_pred = d['y_pred_per_fold'][fold_idx]
+                if y_pred.size == 0 or np.std(y_pred) < 1e-12:
+                    continue
+                perm_r_per_fold[combo_name][:, fold_idx] = vectorized_pearsonr(
+                    Y_shifted, y_pred)
+
+    # 3. Per-combo summary row (p_perm on the combo's own held-out score).
+    combo_rows = []
+    for combo_name, d in emp.items():
+        null = np.nanmean(perm_r_per_fold[combo_name], axis=1)
+        emp_r = d['mean_r']
+        valid = np.isfinite(null)
+        if valid.any() and np.isfinite(emp_r):
+            p = (np.sum(null[valid] >= emp_r) + 1) / (valid.sum() + 1)
+        else:
+            p = np.nan
+        coef_flat = (np.concatenate([np.asarray(c) for c in d['coefs']])
+                     if d['coefs'] else np.array([]))
+        combo_rows.append({
+            'neuron': neuron_label,
+            'roi': roi_name,
+            'combo_model': combo_name,
+            'mean_r': emp_r,
+            'r_per_fold': d['r_per_fold'].tolist(),
+            'p_perm': float(p) if np.isfinite(p) else np.nan,
+            'all_coefs_zero': coef_flat.size > 0 and bool(np.all(coef_flat == 0)),
+            'n_permutations': int(n_permutations),
+        })
+
+    # 4. Paired Δ contrasts with permutation null.
+    delta_rows = []
+    for test_name, base_name in comparison_specs:
+        if test_name not in emp or base_name not in emp:
+            continue
+        r_test = np.asarray(emp[test_name]['r_per_fold'], dtype=float)
+        r_base = np.asarray(emp[base_name]['r_per_fold'], dtype=float)
+        delta_per_fold = r_test - r_base
+        mean_delta = (float(np.nanmean(delta_per_fold))
+                      if np.isfinite(delta_per_fold).any() else np.nan)
+
+        perm_delta_per_fold = (
+            perm_r_per_fold[test_name] - perm_r_per_fold[base_name]
+        )
+        perm_delta_mean = np.nanmean(perm_delta_per_fold, axis=1)
+        valid = np.isfinite(perm_delta_mean)
+        if valid.any() and np.isfinite(mean_delta):
+            p_delta = (np.sum(perm_delta_mean[valid] >= mean_delta) + 1) / (valid.sum() + 1)
+        else:
+            p_delta = np.nan
+
+        delta_rows.append({
+            'neuron': neuron_label,
+            'roi': roi_name,
+            'model_test': test_name,
+            'model_baseline': base_name,
+            'mean_delta': mean_delta,
+            'delta_per_fold': delta_per_fold.tolist(),
+            'p_perm_delta': float(p_delta) if np.isfinite(p_delta) else np.nan,
+            'n_permutations': int(n_permutations),
+        })
+
+    # 5. Diagnostics — kept as a secondary descriptive output (coef maps).
+    diagnostics = None
+    if save_diagnostics:
+        diagnostics = {}
+        for combo_name, d in emp.items():
+            diagnostics[combo_name] = {
+                'neuron':           neuron_label,
+                'roi':              roi_name,
+                'combo_model':      combo_name,
+                'mean_r':           d['mean_r'],
+                'r_per_fold':       d['r_per_fold'].tolist(),
+                'y_pred_per_fold':  [yp.tolist() for yp in d['y_pred_per_fold']],
+                'y_test_per_fold':  [yt.tolist() for yt in d['y_test_per_fold']],
+                'coefs':            [c.tolist() for c in d['coefs']],
+                'perm_r_per_fold':  perm_r_per_fold[combo_name].tolist(),
+            }
+
+    return combo_rows, delta_rows, diagnostics
+
+
+def compute_combo_roi_summary(delta_df, alpha=0.05):
+    """ROI-level inference on per-neuron Δ values.
+
+    For each (roi, model_test, model_baseline) group:
+      - one-sided one-sample t-test of mean_delta against 0  (H1: > 0),
+      - one-sided Wilcoxon signed-rank,
+      - binomial test of #{p_perm_delta < alpha} against chance level alpha.
+    """
+    rows = []
+    if delta_df is None or delta_df.empty:
+        return pd.DataFrame(rows)
+
+    for (roi, test, base), g in delta_df.groupby(
+        ['roi', 'model_test', 'model_baseline'], sort=False
+    ):
+        deltas = g['mean_delta'].dropna().to_numpy(dtype=float)
+        p_perms = g['p_perm_delta'].dropna().to_numpy(dtype=float)
+        n = int(deltas.size)
+        if n == 0:
+            continue
+
+        # One-sample t-test, one-sided.
+        try:
+            t_res = stats.ttest_1samp(deltas, 0.0, alternative='greater')
+            t_stat = float(t_res.statistic)
+            t_p = float(t_res.pvalue)
+        except TypeError:
+            # scipy < 1.6 — convert two-sided to one-sided manually.
+            t_stat, p_two = stats.ttest_1samp(deltas, 0.0)
+            t_stat = float(t_stat)
+            t_p = float(p_two / 2 if t_stat > 0 else 1 - p_two / 2)
+        except Exception:
+            t_stat, t_p = np.nan, np.nan
+
+        # Wilcoxon signed-rank, one-sided.
+        try:
+            wil = stats.wilcoxon(deltas, alternative='greater',
+                                 zero_method='wilcox')
+            wil_p = float(wil.pvalue)
+        except (ValueError, TypeError):
+            wil_p = np.nan
+
+        # Binomial test on fraction of neurons with p_perm_delta < alpha.
+        n_p = int(p_perms.size)
+        n_sig = int(np.sum(p_perms < alpha))
+        frac_sig = (n_sig / n_p) if n_p > 0 else np.nan
+        try:
+            bin_p = float(stats.binomtest(
+                n_sig, n_p, p=alpha, alternative='greater').pvalue)
+        except AttributeError:
+            try:
+                bin_p = float(stats.binom_test(
+                    n_sig, n_p, p=alpha, alternative='greater'))
+            except Exception:
+                bin_p = np.nan
+
+        rows.append({
+            'roi':                roi,
+            'model_test':         test,
+            'model_baseline':     base,
+            'n_neurons':          n,
+            'mean_delta':         float(np.mean(deltas)),
+            'median_delta':       float(np.median(deltas)),
+            't_stat':             t_stat,
+            't_p_greater':        t_p,
+            'wilcoxon_p_greater': wil_p,
+            'n_sig':              n_sig,
+            'n_with_p_perm':      n_p,
+            'frac_sig':           float(frac_sig) if np.isfinite(frac_sig) else np.nan,
+            'binomial_p_greater': bin_p,
+            'alpha':              float(alpha),
+        })
+    return pd.DataFrame(rows)
+
+
 if RELOAD_RUN is None:
     # ── Cache subject data ───────────────────────────────────────────────
     print("Loading subject data...")
@@ -646,6 +911,10 @@ if RELOAD_RUN is None:
     # ── Main loop ────────────────────────────────────────────────────────
     all_rows = []
     diagnostics_all = {}   # {sub_str: {neuron_label: {model: diag_dict}}}
+    # Combination-analysis accumulators.
+    all_combo_rows = []
+    all_delta_rows = []
+    combo_diagnostics_all = {}  # {sub_str: {neuron_label: {combo_name: diag}}}
     target_set = set(TARGET_ROIS) if TARGET_ROIS is not None else None
     subjects_processed = 0
     T_overall_start = time.time()
@@ -692,11 +961,13 @@ if RELOAD_RUN is None:
         print(f"  {len(neurons_used)} neurons in target ROIs "
               f"({set(rois_used.values())}).")
 
-        # Build design and neuron traces.
+        # Build design and neuron traces.  Build the UNION of base regressors
+        # needed by the active analysis modes; each analysis only references
+        # the subset it cares about.
         t_build = time.time()
         X_models, Y, cfg_slices, btn_alphabet = build_design_and_neurons(
             beh, locs_df, buttons_df, neurons_used, configs_sub,
-            average_repeats=AVERAGE_REPEATS, models_to_build=models,
+            average_repeats=AVERAGE_REPEATS, models_to_build=_models_to_build,
         )
         build_dt = time.time() - t_build
 
@@ -712,55 +983,100 @@ if RELOAD_RUN is None:
               f"{ {m: X.shape[0] for m, X in X_models.items()} }")
         print(f"  button alphabet: {btn_alphabet}")
         print(f"  design build: {build_dt:.2f}s")
-        print(f"  fitting {len(neurons_used)} neurons × {len(models)} models "
-              f"× {N_PERMUTATIONS} perms ...")
 
-        # Parallel over neurons. With test-shuffle perms, single-neuron subjects
-        # are fast enough; joblib still helps when there are many neurons.
-        t_fit = time.time()
         neuron_args = [
             (n_lab, rois_used[n_lab], Y[n_lab])
             for n_lab in neurons_used
         ]
-         
         n_jobs_effective = 1 if len(neuron_args) == 1 else N_JOBS
-        for n_lab, roi, y in neuron_args:
-            results = analyse_one_neuron(n_lab, roi, y, X_models, cfg_slices,
-                                         n_permutations=N_PERMUTATIONS,seed=abs(hash((sub_str, n_lab)))& 0xFFFFFFFF, save_diagnostics=SAVE_DIAGNOSTICS)
-
-        # results = Parallel(n_jobs=n_jobs_effective, verbose=0)(
-        #     delayed(analyse_one_neuron)(
-        #         n_lab, roi, y, X_models, cfg_slices,
-        #         n_permutations=N_PERMUTATIONS,
-        #         seed=abs(hash((sub_str, n_lab))) & 0xFFFFFFFF,
-        #         save_diagnostics=SAVE_DIAGNOSTICS,
-        #     )
-        #     for n_lab, roi, y in neuron_args
-        # )
-        fit_dt = time.time() - t_fit
-
+        fit_dt = 0.0
         sub_diag = {}
-        for (rows, diag), (n_lab, _, _) in zip(results, neuron_args):
-            mni_x, mni_y, mni_z = get_neuron_mni(n_lab)
-            for row in rows:
-                row['subject'] = sub_str
-                row['MNI_x'] = mni_x
-                row['MNI_y'] = mni_y
-                row['MNI_z'] = mni_z
-                if row.get('all_coefs_zero'):
-                    print(f"  WARNING: all coefficients zero — "
-                          f"{n_lab} / model={row['model']}")
-            all_rows.extend(rows)
-            if diag is not None:
-                # Tag each per-model diagnostic with this subject's config list.
-                for m_diag in diag.values():
-                    m_diag['configs'] = configs_sub
-                sub_diag[n_lab] = diag
-        if SAVE_DIAGNOSTICS and sub_diag:
-            diagnostics_all[sub_str] = sub_diag
+
+        # ── Base-model loop (legacy / 'singles_only' / 'all') ────────────
+        if run_singles:
+            # Only score the regressors actually requested in `models`.
+            X_models_singles = {m: X_models[m] for m in models if m in X_models}
+            print(f"  fitting {len(neurons_used)} neurons × "
+                  f"{len(X_models_singles)} single models × "
+                  f"{N_PERMUTATIONS} perms ...")
+            t_fit = time.time()
+            results = Parallel(n_jobs=n_jobs_effective, verbose=0)(
+                delayed(analyse_one_neuron)(
+                    n_lab, roi, y, X_models_singles, cfg_slices,
+                    n_permutations=N_PERMUTATIONS,
+                    seed=abs(hash((sub_str, n_lab))) & 0xFFFFFFFF,
+                    save_diagnostics=SAVE_DIAGNOSTICS,
+                )
+                for n_lab, roi, y in neuron_args
+            )
+            fit_dt += time.time() - t_fit
+
+            for (rows, diag), (n_lab, _, _) in zip(results, neuron_args):
+                mni_x, mni_y, mni_z = get_neuron_mni(n_lab)
+                for row in rows:
+                    row['subject'] = sub_str
+                    row['MNI_x'] = mni_x
+                    row['MNI_y'] = mni_y
+                    row['MNI_z'] = mni_z
+                    if row.get('all_coefs_zero'):
+                        print(f"  WARNING: all coefficients zero — "
+                              f"{n_lab} / model={row['model']}")
+                all_rows.extend(rows)
+                if diag is not None:
+                    for m_diag in diag.values():
+                        m_diag['configs'] = configs_sub
+                    sub_diag[n_lab] = diag
+            if SAVE_DIAGNOSTICS and sub_diag:
+                diagnostics_all[sub_str] = sub_diag
+
+        # ── Combo-model loop (new) ──────────────────────────────────────
+        if run_combos:
+            print(f"  fitting {len(neurons_used)} neurons × "
+                  f"{len(COMBO_MODELS)} combos (Δ comparisons "
+                  f"{len(COMBO_COMPARISONS)}) × {N_PERMUTATIONS} perms ...")
+            t_fit = time.time()
+            combo_results = Parallel(n_jobs=n_jobs_effective, verbose=0)(
+                delayed(analyse_one_neuron_combo)(
+                    n_lab, roi, y, X_models, cfg_slices,
+                    COMBO_MODELS, COMBO_COMPARISONS,
+                    n_permutations=N_PERMUTATIONS,
+                    seed=abs(hash((sub_str, n_lab, 'combo'))) & 0xFFFFFFFF,
+                    save_diagnostics=SAVE_DIAGNOSTICS,
+                )
+                for n_lab, roi, y in neuron_args
+            )
+            fit_dt += time.time() - t_fit
+
+            sub_combo_diag = {}
+            for (combo_rows, delta_rows, diag), (n_lab, _, _) in zip(
+                combo_results, neuron_args
+            ):
+                mni_x, mni_y, mni_z = get_neuron_mni(n_lab)
+                for row in combo_rows:
+                    row['subject'] = sub_str
+                    row['MNI_x'] = mni_x
+                    row['MNI_y'] = mni_y
+                    row['MNI_z'] = mni_z
+                    if row.get('all_coefs_zero'):
+                        print(f"  WARNING: all combo coefficients zero — "
+                              f"{n_lab} / combo={row['combo_model']}")
+                for row in delta_rows:
+                    row['subject'] = sub_str
+                    row['MNI_x'] = mni_x
+                    row['MNI_y'] = mni_y
+                    row['MNI_z'] = mni_z
+                all_combo_rows.extend(combo_rows)
+                all_delta_rows.extend(delta_rows)
+                if diag is not None:
+                    for combo_diag in diag.values():
+                        combo_diag['configs'] = configs_sub
+                    sub_combo_diag[n_lab] = diag
+            if SAVE_DIAGNOSTICS and sub_combo_diag:
+                combo_diagnostics_all[sub_str] = sub_combo_diag
 
         # Per-neuron DSR-family coefficient maps (perm-sig neurons only).
-        if PLOT_DSR_COEF_MAPS and sub_diag:
+        # Only meaningful for the single-model branch.
+        if PLOT_DSR_COEF_MAPS and run_singles and sub_diag:
             from mc.plotting.cell_results import plot_dsr_coef_matrix
             dsr_plot_dir = os.path.join(OUT_DIR, 'dsr_coef_maps')
             os.makedirs(dsr_plot_dir, exist_ok=True)
@@ -799,11 +1115,13 @@ if RELOAD_RUN is None:
                 print(f"  saved {n_maps} DSR-family coefficient maps "
                       f"→ {dsr_plot_dir}")
 
-        n_fits = len(neurons_used) * len(models)
+        n_singles_fits = len(neurons_used) * (len(models) if run_singles else 0)
+        n_combo_fits   = len(neurons_used) * (len(COMBO_MODELS) if run_combos else 0)
+        n_fits = n_singles_fits + n_combo_fits
         per_fit_ms = (fit_dt / max(n_fits, 1)) * 1000
         print(f"  fitting done in {fit_dt:.2f}s  "
-              f"({n_fits} (neuron × model) | "
-              f"{per_fit_ms:.1f} ms per (neuron × model))")
+              f"(singles={n_singles_fits}, combos={n_combo_fits} | "
+              f"{per_fit_ms:.1f} ms per fit)")
         print(f"  subject total: {time.time() - sub_t0:.2f}s")
         subjects_processed += 1
 
@@ -813,21 +1131,65 @@ if RELOAD_RUN is None:
     # ── Save results ─────────────────────────────────────────────────────
     results_df = pd.DataFrame(all_rows)
     out_csv = os.path.join(OUT_DIR, 'encoding_results.csv')
-    results_df.to_csv(out_csv, index=False)
-    print(f"\nSaved per-(subject, neuron, model) results → {out_csv}")
+    if run_singles:
+        results_df.to_csv(out_csv, index=False)
+        print(f"\nSaved per-(subject, neuron, model) results → {out_csv}")
 
     # Save diagnostics pickle (test-mode or when SAVE_DIAGNOSTICS=True).
-    if SAVE_DIAGNOSTICS and diagnostics_all:
+    if run_singles and SAVE_DIAGNOSTICS and diagnostics_all:
         diag_pkl = os.path.join(OUT_DIR, 'diagnostics.pkl')
         with open(diag_pkl, 'wb') as f:
             pickle.dump(diagnostics_all, f)
         print(f"Saved per-(neuron, model) diagnostics → {diag_pkl}")
+
+    # ── Save combo results ───────────────────────────────────────────────
+    combo_results_df     = pd.DataFrame(all_combo_rows)
+    combo_comparisons_df = pd.DataFrame(all_delta_rows)
+    if run_combos:
+        combo_csv = os.path.join(OUT_DIR, 'combo_results.csv')
+        combo_results_df.to_csv(combo_csv, index=False)
+        print(f"Saved per-(neuron, combo) results → {combo_csv}")
+
+        delta_csv = os.path.join(OUT_DIR, 'combo_comparisons.csv')
+        combo_comparisons_df.to_csv(delta_csv, index=False)
+        print(f"Saved per-(neuron, comparison) Δ table → {delta_csv}")
+
+        combo_roi_df = compute_combo_roi_summary(
+            combo_comparisons_df, alpha=COMBO_ROI_ALPHA)
+        combo_roi_csv = os.path.join(
+            OUT_DIR, 'combo_comparisons_roi_summary.csv')
+        combo_roi_df.to_csv(combo_roi_csv, index=False)
+        print(f"Saved ROI-level Δ summary → {combo_roi_csv}")
+        if not combo_roi_df.empty:
+            print("\n=== ROI × Δ summary (alpha={:.2f}) ===".format(
+                COMBO_ROI_ALPHA))
+            with pd.option_context('display.max_rows', None,
+                                   'display.max_columns', None,
+                                   'display.width', 160):
+                print(combo_roi_df[['roi', 'model_test', 'model_baseline',
+                                    'n_neurons', 'mean_delta',
+                                    't_p_greater', 'wilcoxon_p_greater',
+                                    'n_sig', 'frac_sig', 'binomial_p_greater']]
+                      .to_string(index=False))
+
+        if SAVE_DIAGNOSTICS and combo_diagnostics_all:
+            combo_pkl = os.path.join(OUT_DIR, 'combo_diagnostics.pkl')
+            with open(combo_pkl, 'wb') as f:
+                pickle.dump(combo_diagnostics_all, f)
+            print(f"Saved per-(neuron, combo) diagnostics → {combo_pkl}")
 else:
-    # Reload mode: pull saved encoding results (and diagnostics if any)
-    # from disk so the plotting block can run without redoing fits.
+    # Reload mode: pull whatever saved tables exist in OUT_DIR.  Files
+    # produced by a 'combos_only' run won't have the singles CSV/pickle,
+    # so be tolerant of missing files.
     out_csv = os.path.join(OUT_DIR, 'encoding_results.csv')
-    results_df = pd.read_csv(out_csv)
-    print(f"Loaded {len(results_df)} rows from {out_csv}")
+    if os.path.exists(out_csv):
+        results_df = pd.read_csv(out_csv)
+        print(f"Loaded {len(results_df)} rows from {out_csv}")
+    else:
+        results_df = pd.DataFrame()
+        print(f"No encoding_results.csv in {OUT_DIR}; "
+              f"single-model plots will be empty.")
+
     diag_pkl = os.path.join(OUT_DIR, 'diagnostics.pkl')
     if os.path.exists(diag_pkl):
         with open(diag_pkl, 'rb') as f:
@@ -836,7 +1198,32 @@ else:
               f"from {diag_pkl}")
     else:
         diagnostics_all = {}
-        print(f"No diagnostics.pkl in {OUT_DIR}; best-neuron showcase will be skipped.")
+        print(f"No diagnostics.pkl in {OUT_DIR}; "
+              f"best-neuron showcase will be skipped.")
+
+    # Combo outputs (may be absent if this run only produced singles).
+    combo_csv = os.path.join(OUT_DIR, 'combo_results.csv')
+    if os.path.exists(combo_csv):
+        combo_results_df = pd.read_csv(combo_csv)
+        print(f"Loaded {len(combo_results_df)} combo rows from {combo_csv}")
+    else:
+        combo_results_df = pd.DataFrame()
+
+    delta_csv = os.path.join(OUT_DIR, 'combo_comparisons.csv')
+    if os.path.exists(delta_csv):
+        combo_comparisons_df = pd.read_csv(delta_csv)
+        print(f"Loaded {len(combo_comparisons_df)} Δ rows from {delta_csv}")
+    else:
+        combo_comparisons_df = pd.DataFrame()
+
+    combo_pkl = os.path.join(OUT_DIR, 'combo_diagnostics.pkl')
+    if os.path.exists(combo_pkl):
+        with open(combo_pkl, 'rb') as f:
+            combo_diagnostics_all = pickle.load(f)
+        print(f"Loaded combo diagnostics for {len(combo_diagnostics_all)} "
+              f"subjects from {combo_pkl}")
+    else:
+        combo_diagnostics_all = {}
 
 
 from mc.plotting.cell_results import (

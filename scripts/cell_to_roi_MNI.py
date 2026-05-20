@@ -38,6 +38,7 @@ site_col = "Recording Site"     # Baylor rows are treated as MNI305
 coord_cols = ["MNI_x", "MNI_y", "MNI_z"]
 
 hc_ap_cutoff = -21              # y >= -21 anterior HC, y < -21 posterior HC
+# acc_y_cutoff = 15   # only fairly anterior cingulate counts as ACC
 marker_size_glassbrain = 18     # smaller dots
 marker_size_3d = 4              # smaller dots in 3D
 jitter_duplicate_points = True  # helps show multiple cells at identical coordinates
@@ -50,7 +51,7 @@ roi_order = [
     "HC_posterior",
     "ventral_ACC",
     "ACC",
-    "medial_PCC",
+    "medial_CC",
     "posterior_PCC",
     "OFC11",
     "OFC13",
@@ -225,8 +226,16 @@ class BrainnetomeLookup:
 # =============================================================================
 # INITIAL ROI ASSIGNMENT FROM ATLASES
 # =============================================================================
+manual_roi_col = "correct ROI"   # change to the exact column name in your CSV
 
 def assign_initial_roi(row):
+    # if MNI coordinates are missing, trust only manual PCC
+    if row[coord_cols].isna().all():
+        manual_roi = str(row.get(manual_roi_col, "")).strip().upper()
+        if manual_roi == "PCC":
+            return "posterior_PCC"
+        return np.nan
+
     y = float(row["MNI_y"])
 
     ho_cort = str(row["HO_cortical"])
@@ -251,7 +260,12 @@ def assign_initial_roi(row):
 
     if contains(brainnetome, "a14m"):
         return "ventral_ACC"
+    
+    # if contains_any(brainnetome, ["a32sg", "a32p", "a24rv"]):
+    #     return "ACC" if y >= acc_y_cutoff else "medial_CC"
 
+    # if contains(ho_cort, "cingulate gyrus, anterior division"):
+    #     return "ACC" if y >= acc_y_cutoff else "medial_CC"
     if contains_any(brainnetome, ["a32sg", "a32p", "a24rv"]):
         return "ACC"
 
@@ -280,16 +294,10 @@ def assign_initial_roi(row):
     ]):
         return "Visual"
 
-    if contains_any(juelich, [
-        "v1",
-        "v2",
-        "v3",
-        "visual",
-        "calcarine",
-    ]):
+    if contains_any(juelich, ["v1", "v2", "v3", "visual", "calcarine"]):
         return "Visual"
-    return "leftover"
 
+    return "leftover"
 
 # =============================================================================
 # PROXIMITY-BASED LEFTOVER ASSIGNMENT

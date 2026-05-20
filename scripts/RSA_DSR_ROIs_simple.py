@@ -38,7 +38,7 @@ OUT_BASE     = os.path.join(DATA_DIR, 'group', 'DSR_RSA_simple_ROI')
 # '2026-05-18_16-33-05') to skip the heavy RSA + permutation loop and
 # just re-render the overview plots from the saved
 # results_summary*.csv files in OUT_BASE/<RELOAD_RUN>/.  None = run fresh.
-RELOAD_RUN = None
+RELOAD_RUN = None # '2026-05-19_13-05-09'#  None
 
 
 configs = [
@@ -47,19 +47,14 @@ configs = [
 ]
 
 
-# configs = [
-#     '3-7-9-5', '8-2-6-7', '1-9-5-8', '4-8-1-3',
-#     '6-4-2-9', '9-1-3-4', '2-5-7-6',
-# ]
-
 N_CONFIGS = len(configs)
 N_CONDS_PER_CONF = 12
 LEN_STANDARDISED_PATH = 10
 N_PHASES = 3
 states           = ['A', 'B', 'C', 'D']
 RESOLUTIONx = 1
-PLOT_FIGS = False
-N_PERMUTATIONS = 500 # None or 300
+PLOT_FIGS = True
+N_PERMUTATIONS = 300 # 500 # None or 300
 SPLIT_UNCV_BUTTONS = True
 
 # ── Models / combos to evaluate per ROI this round ────────────────────
@@ -70,27 +65,28 @@ SPLIT_UNCV_BUTTONS = True
 #   always-built model_RDMs, so combos may reference any model regardless of
 #   what's in `models`.
 # models = ['dsr_old']
-models = ['location', 'location_old', 'dsr', 'state', 'dsr_old', 'midnight', 'dsr_old_now_next',
-          'state_phase', 'phase', 'bttn_prev', 'bttn_next', 'bttn_curr', 'uncover', 'repeat_counter']
-
-# combo_models = {
-#     'loco-uncvr-dsr':          ['location_old', 'uncover', 'dsr_old'], # only location uncover and dsr
-#     'state-uncvr-loco-dsr':          ['state','uncover', 'location_old',  'dsr_old'], # only location uncover and dsr
-#     'count-uncvr-loco-dsr':          [ 'repeat_counter', 'uncover', 'location_old', 'dsr_old'], # only location uncover phase and dsr
-#    }
-
+models = ['dsr_old', 'midnight','state', 'repeat_counter', 'uncover', 'bttn_prev', 'bttn_next', 'bttn_curr', 'location', 'phase']
 
 combo_models = {
-    'st-cnt-uncvr-bttns-loc-dsr':          ['state', 'repeat_counter', 'uncover', 'bttn_prev', 'bttn_next', 'bttn_curr', 'location', 'dsr_old'], #visual controls plus state plus buttons
-    'cnt-uncvr-bttns-loc-dsr':          ['repeat_counter', 'uncover', 'bttn_prev', 'bttn_next', 'bttn_curr', 'location', 'dsr_old'], #visual controls minus state plus buttons
-    'st-cnt-uncvr-loc-ph-dsr':          ['state', 'repeat_counter', 'uncover', 'location', 'phase', 'dsr_old'], #visual controls plus state and phase
-    'st-cnt-uncvr-loc-dsr':          ['state', 'repeat_counter', 'uncover', 'location', 'dsr_old'], #visual controls plus state
-    'cnt-loc-uncvr-dsr':          ['repeat_counter', 'uncover', 'location', 'dsr_old'], #visual controls minus state
-    'loc-uncvr-dsr':          ['location', 'uncover', 'dsr_old'], # only location uncover and dsr
-    'loc-ph-uncvr-dsr':          ['location', 'phase', 'uncover', 'dsr_old'], # only location uncover phase and dsr
-    'st-loc-cnt-uncvr-buttons-midn-dsr':          ['state', 'location', 'repeat_counter', 'uncover','bttn_prev', 'bttn_next', 'bttn_curr', 'midnight', 'dsr_old'], # visuals plus state plus midnight 
-    'loc-cnt-uncvr-buttons-midn-dsr':          ['location', 'repeat_counter', 'uncover','bttn_prev', 'bttn_next', 'bttn_curr', 'midnight', 'dsr_old'], # visuals minus state plus midnight 
-}
+    'MRI_combo':          ['bttn_curr', 'bttn_next', 'location', 'repeat_counter', 'dsr_old'],
+    'MRI_combo-nofdb':          ['bttn_curr', 'bttn_next', 'location', 'dsr_old'],
+    'MRI_combo-nofdb_midn':          ['bttn_curr', 'bttn_next', 'location', 'midnight', 'dsr_old'],
+    'MRI_combo_midn':          ['bttn_curr', 'bttn_next', 'location', 'repeat_counter', 'midnight', 'dsr_old'],
+    'MRI_combo_state':          ['bttn_curr', 'bttn_next', 'location', 'repeat_counter', 'dsr_old','state']
+    }
+
+
+# combo_models = {
+#     'st-cnt-uncvr-bttns-loc-dsr':          ['state', 'repeat_counter', 'uncover', 'bttn_prev', 'bttn_next', 'bttn_curr', 'location', 'dsr_old'], #visual controls plus state plus buttons
+#     'cnt-uncvr-bttns-loc-dsr':          ['repeat_counter', 'uncover', 'bttn_prev', 'bttn_next', 'bttn_curr', 'location', 'dsr_old'], #visual controls minus state plus buttons
+#     'st-cnt-uncvr-loc-ph-dsr':          ['state', 'repeat_counter', 'uncover', 'location', 'phase', 'dsr_old'], #visual controls plus state and phase
+#     'st-cnt-uncvr-loc-dsr':          ['state', 'repeat_counter', 'uncover', 'location', 'dsr_old'], #visual controls plus state
+#     'cnt-loc-uncvr-dsr':          ['repeat_counter', 'uncover', 'location', 'dsr_old'], #visual controls minus state
+#     'loc-uncvr-dsr':          ['location', 'uncover', 'dsr_old'], # only location uncover and dsr
+#     'loc-ph-uncvr-dsr':          ['location', 'phase', 'uncover', 'dsr_old'], # only location uncover phase and dsr
+#     'st-loc-cnt-uncvr-buttons-midn-dsr':          ['state', 'location', 'repeat_counter', 'uncover','bttn_prev', 'bttn_next', 'bttn_curr', 'midnight', 'dsr_old'], # visuals plus state plus midnight 
+#     'loc-cnt-uncvr-buttons-midn-dsr':          ['location', 'repeat_counter', 'uncover','bttn_prev', 'bttn_next', 'bttn_curr', 'midnight', 'dsr_old'], # visuals minus state plus midnight 
+# }
 
 print(f"Base models evaluated this run ({len(models)}): {models}")
 print(f"Combos evaluated this run     ({len(combo_models)}): {list(combo_models.keys())}")
@@ -108,7 +104,7 @@ ROIS_TO_ANALYZE = [
     'EC', 'Parahippocampal',
     'HC_anterior', 'HC_posterior',
     'ventral_ACC', 'ACC',
-    'medial_PCC', 'posterior_PCC',
+    'posterior_PCC',
     'OFC11', 'OFC13', 'Visual',
 ]
 
@@ -139,6 +135,7 @@ def _load_roi_table(path):
 ROI_TABLE = _load_roi_table(ROI_TABLE_PATH)
 print(f"Loaded ROI table with {len(ROI_TABLE)} cells "
       f"({ROI_TABLE['final_roi'].nunique()} distinct ROIs) from {ROI_TABLE_PATH}")
+# this table in 'final_roi' indicates the correct ROI to take.
 
 
 def get_neuron_roi(label):
@@ -174,17 +171,6 @@ def _make_roi_predicate(target_roi):
 
 
 ROI_RULES = {roi: _make_roi_predicate(roi) for roi in ROIS_TO_ANALYZE}
-
-
-
-# for categorical variables (e.g. location/dsr encoding)
-# def downsample_mode(x, target_len=10):
-#     x = np.asarray(x)
-#     block = len(x) // target_len
-#     return np.array([
-#         stats.mode(x[i*block:(i+1)*block], keepdims=False).mode
-#         for i in range(target_len)
-#     ])
 
 
 def downsample_mode(x, target_len=10):
@@ -312,7 +298,7 @@ if RELOAD_RUN is None:
             beh['config_str'] = beh['config'].apply(
                 lambda t: f'{t[0]}-{t[1]}-{t[2]}-{t[3]}')
             curr_neurons = data_dict[f"sub-{sub_str}"]['normalised_neurons']
-
+            
             for conf in configs:
                 idx_curr_conf = (beh['config_str'] == conf) & (beh['correct'] == 1)
                 all_locs_conf = data_dict[f"sub-{sub_str}"]['locations'][idx_curr_conf].to_numpy()
@@ -328,11 +314,12 @@ if RELOAD_RUN is None:
                 buttons_all[conf].append(all_buttons_conf)
                 
                 for n_lab in curr_neurons:
-                    if 'MCC' in n_lab:
-                        print(f"now adding hippocampal neuron with MCC label, in session {sub_str}.")
+                    # if 'MCC' in n_lab:
+                    #     print(f"now adding hippocampal neuron with MCC label, in session {sub_str}.")
                     if roi_pred(n_lab):
                         # Record MNI coords (once per cell) for the ROI overview plot.
                         sub_int, cell_int = parse_neuron_label(n_lab)
+                        
                         if sub_int is not None:
                             key = (sub_int, cell_int)
                             if key not in roi_electrode_coords[roi_name]:
@@ -385,7 +372,7 @@ if RELOAD_RUN is None:
         # import pdb; pdb.set_trace()
 
         n_neurons = len(acc_neurons[conf][th])
-
+        
         if n_neurons == 0:
             print(f"[{roi_name}] no neurons matched — skipping.")
             continue
@@ -430,8 +417,10 @@ if RELOAD_RUN is None:
         mu_all = np.nanmean(mat_all, axis=1)      # one mean per neuron
         sd_all = np.nanstd(mat_all, axis=1)       # one std per neuron
         mat_all_z = (mat_all.T - mu_all) / sd_all
-        data_RDM_within_z, data_RDM_across_z, data_RDM_full_z = mc.analyse.my_RSA.compute_crosscorr_within(mat_all_z, plotting=PLOT_FIGS, include_diagonal=False, no_tasks=len(configs), model=f'data in z-scored {roi_name} neurons', block_size=N_CONDS_PER_CONF)
-
+        #data_RDM_within_z, data_RDM_across_z, data_RDM_full_z = mc.analyse.my_RSA.compute_crosscorr_within(mat_all_z, plotting=PLOT_FIGS, include_diagonal=False, no_tasks=len(configs), model=f'data in z-scored {roi_name} neurons', block_size=N_CONDS_PER_CONF)
+        data_RDM_within_z, data_RDM_across_z, data_RDM_full_z = mc.analyse.my_RSA.compute_crosscorr_within(mat_all_z, plotting=True, include_diagonal=False, no_tasks=len(configs), model=f'data in z-scored {roi_name} neurons', block_size=N_CONDS_PER_CONF)
+        
+        #import pdb; pdb.set_trace()
 
 
         # create a mode path.
