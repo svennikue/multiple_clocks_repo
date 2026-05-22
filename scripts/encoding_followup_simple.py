@@ -21,6 +21,7 @@ Stats used per neuron:
 """
 
 import os
+import json
 import pickle
 from datetime import datetime
 
@@ -29,11 +30,10 @@ import pandas as pd
 from scipy import stats
 import matplotlib.pyplot as plt
 
-
 # ── Settings ──────────────────────────────────────────────────────────
-
-RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-19_17-26-12/')
-
+RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-22_15-57-38/')
+# RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-21_10-37-45-nopositiveReg/')
+#RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-20_22-57-03/')
 # RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-12_17-48-06-all-500perms-l20-001-fixedbuttons/')
 
 RESULT_CSV = os.path.join(RESULT_DIR, 'encoding_results.csv')
@@ -60,9 +60,13 @@ DSR_COEF_P_PERM_THRESHOLD = 0.05
 #   'dsr_filter'      -> fig 6  (dsr distribution under exclusion filters)
 #   'dsr_co_encoding' -> fig 7  (dsr co-encoding stratified by count)
 #   'state_removal'   -> figs 8-9 (dsr after removing state encoders)
-#   'coefficients'    -> figs 10-11 (DSR coefficient analysis from
+#   'coefficients'    -> figs 10-13 (DSR coefficient analysis from
 #                        diagnostics.pkl — independent of the CSV)
-SECTIONS_TO_RUN = ['coefficients']
+#   'brain_lag'       -> fig 14, 16 (DSR peak-lag glass-brain + 3D maps;
+#                        diagnostics.pkl + MNI table — independent of CSV)
+#   'r_dist_no_state' -> fig 17 (r-distribution grid for every non-state
+#                        model, after dropping state-significant neurons)
+SECTIONS_TO_RUN = ['brain_lag', 'coefficients', 'r_dist_no_state']
 
 _run_classification  = 'classification'  in SECTIONS_TO_RUN
 _run_focal           = 'focal'           in SECTIONS_TO_RUN
@@ -70,8 +74,11 @@ _run_dsr_filter      = 'dsr_filter'      in SECTIONS_TO_RUN
 _run_dsr_co_encoding = 'dsr_co_encoding' in SECTIONS_TO_RUN
 _run_state_removal   = 'state_removal'   in SECTIONS_TO_RUN
 _run_coefficients    = 'coefficients'    in SECTIONS_TO_RUN
+_run_brain_lag       = 'brain_lag'       in SECTIONS_TO_RUN
+_run_r_dist_no_state = 'r_dist_no_state' in SECTIONS_TO_RUN
 _need_csv = any([_run_classification, _run_focal, _run_dsr_filter,
-                 _run_dsr_co_encoding, _run_state_removal])
+                 _run_dsr_co_encoding, _run_state_removal,
+                 _run_r_dist_no_state])
 print(f"Sections to run: {SECTIONS_TO_RUN}")
 
 RUN_TAG = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -108,6 +115,36 @@ if _need_csv:
     print(f"  {len(df)} rows in target ROIs, {df['neuron'].nunique()} neurons; "
           f"{len(df_all)} rows total across {ALL_ROIS}; "
           f"{len(MODELS)} models.")
+
+
+# ── Fig 17: r-distribution grid excluding state-encoding neurons ──────
+# Same figure as encoding_analysis_simple.py's plot_r_distribution_grid,
+# but for every model EXCEPT 'state', after dropping neurons that are
+# permutation-significant for 'state' (p_perm < ALPHA_PERM).
+if _run_r_dist_no_state:
+    from mc.plotting.cell_results import plot_r_distribution_grid
+
+    state_sig = set(df_all.loc[(df_all['model'] == 'state')
+                               & (df_all['p_perm'] < ALPHA_PERM), 'neuron'])
+    keep = df_all[(~df_all['neuron'].isin(state_sig))
+                  & (df_all['model'] != 'state')].copy()
+    models_no_state = [m for m in MODELS if m != 'state']
+    print(f"\nFig 17: dropped {len(state_sig)} state-significant neurons "
+          f"(p_perm<{ALPHA_PERM}); plotting {len(models_no_state)} models "
+          f"for {keep['neuron'].nunique()} remaining neurons.")
+
+    # Regularisation alpha for the title (from the encoding run's config).
+    _reg_alpha = None
+    try:
+        with open(os.path.join(RESULT_DIR, 'config.json')) as _cf:
+            _reg_alpha = json.load(_cf).get('ALPHA')
+    except Exception:
+        pass
+
+    _fig17_path = os.path.join(OUT_DIR, 'fig17_r_distribution_no_state.png')
+    plot_r_distribution_grid(keep, models_no_state, save_path=_fig17_path,
+                             alpha=ALPHA_PERM, reg_alpha=_reg_alpha)
+    print(f"Wrote {_fig17_path}")
 
 
 # ── Per-neuron classification ─────────────────────────────────────────
@@ -1025,7 +1062,8 @@ def load_dsr_coefs(diagnostics,
                    p_perm_threshold=DSR_COEF_P_PERM_THRESHOLD,
                    normalize=DSR_COEF_NORMALIZE,
                    model_name=DSR_MODEL_NAME,
-                   expected_size=DSR_N_COEFS):
+                   expected_size=DSR_N_COEFS,
+                   abs_coefs=False):
     """Per-neuron DSR coefficients (per-fold-normalised, then averaged).
 
     Each held-out fold's 324-coefficient vector is normalised on its own
@@ -1040,6 +1078,11 @@ def load_dsr_coefs(diagnostics,
     normalize : 'mean' | 'sum' | 'l2' | 'max' | None
         Per-fold normalisation so the resulting coefficients are
         comparable across neurons with very different firing-rate scales.
+    abs_coefs : bool
+        If True, take |coef| of each fold BEFORE normalising — sign-neutral
+        lag comparison for runs whose elastic net allowed negative
+        coefficients. Also keeps 'mean' normalisation safe (a signed mean
+        near zero would blow up / flip signs).
 
     Returns DataFrame with columns:
         subject, neuron, roi, p_perm, mean_r, coefs (size 324, normalised).
@@ -1078,6 +1121,8 @@ def load_dsr_coefs(diagnostics,
             # average rather than pulling it toward zero.
             normed_folds = []
             for fold_coefs in coefs_arr:
+                if abs_coefs:
+                    fold_coefs = np.abs(fold_coefs)
                 nc, ok = _normalize_coefs(fold_coefs, normalize)
                 if ok:
                     normed_folds.append(nc)
@@ -1107,6 +1152,18 @@ def reshape_dsr(coefs):
     """(324,) → (9, 3, 12) = (location, phase, lag)."""
     return np.asarray(coefs, dtype=float).reshape(
         DSR_N_LOCATIONS, DSR_N_PHASES, DSR_N_LAGS)
+
+
+def dsr_coefs_can_be_negative(diagnostics, model_name=DSR_MODEL_NAME,
+                              tol=1e-6):
+    """True if any saved DSR coefficient is negative — i.e. the encoding
+    run did not constrain the elastic net to positive=True."""
+    return any(
+        float(np.min(np.asarray(c, dtype=float))) < -tol
+        for per_neuron in diagnostics.values()
+        for per_model in per_neuron.values()
+        if model_name in per_model
+        for c in per_model[model_name].get('coefs', []))
 
 
 def per_neuron_by_factor(coefs_df, factor):
@@ -1360,44 +1417,62 @@ def plot_dsr_coef_distribution_by_factor(coefs_df, factor, save_path,
             continue
 
         vals = per_neuron_by_factor(sub_df, factor=factor)  # (n_neu, n_bins)
-        positions = np.arange(len(bin_labels))
+
+        # Statistics on the genuine bins only (a wrap duplicate, if any, is
+        # excluded so no bin is counted twice).
+        omni_p = _friedman_test_across_bins(vals)
+        p_corr, signs = _per_bin_vs_grand_mean(vals)
+
+        # `lag` wraps around: duplicate the first lag at the end so the
+        # last<->first transition is visible on one continuous axis.
+        if factor == 'lag':
+            vals_plot   = np.hstack([vals, vals[:, [0]]])
+            labels_plot = bin_labels + [bin_labels[0]]
+            p_corr_plot = np.append(p_corr, p_corr[0])
+            signs_plot  = np.append(signs, signs[0])
+        else:
+            vals_plot, labels_plot = vals, bin_labels
+            p_corr_plot, signs_plot = p_corr, signs
+        positions = np.arange(len(labels_plot))
 
         # Boxplot (distribution per bin across neurons).
-        ax.boxplot(vals, positions=positions, showfliers=False, widths=0.55,
+        ax.boxplot(vals_plot, positions=positions, showfliers=False,
+                   widths=0.55,
                    medianprops={'color': 'tab:blue'},
                    whiskerprops={'color': '0.4'},
                    capprops={'color': '0.4'},
                    boxprops={'color': '0.4'})
 
         # Jittered raw points so the full distribution is visible.
-        for b in range(len(bin_labels)):
+        for b in range(len(labels_plot)):
             xs = positions[b] + (rng.uniform(-0.18, 0.18, size=n_neu))
-            ax.scatter(xs, vals[:, b], s=6, color='tab:blue',
+            ax.scatter(xs, vals_plot[:, b], s=6, color='tab:blue',
                        alpha=0.4, edgecolor='none')
 
         # Mean line on top.
-        ax.plot(positions, np.nanmean(vals, axis=0),
+        ax.plot(positions, np.nanmean(vals_plot, axis=0),
                 color='tab:red', lw=1.4, marker='o', ms=4, zorder=5)
 
-        # Statistics.
-        omni_p = _friedman_test_across_bins(vals)
-        p_corr, signs = _per_bin_vs_grand_mean(vals)
         omni_str = (f"{omni_p:.2e}" if np.isfinite(omni_p) else 'nan')
         ax.set_title(f'{roi} (n={n_neu})  Friedman p={omni_str}',
                      fontsize=9)
 
+        # Dotted line marking the wrap point (last bin = first lag again).
+        if factor == 'lag':
+            ax.axvline(len(bin_labels) - 0.5, color='0.7', lw=0.8, ls=':')
+
         # Per-bin stars + direction arrow above the box.
-        for b in range(len(bin_labels)):
-            if not np.isfinite(p_corr[b]):
+        for b in range(len(labels_plot)):
+            if not np.isfinite(p_corr_plot[b]):
                 continue
-            if   p_corr[b] < 0.001: stars = '***'
-            elif p_corr[b] < 0.01:  stars = '**'
-            elif p_corr[b] < 0.05:  stars = '*'
-            else:                   continue
-            arrow = '↑' if signs[b] > 0 else '↓'
+            if   p_corr_plot[b] < 0.001: stars = '***'
+            elif p_corr_plot[b] < 0.01:  stars = '**'
+            elif p_corr_plot[b] < 0.05:  stars = '*'
+            else:                        continue
+            arrow = '↑' if signs_plot[b] > 0 else '↓'
             ax.text(positions[b], y_max * 0.97, f'{arrow}{stars}',
                     ha='center', va='top', fontsize=7,
-                    color='tab:red' if signs[b] > 0 else 'tab:purple',
+                    color='tab:red' if signs_plot[b] > 0 else 'tab:purple',
                     fontweight='bold')
 
         # Reference line = the per-neuron average coefficient level
@@ -1405,7 +1480,7 @@ def plot_dsr_coef_distribution_by_factor(coefs_df, factor, save_path,
         # over-represented, below it under-represented.
         ax.axhline(DSR_COEF_REFERENCE, color='0.5', lw=0.8, ls='--')
         ax.set_xticks(positions)
-        ax.set_xticklabels(bin_labels, fontsize=7)
+        ax.set_xticklabels(labels_plot, fontsize=7)
         ax.set_ylim(y_min, y_max)
         ax.set_xlabel(label, fontsize=8)
         if ax_idx % ncols == 0:
@@ -1737,18 +1812,28 @@ if _run_coefficients:
         _diagnostics = pickle.load(f)
     print(f"  loaded diagnostics for {len(_diagnostics)} subjects.")
 
+    # If the encoding run allowed negative coefficients, compare lags
+    # sign-neutrally: |coef| is taken per fold before normalising, so every
+    # per-bin strength (figs 10-13) is magnitude-based.
+    _coefs_negative = dsr_coefs_can_be_negative(_diagnostics)
+
     print("  DSR coefficient indexing reminder:")
     print(f"    324 coefficients per neuron, arranged as "
           f"(location 1..{DSR_N_LOCATIONS}) × (phase {DSR_PHASE_NAMES}) "
           f"× (lag 0..{DSR_N_LAGS - 1})")
     print("    coefs[loc * 36 + phase * 12 + lag]")
-    print(f"    per-neuron normalisation = {DSR_COEF_NORMALIZE!r}, "
+    print(f"    per-neuron normalisation = {DSR_COEF_NORMALIZE!r}"
+          f"{' on |coef|' if _coefs_negative else ''}, "
           f"p_perm threshold = {DSR_COEF_P_PERM_THRESHOLD}")
+    if _coefs_negative:
+        print("    coefficients can be negative -> sign-neutral (|coef|) "
+              "lag comparison.")
 
     dsr_coefs_df = load_dsr_coefs(
         _diagnostics,
         p_perm_threshold=DSR_COEF_P_PERM_THRESHOLD,
         normalize=DSR_COEF_NORMALIZE,
+        abs_coefs=_coefs_negative,
     )
     print(f"  {len(dsr_coefs_df)} DSR-encoding neurons kept "
           f"(p_perm < {DSR_COEF_P_PERM_THRESHOLD}).")
@@ -1800,6 +1885,307 @@ if _run_coefficients:
         )
     else:
         print("  no neurons available for the 3-way analysis.")
+
+
+# ── Fig 14-16: DSR peak-lag brain & anatomy maps ─────────────────────
+# Per-lag strength of a DSR neuron is read from its clock coefficients
+# (324 = 9 locations × 3 phases × 12 lags):
+#   * positive-constrained run  -> strength = mean coef over the 27 anchors
+#   * unconstrained run         -> strength = mean |coef| (option A); a
+#     strongly negative coefficient still means the lag is strongly
+#     encoded. The sign of the signed anchor-sum at the peak is kept as an
+#     excitatory / suppressive label.
+# peak lag   = argmax of the 12-value strength profile.
+# peakedness = profile.max() / profile.mean()  (1 = flat, up to 12 = one
+#              lag dominates).
+#
+# Two neuron-selection criteria, each plotted separately:
+#   'psig'    -> permutation-significant (p_perm < BRAIN_LAG_P_THRESHOLD)
+#   'poscorr' -> non-negative cross-validated correlation (mean_r >= 0)
+#
+# fig14 — peak-lag glass brains (whole + ACC) and 3D mesh, mean & best fold.
+# fig15 — lag peakedness per ROI (box plots), both selections.
+# fig16 — ACC only: peak lag vs MNI z (dorsal-ventral axis), both selections.
+if _run_brain_lag:
+    from mc.plotting.cell_results import (plot_peaklag_glassbrain,
+                                          plot_peaklag_3d_mesh,
+                                          make_brain_anatomy_figure)
+
+    ROI_TABLE_PATH = ('/Users/xpsy1114/Documents/projects/multiple_clocks/'
+                      'data/ephys_humans/derivatives/'
+                      'neurons_with_final_roi_labels.csv')
+    ACC_ROI_LABELS        = ('ACC',)               # glass-brain ACC zoom
+    ACC_DV_ROI_LABELS     = ('ACC', 'ventral_ACC')  # dorsal-ventral analysis
+    BRAIN_LAG_P_THRESHOLD = 0.05      # p_perm cutoff for the 'psig' selection
+    BRAIN_JITTER_MM       = 2.0       # spread cells sharing an MNI coordinate
+    GLASS_MARKER_SIZE     = 3         # small, so individual cells are visible
+
+    # Coefficient-sign mode. The lag post-hoc analysis must know whether the
+    # encoding run's elastic net could produce negative coefficients
+    # (positive=False). This is auto-detected from the saved coefficients
+    # after loading (config.json's POSITIVE field is not always in sync with
+    # the run). Set this to True or False to force the mode instead.
+    FORCE_COEFS_CAN_BE_NEGATIVE = None
+
+    def dsr_lag_profile(coefs_324, use_abs):
+        """One (324,) coef vector -> (peak_lag, peakedness, sign_label).
+
+        Per-lag strength = mean over the 27 location×phase anchors of
+        |coef| (use_abs) or coef. peak_lag = argmax; peakedness =
+        max/mean of the 12-value profile; sign from the signed anchor-sum
+        at the peak ('excitatory' / 'suppressive').
+        """
+        arr = reshape_dsr(coefs_324)                     # (9, 3, 12)
+        signed   = arr.sum(axis=(0, 1))                  # (12,)
+        strength = (np.abs(arr).mean(axis=(0, 1)) if use_abs
+                    else arr.mean(axis=(0, 1)))          # (12,)
+        if strength.size == 0 or float(strength.mean()) <= 1e-12:
+            return np.nan, np.nan, ''
+        peak = int(np.argmax(strength))
+        peakedness = float(strength.max() / strength.mean())
+        sign = 'excitatory' if signed[peak] >= 0 else 'suppressive'
+        return peak, peakedness, sign
+
+    def circular_linear_corr(lags, x, period=DSR_N_LAGS):
+        """Mardia circular-linear correlation between circular `lags`
+        (0..period-1) and linear `x`. Returns (r in [0,1], p)."""
+        lags = np.asarray(lags, dtype=float)
+        x    = np.asarray(x, dtype=float)
+        ok = np.isfinite(lags) & np.isfinite(x)
+        lags, x = lags[ok], x[ok]
+        n = len(x)
+        if n < 4 or np.std(x) < 1e-12:
+            return np.nan, np.nan
+        ang = 2 * np.pi * lags / period
+        c, s = np.cos(ang), np.sin(ang)
+        if np.std(c) < 1e-12 or np.std(s) < 1e-12:
+            return np.nan, np.nan
+        rxc = np.corrcoef(x, c)[0, 1]
+        rxs = np.corrcoef(x, s)[0, 1]
+        rcs = np.corrcoef(c, s)[0, 1]
+        denom = 1.0 - rcs ** 2
+        if abs(denom) < 1e-12:
+            return np.nan, np.nan
+        r2 = (rxc**2 + rxs**2 - 2*rxc*rxs*rcs) / denom
+        r2 = float(np.clip(r2, 0.0, 1.0))
+        return np.sqrt(r2), float(stats.chi2.sf(n * r2, df=2))
+
+    def parse_subject_cell(neuron_label):
+        """'01_07-07-chan120-EC' -> (subject=1, cell_idx=7)."""
+        subj, rest = neuron_label.split('_', 1)
+        return int(subj), int(rest.split('-')[0])
+
+    def jitter_duplicate_coords(df, jitter_mm=BRAIN_JITTER_MM):
+        """Deterministic angular offset for cells sharing MNI coordinates."""
+        out = df.copy()
+        out[['px', 'py', 'pz']] = out[['MNI_x', 'MNI_y', 'MNI_z']].to_numpy()
+        for _, idxs in out.groupby(['MNI_x', 'MNI_y', 'MNI_z']).groups.items():
+            idxs = list(idxs)
+            if len(idxs) <= 1:
+                continue
+            ang = np.linspace(0, 2 * np.pi, len(idxs), endpoint=False)
+            out.loc[idxs, 'px'] += jitter_mm * np.cos(ang)
+            out.loc[idxs, 'py'] += jitter_mm * np.sin(ang)
+        return out
+
+    def plot_acc_lag_vs_z(tbl, save_path, title):
+        """ACC neurons: peak lag (x) vs MNI z (y, dorsal-ventral axis).
+
+        Marker hue = peak lag; marker opacity = effect strength (mean_r).
+        """
+        rng = np.random.default_rng(1)
+        cmap = plt.get_cmap('YlOrRd')
+        norm = plt.Normalize(vmin=0, vmax=DSR_N_LAGS - 1)
+        lag = tbl['peak_lag_mean'].to_numpy(dtype=float)
+        z   = tbl['MNI_z'].to_numpy(dtype=float)
+        jx  = lag + rng.uniform(-0.22, 0.22, len(lag))
+
+        # Per-point opacity from effect strength (mean_r): strong = opaque.
+        strength = np.clip(np.nan_to_num(
+            tbl['mean_r'].to_numpy(dtype=float)), 0.0, None)
+        smax = float(np.nanmax(strength)) if strength.size else 0.0
+        alphas = (0.15 + 0.85 * np.clip(strength / smax, 0, 1)
+                  if smax > 0 else np.full(len(strength), 1.0))
+        rgba = np.array([(*cmap(norm(L))[:3], a)
+                         for L, a in zip(lag, alphas)])
+
+        fig, ax = plt.subplots(figsize=(6.4, 6))
+        for sign, marker in [('excitatory', 'o'), ('suppressive', 'X')]:
+            m = (tbl['lag_sign_mean'] == sign).to_numpy()
+            if m.any():
+                ax.scatter(jx[m], z[m], color=rgba[m],
+                           marker=marker, s=46, edgecolor='0.3',
+                           linewidth=0.4,
+                           label=f'{sign} (n={int(m.sum())})')
+        for L in range(DSR_N_LAGS):                       # mean z per lag
+            zl = z[lag == L]
+            if len(zl):
+                ax.plot([L - 0.35, L + 0.35], [float(np.mean(zl))] * 2,
+                        color='black', lw=2)
+        r, p = circular_linear_corr(lag, z)
+        ax.set_xlabel('DSR peak lag', fontsize=9)
+        ax.set_ylabel('MNI z   (ventral → dorsal)', fontsize=9)
+        ax.set_xticks(range(DSR_N_LAGS))
+        ax.set_title(f'{title}\ncircular-linear r={r:.2f}, p={p:.3f}, '
+                     f'n={len(tbl)}   (black bars = mean z per lag)',
+                     fontsize=9)
+        ax.legend(fontsize=8, frameon=False, loc='best')
+        fig.tight_layout()
+        fig.savefig(save_path, dpi=150)
+        plt.close(fig)
+        print(f"Wrote {save_path}")
+
+    print(f"\nLoading diagnostics for peak-lag brain maps: {DIAGNOSTICS_PKL}")
+    with open(DIAGNOSTICS_PKL, 'rb') as f:
+        _diag_brain = pickle.load(f)
+
+    # Detect whether the elastic net produced negative coefficients directly
+    # from the saved DSR coefficients — config.json's POSITIVE flag is not
+    # always in sync with the run.
+    if FORCE_COEFS_CAN_BE_NEGATIVE is not None:
+        COEFS_CAN_BE_NEGATIVE = bool(FORCE_COEFS_CAN_BE_NEGATIVE)
+    else:
+        COEFS_CAN_BE_NEGATIVE = any(
+            float(np.min(np.asarray(c, dtype=float))) < -1e-6
+            for per_neuron in _diag_brain.values()
+            for per_model in per_neuron.values()
+            if DSR_MODEL_NAME in per_model
+            for c in per_model[DSR_MODEL_NAME].get('coefs', []))
+    USE_ABS = COEFS_CAN_BE_NEGATIVE
+    print(f"  coefficients can be negative = {COEFS_CAN_BE_NEGATIVE}  "
+          f"-> per-lag strength = "
+          f"{'mean |coef|' if USE_ABS else 'mean coef'}")
+
+    # All DSR neurons (no p filter): mean-across-fold coefs + p_perm + mean_r.
+    # With negative coefficients the per-fold normaliser must be sign-safe
+    # ('mean' divides by ~0 and can flip signs); 'l2' is used instead.
+    _norm = DSR_COEF_NORMALIZE if not COEFS_CAN_BE_NEGATIVE else 'l2'
+    lag_tbl = load_dsr_coefs(_diag_brain, p_perm_threshold=None,
+                             normalize=_norm)
+
+    _prof = lag_tbl['coefs'].apply(lambda c: dsr_lag_profile(c, USE_ABS))
+    lag_tbl['peak_lag_mean']   = [t[0] for t in _prof]
+    lag_tbl['peakedness_mean'] = [t[1] for t in _prof]
+    lag_tbl['lag_sign_mean']   = [t[2] for t in _prof]
+
+    # Best held-out fold (raw coefs; argmax / peakedness are scale-invariant).
+    best_lag = {}
+    for sub, per_neuron in _diag_brain.items():
+        for n_lab, per_model in per_neuron.items():
+            d = per_model.get(DSR_MODEL_NAME)
+            if d is None:
+                continue
+            coefs_list = d.get('coefs', [])
+            if not coefs_list:
+                continue
+            coefs_arr = np.array([np.asarray(c, dtype=float)
+                                  for c in coefs_list])
+            if coefs_arr.ndim != 2 or coefs_arr.shape[1] != DSR_N_COEFS:
+                continue
+            r = np.asarray(d.get('r_per_fold', []), dtype=float)
+            if r.size == 0 or not np.isfinite(r).any():
+                continue
+            best_lag[(sub, n_lab)] = dsr_lag_profile(
+                coefs_arr[int(np.nanargmax(r))], USE_ABS)
+    _empty = (np.nan, np.nan, '')
+    _subs, _neus = lag_tbl['subject'], lag_tbl['neuron']
+    lag_tbl['peak_lag_best']   = [best_lag.get((s, n), _empty)[0]
+                                  for s, n in zip(_subs, _neus)]
+    lag_tbl['peakedness_best'] = [best_lag.get((s, n), _empty)[1]
+                                  for s, n in zip(_subs, _neus)]
+    lag_tbl['lag_sign_best']   = [best_lag.get((s, n), _empty)[2]
+                                  for s, n in zip(_subs, _neus)]
+
+    # Join MNI coordinates on (subject, cell idx).
+    mni_tbl = pd.read_csv(ROI_TABLE_PATH)[
+        ['subject', 'cell idx', 'MNI_x', 'MNI_y', 'MNI_z']].rename(
+        columns={'subject': 'mni_subject', 'cell idx': 'cell_idx'})
+    mni_tbl = mni_tbl.drop_duplicates(['mni_subject', 'cell_idx'])
+    sc = lag_tbl['neuron'].apply(
+        lambda s: pd.Series(parse_subject_cell(s),
+                            index=['mni_subject', 'cell_idx']))
+    lag_tbl = pd.concat([lag_tbl, sc], axis=1).merge(
+        mni_tbl, on=['mni_subject', 'cell_idx'], how='left')
+    n_miss = int(lag_tbl['MNI_x'].isna().sum())
+    if n_miss:
+        print(f"  WARNING: {n_miss} neurons without MNI match — dropped.")
+    lag_tbl = lag_tbl.dropna(
+        subset=['MNI_x', 'MNI_y', 'MNI_z']).reset_index(drop=True)
+    print(f"  {len(lag_tbl)} DSR neurons with MNI coordinates  "
+          f"(p_perm<{BRAIN_LAG_P_THRESHOLD}: "
+          f"{int((lag_tbl['p_perm'] < BRAIN_LAG_P_THRESHOLD).sum())}; "
+          f"mean_r>=0: {int((lag_tbl['mean_r'] >= 0).sum())})")
+
+    lag_tbl.drop(columns=['coefs']).to_csv(
+        os.path.join(OUT_DIR, 'fig14_dsr_peaklag_table.csv'), index=False)
+
+    # Standard anatomical background (transparent brain + grey hippocampus +
+    # dark-grey EC + grey ACC), built once and reused for every 3D mesh.
+    print("  building anatomical brain background ...")
+    BRAIN_BG_FIG = make_brain_anatomy_figure()
+
+    SELECTIONS = {
+        'psig':    (lag_tbl['p_perm'] < BRAIN_LAG_P_THRESHOLD,
+                    f'p_perm<{BRAIN_LAG_P_THRESHOLD}'),
+        'poscorr': (lag_tbl['mean_r'] >= 0, 'mean_r>=0'),
+    }
+
+    # ── fig14: peak-lag glass brains + 3D mesh ───────────────────────
+    # Marker hue = peak lag; marker opacity = effect strength (mean_r).
+    for coef_key, lag_col in [('mean', 'peak_lag_mean'),
+                              ('bestfold', 'peak_lag_best')]:
+        for sel_key, (sel_mask, sel_desc) in SELECTIONS.items():
+            sub_tbl = lag_tbl[sel_mask].dropna(subset=[lag_col])
+            tag  = f'{sel_key}_{coef_key}'
+            desc = f'{sel_desc}, {coef_key} coefs'
+            if sub_tbl.empty:
+                print(f"  [{tag}] no neurons — skipped.")
+                continue
+
+            plotted  = jitter_duplicate_coords(sub_tbl)
+            coords   = plotted[['px', 'py', 'pz']].to_numpy()
+            lags     = plotted[lag_col].to_numpy()
+            strength = plotted['mean_r'].to_numpy()
+
+            # Whole-brain glass brain (3 orthogonal views).
+            plot_peaklag_glassbrain(
+                coords, lags,
+                os.path.join(OUT_DIR, f'fig14_glass_whole_{tag}.png'),
+                title=f'DSR peak lag — whole brain ({desc}, '
+                      f'n={len(plotted)})',
+                strengths=strength,
+                n_lags=DSR_N_LAGS, marker_size=GLASS_MARKER_SIZE)
+
+            # ACC-only glass brain.
+            acc = plotted[plotted['roi'].isin(ACC_ROI_LABELS)]
+            plot_peaklag_glassbrain(
+                acc[['px', 'py', 'pz']].to_numpy(),
+                acc[lag_col].to_numpy(),
+                os.path.join(OUT_DIR, f'fig14_glass_acc_{tag}.png'),
+                title=f'DSR peak lag — ACC ({desc}, n={len(acc)})',
+                strengths=acc['mean_r'].to_numpy(),
+                n_lags=DSR_N_LAGS, marker_size=GLASS_MARKER_SIZE)
+
+            # Interactive 3D mesh on the anatomical background.
+            plot_peaklag_3d_mesh(
+                coords, lags,
+                os.path.join(OUT_DIR, f'fig14_3d_whole_{tag}.html'),
+                title=f'DSR peak lag — 3D ({desc}, n={len(plotted)})',
+                strengths=strength,
+                n_lags=DSR_N_LAGS, bg_fig=BRAIN_BG_FIG)
+
+    # ── fig16: ACC peak lag vs dorsal-ventral (z) axis ───────────────
+    for sel_key, (sel_mask, sel_desc) in SELECTIONS.items():
+        acc_dv = lag_tbl[sel_mask & lag_tbl['roi'].isin(ACC_DV_ROI_LABELS)]
+        acc_dv = acc_dv.dropna(subset=['peak_lag_mean', 'MNI_z'])
+        if len(acc_dv) < 4:
+            print(f"  fig16 [{sel_key}]: <4 ACC neurons — skipped.")
+            continue
+        plot_acc_lag_vs_z(
+            acc_dv,
+            os.path.join(OUT_DIR, f'fig16_acc_lag_vs_z_{sel_key}.png'),
+            title=f'ACC — DSR peak lag vs dorsal-ventral position '
+                  f'({sel_desc}, mean coefs)')
 
 
 print(f"\nAll outputs in: {OUT_DIR}")

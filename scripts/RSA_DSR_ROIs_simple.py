@@ -53,8 +53,8 @@ LEN_STANDARDISED_PATH = 10
 N_PHASES = 3
 states           = ['A', 'B', 'C', 'D']
 RESOLUTIONx = 1
-PLOT_FIGS = True
-N_PERMUTATIONS = 300 # 500 # None or 300
+PLOT_FIGS = False
+N_PERMUTATIONS = 1000 # 500 # None or 300
 SPLIT_UNCV_BUTTONS = True
 
 # ── Models / combos to evaluate per ROI this round ────────────────────
@@ -64,13 +64,14 @@ SPLIT_UNCV_BUTTONS = True
 # - `combo_models`: combos evaluated per ROI. Sub-models are pulled from the
 #   always-built model_RDMs, so combos may reference any model regardless of
 #   what's in `models`.
-# models = ['dsr_old']
-models = ['dsr_old', 'midnight','state', 'repeat_counter', 'uncover', 'bttn_prev', 'bttn_next', 'bttn_curr', 'location', 'phase']
+models = ['dsr_old']
+#models = ['dsr_old', 'midnight','state', 'repeat_counter', 'uncover', 'bttn_prev', 'bttn_next', 'bttn_curr', 'location', 'phase']
 
 combo_models = {
     'MRI_combo':          ['bttn_curr', 'bttn_next', 'location', 'repeat_counter', 'dsr_old'],
     'MRI_combo-nofdb':          ['bttn_curr', 'bttn_next', 'location', 'dsr_old'],
     'MRI_combo-nofdb_midn':          ['bttn_curr', 'bttn_next', 'location', 'midnight', 'dsr_old'],
+    'MRI_combo-nofdb_midn-state':          ['bttn_curr', 'bttn_next', 'location', 'state', 'midnight', 'dsr_old'],
     'MRI_combo_midn':          ['bttn_curr', 'bttn_next', 'location', 'repeat_counter', 'midnight', 'dsr_old'],
     'MRI_combo_state':          ['bttn_curr', 'bttn_next', 'location', 'repeat_counter', 'dsr_old','state']
     }
@@ -92,6 +93,21 @@ print(f"Base models evaluated this run ({len(models)}): {models}")
 print(f"Combos evaluated this run     ({len(combo_models)}): {list(combo_models.keys())}")
 
 
+# ── Multiple-comparison correction (confirmatory family) ─────────────
+# BH-FDR is applied to ONE pre-specified family: the effect(s) of interest
+# inside the core combo model(s), for the theory-chosen primary test
+# variant, across every ROI tested.  Everything else (single-model RSA,
+# control regressors, other combos, other test variants) stays
+# uncorrected / exploratory.
+#   FDR_COMBOS differ only by `state` -> their dsr_old betas are
+#   correlated; set FDR_COMBOS to a single combo if you consider them
+#   one hypothesis (a 10-test family rather than 20).
+FDR_TEST      = 'across_z'   # primary variant: across blocks, z-scored
+FDR_COMBOS    = ['MRI_combo-nofdb_midn', 'MRI_combo-nofdb_midn-state']
+FDR_SUBMODELS = ['dsr_old']  # effect(s) of interest within the combo
+FDR_ALPHA     = 0.05
+
+
 
 # ── ROI assignment from MNI-based table (cell_to_roi_MNI.py output) ───
 # Each neuron is matched by (subject, cell_idx) parsed from its label.
@@ -99,14 +115,29 @@ ROI_TABLE_PATH = os.path.join(
     DATA_DIR, 'neurons_with_final_roi_labels.csv'
 )
 
-# Which final_roi values from the table to analyse this run.
-ROIS_TO_ANALYZE = [
-    'EC', 'Parahippocampal',
-    'HC_anterior', 'HC_posterior',
-    'ventral_ACC', 'ACC',
-    'posterior_PCC',
-    'OFC11', 'OFC13', 'Visual',
-]
+# Which ROI-label column of that table to use:
+#   'final_roi'     -> original labelling
+#   'alt_final_roi' -> alternative labelling (ACC split by y-cutoff,
+#                      OFC11+OFC13+ventral_ACC collapsed into medialOFC)
+ROI_LABEL_COLUMN = 'alt_final_roi' #'final_roi'
+
+# Which ROI values to analyse this run — one list per labelling column.
+ROIS_TO_ANALYZE_BY_COLUMN = {
+    'final_roi': [
+        'EC', 'Parahippocampal',
+        'HC_anterior', 'HC_posterior',
+        'ventral_ACC', 'ACC',
+        'posterior_PCC',
+        'OFC11', 'OFC13', 'Visual',
+    ],
+    'alt_final_roi': [
+        'EC', 'Parahippocampal',
+        'HC_anterior', 'HC_posterior',
+        'medialOFC', 'ACC', 'mACC',
+        'posterior_PCC', 'Visual',
+    ],
+}
+ROIS_TO_ANALYZE = ROIS_TO_ANALYZE_BY_COLUMN[ROI_LABEL_COLUMN]
 
 
 def parse_neuron_label(label):
@@ -119,23 +150,26 @@ def parse_neuron_label(label):
         return None, None
 
 
-def _load_roi_table(path):
+def _load_roi_table(path, roi_col):
     df = pd.read_csv(path)
-    needed = ['subject', 'cell idx', 'final_roi',
+    needed = ['subject', 'cell idx', roi_col,
               'MNI_x', 'MNI_y', 'MNI_z', 'electrode label']
     missing = [c for c in needed if c not in df.columns]
     if missing:
-        raise ValueError(f"ROI table {path} missing columns: {missing}")
+        raise ValueError(
+            f"ROI table {path} missing columns: {missing}  "
+            f"(re-run scripts/cell_to_roi_MNI.py if {roi_col!r} is absent)")
     df = df.copy()
     df['subject']  = df['subject'].astype(int)
     df['cell idx'] = df['cell idx'].astype(int)
     return df.set_index(['subject', 'cell idx'])
 
 
-ROI_TABLE = _load_roi_table(ROI_TABLE_PATH)
+ROI_TABLE = _load_roi_table(ROI_TABLE_PATH, ROI_LABEL_COLUMN)
 print(f"Loaded ROI table with {len(ROI_TABLE)} cells "
-      f"({ROI_TABLE['final_roi'].nunique()} distinct ROIs) from {ROI_TABLE_PATH}")
-# this table in 'final_roi' indicates the correct ROI to take.
+      f"({ROI_TABLE[ROI_LABEL_COLUMN].nunique()} distinct ROIs) from "
+      f"{ROI_TABLE_PATH}  [column: {ROI_LABEL_COLUMN}]")
+# the ROI_LABEL_COLUMN column indicates the correct ROI to take.
 
 
 def get_neuron_roi(label):
@@ -143,7 +177,7 @@ def get_neuron_roi(label):
     if sub is None:
         return None
     try:
-        roi = ROI_TABLE.loc[(sub, cell_idx), 'final_roi']
+        roi = ROI_TABLE.loc[(sub, cell_idx), ROI_LABEL_COLUMN]
     except KeyError:
         return None
     if isinstance(roi, pd.Series):
@@ -232,6 +266,11 @@ else:
         'N_PERMUTATIONS':       N_PERMUTATIONS,
         'models':               models,
         'combo_models':         combo_models,
+        'roi_label_column':     ROI_LABEL_COLUMN,
+        'fdr_test':             FDR_TEST,
+        'fdr_combos':           FDR_COMBOS,
+        'fdr_submodels':        FDR_SUBMODELS,
+        'fdr_alpha':            FDR_ALPHA,
         'rois':                 list(ROI_RULES.keys()),
     }
     with open(os.path.join(OUT_DIR, 'config.json'), 'w') as f:
@@ -1061,7 +1100,7 @@ else:
         # Fall back to deriving electrode positions from the ROI table.
         roi_electrode_coords = {}
         for roi in ROI_RULES:
-            sub_tbl = ROI_TABLE[ROI_TABLE['final_roi'] == roi]
+            sub_tbl = ROI_TABLE[ROI_TABLE[ROI_LABEL_COLUMN] == roi]
             roi_electrode_coords[roi] = {
                 (int(s), int(c)): (float(row['MNI_x']),
                                    float(row['MNI_y']),
@@ -1070,6 +1109,67 @@ else:
             }
     print(f"Loaded summary_df ({len(summary_df)} rows) and "
           f"summary_combo_df ({len(summary_combo_df)} rows) from {OUT_DIR}.")
+
+
+# ── BH-FDR correction over the confirmatory family ───────────────────
+def benjamini_hochberg(pvals):
+    """Benjamini-Hochberg FDR-adjusted p-values (q-values).
+
+    Returns an array the same length as `pvals`; NaN inputs stay NaN.
+    """
+    p = np.asarray(pvals, dtype=float)
+    q = np.full(p.shape, np.nan)
+    ok = np.isfinite(p)
+    if not ok.any():
+        return q
+    pv = p[ok]
+    n = pv.size
+    order = np.argsort(pv)
+    ranked = pv[order] * n / (np.arange(n) + 1)
+    ranked = np.minimum.accumulate(ranked[::-1])[::-1]   # step-up monotone
+    q_ok = np.empty(n)
+    q_ok[order] = np.clip(ranked, 0.0, 1.0)
+    q[ok] = q_ok
+    return q
+
+
+_fam_cols = {'test', 'combo', 'sub_model', 'p_perm'}
+if not summary_combo_df.empty and _fam_cols.issubset(summary_combo_df.columns):
+    # Flag the confirmatory family and BH-correct only those p_perm values.
+    summary_combo_df['in_fdr_family'] = (
+        summary_combo_df['test'].eq(FDR_TEST)
+        & summary_combo_df['combo'].isin(FDR_COMBOS)
+        & summary_combo_df['sub_model'].isin(FDR_SUBMODELS)
+    )
+    summary_combo_df['p_fdr'] = np.nan
+    _fam = summary_combo_df['in_fdr_family']
+    if _fam.any():
+        summary_combo_df.loc[_fam, 'p_fdr'] = benjamini_hochberg(
+            summary_combo_df.loc[_fam, 'p_perm'].to_numpy())
+        _fam_df = (summary_combo_df.loc[_fam,
+                   ['roi', 'combo', 'sub_model', 'n_neurons',
+                    'beta', 'p_perm', 'p_fdr']]
+                   .sort_values(['combo', 'p_fdr'])
+                   .reset_index(drop=True))
+        n_sig = int((_fam_df['p_fdr'] < FDR_ALPHA).sum())
+        print(f"\n=== BH-FDR confirmatory family "
+              f"(test={FDR_TEST}, combos={FDR_COMBOS}, "
+              f"effect={FDR_SUBMODELS}) ===")
+        print(f"{len(_fam_df)} tests; {n_sig} significant at q < {FDR_ALPHA}")
+        with pd.option_context('display.max_rows', None,
+                               'display.width', 160):
+            print(_fam_df.to_string(index=False))
+        _fam_df.to_csv(os.path.join(OUT_DIR, 'confirmatory_fdr.csv'),
+                       index=False)
+    else:
+        print("\nBH-FDR: confirmatory family is empty — check the FDR_* "
+              "settings against the combo / test names actually run.")
+    # Re-save the combo table so it carries p_fdr / in_fdr_family.
+    summary_combo_df.to_csv(
+        os.path.join(OUT_DIR, 'results_summary_combos.csv'), index=False)
+else:
+    print("\nBH-FDR: no combo results available to correct.")
+
 
 def _render_overview_plots(summary_df, summary_combo_df,
                            roi_electrode_coords, out_dir,

@@ -20,6 +20,12 @@ plot_significance_proportion(results_df, models, save_path, alpha,
 plot_dsr_coef_matrix(X_slice, coefs, neuron_label, model_name, save_path,
                      n_phases, n_clocks_per_phase, fold_r, p_perm)
     Per-neuron coefficient-weighted regressor matrix for DSR-family models.
+
+Brain plots (lazy-import nilearn / plotly / nibabel inside the function):
+plot_peaklag_glassbrain(coords, lags, save_path, title, n_lags, ...)
+    Glass-brain marker scatter coloured by an integer 'peak lag'.
+plot_peaklag_3d_mesh(coords, lags, save_path, title, n_lags, ...)
+    Interactive 3D plotly scatter on a translucent MNI brain mesh (HTML).
 """
 from __future__ import annotations
 
@@ -892,6 +898,207 @@ def plot_dsr_coef_matrix(X_slice, coefs, neuron_label, model_name, save_path,
     fig.tight_layout()
     fig.savefig(save_path, dpi=150)
     plt.close(fig)
+    return None
+
+
+def make_brain_anatomy_figure(mesh_step=3):
+    """Plotly Figure with the standard anatomical background — a transparent
+    whole-brain shell, with the hippocampus and ACC shaded grey and the
+    entorhinal cortex shaded dark grey inside it (matches the plotly brains
+    in scripts/cell_to_roi_MNI.py).
+
+    Build it once and reuse via the `bg_fig` argument of plot_peaklag_3d_mesh.
+    """
+    import plotly.graph_objects as go
+    import nibabel as nib
+    from nilearn import datasets
+    from skimage.measure import marching_cubes
+
+    def _mesh(binary, affine, step):
+        binary = np.asarray(binary)
+        if binary.sum() == 0:
+            return None
+        v, f, _, _ = marching_cubes(binary.astype(float), level=0.5,
+                                    step_size=step)
+        x, y, z = nib.affines.apply_affine(affine, v).T
+        i, j, k = f.T
+        return x, y, z, i, j, k
+
+    def _atlas_mask(atlas, patterns):
+        img = atlas.maps
+        img = nib.load(img) if isinstance(img, str) else img
+        idxs = [n for n, lab in enumerate(atlas.labels)
+                if any(p.lower() in str(lab).lower() for p in patterns)]
+        return np.isin(img.get_fdata(), idxs), img.affine
+
+    fig = go.Figure()
+    try:
+        bm = datasets.load_mni152_brain_mask()
+        m = _mesh(bm.get_fdata() > 0, bm.affine, mesh_step)
+        if m is not None:
+            x, y, z, i, j, k = m
+            fig.add_trace(go.Mesh3d(x=x, y=y, z=z, i=i, j=j, k=k,
+                          color='lightgray', opacity=0.06, name='brain',
+                          hoverinfo='skip', showlegend=True))
+    except Exception as exc:
+        print(f"  brain shell unavailable ({exc}).")
+
+    try:
+        ho_sub  = datasets.fetch_atlas_harvard_oxford('sub-maxprob-thr25-2mm')
+        ho_cort = datasets.fetch_atlas_harvard_oxford('cort-maxprob-thr25-2mm')
+        juelich = datasets.fetch_atlas_juelich('maxprob-thr25-2mm')
+        for atlas, patterns, color, opacity, name in [
+            (ho_sub,  ['hippocampus'],                        'gray',    0.30, 'hippocampus'),
+            (juelich, ['entorhinal'],                         'dimgray', 0.50, 'EC'),
+            (ho_cort, ['cingulate gyrus, anterior division'], 'gray',    0.30, 'ACC'),
+        ]:
+            mask, affine = _atlas_mask(atlas, patterns)
+            m = _mesh(mask, affine, 1)
+            if m is None:
+                continue
+            x, y, z, i, j, k = m
+            fig.add_trace(go.Mesh3d(x=x, y=y, z=z, i=i, j=j, k=k,
+                          color=color, opacity=opacity, name=name,
+                          hoverinfo='skip', showlegend=True))
+    except Exception as exc:
+        print(f"  anatomy meshes unavailable ({exc}).")
+    return fig
+
+
+def _strength_to_alpha(strengths, n, lo=0.15, hi=1.0):
+    """Map a per-marker effect-strength array to opacity in [lo, hi].
+
+    Stronger effects -> more opaque. Returns an (n,) array; all `hi` when
+    `strengths` is None or unusable. Negative strengths clip to 0.
+    """
+    if strengths is None:
+        return np.full(n, hi)
+    s = np.asarray(strengths, dtype=float)
+    if s.size != n or not np.isfinite(s).any():
+        return np.full(n, hi)
+    s = np.clip(np.nan_to_num(s), 0.0, None)
+    smax = float(np.nanmax(s))
+    if smax <= 0:
+        return np.full(n, hi)
+    return lo + (hi - lo) * np.clip(s / smax, 0.0, 1.0)
+
+
+def plot_peaklag_glassbrain(coords, lags, save_path, title,
+                            strengths=None, n_lags=12, marker_size=4,
+                            display_mode='ortho', cmap_name='YlOrRd'):
+    """Glass-brain marker scatter coloured by an integer 'peak lag'.
+
+    Parameters
+    ----------
+    coords : (N, 3) array of MNI x/y/z coordinates. Jitter duplicate
+        coordinates beforehand if every cell should be individually visible.
+    lags : (N,) array of integer lag values in 0 .. n_lags-1.
+    save_path : str
+    title : str
+    strengths : (N,) array or None
+        Per-neuron effect strength -> per-marker opacity (stronger = more
+        opaque). None -> all markers fully opaque.
+    n_lags : int
+        Number of lag bins; sets the YlOrRd colour mapping (0 .. n_lags-1).
+    marker_size : int
+        Glass-brain marker size (small so individual cells are visible).
+    display_mode : str
+        nilearn glass-brain display mode ('ortho' = 3 orthogonal views).
+    """
+    from nilearn import plotting
+    import matplotlib.colors as mcolors
+
+    coords = np.asarray(coords, dtype=float)
+    lags   = np.asarray(lags, dtype=float)
+    if coords.shape[0] == 0:
+        print(f"  skip {save_path}: no neurons.")
+        return None
+
+    cmap = plt.get_cmap(cmap_name)
+    norm = mcolors.Normalize(vmin=0, vmax=max(n_lags - 1, 1))
+    alphas = _strength_to_alpha(strengths, coords.shape[0])
+    # RGBA per marker: hue = peak lag, opacity = effect strength.
+    marker_colors = [(*cmap(norm(v))[:3], float(a))
+                     for v, a in zip(lags, alphas)]
+
+    display = plotting.plot_glass_brain(
+        None, display_mode=display_mode, title=title,
+        black_bg=False, plot_abs=False)
+    display.add_markers(coords, marker_color=marker_colors,
+                        marker_size=marker_size)
+
+    # Discrete legend: one colour per lag.
+    fig = plt.gcf()
+    handles = [plt.Line2D([0], [0], marker='o', linestyle='', markersize=6,
+                          markerfacecolor=cmap(norm(l)),
+                          markeredgecolor='none', label=str(l))
+               for l in range(n_lags)]
+    fig.legend(handles=handles, loc='lower center', ncol=n_lags,
+               frameon=False, fontsize=7, title='DSR peak lag',
+               handletextpad=0.1, columnspacing=0.8)
+
+    fig.savefig(save_path, dpi=200, bbox_inches='tight')
+    plt.close(fig)
+    print(f"Wrote {save_path}")
+    return None
+
+
+def plot_peaklag_3d_mesh(coords, lags, save_path, title,
+                         strengths=None, n_lags=12, marker_size=3,
+                         cmap_name='YlOrRd', bg_fig=None):
+    """Interactive 3D plotly scatter coloured by peak lag, on the standard
+    anatomical brain background (transparent shell + grey hippocampus +
+    dark-grey EC + grey ACC). Written to an HTML file.
+
+    Parameters as in plot_peaklag_glassbrain.  `strengths` (one per neuron)
+    maps to per-marker opacity.  `bg_fig` is a Figure from
+    make_brain_anatomy_figure() — built on demand if not supplied (slow, so
+    pass a pre-built one when calling repeatedly).
+    """
+    import plotly.graph_objects as go
+    import matplotlib.colors as mcolors
+
+    coords = np.asarray(coords, dtype=float)
+    lags   = np.asarray(lags, dtype=float)
+    if coords.shape[0] == 0:
+        print(f"  skip {save_path}: no neurons.")
+        return None
+
+    base = bg_fig if bg_fig is not None else make_brain_anatomy_figure()
+    fig = go.Figure(base)
+
+    cmap = plt.get_cmap(cmap_name)
+    norm = mcolors.Normalize(vmin=0, vmax=max(n_lags - 1, 1))
+    alphas = _strength_to_alpha(strengths, coords.shape[0])
+    # Per-marker rgba: hue = peak lag, opacity = effect strength. (Plotly
+    # Scatter3d has only a scalar marker.opacity, so opacity is baked in.)
+    rgba = []
+    for v, a in zip(lags, alphas):
+        r, g, b, _ = cmap(norm(v))
+        rgba.append(f'rgba({int(r*255)},{int(g*255)},{int(b*255)},{a:.3f})')
+
+    fig.add_trace(go.Scatter3d(
+        x=coords[:, 0], y=coords[:, 1], z=coords[:, 2],
+        mode='markers',
+        marker=dict(size=marker_size, color=rgba),
+        name='DSR neurons'))
+
+    # Dummy trace carrying the lag colour bar (the scatter above uses baked-in
+    # rgba so it cannot also render a numeric scale).
+    fig.add_trace(go.Scatter3d(
+        x=[None], y=[None], z=[None], mode='markers',
+        marker=dict(color=[0], colorscale=cmap_name, cmin=0,
+                    cmax=max(n_lags - 1, 1), showscale=True,
+                    colorbar=dict(title='DSR<br>peak lag', len=0.6)),
+        showlegend=False, hoverinfo='skip', name=''))
+
+    fig.update_layout(
+        title=title, width=950, height=800,
+        scene=dict(xaxis_title='MNI x', yaxis_title='MNI y',
+                   zaxis_title='MNI z', aspectmode='data'),
+        margin=dict(l=0, r=0, t=40, b=0))
+    fig.write_html(save_path)
+    print(f"Wrote {save_path}")
     return None
 
 

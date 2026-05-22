@@ -3741,8 +3741,13 @@ def model_DSR(locations, no_phase_neurons=3):
     # norm_phas_stat is also an entire 'ring of the musicbox.
     # if I only want to encode now and next, I can do so by only keeping a fraction of the neurons:
     # e.g. only the next phase-range.
+    # 22nd of may 2026 edit: Instead of the first subpath, it's more interesting to test the 'lag'
+    # this means now (0) +1 and -1.
     norm_phas_stat_currstate = np.zeros((4*no_phase_neurons, cumsumsteps[-1]))
-    norm_phas_stat_currstate[0:no_phase_neurons, :] = norm_phas_stat[0:no_phase_neurons, :]
+    # fill the first, the second and the last neuron.
+    norm_phas_stat_currstate[:2, :] = norm_phas_stat[:2, :]
+    norm_phas_stat_currstate[-1, :] = norm_phas_stat[-1, :]
+    #norm_phas_stat_currstate[0:no_phase_neurons, :] = norm_phas_stat[0:no_phase_neurons, :]
     
     
     # try with normalised model.
@@ -3753,12 +3758,12 @@ def model_DSR(locations, no_phase_neurons=3):
     #max_firing = np.amax(norm_midn)
       # translate this into a value between 0 and 1 by doing *value* / max_firing
      
-      # 5. stick the neuron-clock matrices in  
+      # 5. stick the neuron-clock matrices in
+      # The whole clock (all 12 rows, lag 0-11) is activated the same way:
+      # lag 0 is no longer pre-filled from the midnight model. It receives
+      # the firing-factor-scaled clock pattern like every other lag.
     full_clock_matrix_dummy = np.zeros([len(norm_midn)*len(norm_phas_stat),len(norm_midn[0])]) # fields times phases.
-    # for ever 12th row, stick a row of the midnight matrix in (corresponds to the respective first neuron of the clock)
-    for row in range(0, len(norm_midn)):
-        full_clock_matrix_dummy[row*len(norm_phas_stat),:]= norm_midn[row,:].copy()
-         
+
       # copy the neuron per clock firing pattern
       # I will manipulate clocks_per_step, and use clocks_per_step.dummy as control to check for overwritten stuff.
     clo_model =  full_clock_matrix_dummy.copy()
@@ -3784,17 +3789,13 @@ def model_DSR(locations, no_phase_neurons=3):
             #     import pdb; pdb.set_trace()
             #firing_factor = norm_midn[row,activation_neuron]/ max_firing
             shifted_adjusted_clock = shifted_clock.copy()*firing_factor
-            # delete row 0 bc I already have it from the midnight ones
-            shifted_adjusted_clock[0] = 0
-            # then add the values to the existing clocks.
+            # add the whole clock (all 12 rows, lag 0-11) to the existing clocks.
             # Q: IS THIS WAY OF DEALING WIHT DOUBLE ACTIVATION OK???
             clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = clo_model[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock.copy()
-                
+
             # do the same for partial clock:
             shifted_adjusted_clock_partial = shifted_subpath_clock.copy()*firing_factor
-            # delete row 0 bc I already have it from the midnight ones
-            shifted_adjusted_clock_partial[0] = 0
-            # then add the values to the existing clocks.
+            # add the whole clock (all 12 rows, lag 0-11) to the existing clocks.
             # Q: IS THIS WAY OF DEALING WIHT DOUBLE ACTIVATION OK???
             clo_model_subpath[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :] = clo_model_subpath[row*len(norm_phas_stat): row*len(norm_phas_stat)+len(norm_phas_stat), :].copy() + shifted_adjusted_clock_partial.copy()
     # import pdb; pdb.set_trace() 

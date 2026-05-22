@@ -43,7 +43,19 @@ OUT_BASE = os.path.join(DATA_DIR, 'group', 'encoding_analysis_simple')
 # '2026-05-18_16-33-05') to skip the heavy elastic-net + permutation loop
 # and just re-render the summary plots from the saved
 # encoding_results.csv (+ diagnostics.pkl, if present).  None = fresh run.
-RELOAD_RUN = None # '2026-05-18_16-33-05' # None
+RELOAD_RUN = None # '2026-05-20_22-57-03-GREATONE/' # None # '2026-05-18_16-33-05' # None
+
+# Subset re-plot: take an existing run's cell-wise results, restrict them
+# to a subset of subjects, and regenerate every result file + plot into a
+# new folder (so the follow-up scripts can point straight at it). Requires
+# RELOAD_RUN to name the source run; nothing is re-fitted.
+#   None                                  -> off
+#   'none_RSA'                            -> drop the DSR-RSA-grouping
+#                                            subjects (folder tag
+#                                            'none-RSA-subset')
+#   {'tag': 'name', 'exclude': ['05',..]} -> drop an explicit subject list
+#   {'tag': 'name', 'include': ['01',..]} -> keep only an explicit list
+SUBSET_REPLOT = None # 'none_RSA' # None
 
 N_PHASES = 3
 N_BINS_PER_TRIAL = 360
@@ -57,7 +69,7 @@ AVERAGE_REPEATS = True
 # Elastic net
 ALPHA = 0.001 # 0.001         # 0.01 in El-Gaby; smaller = less penalty
 L1_RATIO = 0.5
-POSITIVE = True
+POSITIVE = False
 MAX_ITER = 2000
 
 # Permutations (one-sided test: emp > perm)
@@ -72,7 +84,7 @@ N_JOBS = -1            # joblib parallelism over neurons
 #     'bttn_prev', 'bttn_next', 'bttn_curr', 'uncover',
 # ]
 models = [
-     'dsr','location', 'midnight',
+     'dsr', 'dsr_only_fut', 'location', 'midnight',
      'phase', 'state', 'state_phase',
     'bttn_prev', 'bttn_next', 'bttn_curr', 'uncover',
 ]
@@ -129,14 +141,19 @@ if run_combos:
 
 
 # ROI labels are taken from the MNI-coordinate-based table produced by
-# scripts/cell_to_roi_MNI.py (column `final_roi`).  Rows are matched to
-# neuron labels via (subject, cell_idx) parsed from the label
-# `{sub:02d}_{cell_idx:02d}-...`.
+# scripts/cell_to_roi_MNI.py.  Rows are matched to neuron labels via
+# (subject, cell_idx) parsed from the label `{sub:02d}_{cell_idx:02d}-...`.
 ROI_TABLE_PATH = os.path.join(
     DATA_DIR, 'neurons_with_final_roi_labels.csv'
 )
 
-# Only analyse neurons whose final_roi is in this list. None = all ROIs
+# Which ROI-label column of that table to use:
+#   'final_roi'     -> original labelling
+#   'alt_final_roi' -> alternative labelling (ACC split by y-cutoff,
+#                      OFC11+OFC13+ventral_ACC collapsed into medialOFC)
+ROI_LABEL_COLUMN = 'alt_final_roi' #'final_roi'
+
+# Only analyse neurons whose ROI is in this list. None = all ROIs
 # present in the table.
 TARGET_ROIS = None  # e.g. ['EC', 'HC_anterior', 'ACC']
 
@@ -180,14 +197,70 @@ DSR_COEF_MAP_FAMILY   = ('dsr',)   # trailing comma is required for 1-tuple
 SAVE_DIAGNOSTICS = True
 
 
+# ── Subset-replot resolution ──────────────────────────────────────────
+def _norm_sub(s):
+    """Normalise a subject id ('01', '1', 1) to an int for comparison."""
+    return int(str(s).strip())
+
+
+def _normalise_subject_col(df):
+    """CSV round-trips parse the zero-padded `subject` strings ('01') as
+    ints; restore the '01'-style strings so they match the diagnostics
+    dict keys (and a fresh run's in-memory tables)."""
+    if df is not None and not df.empty and 'subject' in df.columns:
+        df = df.copy()
+        df['subject'] = df['subject'].map(lambda s: f'{int(s):02d}')
+    return df
+
+
+def resolve_subset(spec):
+    """Resolve a SUBSET_REPLOT spec to (tag, keep_predicate).
+
+    `keep_predicate(subject)` returns True if that subject should be kept.
+    """
+    if spec in ('none_RSA', 'none-RSA-subset'):
+        with open(os.path.join(
+                DATA_DIR, 'all_sessions_dsrRSA_grouping_summary.json')) as f:
+            rsa = {_norm_sub(k) for k in json.load(f).keys()}
+        print(f"  subset 'none-RSA-subset': excluding {len(rsa)} "
+              f"DSR-RSA subjects.")
+        return 'none-RSA-subset', (lambda s: _norm_sub(s) not in rsa)
+    if isinstance(spec, dict):
+        tag = str(spec.get('tag', 'subset'))
+        if 'exclude' in spec:
+            excl = {_norm_sub(x) for x in spec['exclude']}
+            return tag, (lambda s: _norm_sub(s) not in excl)
+        if 'include' in spec:
+            incl = {_norm_sub(x) for x in spec['include']}
+            return tag, (lambda s: _norm_sub(s) in incl)
+    raise ValueError(f"Unknown SUBSET_REPLOT spec: {spec!r}")
+
+
 # ── Per-run output folder + config dump ──────────────────────────────
+# Resolve the subset spec first — it needs RELOAD_RUN as the source run.
+SUBSET_TAG, _subset_keep = (None, None)
+if SUBSET_REPLOT is not None:
+    if RELOAD_RUN is None:
+        raise ValueError("SUBSET_REPLOT requires RELOAD_RUN to name the "
+                         "source run whose results should be subset.")
+    SUBSET_TAG, _subset_keep = resolve_subset(SUBSET_REPLOT)
+
 if RELOAD_RUN is not None:
-    RUN_TAG = RELOAD_RUN
-    OUT_DIR = os.path.join(OUT_BASE, RELOAD_RUN)
-    if not os.path.isdir(OUT_DIR):
-        raise FileNotFoundError(f"Reload folder not found: {OUT_DIR}")
-    print(f"RELOAD MODE — reading results from: {OUT_DIR}")
+    SOURCE_DIR = os.path.join(OUT_BASE, RELOAD_RUN)
+    if not os.path.isdir(SOURCE_DIR):
+        raise FileNotFoundError(f"Reload folder not found: {SOURCE_DIR}")
+    if SUBSET_TAG is not None:
+        RUN_TAG = f'{RELOAD_RUN}-{SUBSET_TAG}'
+        OUT_DIR = os.path.join(OUT_BASE, RUN_TAG)
+        os.makedirs(OUT_DIR, exist_ok=True)
+        print(f"SUBSET RE-PLOT — source : {SOURCE_DIR}")
+        print(f"                 output: {OUT_DIR}")
+    else:
+        RUN_TAG = RELOAD_RUN
+        OUT_DIR = SOURCE_DIR
+        print(f"RELOAD MODE — reading results from: {OUT_DIR}")
 else:
+    SOURCE_DIR = None
     RUN_TAG = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     OUT_DIR = os.path.join(OUT_BASE, RUN_TAG)
     os.makedirs(OUT_BASE, exist_ok=True)
@@ -228,6 +301,7 @@ run_config = {
     'combo_comparisons': COMBO_COMPARISONS,
     'combo_roi_alpha':  COMBO_ROI_ALPHA,
     'roi_table_path':   ROI_TABLE_PATH,
+    'roi_label_column': ROI_LABEL_COLUMN,
     'target_rois':      TARGET_ROIS,
     'glassbrain_p_threshold': GLASSBRAIN_P_THRESHOLD,
     'subjects':         SUBJECTS,
@@ -258,15 +332,16 @@ def parse_neuron_label(label):
         return None, None
 
 
-def _load_roi_table(path):
+def _load_roi_table(path, roi_col):
     """Load the MNI-based ROI table and index it by (subject, cell idx)."""
     df = pd.read_csv(path)
-    needed = ['subject', 'cell idx', 'final_roi',
+    needed = ['subject', 'cell idx', roi_col,
               'MNI_x', 'MNI_y', 'MNI_z', 'electrode label']
     missing = [c for c in needed if c not in df.columns]
     if missing:
         raise ValueError(
-            f"ROI table {path} is missing columns: {missing}"
+            f"ROI table {path} is missing columns: {missing}  "
+            f"(re-run scripts/cell_to_roi_MNI.py if {roi_col!r} is absent)"
         )
     df = df.copy()
     df['subject']  = df['subject'].astype(int)
@@ -274,10 +349,10 @@ def _load_roi_table(path):
     return df.set_index(['subject', 'cell idx'])
 
 
-ROI_TABLE = _load_roi_table(ROI_TABLE_PATH)
+ROI_TABLE = _load_roi_table(ROI_TABLE_PATH, ROI_LABEL_COLUMN)
 print(f"Loaded ROI table with {len(ROI_TABLE)} cells "
-      f"({ROI_TABLE['final_roi'].nunique()} distinct ROIs) "
-      f"from {ROI_TABLE_PATH}")
+      f"({ROI_TABLE[ROI_LABEL_COLUMN].nunique()} distinct ROIs) "
+      f"from {ROI_TABLE_PATH}  [column: {ROI_LABEL_COLUMN}]")
 
 
 def get_neuron_roi(label):
@@ -286,7 +361,7 @@ def get_neuron_roi(label):
     if sub is None:
         return None
     try:
-        roi = ROI_TABLE.loc[(sub, cell_idx), 'final_roi']
+        roi = ROI_TABLE.loc[(sub, cell_idx), ROI_LABEL_COLUMN]
     except KeyError:
         return None
     if isinstance(roi, pd.Series):
@@ -503,7 +578,7 @@ def build_design_and_neurons(beh, locs_df, buttons_df, neurons, configs,
             X_c = build_single_trial_regressors(
                 mode_loc, mode_btn, btn_alphabet, models_to_build,
             )
-            import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()
             for m in models_to_build:
                 per_cfg_X[m].append(X_c[m])
             for n_lab, df in neurons.items():
@@ -588,6 +663,7 @@ def fit_encoding_cv(X, y, cfg_slices, alpha=ALPHA, l1_ratio=L1_RATIO,
             positive=positive, max_iter=max_iter,
             tol=1e-3, precompute=True,
         )
+
         if np.isnan(y_train).any():
             keep = ~np.isnan(y_train)
             reg.fit(X_train[keep], y_train[keep])
@@ -1178,19 +1254,19 @@ if RELOAD_RUN is None:
                 pickle.dump(combo_diagnostics_all, f)
             print(f"Saved per-(neuron, combo) diagnostics → {combo_pkl}")
 else:
-    # Reload mode: pull whatever saved tables exist in OUT_DIR.  Files
+    # Reload mode: pull whatever saved tables exist in SOURCE_DIR.  Files
     # produced by a 'combos_only' run won't have the singles CSV/pickle,
     # so be tolerant of missing files.
-    out_csv = os.path.join(OUT_DIR, 'encoding_results.csv')
+    out_csv = os.path.join(SOURCE_DIR, 'encoding_results.csv')
     if os.path.exists(out_csv):
-        results_df = pd.read_csv(out_csv)
+        results_df = _normalise_subject_col(pd.read_csv(out_csv))
         print(f"Loaded {len(results_df)} rows from {out_csv}")
     else:
         results_df = pd.DataFrame()
-        print(f"No encoding_results.csv in {OUT_DIR}; "
+        print(f"No encoding_results.csv in {SOURCE_DIR}; "
               f"single-model plots will be empty.")
 
-    diag_pkl = os.path.join(OUT_DIR, 'diagnostics.pkl')
+    diag_pkl = os.path.join(SOURCE_DIR, 'diagnostics.pkl')
     if os.path.exists(diag_pkl):
         with open(diag_pkl, 'rb') as f:
             diagnostics_all = pickle.load(f)
@@ -1198,25 +1274,25 @@ else:
               f"from {diag_pkl}")
     else:
         diagnostics_all = {}
-        print(f"No diagnostics.pkl in {OUT_DIR}; "
+        print(f"No diagnostics.pkl in {SOURCE_DIR}; "
               f"best-neuron showcase will be skipped.")
 
     # Combo outputs (may be absent if this run only produced singles).
-    combo_csv = os.path.join(OUT_DIR, 'combo_results.csv')
+    combo_csv = os.path.join(SOURCE_DIR, 'combo_results.csv')
     if os.path.exists(combo_csv):
-        combo_results_df = pd.read_csv(combo_csv)
+        combo_results_df = _normalise_subject_col(pd.read_csv(combo_csv))
         print(f"Loaded {len(combo_results_df)} combo rows from {combo_csv}")
     else:
         combo_results_df = pd.DataFrame()
 
-    delta_csv = os.path.join(OUT_DIR, 'combo_comparisons.csv')
+    delta_csv = os.path.join(SOURCE_DIR, 'combo_comparisons.csv')
     if os.path.exists(delta_csv):
-        combo_comparisons_df = pd.read_csv(delta_csv)
+        combo_comparisons_df = _normalise_subject_col(pd.read_csv(delta_csv))
         print(f"Loaded {len(combo_comparisons_df)} Δ rows from {delta_csv}")
     else:
         combo_comparisons_df = pd.DataFrame()
 
-    combo_pkl = os.path.join(OUT_DIR, 'combo_diagnostics.pkl')
+    combo_pkl = os.path.join(SOURCE_DIR, 'combo_diagnostics.pkl')
     if os.path.exists(combo_pkl):
         with open(combo_pkl, 'rb') as f:
             combo_diagnostics_all = pickle.load(f)
@@ -1224,6 +1300,70 @@ else:
               f"subjects from {combo_pkl}")
     else:
         combo_diagnostics_all = {}
+
+
+# ── Subset filter: restrict every loaded table to a subject subset ───
+# Cell-wise results just get filtered by `subject`; the filtered inputs
+# are re-saved into the new OUT_DIR and every downstream summary / plot
+# then regenerates for the subset.
+if SUBSET_TAG is not None:
+    keep = _subset_keep
+
+    def _filter_by_subject(df):
+        if df is None or df.empty or 'subject' not in df.columns:
+            return df
+        return df[df['subject'].apply(keep)].reset_index(drop=True)
+
+    n_subs_before = (results_df['subject'].nunique()
+                     if not results_df.empty else len(diagnostics_all))
+    n_rows_before = len(results_df)
+    results_df            = _filter_by_subject(results_df)
+    combo_results_df      = _filter_by_subject(combo_results_df)
+    combo_comparisons_df  = _filter_by_subject(combo_comparisons_df)
+    diagnostics_all       = {k: v for k, v in diagnostics_all.items()
+                             if keep(k)}
+    combo_diagnostics_all = {k: v for k, v in combo_diagnostics_all.items()
+                             if keep(k)}
+    kept_ids = sorted({_norm_sub(s) for s in results_df['subject'].unique()}
+                      if not results_df.empty
+                      else {_norm_sub(k) for k in diagnostics_all})
+    print(f"\nSubset '{SUBSET_TAG}': kept {len(results_df)}/{n_rows_before} "
+          f"result rows from {len(kept_ids)}/{n_subs_before} subjects.")
+
+    # Re-save the filtered result files into the new folder.
+    if not results_df.empty:
+        results_df.to_csv(os.path.join(OUT_DIR, 'encoding_results.csv'),
+                          index=False)
+    if diagnostics_all:
+        with open(os.path.join(OUT_DIR, 'diagnostics.pkl'), 'wb') as f:
+            pickle.dump(diagnostics_all, f)
+    if not combo_results_df.empty:
+        combo_results_df.to_csv(
+            os.path.join(OUT_DIR, 'combo_results.csv'), index=False)
+    if not combo_comparisons_df.empty:
+        combo_comparisons_df.to_csv(
+            os.path.join(OUT_DIR, 'combo_comparisons.csv'), index=False)
+        compute_combo_roi_summary(
+            combo_comparisons_df, alpha=COMBO_ROI_ALPHA
+        ).to_csv(os.path.join(OUT_DIR,
+                              'combo_comparisons_roi_summary.csv'),
+                 index=False)
+    if combo_diagnostics_all:
+        with open(os.path.join(OUT_DIR, 'combo_diagnostics.pkl'), 'wb') as f:
+            pickle.dump(combo_diagnostics_all, f)
+
+    subset_config = dict(run_config)
+    subset_config.update({
+        'run_tag':     RUN_TAG,
+        'out_dir':     OUT_DIR,
+        'subset_of':   RELOAD_RUN,
+        'subset_tag':  SUBSET_TAG,
+        'subset_spec': str(SUBSET_REPLOT),
+        'subjects':    kept_ids,
+    })
+    with open(os.path.join(OUT_DIR, 'config.json'), 'w') as f:
+        json.dump(subset_config, f, indent=2)
+    print(f"Saved subset result files + config → {OUT_DIR}")
 
 
 from mc.plotting.cell_results import (

@@ -38,7 +38,7 @@ site_col = "Recording Site"     # Baylor rows are treated as MNI305
 coord_cols = ["MNI_x", "MNI_y", "MNI_z"]
 
 hc_ap_cutoff = -21              # y >= -21 anterior HC, y < -21 posterior HC
-# acc_y_cutoff = 15   # only fairly anterior cingulate counts as ACC
+acc_y_cutoff = 10   # only fairly anterior cingulate counts as ACC
 marker_size_glassbrain = 18     # smaller dots
 marker_size_3d = 4              # smaller dots in 3D
 jitter_duplicate_points = True  # helps show multiple cells at identical coordinates
@@ -56,6 +56,21 @@ roi_order = [
     "OFC11",
     "OFC13",
     "Visual"
+]
+
+# Alternative labelling (see assign_alt_roi): ACC is split by `acc_y_cutoff`
+# into ACC / mACC, and OFC11 + OFC13 + ventral_ACC collapse into medialOFC.
+alt_roi_order = [
+    "EC",
+    "Parahippocampal",
+    "HC_anterior",
+    "HC_posterior",
+    "medialOFC",
+    "ACC",
+    "mACC",
+    "medial_CC",
+    "posterior_PCC",
+    "Visual",
 ]
 
 
@@ -299,6 +314,26 @@ def assign_initial_roi(row):
 
     return "leftover"
 
+
+def assign_alt_roi(row):
+    """Alternative ROI label derived from the finalised `final_roi`.
+
+    `final_roi` itself is left untouched.  Differences:
+      1. ACC is split on the anterior-posterior axis at `acc_y_cutoff`:
+         MNI_y >= cutoff stays 'ACC'; more posterior cingulate -> 'mACC'.
+      2. OFC11, OFC13 and ventral_ACC collapse into a single 'medialOFC'.
+    """
+    roi = row["final_roi"]
+    if roi == "ACC":
+        y = row["MNI_y"]
+        if pd.isna(y):
+            return "ACC"
+        return "ACC" if float(y) >= acc_y_cutoff else "mACC"
+    if roi in ("OFC11", "OFC13", "ventral_ACC"):
+        return "medialOFC"
+    return roi
+
+
 # =============================================================================
 # PROXIMITY-BASED LEFTOVER ASSIGNMENT
 # =============================================================================
@@ -469,28 +504,59 @@ print(df_labeled["final_roi"].value_counts(dropna=False))
 
 
 # =============================================================================
-# COUNTS AND BAR PLOT
+# ALTERNATIVE ROI LABELLING (alt_final_roi)
 # =============================================================================
 
-roi_counts = (
-    df_labeled["final_roi"]
-    .value_counts()
-    .reindex(roi_order, fill_value=0)
-    .rename_axis("final_roi")
-    .reset_index(name="n_cells")
-)
+df_labeled["alt_final_roi"] = df_labeled.apply(assign_alt_roi, axis=1)
 
-print("\nROI counts:")
+print("\nAlternative ROI counts (alt_final_roi):")
+print(df_labeled["alt_final_roi"].value_counts(dropna=False))
+
+
+# =============================================================================
+# COUNTS AND BAR PLOTS
+# =============================================================================
+
+def make_roi_count_table(series, order, roi_field):
+    """Cell-count table for one ROI column, ordered like `order`."""
+    return (series.value_counts()
+            .reindex(order, fill_value=0)
+            .rename_axis(roi_field)
+            .reset_index(name="n_cells"))
+
+
+def plot_roi_count_overview(counts_df, roi_field, title, save_path):
+    """Bar plot of cell counts per ROI; the count is written into each
+    x-label, e.g. 'ACC (n = 68 cells)'."""
+    labels = [f"{r} (n = {n} cells)"
+              for r, n in zip(counts_df[roi_field], counts_df["n_cells"])]
+    plt.figure(figsize=(11, 5))
+    plt.bar(labels, counts_df["n_cells"])
+    plt.xticks(rotation=45, ha="right")
+    plt.ylabel("Number of cells")
+    plt.title(title)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=200, bbox_inches="tight")
+    plt.show()
+    print(f"Saved {save_path}")
+
+
+roi_counts = make_roi_count_table(
+    df_labeled["final_roi"], roi_order, "final_roi")
+alt_roi_counts = make_roi_count_table(
+    df_labeled["alt_final_roi"], alt_roi_order, "alt_final_roi")
+
+print("\nROI counts (final_roi):")
 print(roi_counts)
+print("\nROI counts (alt_final_roi):")
+print(alt_roi_counts)
 
-plt.figure(figsize=(10, 5))
-plt.bar(roi_counts["final_roi"], roi_counts["n_cells"])
-plt.xticks(rotation=45, ha="right")
-plt.ylabel("Number of cells")
-plt.xlabel("Final ROI")
-plt.title("Cell counts by final ROI")
-plt.tight_layout()
-plt.show()
+plot_roi_count_overview(
+    roi_counts, "final_roi", "Cell counts by final_roi",
+    os.path.join(output_dir, "roi_count_overview_final.png"))
+plot_roi_count_overview(
+    alt_roi_counts, "alt_final_roi", "Cell counts by alt_final_roi",
+    os.path.join(output_dir, "roi_count_overview_alt.png"))
 
 
 # =============================================================================
@@ -599,11 +665,11 @@ def make_roi_mask(final_roi):
 # GLASS-BRAIN PLOTS
 # =============================================================================
 
-def plot_roi_glassbrain(df_in, final_roi, out_dir):
-    roi_df = df_in[df_in["final_roi"] == final_roi].copy()
+def plot_roi_glassbrain(df_in, roi, out_dir, roi_col="final_roi"):
+    roi_df = df_in[df_in[roi_col] == roi].copy()
 
     if roi_df.empty:
-        print(f"Skipping glass brain {final_roi}: no cells.")
+        print(f"Skipping glass brain {roi}: no cells.")
         return
 
     roi_df = add_visual_jitter(roi_df)
@@ -615,12 +681,12 @@ def plot_roi_glassbrain(df_in, final_roi, out_dir):
     display = plotting.plot_glass_brain(
         None,
         display_mode="lyrz",
-        title=f"{final_roi} | n = {len(roi_df)}",
+        title=f"{roi} | n = {len(roi_df)}",
         black_bg=False,
         plot_abs=False,
     )
 
-    roi_mask = make_roi_mask(final_roi)
+    roi_mask = make_roi_mask(roi)
     if roi_mask is not None:
         display.add_overlay(roi_mask, threshold=0.5, alpha=0.35, cmap="autumn")
 
@@ -652,7 +718,7 @@ def plot_roi_glassbrain(df_in, final_roi, out_dir):
         frameon=False,
     )
 
-    path = os.path.join(out_dir, f"glassbrain_{final_roi}.png")
+    path = os.path.join(out_dir, f"glassbrain_{roi}.png")
     plt.savefig(path, dpi=300, bbox_inches="tight")
     plt.show()
     print(f"Saved {path}")
@@ -686,28 +752,49 @@ def mask_to_mesh(mask_img, step_size=1):
     return x, y, z, i, j, k
 
 
-def plot_roi_3d_mesh(df_in, final_roi, out_dir):
-    roi_df = df_in[df_in["final_roi"] == final_roi].copy()
+def make_brain_background_traces(brain_mesh):
+    """Standard background traces shared by every mesh3d plot: a transparent
+    whole-brain shell, with the hippocampus and ACC shaded grey and the
+    entorhinal cortex shaded dark grey inside it."""
+    traces = []
+
+    if brain_mesh is not None:
+        bx, by, bz, bi, bj, bk = brain_mesh
+        traces.append(go.Mesh3d(
+            x=bx, y=by, z=bz, i=bi, j=bj, k=bk,
+            color="lightgray", opacity=0.06, name="brain",
+            hoverinfo="skip", showlegend=True,
+        ))
+
+    for mask_img, color, opacity, name in [
+        (make_hc_mask(ap="both"),                       "gray",    0.30, "hippocampus"),
+        (make_mask_from_atlas(juelich, ["entorhinal"]), "dimgray", 0.50, "EC"),
+        (make_mask_from_atlas(
+            ho_cort, ["cingulate gyrus, anterior division"]),
+                                                        "gray",    0.30, "ACC"),
+    ]:
+        mesh = mask_to_mesh(mask_img, step_size=1)
+        if mesh is None:
+            continue
+        mx, my, mz, mi, mj, mk = mesh
+        traces.append(go.Mesh3d(
+            x=mx, y=my, z=mz, i=mi, j=mj, k=mk,
+            color=color, opacity=opacity, name=name,
+            hoverinfo="skip", showlegend=True,
+        ))
+    return traces
+
+
+def plot_roi_3d_mesh(df_in, roi, out_dir, roi_col="final_roi", bg_fig=None):
+    """Per-ROI 3-D plot: the standard brain background (transparent shell +
+    grey hippocampus / ACC + dark-grey EC) with this ROI's electrodes."""
+    roi_df = df_in[df_in[roi_col] == roi].copy()
 
     if roi_df.empty:
-        print(f"Skipping 3D mesh {final_roi}: no cells.")
-        return
-
-    roi_mask = make_roi_mask(final_roi)
-
-    if roi_mask is None:
-        print(f"Skipping 3D mesh {final_roi}: no ROI mask.")
-        return
-
-    mesh = mask_to_mesh(roi_mask, step_size=1)
-
-    if mesh is None:
-        print(f"Skipping 3D mesh {final_roi}: empty mask.")
+        print(f"Skipping 3D mesh {roi}: no cells.")
         return
 
     roi_df = add_visual_jitter(roi_df)
-
-    x, y, z, i, j, k = mesh
 
     colors = make_subject_colors(roi_df["subject"])
     marker_colors = [colors[str(s)] for s in roi_df["subject"]]
@@ -722,18 +809,8 @@ def plot_roi_3d_mesh(df_in, final_roi, out_dir):
         + roi_df["MNI_z"].round(2).astype(str)
     )
 
-    fig = go.Figure()
-
-    fig.add_trace(
-        go.Mesh3d(
-            x=x, y=y, z=z,
-            i=i, j=j, k=k,
-            opacity=0.25,
-            color="lightgray",
-            name=final_roi,
-            hoverinfo="skip",
-        )
-    )
+    # Start from a copy of the shared brain background.
+    fig = go.Figure(bg_fig) if bg_fig is not None else go.Figure()
 
     fig.add_trace(
         go.Scatter3d(
@@ -748,12 +825,12 @@ def plot_roi_3d_mesh(df_in, final_roi, out_dir):
             ),
             hovertext=hover,
             hoverinfo="text",
-            name="cells",
+            name="electrodes",
         )
     )
 
     fig.update_layout(
-        title=f"{final_roi} | n = {len(roi_df)}",
+        title=f"{roi} | n = {len(roi_df)}",
         width=900,
         height=750,
         scene=dict(
@@ -765,7 +842,7 @@ def plot_roi_3d_mesh(df_in, final_roi, out_dir):
         margin=dict(l=0, r=0, t=40, b=0),
     )
 
-    path = os.path.join(out_dir, f"mesh3d_{final_roi}.html")
+    path = os.path.join(out_dir, f"mesh3d_{roi}.html")
     fig.write_html(path)
     print(f"Saved {path}")
 
@@ -782,15 +859,15 @@ def make_roi_color_map(rois):
     return {roi: mcolors.to_hex(cmap(i)) for i, roi in enumerate(rois)}
 
 
-def plot_all_rois_glassbrain_mosaic(df_in, save_path):
+def plot_all_rois_glassbrain_mosaic(df_in, roi_col, order, save_path):
     """All per-ROI glass-brains drawn as panels on a single figure.
 
     Mirrors the per-ROI standalone style (colour by subject, ROI region
     as an overlay) but uses a compact 'ortho' display per panel so the
     whole set fits in one figure.
     """
-    rois_with_data = [r for r in roi_order
-                      if not df_in[df_in["final_roi"] == r].empty]
+    rois_with_data = [r for r in order
+                      if not df_in[df_in[roi_col] == r].empty]
     if not rois_with_data:
         print("Skipping all-ROI mosaic: no ROIs have data.")
         return
@@ -807,7 +884,7 @@ def plot_all_rois_glassbrain_mosaic(df_in, save_path):
 
     for ax_idx, roi in enumerate(rois_with_data):
         ax = axes[ax_idx // ncols, ax_idx % ncols]
-        roi_df = df_in[df_in["final_roi"] == roi].copy()
+        roi_df = df_in[df_in[roi_col] == roi].copy()
         roi_df = add_visual_jitter(roi_df)
         coords = roi_df[["plot_x", "plot_y", "plot_z"]].to_numpy()
         colors = make_subject_colors(roi_df["subject"])
@@ -836,19 +913,20 @@ def plot_all_rois_glassbrain_mosaic(df_in, save_path):
     print(f"Saved {save_path}")
 
 
-def plot_all_cells_single_glassbrain(df_in, save_path, roi_colors):
+def plot_all_cells_single_glassbrain(df_in, roi_col, order, roi_colors,
+                                     save_path):
     """Standard 4-view glass-brain showing every cell, colour-coded by ROI."""
-    df = df_in[df_in["final_roi"].isin(roi_order)].copy()
+    df = df_in[df_in[roi_col].isin(order)].copy()
     if df.empty:
         print("Skipping single all-cells glass-brain: no data.")
         return
     df = add_visual_jitter(df)
-    marker_colors = [roi_colors[r] for r in df["final_roi"]]
+    marker_colors = [roi_colors[r] for r in df[roi_col]]
     coords = df[["plot_x", "plot_y", "plot_z"]].to_numpy()
 
     display = plotting.plot_glass_brain(
         None, display_mode="lyrz",
-        title=f"All cells coloured by ROI  |  n = {len(df)}",
+        title=f"All cells coloured by {roi_col}  |  n = {len(df)}",
         black_bg=False, plot_abs=False,
     )
     display.add_markers(
@@ -863,10 +941,10 @@ def plot_all_cells_single_glassbrain(df_in, save_path, roi_colors):
             markersize=6,
             markerfacecolor=roi_colors[roi],
             markeredgecolor=roi_colors[roi],
-            label=f"{roi} (n={int((df['final_roi'] == roi).sum())})",
+            label=f"{roi} (n={int((df[roi_col] == roi).sum())})",
         )
-        for roi in roi_order
-        if (df["final_roi"] == roi).any()
+        for roi in order
+        if (df[roi_col] == roi).any()
     ]
     fig.legend(
         handles=handles, loc="lower center",
@@ -891,31 +969,23 @@ def _load_mni152_brain_mesh(step_size=2):
     return mask_to_mesh(brain_mask_img, step_size=step_size)
 
 
-def plot_all_cells_3d_full_brain(df_in, save_path, roi_colors, brain_mesh):
-    """3-D MNI brain mesh + every cell, coloured by ROI (one trace per ROI).
+def plot_all_cells_3d_full_brain(df_in, roi_col, order, roi_colors,
+                                 bg_fig, save_path):
+    """Standard brain background + every cell, coloured by ROI.
 
-    Each ROI gets a slightly different shade (taken from `roi_colors`),
-    so different recording sites are visually separable inside the brain.
+    One Scatter3d trace per ROI (shade from `roi_colors`), so different
+    recording sites stay visually separable inside the brain.
     """
-    if brain_mesh is None:
-        print("Skipping all-cells 3-D plot: no brain mesh.")
-        return
-    df = df_in[df_in["final_roi"].isin(roi_order)].copy()
+    df = df_in[df_in[roi_col].isin(order)].copy()
     if df.empty:
         print("Skipping all-cells 3-D plot: no data.")
         return
     df = add_visual_jitter(df)
 
-    bx, by, bz, bi, bj, bk = brain_mesh
-    fig = go.Figure()
-    fig.add_trace(go.Mesh3d(
-        x=bx, y=by, z=bz, i=bi, j=bj, k=bk,
-        opacity=0.12, color="lightgray",
-        name="brain", hoverinfo="skip",
-    ))
+    fig = go.Figure(bg_fig) if bg_fig is not None else go.Figure()
 
-    for roi in roi_order:
-        sub = df[df["final_roi"] == roi]
+    for roi in order:
+        sub = df[df[roi_col] == roi]
         if sub.empty:
             continue
         hover = (
@@ -939,7 +1009,7 @@ def plot_all_cells_3d_full_brain(df_in, save_path, roi_colors, brain_mesh):
         ))
 
     fig.update_layout(
-        title=f"All cells in MNI brain  |  n = {len(df)}",
+        title=f"All cells in MNI brain ({roi_col})  |  n = {len(df)}",
         width=950, height=800,
         scene=dict(
             xaxis_title="MNI x", yaxis_title="MNI y", zaxis_title="MNI z",
@@ -949,77 +1019,6 @@ def plot_all_cells_3d_full_brain(df_in, save_path, roi_colors, brain_mesh):
     )
     fig.write_html(save_path)
     print(f"Saved {save_path}")
-    fig.show()
-
-
-def plot_roi_3d_mesh_in_brain(df_in, final_roi, out_dir, brain_mesh):
-    """Same per-ROI scatter as plot_roi_3d_mesh but inside the full brain.
-
-    Complements `plot_roi_3d_mesh` (which crops to the ROI mask): the
-    full-brain version makes it easier to read where in the brain the
-    ROI sits.
-    """
-    if brain_mesh is None:
-        print(f"Skipping {final_roi} in-brain plot: no brain mesh.")
-        return
-    roi_df = df_in[df_in["final_roi"] == final_roi].copy()
-    if roi_df.empty:
-        print(f"Skipping {final_roi} in-brain plot: no cells.")
-        return
-
-    roi_df = add_visual_jitter(roi_df)
-    bx, by, bz, bi, bj, bk = brain_mesh
-
-    fig = go.Figure()
-    fig.add_trace(go.Mesh3d(
-        x=bx, y=by, z=bz, i=bi, j=bj, k=bk,
-        opacity=0.10, color="lightgray",
-        name="brain", hoverinfo="skip",
-    ))
-
-    # ROI region as a coloured overlay, when a mask is available.
-    roi_mask = make_roi_mask(final_roi)
-    if roi_mask is not None:
-        roi_region_mesh = mask_to_mesh(roi_mask, step_size=1)
-        if roi_region_mesh is not None:
-            rx, ry, rz, ri, rj, rk = roi_region_mesh
-            fig.add_trace(go.Mesh3d(
-                x=rx, y=ry, z=rz, i=ri, j=rj, k=rk,
-                opacity=0.40, color="orange",
-                name=f"{final_roi} region", hoverinfo="skip",
-            ))
-
-    colors = make_subject_colors(roi_df["subject"])
-    marker_colors = [colors[str(s)] for s in roi_df["subject"]]
-    hover = (
-        "subject: " + roi_df["subject"].astype(str)
-        + "<br>cell: " + roi_df["cell idx"].astype(str)
-        + "<br>electrode: " + roi_df["electrode label"].astype(str)
-        + "<br>MNI: "
-        + roi_df["MNI_x"].round(2).astype(str) + ", "
-        + roi_df["MNI_y"].round(2).astype(str) + ", "
-        + roi_df["MNI_z"].round(2).astype(str)
-    )
-    fig.add_trace(go.Scatter3d(
-        x=roi_df["plot_x"], y=roi_df["plot_y"], z=roi_df["plot_z"],
-        mode="markers",
-        marker=dict(size=marker_size_3d, color=marker_colors, opacity=0.95),
-        hovertext=hover, hoverinfo="text", name="cells",
-    ))
-
-    fig.update_layout(
-        title=f"{final_roi} in full brain  |  n = {len(roi_df)}",
-        width=900, height=750,
-        scene=dict(
-            xaxis_title="MNI x", yaxis_title="MNI y", zaxis_title="MNI z",
-            aspectmode="data",
-        ),
-        margin=dict(l=0, r=0, t=40, b=0),
-    )
-
-    path = os.path.join(out_dir, f"mesh3d_{final_roi}_in_brain.html")
-    fig.write_html(path)
-    print(f"Saved {path}")
     fig.show()
 
 
@@ -1033,33 +1032,43 @@ mesh3d_out_dir = os.path.join(output_dir, "mesh3d_roi_plots")
 os.makedirs(glassbrain_out_dir, exist_ok=True)
 os.makedirs(mesh3d_out_dir, exist_ok=True)
 
-df_for_plots = df_labeled[df_labeled["final_roi"].isin(roi_order)].copy()
-
-# Compute the MNI152 brain mesh once; reused for every "in full brain" plot.
+# Standard mesh3d background, built once: transparent whole-brain shell +
+# grey hippocampus + dark-grey EC + grey ACC.
 print("Loading MNI152 brain mesh ...")
 brain_mesh = _load_mni152_brain_mesh(step_size=2)
-roi_colors = make_roi_color_map(roi_order)
+print("Building standard brain background ...")
+BRAIN_BG_FIG = go.Figure(data=make_brain_background_traces(brain_mesh))
 
-plot_all_rois_glassbrain_mosaic(
-    df_for_plots,
-    save_path=os.path.join(glassbrain_out_dir, "glassbrain_all_rois_mosaic.png"),
-)
-plot_all_cells_single_glassbrain(
-    df_for_plots,
-    save_path=os.path.join(glassbrain_out_dir, "glassbrain_all_cells_by_roi.png"),
-    roi_colors=roi_colors,
-)
-plot_all_cells_3d_full_brain(
-    df_for_plots,
-    save_path=os.path.join(mesh3d_out_dir, "mesh3d_all_cells_in_brain.html"),
-    roi_colors=roi_colors,
-    brain_mesh=brain_mesh,
-)
+# Every figure is produced twice — once per ROI labelling — into its own
+# sub-folder so the 'final_roi' and 'alt_final_roi' versions never collide.
+for roi_col, order in [("final_roi", roi_order),
+                       ("alt_final_roi", alt_roi_order)]:
+    print(f"\n=== Plots for {roi_col} ===")
+    gb_dir = os.path.join(glassbrain_out_dir, roi_col)
+    m3_dir = os.path.join(mesh3d_out_dir, roi_col)
+    os.makedirs(gb_dir, exist_ok=True)
+    os.makedirs(m3_dir, exist_ok=True)
 
-for roi in roi_order:
-    plot_roi_glassbrain(df_for_plots, roi, glassbrain_out_dir)
-    plot_roi_3d_mesh(df_for_plots, roi, mesh3d_out_dir)
-    plot_roi_3d_mesh_in_brain(df_for_plots, roi, mesh3d_out_dir, brain_mesh)
+    df_for_plots = df_labeled[df_labeled[roi_col].isin(order)].copy()
+    roi_colors = make_roi_color_map(order)
+
+    plot_all_rois_glassbrain_mosaic(
+        df_for_plots, roi_col, order,
+        save_path=os.path.join(gb_dir, "glassbrain_all_rois_mosaic.png"),
+    )
+    plot_all_cells_single_glassbrain(
+        df_for_plots, roi_col, order, roi_colors,
+        save_path=os.path.join(gb_dir, "glassbrain_all_cells_by_roi.png"),
+    )
+    plot_all_cells_3d_full_brain(
+        df_for_plots, roi_col, order, roi_colors, BRAIN_BG_FIG,
+        save_path=os.path.join(m3_dir, "mesh3d_all_cells_in_brain.html"),
+    )
+
+    for roi in order:
+        plot_roi_glassbrain(df_for_plots, roi, gb_dir, roi_col=roi_col)
+        plot_roi_3d_mesh(df_for_plots, roi, m3_dir, roi_col=roi_col,
+                         bg_fig=BRAIN_BG_FIG)
 
 
 # =============================================================================
@@ -1069,6 +1078,7 @@ for roi in roi_order:
 labeled_out = os.path.join(output_dir, "neurons_with_final_roi_labels.csv")
 proximity_out = os.path.join(output_dir, "proximity_assigned_cells.csv")
 counts_out = os.path.join(output_dir, "roi_counts.csv")
+alt_counts_out = os.path.join(output_dir, "alt_roi_counts.csv")
 centroids_out = os.path.join(output_dir, "roi_centroids_used_for_proximity.csv")
 
 proximity_df = df_labeled[df_labeled["proximity_assigned"]].copy()
@@ -1076,12 +1086,14 @@ proximity_df = df_labeled[df_labeled["proximity_assigned"]].copy()
 df_labeled.to_csv(labeled_out, index=False)
 proximity_df.to_csv(proximity_out, index=False)
 roi_counts.to_csv(counts_out, index=False)
+alt_roi_counts.to_csv(alt_counts_out, index=False)
 roi_centroids.to_csv(centroids_out)
 
 print("\nSaved files:")
 print(labeled_out)
 print(proximity_out)
 print(counts_out)
+print(alt_counts_out)
 print(centroids_out)
 print(glassbrain_out_dir)
 print(mesh3d_out_dir)

@@ -42,9 +42,20 @@ PLOT_FIGS = False
 N_PERMUTATIONS = 500 # None or 300
 
 models = ['location', 'dsr', 'state', 'dsr_old', 'midnight', 'dsr_old_now_next']
-combo_models = {'loc_dsr': ['location', 'dsr_old'], 
-                'loc_st_dsr': ['location', 'state', 'dsr_old'], 
+combo_models = {'loc_dsr': ['location', 'dsr_old'],
+                'loc_st_dsr': ['location', 'state', 'dsr_old'],
                 'loc_nownext_dsr': ['location', 'dsr_old_now_next']}
+
+
+# ── ROI labelling ─────────────────────────────────────────────────────
+# Which ROI-label column of the MNI table (scripts/cell_to_roi_MNI.py)
+# decides which cells count as ACC:
+#   'final_roi'     -> original labelling
+#   'alt_final_roi' -> alternative labelling (ACC split by y-cutoff,
+#                      OFC11+OFC13+ventral_ACC collapsed into medialOFC)
+ROI_LABEL_COLUMN = 'final_roi'
+ACC_ROI_LABELS   = ('ACC',)   # ROI value(s) treated as ACC for this RSA
+ROI_TABLE_PATH   = os.path.join(DATA_DIR, 'neurons_with_final_roi_labels.csv')
 
 
 
@@ -70,6 +81,49 @@ def build_combo_rdm(rdm_dict, combo_list):
 def _scalar(arr):
     """Safely extract a Python float from a size-1 array or scalar."""
     return float(np.asarray(arr, dtype=float).ravel()[0])
+
+
+# ── ROI-table lookup ─────────────────────────────────────────────────
+def parse_neuron_label(label):
+    """'01_07-07-chan120-EC' -> (subject:int, cell_idx:int), else (None, None)."""
+    try:
+        sub_str, rest = label.split('_', 1)
+        return int(sub_str), int(rest.split('-', 1)[0])
+    except (ValueError, IndexError):
+        return None, None
+
+
+def _load_roi_table(path, roi_col):
+    """Load the MNI-based ROI table, indexed by (subject, cell idx)."""
+    df = pd.read_csv(path)
+    for c in ['subject', 'cell idx', roi_col]:
+        if c not in df.columns:
+            raise ValueError(
+                f"ROI table {path} is missing column {c!r}  "
+                f"(re-run scripts/cell_to_roi_MNI.py if {roi_col!r} is absent)")
+    df = df.copy()
+    df['subject']  = df['subject'].astype(int)
+    df['cell idx'] = df['cell idx'].astype(int)
+    return df.set_index(['subject', 'cell idx'])
+
+
+def get_neuron_roi(label):
+    """ROI label (ROI_LABEL_COLUMN) for a neuron, or None if not in the table."""
+    sub, cell_idx = parse_neuron_label(label)
+    if sub is None:
+        return None
+    try:
+        roi = ROI_TABLE.loc[(sub, cell_idx), ROI_LABEL_COLUMN]
+    except KeyError:
+        return None
+    if isinstance(roi, pd.Series):           # duplicate rows — first non-null
+        roi = roi.dropna().iloc[0] if roi.notna().any() else None
+    return None if (roi is None or pd.isna(roi)) else str(roi)
+
+
+ROI_TABLE = _load_roi_table(ROI_TABLE_PATH, ROI_LABEL_COLUMN)
+print(f"Loaded ROI table: {len(ROI_TABLE)} cells, column '{ROI_LABEL_COLUMN}', "
+      f"ACC = {ACC_ROI_LABELS}")
 
 
 # set up dicts and lists to load data
@@ -126,7 +180,7 @@ for sub_str in SUBJECTS:
         locs_all[conf].append(all_locs_conf)
         
         for n_lab in curr_neurons:
-            if 'ACC' in n_lab or 'vCC' in n_lab or 'AMC' in n_lab or 'vmPFC' in n_lab:
+            if get_neuron_roi(n_lab) in ACC_ROI_LABELS:
                 conf_acc_neurons = curr_neurons[n_lab][idx_curr_conf].to_numpy()
                 
                 
