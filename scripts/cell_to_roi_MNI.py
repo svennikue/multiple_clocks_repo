@@ -48,28 +48,27 @@ roi_order = [
     "EC",
     "Parahippocampal",
     "HC_anterior",
-    "HC_posterior",
+    "HC_mid",
     "ventral_ACC",
     "ACC",
     "medial_CC",
-    "posterior_PCC",
+    "PCC",
     "OFC11",
     "OFC13",
     "Visual"
 ]
 
 # Alternative labelling (see assign_alt_roi): ACC is split by `acc_y_cutoff`
-# into ACC / mACC, and OFC11 + OFC13 + ventral_ACC collapse into medialOFC.
+# into ACC / medial_CC, and OFC11 + OFC13 + ventral_ACC collapse into medialOFC.
 alt_roi_order = [
     "EC",
     "Parahippocampal",
     "HC_anterior",
-    "HC_posterior",
+    "HC_mid",
     "medialOFC",
     "ACC",
-    "mACC",
     "medial_CC",
-    "posterior_PCC",
+    "PCC",
     "Visual",
 ]
 
@@ -88,7 +87,7 @@ def contains_any(text, patterns):
 
 
 def hc_label_from_y(y):
-    return "HC_anterior" if float(y) >= hc_ap_cutoff else "HC_posterior"
+    return "HC_anterior" if float(y) >= hc_ap_cutoff else "HC_mid"
 
 
 def get_img(atlas_or_img):
@@ -248,7 +247,7 @@ def assign_initial_roi(row):
     if row[coord_cols].isna().all():
         manual_roi = str(row.get(manual_roi_col, "")).strip().upper()
         if manual_roi == "PCC":
-            return "posterior_PCC"
+            return "PCC"
         return np.nan
 
     y = float(row["MNI_y"])
@@ -288,10 +287,10 @@ def assign_initial_roi(row):
         return "ACC"
 
     if contains(brainnetome, "a23"):
-        return "posterior_PCC"
+        return "PCC"
 
     if contains(ho_cort, "cingulate gyrus, posterior division"):
-        return "posterior_PCC"
+        return "PCC"
 
     if contains(brainnetome, "a11m"):
         return "OFC11"
@@ -320,7 +319,7 @@ def assign_alt_roi(row):
 
     `final_roi` itself is left untouched.  Differences:
       1. ACC is split on the anterior-posterior axis at `acc_y_cutoff`:
-         MNI_y >= cutoff stays 'ACC'; more posterior cingulate -> 'mACC'.
+         MNI_y >= cutoff stays 'ACC'; more posterior cingulate -> 'medial_CC'.
       2. OFC11, OFC13 and ventral_ACC collapse into a single 'medialOFC'.
     """
     roi = row["final_roi"]
@@ -328,7 +327,7 @@ def assign_alt_roi(row):
         y = row["MNI_y"]
         if pd.isna(y):
             return "ACC"
-        return "ACC" if float(y) >= acc_y_cutoff else "mACC"
+        return "ACC" if float(y) >= acc_y_cutoff else "medial_CC"
     if roi in ("OFC11", "OFC13", "ventral_ACC"):
         return "medialOFC"
     return roi
@@ -622,7 +621,7 @@ def make_roi_mask(final_roi):
     if final_roi == "HC_anterior":
         return make_hc_mask(ap="anterior")
 
-    if final_roi == "HC_posterior":
+    if final_roi == "HC_mid":
         return make_hc_mask(ap="posterior")
 
     if final_roi == "ventral_ACC":
@@ -631,10 +630,10 @@ def make_roi_mask(final_roi):
     if final_roi == "ACC":
         return make_mask_from_atlas(ho_cort, ["cingulate gyrus, anterior division"])
 
-    if final_roi == "medial_PCC":
+    if final_roi == "medial_CC":
         return make_mask_from_atlas(ho_cort, ["cingulate gyrus, posterior division"])
 
-    if final_roi == "posterior_PCC":
+    if final_roi == "PCC":
         return make_mask_from_atlas(
             ho_cort,
             ["cingulate gyrus, posterior division", "precuneous", "precuneus"]

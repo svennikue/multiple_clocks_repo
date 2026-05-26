@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, '/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_clocks_repo')
 import mc
 
-
+# import pdb; pdb.set_trace()
 # ── Settings ──────────────────────────────────────────────────────────
 DATA_DIR = '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives'
 OUT_BASE = os.path.join(DATA_DIR, 'group', 'encoding_analysis_simple')
@@ -69,7 +69,7 @@ AVERAGE_REPEATS = True
 # Elastic net
 ALPHA = 0.001 # 0.001         # 0.01 in El-Gaby; smaller = less penalty
 L1_RATIO = 0.5
-POSITIVE = False
+POSITIVE = True
 MAX_ITER = 2000
 
 # Permutations (one-sided test: emp > perm)
@@ -84,7 +84,7 @@ N_JOBS = -1            # joblib parallelism over neurons
 #     'bttn_prev', 'bttn_next', 'bttn_curr', 'uncover',
 # ]
 models = [
-     'dsr', 'dsr_only_fut', 'location', 'midnight',
+     'dsr', 'dsr_only_fut', 'dsr_now_next', 'location', 'midnight',
      'phase', 'state', 'state_phase',
     'bttn_prev', 'bttn_next', 'bttn_curr', 'uncover',
 ]
@@ -106,6 +106,15 @@ COMBO_MODELS = {
     'M_location_dsr':       ['midnight', 'dsr'],
     'M_state_midnight':     ['state', 'midnight'],
     'M_state_midnight_dsr': ['state', 'midnight', 'dsr'],
+    'M_dsr_nownext': ['dsr_now_next'] ,
+    'M_dsr_fut': ['dsr_only_fut'],
+    # RSA-style control set: state + location-phase + motor.
+    # Mirrors the regressor list in our RSA `MRI_combo-nofdb_midn-state`
+    # heatmap so the cell-level Δ-tests answer the same conditional
+    # question (DSR unique contribution over the same confound set).
+    'M_full_controls':           ['state', 'midnight', 'bttn_curr', 'bttn_next'],
+    'M_full_controls_dsr':       ['state', 'midnight', 'bttn_curr', 'bttn_next', 'dsr'],
+    'M_full_controls_dsr_fut':   ['state', 'midnight', 'bttn_curr', 'bttn_next', 'dsr_only_fut'],
 }
 
 # Paired held-out comparisons.  Δ = score(test) - score(baseline),
@@ -118,6 +127,23 @@ COMBO_COMPARISONS = [
     ('M_state_dsr',          'M_state'),
     ('M_midnight_dsr',       'M_midnight'),
     ('M_state_midnight_dsr', 'M_state_midnight'),
+    # Q3 (RSA-style): with the same control set as the RSA, does the
+    # DSR design (and its future-lag-only subset) add unique held-out
+    # predictive power?
+    #   - full DSR added on top of state + midnight + motor controls
+    ('M_full_controls_dsr',     'M_full_controls'),
+    #   - future-lag-only DSR (clo - clo_now_next) on top of same controls
+    #     answers: "does ACC predict future locations beyond simple
+    #     location/phase/motor/state coding?"
+    ('M_full_controls_dsr_fut', 'M_full_controls'),
+    # Q4 (Visual vs ACC dissociation): how much of DSR's contribution is
+    # the lag-0 / now-next part vs the future-lag part?  In Visual the
+    # answer should be "almost all the contribution is lag-0/now-next"
+    # (current-location coding). In ACC the future-lag part should
+    # survive on its own (Q3 above).
+    ('M_full_controls_dsr',     'M_full_controls_dsr_fut'),
+    # Q 5: are there more future lag or more current lag cells?
+    ('M_dsr_nownext',     'M_dsr_fut'),
 ]
 
 # ROI-level alpha for the binomial + one-sample tests on Δ.
@@ -463,6 +489,7 @@ def build_single_trial_regressors(loc_path, btn_path, btn_alphabet,
                 locations=loc_int.tolist(), no_phase_neurons=N_PHASES,
             )
         )
+        # import pdb; pdb.set_trace()
         DSR_MAP = {
             'location':       loc_og,
             'phase':          phas_og,

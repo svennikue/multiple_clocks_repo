@@ -108,7 +108,7 @@ FDR_SUBMODELS = ['dsr_old']  # effect(s) of interest within the combo
 FDR_ALPHA     = 0.05
 
 
-
+# import pdb; pdb.set_trace()
 # ── ROI assignment from MNI-based table (cell_to_roi_MNI.py output) ───
 # Each neuron is matched by (subject, cell_idx) parsed from its label.
 ROI_TABLE_PATH = os.path.join(
@@ -125,16 +125,16 @@ ROI_LABEL_COLUMN = 'alt_final_roi' #'final_roi'
 ROIS_TO_ANALYZE_BY_COLUMN = {
     'final_roi': [
         'EC', 'Parahippocampal',
-        'HC_anterior', 'HC_posterior',
+        'HC_anterior', 'HC_mid',
         'ventral_ACC', 'ACC',
-        'posterior_PCC',
+        'posterior_CC',
         'OFC11', 'OFC13', 'Visual',
     ],
     'alt_final_roi': [
-        'EC', 'Parahippocampal',
-        'HC_anterior', 'HC_posterior',
-        'medialOFC', 'ACC', 'mACC',
-        'posterior_PCC', 'Visual',
+        'ACC', 'EC', 'Parahippocampal',
+        'HC_anterior', 'HC_mid',
+        'medialOFC', 'medial_CC',
+        'PCC', 'Visual',
     ],
 }
 ROIS_TO_ANALYZE = ROIS_TO_ANALYZE_BY_COLUMN[ROI_LABEL_COLUMN]

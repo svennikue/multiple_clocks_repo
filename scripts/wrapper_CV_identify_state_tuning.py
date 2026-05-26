@@ -543,7 +543,7 @@ def compute_state_tunings(sessions, trials = 'all_minus_explore', no_perms = Non
                 result_string = f"state_consistency_{trials}_repeats_excl_{sparsity_c}_pct_neurons.csv"
                 
             empirical_result = pd.read_csv(f"{group_dir_state}/{result_string}")
-            perm_string = f"pval_for_perms200_{result_string}"
+            perm_string = f"pval_for_perms{no_perms}_{result_string}"
             name_result_stats = f"{group_dir_state}/{perm_string}"
             # DELETE THIS
             # cells = results_df['neuron_id'].unique()
@@ -590,7 +590,7 @@ if __name__ == "__main__":
     # trials can be 'all', 'all_correct', 'early', 'late', 'all_minus_explore', 'residualised'
     # they can also be: 'first_correct', 'one_correct', ... 'nine_correct'
     # NOTE: if you do per-repeat estimates, use every grid! grid mean will be super unreliable anyways
-    compute_state_tunings(sessions=list(range(0,64)), trials = 'all_correct', no_perms = None, sparsity_c = 'gridwise_qc', save_all=True, only_BCD = False)
+    compute_state_tunings(sessions=list(range(0,64)), trials = 'all_correct', no_perms = 500, sparsity_c = 'gridwise_qc', save_all=True, only_BCD = False)
     
     
     # compute_state_tunings(sessions=list(range(0,64)), trials = 'all_minus_explore', no_perms = None, sparsity_c = 'gridwise_qc', save_all=True, only_BCD = False)

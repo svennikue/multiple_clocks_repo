@@ -29,9 +29,10 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 import matplotlib.pyplot as plt
-
+# import pdb; pdb.set_trace()
 # ── Settings ──────────────────────────────────────────────────────────
-RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-22_15-57-38/')
+RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-26_14-14-40/')
+# RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-22_15-57-38/')
 # RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-21_10-37-45-nopositiveReg/')
 #RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-20_22-57-03/')
 # RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-12_17-48-06-all-500perms-l20-001-fixedbuttons/')
@@ -66,7 +67,7 @@ DSR_COEF_P_PERM_THRESHOLD = 0.05
 #                        diagnostics.pkl + MNI table — independent of CSV)
 #   'r_dist_no_state' -> fig 17 (r-distribution grid for every non-state
 #                        model, after dropping state-significant neurons)
-SECTIONS_TO_RUN = ['brain_lag', 'coefficients', 'r_dist_no_state']
+SECTIONS_TO_RUN = ['focal', 'r_dist_no_state', 'state_removal']
 
 _run_classification  = 'classification'  in SECTIONS_TO_RUN
 _run_focal           = 'focal'           in SECTIONS_TO_RUN
@@ -546,6 +547,7 @@ DSR_FILTER_VARIANTS = {
     'motor + task_rels':  list(MOTOR_MODELS) + ['dsr_now_next', 'midnight',
                                                 'location'],
     'motor + state':      list(MOTOR_MODELS) + ['state'],
+    'state': ['state'],
     'phase':              ['phase'],
 }
 

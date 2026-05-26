@@ -32,6 +32,7 @@ from __future__ import annotations
 import os
 
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from scipy import stats
@@ -1435,4 +1436,640 @@ def plot_roi_electrodes_glassbrain(
     if save_path is not None:
         fig.savefig(save_path, dpi=200, bbox_inches='tight')
         print(f"  [roi-electrodes] saved → {save_path}")
+    return fig
+
+
+# ── Publication-figure helpers (state overlap, polar state cells) ─────
+# The plot_state_polar_clock helper mirrors the one in
+# scripts/plotting_human_cells.py so the publication script can import
+# from one canonical place without depending on the scripts/ folder.
+
+STATE_QUADRANT_COLORS = ('#F15A29', '#F7931E', '#C7C6E2', '#6B60AA')
+
+
+def smooth_circular(arr, sigma=2):
+    """Gaussian-smooth a circular (e.g. 360-bin polar) trace."""
+    from scipy.ndimage import gaussian_filter1d
+    arr = np.asarray(arr, dtype=float)
+    extended = np.concatenate([arr, arr, arr])
+    smoothed = gaussian_filter1d(extended, sigma=sigma)
+    return smoothed[len(arr):2 * len(arr)]
+
+
+def plot_state_polar_clock(firing_across_states, title_string='',
+                           ax=None, rlim=None, fontsize_labels=28,
+                           fontsize_title=14, title_pad=18):
+    """Polar plot of a 360-bin trial-averaged trace with A/B/C/D quadrants.
+
+    Conventions: 0° at 12 o'clock, clockwise, A→B→C→D at 3/6/9/12.
+    Each quadrant is coloured (orange/yellow/light-purple/purple) and gets
+    a transparent wedge whose radius = that quadrant's mean activity.
+
+    Parameters
+    ----------
+    firing_across_states : (n_bins,) array_like
+        Smoothed firing-rate trace covering a full ABCD cycle (usually 360).
+    title_string : str
+        Title written above the polar; pass '' for no title.
+    ax : matplotlib polar Axes or None
+        Reuses an existing polar axes if given; otherwise creates a new
+        figure + axes.
+    rlim : (rmin, rmax) or None
+        Shared radial limits.  If None, the trace's own min/max are used.
+    """
+    vals = np.asarray(firing_across_states, dtype=float)
+    n_bins = vals.size
+    if n_bins < 4:
+        raise ValueError("Need at least 4 bins to define quadrants.")
+
+    created_fig = False
+    if ax is None:
+        fig = plt.figure(figsize=(6, 6))
+        ax = fig.add_subplot(1, 1, 1, projection='polar')
+        created_fig = True
+
+    ax.set_theta_zero_location('N')
+    ax.set_theta_direction(-1)
+    theta = np.linspace(0, 2 * np.pi, n_bins, endpoint=False)
+
+    # Plot the four coloured quadrant arcs.
+    edges = np.linspace(0, n_bins, 5, dtype=int)
+    for i in range(4):
+        s, e = edges[i], edges[i + 1]
+        if e > s:
+            ax.plot(theta[s:e], vals[s:e],
+                    color=STATE_QUADRANT_COLORS[i], linewidth=3)
+
+    if rlim is None:
+        rmin = float(np.nanmin(vals))
+        rmax = float(np.nanmax(vals))
+    else:
+        rmin, rmax = rlim
+    ax.set_ylim(rmin, rmax)
+
+    # Quadrant-mean wedges (transparent).
+    for i in range(4):
+        s, e = edges[i], edges[i + 1]
+        if e <= s:
+            continue
+        m = float(np.nanmean(vals[s:e]))
+        center_idx = (s + e) / 2.0
+        center_ang = (center_idx / n_bins) * 2 * np.pi
+        width = ((e - s) / n_bins) * 2 * np.pi
+        if np.isfinite(m):
+            ax.bar(center_ang, max(0, m - rmin),
+                   width=width, bottom=rmin,
+                   color=STATE_QUADRANT_COLORS[i], alpha=0.25,
+                   edgecolor='none', zorder=0, align='center')
+
+    # A/B/C/D labels at 3/6/9/12 o'clock.
+    label_angles = np.deg2rad([0, 90, 180, 270])
+    letters = ['A', 'B', 'C', 'D']
+    pad = 0.12 * (rmax - rmin) if (np.isfinite(rmin) and np.isfinite(rmax)) else 0.1
+    label_r = rmax + pad
+    for lab, ang, col in zip(letters, label_angles, STATE_QUADRANT_COLORS):
+        if np.isclose(ang, 0):              ha, va = 'center', 'bottom'
+        elif np.isclose(ang, np.pi / 2):    ha, va = 'left', 'center'
+        elif np.isclose(ang, np.pi):        ha, va = 'center', 'top'
+        elif np.isclose(ang, 3 * np.pi / 2): ha, va = 'right', 'center'
+        else:                                ha, va = 'center', 'center'
+        ax.text(ang, label_r, lab, ha=ha, va=va,
+                fontsize=fontsize_labels, fontweight='bold', color=col,
+                clip_on=False)
+
+    ax.set_xticks([])
+    ax.grid(True)
+    if title_string:
+        # `pad` lifts the title clear of the 'A' label that sits at the
+        # top of the polar; the default value of 18 works for most layouts.
+        ax.set_title(title_string, va='bottom', fontsize=fontsize_title,
+                     pad=title_pad)
+    if created_fig:
+        plt.tight_layout()
+    return ax
+
+
+def plot_state_overlap_stacked_bars(overlap_df, save_path=None,
+                                    title='State-cell overlap per ROI',
+                                    min_n_cells=20):
+    """Stacked bars per ROI: encoding-only / CV-only / both / neither.
+
+    Parameters
+    ----------
+    overlap_df : DataFrame
+        Must have columns:
+            roi, n_total, n_enc_only, n_cv_only, n_both,
+            jaccard, percent_overlap (optional)
+    min_n_cells : int
+        ROIs with n_total < min_n_cells are flagged with '*' in the label.
+    """
+    df = overlap_df.copy().sort_values('n_total', ascending=False)
+    rois = df['roi'].tolist()
+    x = np.arange(len(rois))
+    width = 0.7
+
+    both = df['n_both'].to_numpy(dtype=float)
+    enc_only = df['n_enc_only'].to_numpy(dtype=float)
+    cv_only = df['n_cv_only'].to_numpy(dtype=float)
+    neither = (df['n_total'].to_numpy(dtype=float)
+               - both - enc_only - cv_only)
+    neither = np.clip(neither, 0, None)
+
+    fig, ax = plt.subplots(figsize=(max(7.5, 0.95 * len(rois)), 5.0))
+    b1 = ax.bar(x, both, width, color='#2c7fb8', label='significant in both')
+    b2 = ax.bar(x, enc_only, width, bottom=both, color='#9ecae1',
+                label='encoding only')
+    b3 = ax.bar(x, cv_only, width, bottom=both + enc_only, color='#fdae6b',
+                label='CV-tuning only')
+    b4 = ax.bar(x, neither, width, bottom=both + enc_only + cv_only,
+                color='lightgray', label='neither')
+
+    # Jaccard annotations
+    for xi, j_val, n_t in zip(x, df['jaccard'], df['n_total']):
+        ax.text(xi, n_t + 0.5, f'J={j_val:.2f}',
+                ha='center', va='bottom', fontsize=9)
+
+    labels = [f'{r}\n(n={n})' + (' *' if n < min_n_cells else '')
+              for r, n in zip(rois, df['n_total'])]
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=20, ha='right')
+    ax.set_ylabel('# cells')
+    ax.set_title(title)
+    ax.legend(loc='upper right', frameon=False, fontsize=9)
+    ax.spines[['top', 'right']].set_visible(False)
+    fig.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, dpi=200, bbox_inches='tight')
+        print(f"  [state-overlap stacked-bars] saved → {save_path}")
+    return fig, ax
+
+
+def plot_state_method_scatter(merged_df, save_path=None,
+                              title='State CV consistency vs encoding state r',
+                              alpha_perm=0.05, color_by='roi'):
+    """Scatter of CV state consistency (x) vs encoding state mean_r (y).
+
+    Each point is one cell. Cells significant in both methods are filled;
+    cells significant in only one are open. Reports per-ROI Pearson r in
+    the legend.
+    """
+    df = merged_df.dropna(subset=['state_cv_consistency', 'enc_state_mean_r']).copy()
+    rois = sorted(df['roi'].dropna().unique().tolist())
+    cmap = plt.get_cmap('tab10')
+    fig, ax = plt.subplots(figsize=(7.5, 6.5))
+
+    for i, roi in enumerate(rois):
+        g = df[df['roi'] == roi]
+        if g.empty:
+            continue
+        color = cmap(i % 10)
+        sig_both = g[(g['cv_p_perm'] < alpha_perm)
+                     & (g['enc_p_perm'] < alpha_perm)]
+        sig_one = g[((g['cv_p_perm'] < alpha_perm)
+                    | (g['enc_p_perm'] < alpha_perm))
+                   & ~((g['cv_p_perm'] < alpha_perm)
+                       & (g['enc_p_perm'] < alpha_perm))]
+        sig_none = g[(g['cv_p_perm'] >= alpha_perm)
+                     & (g['enc_p_perm'] >= alpha_perm)]
+        # Compute per-ROI correlation across ALL cells of that ROI.
+        if len(g) >= 3:
+            r = np.corrcoef(g['state_cv_consistency'], g['enc_state_mean_r'])[0, 1]
+            label = f'{roi} n={len(g)} r={r:+.2f}'
+        else:
+            label = f'{roi} n={len(g)}'
+        ax.scatter(sig_none['state_cv_consistency'],
+                   sig_none['enc_state_mean_r'],
+                   s=14, color=color, alpha=0.25, edgecolor='none')
+        ax.scatter(sig_one['state_cv_consistency'],
+                   sig_one['enc_state_mean_r'],
+                   s=28, facecolor='none', edgecolor=color, lw=1.0)
+        ax.scatter(sig_both['state_cv_consistency'],
+                   sig_both['enc_state_mean_r'],
+                   s=36, color=color, edgecolor='black', lw=0.6,
+                   label=label)
+
+    ax.axhline(0, color='0.6', lw=0.6, ls=':')
+    ax.axvline(0, color='0.6', lw=0.6, ls=':')
+    ax.set_xlabel('CV state consistency (Pearson r)')
+    ax.set_ylabel('Encoding state model mean_r')
+    ax.set_title(title)
+    ax.legend(fontsize=8, frameon=False, loc='lower right')
+    ax.spines[['top', 'right']].set_visible(False)
+    fig.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, dpi=200, bbox_inches='tight')
+        print(f"  [state-method scatter] saved → {save_path}")
+    return fig, ax
+
+
+def plot_single_state_cell_polar(mean_trace, traces_per_config, configs,
+                                 cell_label, roi,
+                                 cv_consistency, enc_state_mean_r,
+                                 cv_p_perm=None, enc_p_perm=None,
+                                 save_path=None, smooth_sigma=4,
+                                 n_cols=3):
+    """One cell's polar overview.
+
+    Subplots laid out in a `n_cols`-wide grid:
+      [mean across configs] [config 1] [config 2] ...
+
+    The mean is computed by the caller (so this function doesn't have to
+    know about correct-trial filtering); we just smooth and render here.
+    """
+    n_configs = len(configs)
+    n_panels = 1 + n_configs
+    n_rows = int(np.ceil(n_panels / n_cols))
+
+    # Shared r-limits across all polar panels so wedge heights are
+    # directly comparable.
+    smoothed_mean = smooth_circular(mean_trace, sigma=smooth_sigma)
+    smoothed_per_cfg = [smooth_circular(t, sigma=smooth_sigma)
+                       if (t is not None and np.isfinite(t).any())
+                       else None for t in traces_per_config]
+    all_finite = [smoothed_mean] + [t for t in smoothed_per_cfg if t is not None]
+    if all_finite:
+        rmin = float(np.nanmin([np.nanmin(t) for t in all_finite]))
+        rmax = float(np.nanmax([np.nanmax(t) for t in all_finite]))
+    else:
+        rmin, rmax = 0.0, 1.0
+    rlim = (rmin, rmax)
+
+    fig, axes = plt.subplots(n_rows, n_cols,
+                             figsize=(4.8 * n_cols, 4.8 * n_rows),
+                             subplot_kw=dict(projection='polar'),
+                             squeeze=False)
+
+    # Subplot 0: mean across configs.
+    plot_state_polar_clock(
+        smoothed_mean, title_string='mean across configs',
+        ax=axes[0, 0], rlim=rlim,
+        fontsize_labels=18, fontsize_title=11, title_pad=18)
+
+    # Per-config subplots.
+    for i, (cfg, trace) in enumerate(zip(configs, smoothed_per_cfg)):
+        idx = i + 1
+        ax = axes[idx // n_cols, idx % n_cols]
+        if trace is None:
+            ax.set_axis_off()
+            continue
+        plot_state_polar_clock(
+            trace, title_string=f'cfg {cfg}',
+            ax=ax, rlim=rlim,
+            fontsize_labels=16, fontsize_title=9, title_pad=14)
+
+    # Hide unused axes.
+    for k in range(n_panels, n_rows * n_cols):
+        ax = axes[k // n_cols, k % n_cols]
+        ax.axis('off')
+
+    # Suptitle with the cell-level statistics.
+    parts = [f'{cell_label}  [{roi}]']
+    if cv_consistency is not None and np.isfinite(cv_consistency):
+        cv_str = f'CV-consistency = {cv_consistency:+.3f}'
+        if cv_p_perm is not None and np.isfinite(cv_p_perm):
+            cv_str += f'  (p_perm = {cv_p_perm:.3g})'
+        parts.append(cv_str)
+    if enc_state_mean_r is not None and np.isfinite(enc_state_mean_r):
+        enc_str = f'encoding state mean_r = {enc_state_mean_r:+.3f}'
+        if enc_p_perm is not None and np.isfinite(enc_p_perm):
+            enc_str += f'  (p_perm = {enc_p_perm:.3g})'
+        parts.append(enc_str)
+    suptitle = '\n'.join(parts)
+    fig.suptitle(suptitle, fontsize=12, y=0.995)
+    # Polar axes don't play nicely with tight_layout; use subplots_adjust.
+    fig.subplots_adjust(left=0.05, right=0.97, top=0.90, bottom=0.04,
+                        wspace=0.35, hspace=0.45)
+    if save_path is not None:
+        fig.savefig(save_path, dpi=200, bbox_inches='tight')
+        print(f"  [single-cell polar] saved → {save_path}")
+    plt.close(fig)
+    return fig
+
+
+# ── Fig 1 helper: DSR confound-filter grid ─────────────────────────────
+def plot_dsr_confound_filter_grid(panels, save_path=None,
+                                  suptitle=None, n_bins=25):
+    """Grid of histograms: rows = ROIs, columns = exclusion filters.
+
+    `panels` is a nested dict:
+        panels[roi][filter_label] = {
+            'r_all':  (n_total,) ndarray of mean_r for *all* DSR cells,
+            'r_kept': (n_kept,)  ndarray of mean_r for *kept* DSR cells,
+            'n_total':  int,
+            'n_kept':   int,
+            'p_kept_>0': float,   # one-sided t-test of kept-mean > 0
+            'p_shift':  float,    # Mann-Whitney kept vs excluded
+        }
+    The first column should be the unfiltered scenario (we still expect
+    `r_all == r_kept` there).
+    """
+    rois = list(panels.keys())
+    if not rois:
+        print('  [fig1] no ROIs to plot.')
+        return None
+    filter_labels = list(panels[rois[0]].keys())
+    n_rows, n_cols = len(rois), len(filter_labels)
+    fig, axes = plt.subplots(n_rows, n_cols,
+                             figsize=(3.6 * n_cols, 2.8 * n_rows),
+                             sharex=False, sharey='row',
+                             squeeze=False)
+
+    # Per-row x-range based on the full distribution of that ROI.
+    for i, roi in enumerate(rois):
+        all_vals = panels[roi][filter_labels[0]]['r_all']
+        if all_vals.size == 0:
+            lim = 0.1
+        else:
+            lim = max(0.05, 1.05 * float(np.nanmax(np.abs(all_vals))))
+        bins = np.linspace(-lim, lim, n_bins + 1)
+        for j, fl in enumerate(filter_labels):
+            ax = axes[i, j]
+            d = panels[roi][fl]
+            r_all = d['r_all']; r_kept = d['r_kept']
+            ax.hist(r_all, bins=bins, color='0.55', alpha=0.35,
+                    edgecolor='none')
+            ax.hist(r_kept, bins=bins, color='tab:blue', alpha=0.80,
+                    edgecolor='none')
+            ax.axvline(0, color='0.4', lw=0.7, ls=':')
+            ax.axvline(float(np.nanmean(r_all)),
+                       color='0.35', lw=1.0)
+            if r_kept.size:
+                ax.axvline(float(np.nanmean(r_kept)),
+                           color='tab:blue', lw=1.5)
+            ax.set_title(
+                (f"{fl}\nn={d['n_kept']}/{d['n_total']}   "
+                 f"p>0={d['p_kept_>0']:.1e}\n"
+                 f"shift p={d['p_shift']:.1e}"),
+                fontsize=8,
+            )
+            ax.tick_params(labelsize=7)
+            if j == 0:
+                ax.set_ylabel(f'{roi}\n# cells', fontsize=9)
+            if i == n_rows - 1:
+                ax.set_xlabel('DSR mean_r', fontsize=8)
+            ax.set_xlim(-lim, lim)
+            ax.spines[['top', 'right']].set_visible(False)
+    if suptitle:
+        fig.suptitle(suptitle, fontsize=12, y=0.995)
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    if save_path is not None:
+        fig.savefig(save_path, dpi=200, bbox_inches='tight')
+        print(f'  [fig1 DSR filter grid] saved → {save_path}')
+    plt.close(fig)
+    return fig
+
+
+# ── Fig 1 inset helper: ACC state-encoders vs non-state-encoders ──────
+def plot_acc_state_vs_dsr_inset(r_state_encoders, r_non_state_encoders,
+                                save_path=None,
+                                title='ACC: DSR mean_r by state-encoder status'):
+    """Side-by-side box+strip plot of DSR mean_r for state-encoding vs
+    non-state-encoding ACC cells, with a one-sided Mann-Whitney p."""
+    a = np.asarray(r_state_encoders, dtype=float)
+    a = a[np.isfinite(a)]
+    b = np.asarray(r_non_state_encoders, dtype=float)
+    b = b[np.isfinite(b)]
+    if a.size < 2 or b.size < 2:
+        print('  [fig1 inset] not enough cells in one group; skipping.')
+        return None
+    try:
+        mw = stats.mannwhitneyu(b, a, alternative='greater')
+        p_mw = float(mw.pvalue)
+    except Exception:
+        p_mw = np.nan
+
+    fig, ax = plt.subplots(figsize=(4.6, 4.6))
+    parts = ax.boxplot([a, b], positions=[0, 1], widths=0.5,
+                       patch_artist=True, showfliers=False)
+    for patch, c in zip(parts['boxes'], ['salmon', 'steelblue']):
+        patch.set_facecolor(c); patch.set_alpha(0.6); patch.set_edgecolor('0.3')
+    rng = np.random.default_rng(0)
+    ax.scatter(rng.uniform(-0.18, 0.18, size=a.size), a, s=10,
+               color='salmon', alpha=0.5, edgecolor='none')
+    ax.scatter(1 + rng.uniform(-0.18, 0.18, size=b.size), b, s=10,
+               color='steelblue', alpha=0.5, edgecolor='none')
+    ax.axhline(0, color='0.5', lw=0.6, ls=':')
+    ax.set_xticks([0, 1])
+    ax.set_xticklabels([f'state-encoder\n(n={a.size})',
+                        f'non state-encoder\n(n={b.size})'])
+    ax.set_ylabel('DSR mean_r')
+    ax.set_title(f'{title}\nMW one-sided p(non > state) = {p_mw:.1e}',
+                 fontsize=10)
+    ax.spines[['top', 'right']].set_visible(False)
+    fig.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, dpi=200, bbox_inches='tight')
+        print(f'  [fig1 ACC inset] saved → {save_path}')
+    plt.close(fig)
+    return fig
+
+
+# ── Fig 3 helper: per-ROI DSR lag profile ─────────────────────────────
+def plot_dsr_lag_overlay(lag_means_by_roi, lag_sems_by_roi=None,
+                        friedman_p_by_roi=None,
+                        n_cells_by_roi=None, save_path=None,
+                        bold_rois=('ACC',), reference_y=1.0,
+                        title='DSR coefficient lag profile per ROI'):
+    """Line plot of mean per-lag DSR coefficient strength per ROI.
+
+    Each ROI is one line over lags 0..11. `bold_rois` are highlighted with
+    thicker lines and an annotated Friedman p.
+    """
+    rois = list(lag_means_by_roi.keys())
+    n_lags = max(len(v) for v in lag_means_by_roi.values()) if rois else 12
+    x = np.arange(n_lags)
+    cmap = plt.get_cmap('tab10')
+
+    fig, ax = plt.subplots(figsize=(8.0, 5.0))
+    for i, roi in enumerate(rois):
+        m = np.asarray(lag_means_by_roi[roi], dtype=float)
+        lw = 2.6 if roi in bold_rois else 1.1
+        alpha = 1.0 if roi in bold_rois else 0.6
+        color = 'crimson' if roi in bold_rois else cmap(i % 10)
+        n_cells = n_cells_by_roi.get(roi, 'n?') if n_cells_by_roi else 'n?'
+        label = f'{roi} (n={n_cells})'
+        if friedman_p_by_roi and roi in friedman_p_by_roi:
+            p = friedman_p_by_roi[roi]
+            label += f'  Friedman p={p:.2g}' if np.isfinite(p) else ''
+        ax.plot(x, m, color=color, lw=lw, marker='o',
+                ms=5 if roi in bold_rois else 3.5,
+                alpha=alpha, label=label)
+        if lag_sems_by_roi and roi in lag_sems_by_roi:
+            s = np.asarray(lag_sems_by_roi[roi], dtype=float)
+            ax.fill_between(x, m - s, m + s, color=color, alpha=0.12)
+
+    ax.axhline(reference_y, color='0.5', lw=0.8, ls='--',
+               label=f'uniform = {reference_y:g}')
+    ax.set_xticks(x)
+    ax.set_xlabel('lag (anchor → current; 0 = current, 1..11 = future/past)')
+    ax.set_ylabel('mean coefficient (per-neuron mean-normalised)')
+    ax.set_title(title)
+    ax.legend(fontsize=8, frameon=False, ncol=2, loc='best')
+    ax.spines[['top', 'right']].set_visible(False)
+    fig.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, dpi=200, bbox_inches='tight')
+        print(f'  [fig3 lag overlay] saved → {save_path}')
+    plt.close(fig)
+    return fig
+
+
+# ── Fig 4 helper: example DSR cell (best anchor + lag + actual/pred) ──
+def plot_example_dsr_cell(anchor_grid_mag, best_anchor_loc, best_anchor_phase,
+                          lag_profile, lag_profile_label,
+                          actual_trace, predicted_trace,
+                          cell_label, roi,
+                          best_fold_r, best_fold_cfg,
+                          save_path=None, smooth_sigma=4):
+    """Per-cell 3-panel publication figure.
+
+    Parameters
+    ----------
+    anchor_grid_mag : (9, 3) ndarray
+        Per-(location, anchor-phase) magnitude of the DSR coefficients
+        summed over lags. Heatmapped in panel 1.
+    best_anchor_loc : int  (0..8)
+        Location index of the dominant anchor (highlighted in panel 1).
+    best_anchor_phase : int  (0..2)
+        Within-state phase index of the dominant anchor.
+    lag_profile : (n_lags,) ndarray
+        The 12-value coefficient vector at the best anchor.
+    lag_profile_label : str
+        Annotation describing what's plotted (e.g. preferred lag idx).
+    actual_trace, predicted_trace : (360,) ndarray
+        Trial-averaged actual and model-predicted activity for the cell's
+        best-fold held-out config.
+    """
+    fig = plt.figure(figsize=(13.0, 4.6))
+    gs = fig.add_gridspec(1, 3, width_ratios=[1.0, 1.1, 2.0],
+                         wspace=0.35)
+
+    # ── Panel 1: anchor heatmap ──
+    ax1 = fig.add_subplot(gs[0, 0])
+    im = ax1.imshow(anchor_grid_mag, cmap='magma', aspect='auto')
+    ax1.set_xticks(range(anchor_grid_mag.shape[1]))
+    ax1.set_xticklabels([f'phase {i}' for i in range(anchor_grid_mag.shape[1])])
+    ax1.set_yticks(range(anchor_grid_mag.shape[0]))
+    ax1.set_yticklabels([f'loc {i + 1}' for i in range(anchor_grid_mag.shape[0])])
+    ax1.set_xlabel('within-state phase')
+    ax1.set_ylabel('grid location')
+    ax1.set_title('DSR anchor preference (Σ|coef| over lags)',
+                  fontsize=10)
+    # Highlight best anchor.
+    ax1.add_patch(plt.Rectangle((best_anchor_phase - 0.5,
+                                 best_anchor_loc - 0.5),
+                                1, 1, fill=False, edgecolor='cyan',
+                                lw=2.5))
+    cbar = fig.colorbar(im, ax=ax1, shrink=0.85)
+    cbar.set_label('|coef| sum')
+
+    # ── Panel 2: lag profile at best anchor ──
+    ax2 = fig.add_subplot(gs[0, 1])
+    lags = np.arange(len(lag_profile))
+    colors = ['lightgray' if i != int(np.argmax(np.abs(lag_profile)))
+              else 'crimson' for i in lags]
+    ax2.bar(lags, lag_profile, color=colors, edgecolor='0.3', lw=0.5)
+    ax2.axhline(0, color='0.4', lw=0.6)
+    ax2.set_xticks(lags)
+    ax2.set_xlabel('lag (0 = now)')
+    ax2.set_ylabel('coefficient')
+    ax2.set_title(f'lag profile at best anchor\n'
+                  f'(loc={best_anchor_loc + 1}, phase={best_anchor_phase}) '
+                  f'— {lag_profile_label}', fontsize=10)
+    ax2.spines[['top', 'right']].set_visible(False)
+
+    # ── Panel 3: actual vs predicted trace ──
+    ax3 = fig.add_subplot(gs[0, 2])
+    bins = np.arange(len(actual_trace))
+    actual_s = smooth_circular(actual_trace, sigma=smooth_sigma)
+    pred_s = smooth_circular(predicted_trace, sigma=smooth_sigma)
+    ax3.plot(bins, actual_s, color='steelblue', lw=1.6, label='actual')
+    ax3.plot(bins, pred_s, color='crimson', lw=1.3, label='predicted',
+             alpha=0.85)
+    # Mark state boundaries.
+    for s in [90, 180, 270]:
+        ax3.axvline(s, color='0.7', lw=0.5, ls=':')
+    for s, name in enumerate(['A', 'B', 'C', 'D']):
+        ax3.text(s * 90 + 45, ax3.get_ylim()[1] * 0.97
+                 if ax3.get_ylim()[1] > 0 else 0,
+                 name, ha='center', va='top',
+                 color=STATE_QUADRANT_COLORS[s], fontweight='bold')
+    ax3.set_xlabel('bin (0..360, 4 states × 90 bins)')
+    ax3.set_ylabel('firing (smoothed)')
+    ax3.set_title(f'actual vs predicted — best fold (cfg {best_fold_cfg}, '
+                  f'r={best_fold_r:+.3f})', fontsize=10)
+    ax3.legend(fontsize=8, frameon=False, loc='upper right')
+    ax3.spines[['top', 'right']].set_visible(False)
+
+    fig.suptitle(f'{cell_label}  [{roi}]', fontsize=12, y=1.02)
+    fig.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, dpi=200, bbox_inches='tight')
+        print(f'  [fig4 example DSR cell] saved → {save_path}')
+    plt.close(fig)
+    return fig
+
+
+# ── Fig 5 helper: side-by-side DSR-vs-RSA per-ROI bars ────────────────
+def plot_dsr_rsa_comparison(rsa_df, enc_df, save_path=None,
+                            title='DSR signal: RSA β vs encoding mean_r',
+                            sort_by='rsa_beta', alpha=0.05):
+    """Per-ROI side-by-side bars. `rsa_df` and `enc_df` must each have:
+        roi, beta_or_r, p, n_cells
+    `beta_or_r` is the standardised effect size for that method's DSR
+    signal (β for RSA, mean_r for encoding). Both are dimensionless and
+    typically in similar [-0.1, +0.2] ranges so they share a y-axis.
+    """
+    merged = rsa_df.rename(columns={'beta_or_r': 'rsa_beta',
+                                    'p': 'rsa_p',
+                                    'n_cells': 'rsa_n'}).merge(
+        enc_df.rename(columns={'beta_or_r': 'enc_r', 'p': 'enc_p',
+                               'n_cells': 'enc_n'}),
+        on='roi', how='outer')
+    merged = merged.sort_values(sort_by, ascending=False).reset_index(drop=True)
+
+    rois = merged['roi'].tolist()
+    x = np.arange(len(rois))
+    w = 0.4
+    fig, ax = plt.subplots(figsize=(max(8, 0.9 * len(rois)), 5.5))
+    b1 = ax.bar(x - w / 2, merged['rsa_beta'], w,
+                color='#264653', edgecolor='black', lw=0.6, label='RSA β')
+    b2 = ax.bar(x + w / 2, merged['enc_r'], w,
+                color='#2A9D8F', edgecolor='black', lw=0.6,
+                label='encoding mean_r')
+
+    def _stars(p):
+        return ('***' if (np.isfinite(p) and p < 0.001) else
+                '**' if (np.isfinite(p) and p < 0.01) else
+                '*' if (np.isfinite(p) and p < alpha) else '')
+
+    ymax = max(np.nanmax(merged['rsa_beta'].values),
+               np.nanmax(merged['enc_r'].values), 0.0)
+    ymin = min(np.nanmin(merged['rsa_beta'].values),
+               np.nanmin(merged['enc_r'].values), 0.0)
+    pad = 0.05 * (ymax - ymin) if (ymax > ymin) else 0.02
+    for xi, (_, row) in enumerate(merged.iterrows()):
+        ax.text(xi - w / 2, row['rsa_beta'] + (pad if row['rsa_beta'] >= 0 else -pad),
+                _stars(row['rsa_p']), ha='center',
+                va='bottom' if row['rsa_beta'] >= 0 else 'top',
+                fontsize=10)
+        ax.text(xi + w / 2, row['enc_r'] + (pad if row['enc_r'] >= 0 else -pad),
+                _stars(row['enc_p']), ha='center',
+                va='bottom' if row['enc_r'] >= 0 else 'top',
+                fontsize=10)
+
+    ax.axhline(0, color='0.4', lw=0.6)
+    labels = [f'{r}\n(RSA n={int(rn) if pd.notna(rn) else "?"} | '
+              f'enc n={int(en) if pd.notna(en) else "?"})'
+              for r, rn, en in zip(rois, merged['rsa_n'], merged['enc_n'])]
+    ax.set_xticks(x); ax.set_xticklabels(labels, rotation=20, ha='right')
+    ax.set_ylabel('Standardised DSR signal')
+    ax.set_title(title)
+    ax.legend(frameon=False, loc='upper right')
+    ax.spines[['top', 'right']].set_visible(False)
+    fig.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, dpi=200, bbox_inches='tight')
+        print(f'  [fig5 DSR-vs-RSA] saved → {save_path}')
+    plt.close(fig)
     return fig
