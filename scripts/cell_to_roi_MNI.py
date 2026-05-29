@@ -516,19 +516,28 @@ print(df_labeled["alt_final_roi"].value_counts(dropna=False))
 # COUNTS AND BAR PLOTS
 # =============================================================================
 
-def make_roi_count_table(series, order, roi_field):
-    """Cell-count table for one ROI column, ordered like `order`."""
-    return (series.value_counts()
-            .reindex(order, fill_value=0)
-            .rename_axis(roi_field)
-            .reset_index(name="n_cells"))
+def make_roi_count_table(df, roi_field, order, subject_field="subject"):
+    """Per-ROI table with `n_cells` and `n_subjects`, ordered by `order`.
+
+    `n_subjects` is the number of unique values in `subject_field` that
+    contribute at least one cell to that ROI.
+    """
+    grouped = (df.groupby(roi_field)
+                 .agg(n_cells=(subject_field, "size"),
+                      n_subjects=(subject_field, "nunique")))
+    return (grouped.reindex(order, fill_value=0)
+                   .rename_axis(roi_field)
+                   .reset_index())
 
 
 def plot_roi_count_overview(counts_df, roi_field, title, save_path):
-    """Bar plot of cell counts per ROI; the count is written into each
-    x-label, e.g. 'ACC (n = 68 cells)'."""
-    labels = [f"{r} (n = {n} cells)"
-              for r, n in zip(counts_df[roi_field], counts_df["n_cells"])]
+    """Bar plot of cell counts per ROI. Each x-label carries both the
+    cell count and the number of contributing subjects, e.g.
+    'ACC\\n(n = 68 cells; 14 subjects)'."""
+    labels = [f"{r}\n(n = {n} cells; {s} subjects)"
+              for r, n, s in zip(counts_df[roi_field],
+                                 counts_df["n_cells"],
+                                 counts_df["n_subjects"])]
     plt.figure(figsize=(11, 5))
     plt.bar(labels, counts_df["n_cells"])
     plt.xticks(rotation=45, ha="right")
@@ -541,9 +550,9 @@ def plot_roi_count_overview(counts_df, roi_field, title, save_path):
 
 
 roi_counts = make_roi_count_table(
-    df_labeled["final_roi"], roi_order, "final_roi")
+    df_labeled, "final_roi", roi_order)
 alt_roi_counts = make_roi_count_table(
-    df_labeled["alt_final_roi"], alt_roi_order, "alt_final_roi")
+    df_labeled, "alt_final_roi", alt_roi_order)
 
 print("\nROI counts (final_roi):")
 print(roi_counts)

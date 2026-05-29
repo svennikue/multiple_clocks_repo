@@ -3,19 +3,40 @@
 """
 Follow-up analyses on the encoding_analysis_simple result table.
 
-For entorhinal and ACC neurons:
-  Fig 1  - distribution of held-out r values across models, per ROI:
-           heatmap of mean_r (neuron x model) + violin of pooled fold r.
-  Fig 2  - top vs runner-up scatter, coloured by category. Plotted twice:
-           once for all neurons, once for the perm-significant subset.
-  Fig 3  - per ROI, neuron split: unique-winner counts per model and
-           multi-winner memberships per model.
-  CSV    - per-neuron model assignment (winner / co-winners / no_fit).
-
-Stats used per neuron:
-  - paired Wilcoxon across folds, one-sided H1: r_top > r_other
-    => co-winners are models the top does NOT significantly beat.
-  - permutation p_perm (already in the table) => is the top model > chance?
+# ── Which analysis sections to run ────────────────────────────────────
+# Pick any subset; sections are independent except that all CSV-based
+# sections share the encoding_results.csv load.
+#   'classification'  -> per-neuron model assignment CSV + figs 1-2
+#   'focal'           -> focal-model filter + figs 4-5
+#   'dsr_filter'      -> fig 6  (dsr distribution under exclusion filters)
+#   'dsr_co_encoding' -> fig 7  (dsr co-encoding stratified by count)
+#   'state_removal'   -> figs 8-9 (dsr after removing state encoders)
+#   'coefficients'    -> figs 10-13 (DSR coefficient analysis from
+#                        diagnostics.pkl — independent of the CSV)
+#   'brain_lag'       -> fig 14, 16 (DSR peak-lag glass-brain + 3D maps;
+#                        diagnostics.pkl + MNI table — independent of CSV)
+#   'r_dist_no_state' -> fig 17 (r-distribution grid for every non-state
+#                        model, after dropping state-significant neurons)
+#   'overlap_diagrams'    -> Venn + UpSet of perm-sig DSR/location/state/phase
+#                            neurons, per ROI
+#   'exclusion_variants'  -> generalisation of fig 17. For each exclusion set
+#                            (state, location, phase, all of them, none) drop
+#                            the perm-sig neurons and re-render: r-distribution
+#                            grid, ROI × model t-stat heatmap, and significant
+#                            proportion plot. Excluded counts saved per ROI.
+#   'gradient'            -> figs 20-22: lag-coefficient gradient analyses.
+#                            Per ROI, distribution of how many lags are near
+#                            the peak (fig20), distance between argmax and
+#                            second peak (fig21), discrete-colour peak-lag
+#                            glass-brain (whole-brain + mask-only, fig22),
+#                            and mask-only fig16 variants (peak-lag vs MNI z,
+#                            p_perm threshold + transparency-by-r).
+#   'sparse_examples'     -> fig 24: among perm-sig DSR cells, render
+#                            publication examples of the sparsest encoders
+#                            (few large coefficients on best fold). Layout:
+#                            perm null + actual-vs-predicted trace + per-bin
+#                            location, phase, and strongest-coef-lag bars.
+#                            Top-N per ROI; full top-coef table saved.
 
 @author: Svenja Kuchenhoff
 """
@@ -31,7 +52,9 @@ from scipy import stats
 import matplotlib.pyplot as plt
 # import pdb; pdb.set_trace()
 # ── Settings ──────────────────────────────────────────────────────────
-RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-26_14-14-40/')
+
+
+RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-28_16-45-09-nopenality-newROIs/')
 # RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-22_15-57-38/')
 # RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-21_10-37-45-nopositiveReg/')
 #RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-20_22-57-03/')
@@ -53,33 +76,24 @@ STATE_VARIANTS  = ['state', 'state_phase']
 # Only include DSR-encoding neurons (across-fold permutation p_perm < this).
 DSR_COEF_P_PERM_THRESHOLD = 0.05
 
-# ── Which analysis sections to run ────────────────────────────────────
-# Pick any subset; sections are independent except that all CSV-based
-# sections share the encoding_results.csv load.
-#   'classification'  -> per-neuron model assignment CSV + figs 1-2
-#   'focal'           -> focal-model filter + figs 4-5
-#   'dsr_filter'      -> fig 6  (dsr distribution under exclusion filters)
-#   'dsr_co_encoding' -> fig 7  (dsr co-encoding stratified by count)
-#   'state_removal'   -> figs 8-9 (dsr after removing state encoders)
-#   'coefficients'    -> figs 10-13 (DSR coefficient analysis from
-#                        diagnostics.pkl — independent of the CSV)
-#   'brain_lag'       -> fig 14, 16 (DSR peak-lag glass-brain + 3D maps;
-#                        diagnostics.pkl + MNI table — independent of CSV)
-#   'r_dist_no_state' -> fig 17 (r-distribution grid for every non-state
-#                        model, after dropping state-significant neurons)
-SECTIONS_TO_RUN = ['focal', 'r_dist_no_state', 'state_removal']
 
-_run_classification  = 'classification'  in SECTIONS_TO_RUN
-_run_focal           = 'focal'           in SECTIONS_TO_RUN
-_run_dsr_filter      = 'dsr_filter'      in SECTIONS_TO_RUN
-_run_dsr_co_encoding = 'dsr_co_encoding' in SECTIONS_TO_RUN
-_run_state_removal   = 'state_removal'   in SECTIONS_TO_RUN
-_run_coefficients    = 'coefficients'    in SECTIONS_TO_RUN
-_run_brain_lag       = 'brain_lag'       in SECTIONS_TO_RUN
-_run_r_dist_no_state = 'r_dist_no_state' in SECTIONS_TO_RUN
+SECTIONS_TO_RUN = ['sparse_examples']
+
+_run_classification  = 'classification'    in SECTIONS_TO_RUN
+_run_focal           = 'focal'             in SECTIONS_TO_RUN
+_run_dsr_filter      = 'dsr_filter'        in SECTIONS_TO_RUN
+_run_dsr_co_encoding = 'dsr_co_encoding'   in SECTIONS_TO_RUN
+_run_state_removal   = 'state_removal'     in SECTIONS_TO_RUN
+_run_coefficients    = 'coefficients'      in SECTIONS_TO_RUN
+_run_brain_lag       = 'brain_lag'         in SECTIONS_TO_RUN
+_run_r_dist_no_state = 'r_dist_no_state'   in SECTIONS_TO_RUN
+_run_overlap         = 'overlap_diagrams'  in SECTIONS_TO_RUN
+_run_exclusion       = 'exclusion_variants' in SECTIONS_TO_RUN
+_run_gradient        = 'gradient'          in SECTIONS_TO_RUN
+_run_sparse          = 'sparse_examples'   in SECTIONS_TO_RUN
 _need_csv = any([_run_classification, _run_focal, _run_dsr_filter,
                  _run_dsr_co_encoding, _run_state_removal,
-                 _run_r_dist_no_state])
+                 _run_r_dist_no_state, _run_overlap, _run_exclusion])
 print(f"Sections to run: {SECTIONS_TO_RUN}")
 
 RUN_TAG = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -146,6 +160,339 @@ if _run_r_dist_no_state:
     plot_r_distribution_grid(keep, models_no_state, save_path=_fig17_path,
                              alpha=ALPHA_PERM, reg_alpha=_reg_alpha)
     print(f"Wrote {_fig17_path}")
+
+
+# ── Fig 18: Overlap diagrams for perm-sig DSR / location / state / phase ──
+# Two complementary views per ROI:
+#   (a) 3-set Venn over DSR, state, phase  (the three theoretical rivals)
+#   (b) 4-set UpSet-style plot incl. location
+# The Venn falls back to a hand-drawn version when matplotlib_venn is missing.
+OVERLAP_ROIS = TARGET_ROIS
+OVERLAP_MODELS = ['dsr', 'location', 'state', 'phase']
+
+
+def _sig_neurons(df_roi, model, alpha=ALPHA_PERM):
+    """Set of neurons in `df_roi` with `p_perm < alpha` for `model`."""
+    return set(df_roi.loc[(df_roi['model'] == model)
+                          & (df_roi['p_perm'] < alpha), 'neuron'])
+
+
+def plot_3set_venn(set_dict, save_path, title=''):
+    """3-set Venn diagram (matplotlib_venn if available, else fallback).
+
+    `set_dict` is an ordered dict mapping label -> set of items.
+    """
+    if len(set_dict) != 3:
+        raise ValueError("plot_3set_venn expects exactly 3 sets")
+    labels = list(set_dict.keys())
+    sets = list(set_dict.values())
+    try:
+        from matplotlib_venn import venn3
+        fig, ax = plt.subplots(figsize=(5.5, 5.0))
+        v = venn3(sets, set_labels=labels, ax=ax)
+        # Use bigger fonts on the set labels + counts.
+        for text in (v.set_labels or []):
+            if text is not None:
+                text.set_fontsize(12)
+                text.set_fontweight('bold')
+        for text in (v.subset_labels or []):
+            if text is not None:
+                text.set_fontsize(11)
+        ax.set_title(title, fontsize=13, fontweight='bold')
+    except ImportError:
+        # Hand-drawn fallback: three overlapping circles with counts in
+        # each of the 7 non-empty regions.
+        A, B, C = sets
+        only_A = len(A - B - C)
+        only_B = len(B - A - C)
+        only_C = len(C - A - B)
+        AB = len((A & B) - C)
+        AC = len((A & C) - B)
+        BC = len((B & C) - A)
+        ABC = len(A & B & C)
+        fig, ax = plt.subplots(figsize=(5.5, 5.0))
+        circ_kwargs = dict(alpha=0.35, fill=True, edgecolor='black', lw=1.5)
+        from matplotlib.patches import Circle
+        ax.add_patch(Circle((-0.6, 0.4), 1.2, color='tab:blue',
+                            **circ_kwargs))
+        ax.add_patch(Circle((0.6, 0.4), 1.2, color='tab:orange',
+                            **circ_kwargs))
+        ax.add_patch(Circle((0.0, -0.6), 1.2, color='tab:green',
+                            **circ_kwargs))
+        coords = {
+            'only_A': (-1.4, 0.6, only_A),
+            'only_B': (1.4, 0.6, only_B),
+            'only_C': (0.0, -1.5, only_C),
+            'AB':     (0.0, 1.0, AB),
+            'AC':     (-0.9, -0.5, AC),
+            'BC':     (0.9, -0.5, BC),
+            'ABC':    (0.0, 0.0, ABC),
+        }
+        for x, y, n in coords.values():
+            ax.text(x, y, str(n), ha='center', va='center',
+                    fontsize=11, fontweight='bold')
+        ax.text(-1.6, 1.7, labels[0], ha='center', va='center',
+                fontsize=12, fontweight='bold', color='tab:blue')
+        ax.text(1.6, 1.7, labels[1], ha='center', va='center',
+                fontsize=12, fontweight='bold', color='tab:orange')
+        ax.text(0.0, -2.1, labels[2], ha='center', va='center',
+                fontsize=12, fontweight='bold', color='tab:green')
+        ax.set_xlim(-2.5, 2.5)
+        ax.set_ylim(-2.5, 2.5)
+        ax.set_aspect('equal')
+        ax.axis('off')
+        ax.set_title(title, fontsize=13, fontweight='bold')
+        print("  [venn] matplotlib_venn not installed — using fallback.")
+    fig.tight_layout()
+    fig.savefig(save_path, dpi=200, bbox_inches='tight')
+    fig.savefig(save_path.replace('.png', '.svg'), bbox_inches='tight')
+    plt.close(fig)
+    print(f"Wrote {save_path} (+ .svg)")
+
+
+def plot_upset(set_dict, save_path, title='', base_fontsize=12):
+    """Minimal UpSet-style plot using matplotlib only.
+
+    Top panel: bar chart of intersection sizes (sorted descending).
+    Bottom panel: dot matrix indicating which sets are in each intersection.
+    Empty intersections are dropped.
+    """
+    keys = list(set_dict.keys())
+    n_sets = len(keys)
+    universe = set().union(*set_dict.values())
+    if not universe:
+        print(f"  [upset] empty universe — skipping {save_path}")
+        return
+
+    counts = {}
+    for item in universe:
+        pattern = tuple(item in set_dict[k] for k in keys)
+        counts[pattern] = counts.get(pattern, 0) + 1
+    rows = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
+    n_inter = len(rows)
+
+    fig, (ax_bar, ax_mat) = plt.subplots(
+        2, 1,
+        figsize=(max(7.5, 0.55 * n_inter + 3.5), 5.5),
+        gridspec_kw={'height_ratios': [3, 1.4]},
+        constrained_layout=True, sharex=True,
+    )
+
+    x = np.arange(n_inter)
+    counts_arr = np.array([c for _, c in rows], dtype=int)
+    ax_bar.bar(x, counts_arr, color='tab:blue', edgecolor='none')
+    for xi, c in zip(x, counts_arr):
+        ax_bar.text(xi, c + max(counts_arr.max() * 0.02, 0.5),
+                    str(int(c)),
+                    ha='center', va='bottom',
+                    fontsize=base_fontsize - 1)
+    ax_bar.set_ylabel('# neurons', fontsize=base_fontsize)
+    ax_bar.set_title(title, fontsize=base_fontsize + 2, fontweight='bold')
+    ax_bar.set_xticks([])
+    ax_bar.spines[['top', 'right']].set_visible(False)
+    ax_bar.tick_params(axis='y', labelsize=base_fontsize - 1)
+    ax_bar.set_ylim(0, counts_arr.max() * 1.15)
+
+    for j, (pattern, _) in enumerate(rows):
+        rows_on = [i for i, on in enumerate(pattern) if on]
+        for i in range(n_sets):
+            color = 'black' if pattern[i] else '0.85'
+            ax_mat.scatter(j, i, s=95, color=color, zorder=2)
+        if len(rows_on) > 1:
+            ax_mat.plot([j, j], [rows_on[0], rows_on[-1]],
+                        color='black', lw=1.6, zorder=1)
+    ax_mat.set_xticks([])
+    ax_mat.set_yticks(range(n_sets))
+    ax_mat.set_yticklabels(keys, fontsize=base_fontsize)
+    ax_mat.set_xlim(-0.5, n_inter - 0.5)
+    ax_mat.set_ylim(n_sets - 0.5, -0.5)
+    ax_mat.spines[['top', 'right', 'bottom']].set_visible(False)
+    ax_mat.tick_params(axis='x', length=0)
+    ax_mat.tick_params(axis='y', length=0)
+
+    fig.savefig(save_path, dpi=200, bbox_inches='tight')
+    fig.savefig(save_path.replace('.png', '.svg'), bbox_inches='tight')
+    plt.close(fig)
+    print(f"Wrote {save_path} (+ .svg)")
+
+
+if _run_overlap:
+    print('\n=== Overlap diagrams (perm-sig neurons per model) ===')
+    overlap_dir = os.path.join(OUT_DIR, 'fig18_overlap_diagrams')
+    os.makedirs(overlap_dir, exist_ok=True)
+    overlap_rows = []
+    for roi in OVERLAP_ROIS:
+        df_roi = df_all[df_all['roi'] == roi]
+        sets = {m: _sig_neurons(df_roi, m, alpha=ALPHA_PERM)
+                for m in OVERLAP_MODELS}
+        sizes = {m: len(s) for m, s in sets.items()}
+        print(f"  {roi}: " + ', '.join(f"{m}={n}" for m, n in sizes.items()))
+        overlap_rows.append({'roi': roi, **sizes})
+
+        # Three-set Venn focused on DSR / state / phase.
+        venn_sets = {k: sets[k] for k in ('dsr', 'state', 'phase')
+                     if k in sets}
+        if len(venn_sets) == 3 and any(venn_sets.values()):
+            plot_3set_venn(
+                venn_sets,
+                save_path=os.path.join(
+                    overlap_dir, f'fig18a_venn_dsr_state_phase_{roi}.png'),
+                title=(f'{roi}: perm-sig overlap '
+                       f'(DSR, state, phase; alpha={ALPHA_PERM})'),
+            )
+
+        # UpSet-style 4-set view incl. location.
+        if any(sets.values()):
+            plot_upset(
+                sets,
+                save_path=os.path.join(
+                    overlap_dir, f'fig18b_upset_4sets_{roi}.png'),
+                title=(f'{roi}: perm-sig overlap, 4 models '
+                       f'(alpha={ALPHA_PERM})'),
+            )
+
+    if overlap_rows:
+        overlap_csv = os.path.join(overlap_dir, 'sig_set_sizes.csv')
+        pd.DataFrame(overlap_rows).to_csv(overlap_csv, index=False)
+        print(f"Wrote {overlap_csv}")
+
+
+# ── Fig 19: exclusion-variant grid (generalised fig 17) ───────────────
+# For each exclusion variant — drop perm-sig {state}, {location}, {phase},
+# {all of those}, or nothing — re-render the publication-style figures from
+# encoding_analysis_simple on the surviving neurons and note how many cells
+# were excluded per ROI.  The dropped model is also removed from the plot
+# axes when we exclude its perm-sig neurons (otherwise that column is
+# trivially biased).
+EXCLUSION_VARIANTS = {
+    'no_exclusion':   [],
+    'minus_state':    ['state'],
+    'minus_location': ['location'],
+    'minus_phase':    ['phase'],
+    'minus_all':      ['state', 'location', 'phase'],
+}
+
+
+def apply_exclusion(df, exclude_models, alpha=ALPHA_PERM):
+    """Drop every row of any neuron that is perm-sig in any `exclude_models`.
+
+    Returns (filtered_df, excluded_per_roi: dict, total_excluded_neurons: set).
+    """
+    excluded = set()
+    for m in exclude_models:
+        excluded |= set(df.loc[(df['model'] == m)
+                               & (df['p_perm'] < alpha), 'neuron'])
+    filtered = df[~df['neuron'].isin(excluded)].copy()
+    excl_per_roi = (df[df['neuron'].isin(excluded)]
+                    .groupby('roi')['neuron'].nunique().to_dict())
+    return filtered, excl_per_roi, excluded
+
+
+if _run_exclusion:
+    from mc.plotting.cell_results import (
+        plot_r_distribution_grid,
+        plot_roi_model_heatmap,
+        plot_significance_proportion,
+        compute_roi_model_tstats,
+        bh_fdr,
+        CANONICAL_ROI_ORDER,
+        CANONICAL_ENC_MODEL_ORDER,
+    )
+
+    _reg_alpha = None
+    try:
+        with open(os.path.join(RESULT_DIR, 'config.json')) as _cf:
+            _reg_alpha = json.load(_cf).get('ALPHA')
+    except Exception:
+        pass
+
+    exclusion_root = os.path.join(OUT_DIR, 'fig19_exclusion_variants')
+    os.makedirs(exclusion_root, exist_ok=True)
+    rois_in_data = sorted(df_all['roi'].dropna().unique().tolist())
+
+    exclusion_summary = []
+    for variant_name, exclude_models in EXCLUSION_VARIANTS.items():
+        filtered, excl_per_roi, excluded_neurons = apply_exclusion(
+            df_all, exclude_models, alpha=ALPHA_PERM)
+
+        # Drop the excluded model(s) from the plotted axes — that column
+        # would be trivially zeroed-out by the exclusion.
+        models_remain = [m for m in MODELS if m not in exclude_models]
+        filtered_plot = filtered[filtered['model'].isin(models_remain)].copy()
+
+        variant_dir = os.path.join(exclusion_root, variant_name)
+        os.makedirs(variant_dir, exist_ok=True)
+
+        print(f"\n--- Exclusion variant: {variant_name} "
+              f"(drop perm-sig: {exclude_models or 'none'}) ---")
+        print(f"  excluded {len(excluded_neurons)} unique neurons; "
+              f"{filtered_plot['neuron'].nunique()} remain.")
+        rows_for_csv = []
+        for roi in rois_in_data:
+            n_excl = int(excl_per_roi.get(roi, 0))
+            n_keep = int(filtered_plot
+                         .loc[filtered_plot['roi'] == roi, 'neuron']
+                         .nunique())
+            n_orig = int(df_all
+                         .loc[df_all['roi'] == roi, 'neuron']
+                         .nunique())
+            print(f"    {roi}: -{n_excl} excluded, {n_keep}/{n_orig} kept")
+            rows_for_csv.append({
+                'variant':           variant_name,
+                'exclusion_models':  ';'.join(exclude_models)
+                                     if exclude_models else 'none',
+                'roi':               roi,
+                'n_original':        n_orig,
+                'n_excluded':        n_excl,
+                'n_remaining':       n_keep,
+                'frac_excluded':     (n_excl / n_orig) if n_orig else np.nan,
+            })
+        pd.DataFrame(rows_for_csv).to_csv(
+            os.path.join(variant_dir, 'exclusion_counts.csv'), index=False)
+        exclusion_summary.extend(rows_for_csv)
+
+        # 1. r-distribution grid.
+        plot_r_distribution_grid(
+            filtered_plot, models_remain,
+            save_path=os.path.join(variant_dir, 'r_distribution_grid.png'),
+            alpha=ALPHA_PERM, reg_alpha=_reg_alpha,
+        )
+
+        # 2. ROI × model t-stat heatmap (same style as the publication run).
+        stats_df = compute_roi_model_tstats(
+            filtered_plot, models=models_remain)
+        if not stats_df.empty:
+            stats_df.to_csv(
+                os.path.join(variant_dir, 'roi_model_tstats.csv'),
+                index=False)
+            plot_roi_model_heatmap(
+                stats_df,
+                models=CANONICAL_ENC_MODEL_ORDER,
+                rois=CANONICAL_ROI_ORDER,
+                value_col='t', annot_col='p_t', sig_col='p_t',
+                n_col='n_cells', alpha=0.05,
+                value_label='t-statistic (mean_r > 0)',
+                save_path=os.path.join(
+                    variant_dir, 'roi_model_tstat_heatmap.png'),
+                title=(f'ROI × model — t-test mean_r > 0  '
+                       f'({variant_name})'),
+                base_fontsize=15,
+            )
+
+        # 3. Significant-proportion plot (FDR stars, legend outside).
+        plot_significance_proportion(
+            filtered_plot, models_remain,
+            save_path=os.path.join(
+                variant_dir, 'significant_proportion.png'),
+            alpha=ALPHA_PERM, reg_alpha=_reg_alpha,
+            use_fdr=True, legend_outside=True,
+            model_order=CANONICAL_ENC_MODEL_ORDER,
+        )
+
+    pd.DataFrame(exclusion_summary).to_csv(
+        os.path.join(exclusion_root, 'exclusion_counts_all_variants.csv'),
+        index=False)
+    print(f"\nWrote per-variant outputs + summary -> {exclusion_root}")
 
 
 # ── Per-neuron classification ─────────────────────────────────────────
@@ -1908,7 +2255,7 @@ if _run_coefficients:
 # fig14 — peak-lag glass brains (whole + ACC) and 3D mesh, mean & best fold.
 # fig15 — lag peakedness per ROI (box plots), both selections.
 # fig16 — ACC only: peak lag vs MNI z (dorsal-ventral axis), both selections.
-if _run_brain_lag:
+if _run_brain_lag or _run_gradient:
     from mc.plotting.cell_results import (plot_peaklag_glassbrain,
                                           plot_peaklag_3d_mesh,
                                           make_brain_anatomy_figure)
@@ -1919,7 +2266,7 @@ if _run_brain_lag:
     ACC_ROI_LABELS        = ('ACC',)               # glass-brain ACC zoom
     ACC_DV_ROI_LABELS     = ('ACC', 'ventral_ACC')  # dorsal-ventral analysis
     BRAIN_LAG_P_THRESHOLD = 0.05      # p_perm cutoff for the 'psig' selection
-    BRAIN_JITTER_MM       = 2.0       # spread cells sharing an MNI coordinate
+    BRAIN_JITTER_MM       = 10       # spread cells sharing an MNI coordinate
     GLASS_MARKER_SIZE     = 3         # small, so individual cells are visible
 
     # Coefficient-sign mode. The lag post-hoc analysis must know whether the
@@ -2121,73 +2468,990 @@ if _run_brain_lag:
     lag_tbl.drop(columns=['coefs']).to_csv(
         os.path.join(OUT_DIR, 'fig14_dsr_peaklag_table.csv'), index=False)
 
-    # Standard anatomical background (transparent brain + grey hippocampus +
-    # dark-grey EC + grey ACC), built once and reused for every 3D mesh.
-    print("  building anatomical brain background ...")
-    BRAIN_BG_FIG = make_brain_anatomy_figure()
-
     SELECTIONS = {
         'psig':    (lag_tbl['p_perm'] < BRAIN_LAG_P_THRESHOLD,
                     f'p_perm<{BRAIN_LAG_P_THRESHOLD}'),
         'poscorr': (lag_tbl['mean_r'] >= 0, 'mean_r>=0'),
     }
 
-    # ── fig14: peak-lag glass brains + 3D mesh ───────────────────────
-    # Marker hue = peak lag; marker opacity = effect strength (mean_r).
-    for coef_key, lag_col in [('mean', 'peak_lag_mean'),
-                              ('bestfold', 'peak_lag_best')]:
+    if _run_brain_lag:
+        # Standard anatomical background (transparent brain + grey hippocampus +
+        # dark-grey EC + grey ACC), built once and reused for every 3D mesh.
+        print("  building anatomical brain background ...")
+        BRAIN_BG_FIG = make_brain_anatomy_figure()
+
+        # ── fig14: peak-lag glass brains + 3D mesh ───────────────────────
+        # Marker hue = peak lag; marker opacity = effect strength (mean_r).
+        for coef_key, lag_col in [('mean', 'peak_lag_mean'),
+                                  ('bestfold', 'peak_lag_best')]:
+            for sel_key, (sel_mask, sel_desc) in SELECTIONS.items():
+                sub_tbl = lag_tbl[sel_mask].dropna(subset=[lag_col])
+                tag  = f'{sel_key}_{coef_key}'
+                desc = f'{sel_desc}, {coef_key} coefs'
+                if sub_tbl.empty:
+                    print(f"  [{tag}] no neurons — skipped.")
+                    continue
+
+                plotted  = jitter_duplicate_coords(sub_tbl)
+                coords   = plotted[['px', 'py', 'pz']].to_numpy()
+                lags     = plotted[lag_col].to_numpy()
+                strength = plotted['mean_r'].to_numpy()
+
+                # Whole-brain glass brain (3 orthogonal views).
+                plot_peaklag_glassbrain(
+                    coords, lags,
+                    os.path.join(OUT_DIR, f'fig14_glass_whole_{tag}.png'),
+                    title=f'DSR peak lag — whole brain ({desc}, '
+                          f'n={len(plotted)})',
+                    strengths=strength,
+                    n_lags=DSR_N_LAGS, marker_size=GLASS_MARKER_SIZE)
+
+                # ACC-only glass brain.
+                acc = plotted[plotted['roi'].isin(ACC_ROI_LABELS)]
+                plot_peaklag_glassbrain(
+                    acc[['px', 'py', 'pz']].to_numpy(),
+                    acc[lag_col].to_numpy(),
+                    os.path.join(OUT_DIR, f'fig14_glass_acc_{tag}.png'),
+                    title=f'DSR peak lag — ACC ({desc}, n={len(acc)})',
+                    strengths=acc['mean_r'].to_numpy(),
+                    n_lags=DSR_N_LAGS, marker_size=GLASS_MARKER_SIZE)
+
+                # Interactive 3D mesh on the anatomical background.
+                plot_peaklag_3d_mesh(
+                    coords, lags,
+                    os.path.join(OUT_DIR, f'fig14_3d_whole_{tag}.html'),
+                    title=f'DSR peak lag — 3D ({desc}, n={len(plotted)})',
+                    strengths=strength,
+                    n_lags=DSR_N_LAGS, bg_fig=BRAIN_BG_FIG)
+
+        # ── fig16: ACC peak lag vs dorsal-ventral (z) axis ───────────────
         for sel_key, (sel_mask, sel_desc) in SELECTIONS.items():
-            sub_tbl = lag_tbl[sel_mask].dropna(subset=[lag_col])
-            tag  = f'{sel_key}_{coef_key}'
-            desc = f'{sel_desc}, {coef_key} coefs'
-            if sub_tbl.empty:
-                print(f"  [{tag}] no neurons — skipped.")
+            acc_dv = lag_tbl[sel_mask & lag_tbl['roi'].isin(ACC_DV_ROI_LABELS)]
+            acc_dv = acc_dv.dropna(subset=['peak_lag_mean', 'MNI_z'])
+            if len(acc_dv) < 4:
+                print(f"  fig16 [{sel_key}]: <4 ACC neurons — skipped.")
                 continue
+            plot_acc_lag_vs_z(
+                acc_dv,
+                os.path.join(OUT_DIR, f'fig16_acc_lag_vs_z_{sel_key}.png'),
+                title=f'ACC — DSR peak lag vs dorsal-ventral position '
+                      f'({sel_desc}, mean coefs)')
 
-            plotted  = jitter_duplicate_coords(sub_tbl)
-            coords   = plotted[['px', 'py', 'pz']].to_numpy()
-            lags     = plotted[lag_col].to_numpy()
-            strength = plotted['mean_r'].to_numpy()
+    # ── figs 20-22: gradient (per-cell lag distribution) analyses ────
+    if _run_gradient:
+        # Settings local to this section.
+        GRADIENT_MASK_PATH = (
+            '/Users/xpsy1114/Documents/projects/multiple_clocks/data/'
+            'masks/gradient_mask_bin.ni.gz'
+        )
+        # "Near-peak" lags are those within `peak_threshold * max_strength`
+        # of the cell's peak (default 0.9 -> within 10% of the peak).
+        GRADIENT_PEAK_THRESHOLD = 0.9
+        # Discrete colour bins, requested explicitly:
+        #   lags 0-2 = bright yellow, 3-5 = dark yellow,
+        #   lags 6-8 = orange,        9-11 = red.
+        GRADIENT_LAG_COLORS = [
+            ('#fff200', range(0, 3)),    # bright yellow
+            ('#e6c200', range(3, 6)),    # dark yellow
+            ('#ff8c1a', range(6, 9)),    # orange
+            ('#e53935', range(9, 12)),   # red
+        ]
+        GRADIENT_OUT_DIR = os.path.join(OUT_DIR, 'fig20_22_gradient')
+        os.makedirs(GRADIENT_OUT_DIR, exist_ok=True)
 
-            # Whole-brain glass brain (3 orthogonal views).
-            plot_peaklag_glassbrain(
-                coords, lags,
-                os.path.join(OUT_DIR, f'fig14_glass_whole_{tag}.png'),
-                title=f'DSR peak lag — whole brain ({desc}, '
-                      f'n={len(plotted)})',
-                strengths=strength,
-                n_lags=DSR_N_LAGS, marker_size=GLASS_MARKER_SIZE)
+        # Helper: full 12-lag strength profile per cell.
+        def _lag_profile(coefs_324, use_abs):
+            arr = reshape_dsr(coefs_324)                 # (9, 3, 12)
+            return (np.abs(arr).mean(axis=(0, 1)) if use_abs
+                    else arr.mean(axis=(0, 1)))           # (12,)
 
-            # ACC-only glass brain.
-            acc = plotted[plotted['roi'].isin(ACC_ROI_LABELS)]
-            plot_peaklag_glassbrain(
-                acc[['px', 'py', 'pz']].to_numpy(),
-                acc[lag_col].to_numpy(),
-                os.path.join(OUT_DIR, f'fig14_glass_acc_{tag}.png'),
-                title=f'DSR peak lag — ACC ({desc}, n={len(acc)})',
-                strengths=acc['mean_r'].to_numpy(),
-                n_lags=DSR_N_LAGS, marker_size=GLASS_MARKER_SIZE)
+        def _lag_color(lag, fallback='0.6'):
+            for color, lags_in_bin in GRADIENT_LAG_COLORS:
+                if int(lag) in lags_in_bin:
+                    return color
+            return fallback
 
-            # Interactive 3D mesh on the anatomical background.
-            plot_peaklag_3d_mesh(
-                coords, lags,
-                os.path.join(OUT_DIR, f'fig14_3d_whole_{tag}.html'),
-                title=f'DSR peak lag — 3D ({desc}, n={len(plotted)})',
-                strengths=strength,
-                n_lags=DSR_N_LAGS, bg_fig=BRAIN_BG_FIG)
+        def _circular_distance(a, b, period=DSR_N_LAGS):
+            d = abs(int(a) - int(b)) % period
+            return min(d, period - d)
 
-    # ── fig16: ACC peak lag vs dorsal-ventral (z) axis ───────────────
-    for sel_key, (sel_mask, sel_desc) in SELECTIONS.items():
-        acc_dv = lag_tbl[sel_mask & lag_tbl['roi'].isin(ACC_DV_ROI_LABELS)]
-        acc_dv = acc_dv.dropna(subset=['peak_lag_mean', 'MNI_z'])
-        if len(acc_dv) < 4:
-            print(f"  fig16 [{sel_key}]: <4 ACC neurons — skipped.")
-            continue
-        plot_acc_lag_vs_z(
-            acc_dv,
-            os.path.join(OUT_DIR, f'fig16_acc_lag_vs_z_{sel_key}.png'),
-            title=f'ACC — DSR peak lag vs dorsal-ventral position '
-                  f'({sel_desc}, mean coefs)')
+        def _voxel_inside_mask(coords_mm, mask_img):
+            """coords: (N, 3) MNI mm. Returns (N,) bool."""
+            data = mask_img.get_fdata()
+            inv = np.linalg.inv(mask_img.affine)
+            out = np.zeros(len(coords_mm), dtype=bool)
+            shape = np.array(data.shape)
+            for i, c in enumerate(coords_mm):
+                v = nib_affines_apply_affine(inv, c)
+                v = np.round(v).astype(int)
+                if (v >= 0).all() and (v < shape).all():
+                    out[i] = bool(data[tuple(v)] > 0)
+            return out
+
+        # Import nib lazily so the script still imports cleanly if nibabel
+        # isn't on the path when other sections run.
+        import nibabel as nib
+        from nibabel.affines import apply_affine as nib_affines_apply_affine
+
+        # Build a per-cell 12-lag profile + summary fields. Same coefficient-
+        # sign mode as fig14/16 (USE_ABS auto-detected above).
+        print('\n=== Gradient analysis (lag-coefficient distribution) ===')
+        profiles = np.stack([
+            _lag_profile(c, USE_ABS) for c in lag_tbl['coefs']
+        ])                                                # (N_cells, 12)
+        # Drop degenerate (all-zero) profiles so the divisions are safe.
+        profile_max = profiles.max(axis=1)
+        ok = profile_max > 1e-12
+        grad_tbl = lag_tbl.loc[ok].copy().reset_index(drop=True)
+        profiles = profiles[ok]
+        profile_max = profile_max[ok]
+
+        # Plot A inputs: number of near-peak lags per cell.
+        near_peak_mask = (profiles
+                          >= GRADIENT_PEAK_THRESHOLD * profile_max[:, None])
+        n_near_peak = near_peak_mask.sum(axis=1).astype(int)
+
+        # Plot B inputs: circular distance argmax -> 2nd-strongest lag.
+        first_peak = profiles.argmax(axis=1)
+        masked = profiles.copy()
+        masked[np.arange(len(masked)), first_peak] = -np.inf
+        second_peak = masked.argmax(axis=1)
+        dist_first_to_second = np.array([
+            _circular_distance(a, b)
+            for a, b in zip(first_peak, second_peak)
+        ], dtype=int)
+
+        grad_tbl['n_near_peak'] = n_near_peak
+        grad_tbl['first_peak'] = first_peak
+        grad_tbl['second_peak'] = second_peak
+        grad_tbl['dist_first_to_second'] = dist_first_to_second
+        grad_tbl_csv_cols = [c for c in grad_tbl.columns if c != 'coefs']
+        grad_tbl[grad_tbl_csv_cols].to_csv(
+            os.path.join(GRADIENT_OUT_DIR, 'gradient_per_cell.csv'),
+            index=False)
+
+        # ── fig 20: distribution of n_near_peak per ROI ──────────────
+        rois_present = sorted(grad_tbl['roi'].dropna().unique().tolist())
+        n_cols = 3
+        n_rows = int(np.ceil(len(rois_present) / n_cols))
+        fig, axes = plt.subplots(
+            n_rows, n_cols,
+            figsize=(3.6 * n_cols + 1.0, 2.6 * n_rows + 1.0),
+            squeeze=False, constrained_layout=True,
+        )
+        bin_edges = np.arange(0.5, DSR_N_LAGS + 1.5)
+        for ax_idx, roi in enumerate(rois_present):
+            ax = axes[ax_idx // n_cols, ax_idx % n_cols]
+            sub = grad_tbl[grad_tbl['roi'] == roi]
+            if sub.empty:
+                ax.axis('off')
+                continue
+            vals = sub['n_near_peak'].to_numpy()
+            ax.hist(vals, bins=bin_edges,
+                    color='steelblue', edgecolor='white', linewidth=0.6)
+            med = float(np.median(vals))
+            ax.axvline(med, color='tab:red', lw=1.4,
+                       label=f'median = {med:.1f}')
+            ax.set_xticks(np.arange(1, DSR_N_LAGS + 1))
+            ax.set_xlabel(f'# lags within '
+                          f'{int(GRADIENT_PEAK_THRESHOLD * 100)}% of peak',
+                          fontsize=10)
+            ax.set_ylabel('# cells', fontsize=10)
+            ax.set_title(f'{roi}  (N={len(vals)})',
+                         fontsize=11, fontweight='bold')
+            ax.tick_params(labelsize=9)
+            ax.spines[['top', 'right']].set_visible(False)
+            ax.legend(fontsize=9, frameon=False)
+        for k in range(len(rois_present), n_rows * n_cols):
+            axes[k // n_cols, k % n_cols].axis('off')
+        fig.suptitle(
+            f'Number of near-peak lags per cell  '
+            f'(threshold = {GRADIENT_PEAK_THRESHOLD:g} × peak)',
+            fontsize=13, fontweight='bold',
+        )
+        fig20_path = os.path.join(GRADIENT_OUT_DIR,
+                                  'fig20_near_peak_count_per_roi.png')
+        fig.savefig(fig20_path, dpi=200, bbox_inches='tight')
+        fig.savefig(fig20_path.replace('.png', '.svg'), bbox_inches='tight')
+        plt.close(fig)
+        print(f"Wrote {fig20_path} (+ .svg)")
+
+        # ── fig 21: circular distance argmax -> 2nd-strongest lag ─────
+        fig, ax = plt.subplots(figsize=(max(6, 0.8 * len(rois_present) + 2),
+                                         4.5),
+                                constrained_layout=True)
+        data_by_roi = [
+            grad_tbl.loc[grad_tbl['roi'] == r, 'dist_first_to_second']
+            .to_numpy()
+            for r in rois_present
+        ]
+        positions = np.arange(len(rois_present))
+        bp = ax.boxplot(data_by_roi, positions=positions,
+                        widths=0.6, showfliers=False, patch_artist=True)
+        for patch in bp['boxes']:
+            patch.set_facecolor((0.35, 0.55, 0.8, 0.45))
+            patch.set_edgecolor('0.3')
+        for median in bp['medians']:
+            median.set_color('tab:red')
+            median.set_linewidth(1.6)
+        # Jittered raw points on top.
+        rng = np.random.default_rng(0)
+        for i, vals in enumerate(data_by_roi):
+            if vals.size == 0:
+                continue
+            xs = positions[i] + rng.uniform(-0.18, 0.18, size=vals.size)
+            ax.scatter(xs, vals, s=10, color='tab:blue',
+                       alpha=0.45, edgecolor='none')
+        # Annotate mean per ROI just above each box.
+        max_y = max([(float(v.max()) if len(v) else 0)
+                     for v in data_by_roi] + [DSR_N_LAGS // 2])
+        for i, vals in enumerate(data_by_roi):
+            if vals.size == 0:
+                continue
+            m = float(np.mean(vals))
+            ax.text(positions[i], max_y + 0.4,
+                    f'µ={m:.2f}\nn={len(vals)}',
+                    ha='center', va='bottom', fontsize=9)
+        ax.set_xticks(positions)
+        ax.set_xticklabels(rois_present, rotation=30, ha='right', fontsize=10)
+        ax.set_ylabel('circular |argmax − 2nd-strongest lag|',
+                      fontsize=11)
+        ax.set_title('Distance from peak lag to second-strongest lag, '
+                     'per ROI',
+                     fontsize=12, fontweight='bold')
+        ax.set_ylim(-0.5, max(max_y + 1.5, DSR_N_LAGS // 2 + 1))
+        ax.tick_params(labelsize=10)
+        ax.spines[['top', 'right']].set_visible(False)
+        fig21_path = os.path.join(
+            GRADIENT_OUT_DIR, 'fig21_peak_to_second_distance_per_roi.png')
+        fig.savefig(fig21_path, dpi=200, bbox_inches='tight')
+        fig.savefig(fig21_path.replace('.png', '.svg'), bbox_inches='tight')
+        plt.close(fig)
+        print(f"Wrote {fig21_path} (+ .svg)")
+
+        # ── fig 22: discrete-colour peak-lag glass-brain ─────────────
+        # All cells with mean_r > 0, coloured by peak-lag bin.
+        positive = grad_tbl[grad_tbl['mean_r'] > 0].copy()
+        if not positive.empty:
+            jittered = jitter_duplicate_coords(positive)
+            coords_all = jittered[['px', 'py', 'pz']].to_numpy()
+            lags_all   = jittered['first_peak'].to_numpy()
+            color_all  = [_lag_color(int(l)) for l in lags_all]
+
+            def _plot_discrete_lag_glassbrain(coords, colors_list,
+                                              lags_arr, save_path, title):
+                from nilearn import plotting
+                if len(coords) == 0:
+                    print(f"  skip {save_path}: no cells.")
+                    return
+                display = plotting.plot_glass_brain(
+                    None, display_mode='ortho', title=title,
+                    black_bg=False, plot_abs=False)
+                display.add_markers(
+                    coords, marker_color=colors_list,
+                    marker_size=GLASS_MARKER_SIZE,
+                )
+                fig = plt.gcf()
+                # Discrete-bin legend (4 bins).
+                handles = [
+                    plt.Line2D(
+                        [0], [0], marker='o', linestyle='',
+                        markersize=8,
+                        markerfacecolor=color,
+                        markeredgecolor='none',
+                        label=f'lag {min(lags_in_bin)}-{max(lags_in_bin)}',
+                    )
+                    for color, lags_in_bin in GRADIENT_LAG_COLORS
+                ]
+                fig.legend(handles=handles, loc='lower center',
+                           ncol=len(handles), frameon=False, fontsize=10,
+                           title='peak lag', handletextpad=0.4,
+                           columnspacing=1.4)
+                fig.savefig(save_path, dpi=200, bbox_inches='tight')
+                fig.savefig(save_path.replace('.png', '.svg'),
+                            bbox_inches='tight')
+                plt.close(fig)
+                print(f"Wrote {save_path} (+ .svg)")
+
+            _plot_discrete_lag_glassbrain(
+                coords_all, color_all, lags_all,
+                save_path=os.path.join(
+                    GRADIENT_OUT_DIR,
+                    'fig22a_peaklag_discrete_glassbrain_all.png'),
+                title=(f'DSR peak lag (discrete bins) — '
+                       f'all mean_r>0 cells (n={len(coords_all)})'),
+            )
+
+            # Mask filter — try the exact path the user provided, falling
+            # back to `.nii.gz` if `.ni.gz` is unusual on their filesystem.
+            mask_candidates = [GRADIENT_MASK_PATH]
+            if GRADIENT_MASK_PATH.endswith('.ni.gz'):
+                mask_candidates.append(
+                    GRADIENT_MASK_PATH.replace('.ni.gz', '.nii.gz'))
+            resolved_mask = next(
+                (p for p in mask_candidates if os.path.isfile(p)), None)
+            if resolved_mask is not None:
+                print(f"  loading gradient mask: {resolved_mask}")
+                mask_img = nib.load(resolved_mask)
+                coords_mni = positive[['MNI_x', 'MNI_y', 'MNI_z']].to_numpy()
+                in_mask = _voxel_inside_mask(coords_mni, mask_img)
+                n_in = int(in_mask.sum())
+                print(f"  {n_in}/{len(in_mask)} cells inside mask.")
+                positive_masked = positive[in_mask].copy()
+
+                if not positive_masked.empty:
+                    jittered_m = jitter_duplicate_coords(positive_masked)
+                    coords_m  = jittered_m[['px', 'py', 'pz']].to_numpy()
+                    lags_m    = jittered_m['first_peak'].to_numpy()
+                    colors_m  = [_lag_color(int(l)) for l in lags_m]
+                    _plot_discrete_lag_glassbrain(
+                        coords_m, colors_m, lags_m,
+                        save_path=os.path.join(
+                            GRADIENT_OUT_DIR,
+                            'fig22b_peaklag_discrete_glassbrain_mask.png'),
+                        title=(f'DSR peak lag (discrete bins) — '
+                               f'cells in gradient mask (n={n_in})'),
+                    )
+
+                    # ── fig 23: mask-only fig16 variants ─────────────
+                    # (a) p_perm threshold; (b) all mean_r>0 with alpha=r.
+                    mask_dv = positive_masked.dropna(
+                        subset=['peak_lag_mean', 'MNI_z'])
+                    mask_dv_psig = mask_dv[
+                        mask_dv['p_perm'] < BRAIN_LAG_P_THRESHOLD]
+                    if len(mask_dv_psig) >= 4:
+                        plot_acc_lag_vs_z(
+                            mask_dv_psig,
+                            os.path.join(
+                                GRADIENT_OUT_DIR,
+                                'fig23a_mask_lag_vs_z_psig.png'),
+                            title=(f'Gradient mask — peak lag vs MNI z  '
+                                   f'(p_perm<{BRAIN_LAG_P_THRESHOLD}, '
+                                   f'n={len(mask_dv_psig)})'),
+                        )
+                    else:
+                        print(f"  fig23a: <4 cells passing p_perm filter "
+                              f"in mask — skipped.")
+
+                    if len(mask_dv) >= 4:
+                        plot_acc_lag_vs_z(
+                            mask_dv,
+                            os.path.join(
+                                GRADIENT_OUT_DIR,
+                                'fig23b_mask_lag_vs_z_poscorr.png'),
+                            title=(f'Gradient mask — peak lag vs MNI z  '
+                                   f'(mean_r>0, opacity = mean_r, '
+                                   f'n={len(mask_dv)})'),
+                        )
+                    else:
+                        print(f"  fig23b: <4 cells with mean_r>0 in mask "
+                              f"— skipped.")
+                else:
+                    print("  fig22b/23: no cells inside mask — skipped.")
+            else:
+                print(f"  gradient mask not found "
+                      f"(tried {', '.join(mask_candidates)}) — "
+                      f"skipped figs 22b, 23.")
+        else:
+            print("  no cells with mean_r>0 — gradient glass-brains skipped.")
+
+
+# ── Fig 24: sparse-encoding DSR examples with trajectory overlay ──────
+# For each perm-sig DSR neuron, score sparseness on the best-fold
+# coefficient vector (few coefficients dominate the L1 mass). Render the
+# sparsest N per ROI as a publication-style figure showing:
+#   * perm-null histogram
+#   * actual vs predicted firing trace (held-out fold)
+#   * locations bar (subject's actual trajectory for that config)
+#   * phases bar (e/m/l repeating 4 times)
+#   * Time-lag bar (the strongest-coefficient regressor's activation)
+# The top-5 coefficients (location, phase, lag, value) per chosen cell are
+# written to a CSV so the figure annotations can be cross-checked.
+if _run_sparse:
+    print('\n=== Sparse DSR example cells ===')
+
+    # Settings — edit to change which ROIs and how many cells per ROI.
+    SPARSE_DSR_TARGET_ROIS = ['ACC', 'HC_anterior', 'HC_posterior',
+                              'EC', 'medialOFC', 'PCC', 'Visual',
+                              'Parahippocampal', 'medial_CC']
+    SPARSE_DSR_N_PER_ROI = 5
+    SPARSE_DSR_N_TOP_COEFS_TO_REPORT = 5
+    # |coef| >= ACTIVE_THRESHOLD * max(|coef|) is counted as "active".
+    SPARSE_DSR_ACTIVE_THRESHOLD = 0.10
+    SPARSE_DSR_P_PERM_ALPHA = 0.05
+    SPARSE_DSR_LAG_HIGHLIGHT_THRESHOLD = 0.50   # fraction of regressor peak
+    PHASE_NAMES = ['early', 'middle', 'late']
+
+    # Location palette (matches the 9-tile blue / teal / green grid the user
+    # has been using elsewhere): rows 1-3 = blues, 4-6 = teals, 7-9 = greens.
+    LOCATION_COLORS = {
+        1: '#1f6ea8', 2: '#a4c9e4', 3: '#d8e5ec',   # blues  (dark -> light)
+        4: '#1d4a52', 5: '#728e91', 6: '#bdd4c4',   # teals
+        7: '#0f3a30', 8: '#447a62', 9: '#92c197',   # greens
+    }
+    # Locations whose tile is dark enough that the digit should be white.
+    LOCATION_TEXT_LIGHT = {1, 4, 5, 7, 8}
+
+    # Phases drawn in shades of burgundy (early = pale, late = darkest).
+    PHASE_COLORS = {0: '#e6b3b3', 1: '#a83838', 2: '#5e1313'}
+    PHASE_TEXT_LIGHT = {1, 2}
+
+    PEAK_FIRING_COLOR = '#c41e3a'
+    TARGET_OUTLINE_COLOR = '#c41e3a'
+    ARROW_COLOR = '#1f4e79'
+
+    SPARSE_OUT_DIR = os.path.join(OUT_DIR, 'fig24_sparse_dsr_examples')
+    os.makedirs(SPARSE_OUT_DIR, exist_ok=True)
+
+    # Data directory for behavioural data (mode locations per config).
+    SPARSE_DATA_DIR = (
+        '/Users/xpsy1114/Documents/projects/multiple_clocks/data/'
+        'ephys_humans/derivatives'
+    )
+
+    # ``mc`` is not always imported by this script. Import lazily here.
+    import sys
+    sys.path.insert(0, '/Users/xpsy1114/Documents/projects/multiple_clocks/'
+                       'multiple_clocks_repo')
+    import mc
+    from mc.plotting.cell_results import _draw_perm_hist
+
+    # Reuse a previously-loaded diagnostics dict if available.
+    try:
+        sparse_diag = _diag_brain
+    except NameError:
+        try:
+            sparse_diag = _diagnostics
+        except NameError:
+            diag_pkl = os.path.join(RESULT_DIR, 'diagnostics.pkl')
+            print(f"  loading diagnostics: {diag_pkl}")
+            with open(diag_pkl, 'rb') as f:
+                sparse_diag = pickle.load(f)
+
+    SPARSE_DSR_MODEL = 'dsr'
+
+    def _decode_coef_idx(idx, n_phases=DSR_N_PHASES, n_lags=DSR_N_LAGS):
+        loc = idx // (n_phases * n_lags)
+        rem = idx % (n_phases * n_lags)
+        phase = rem // n_lags
+        lag = rem % n_lags
+        return int(loc), int(phase), int(lag)
+
+    def _sparseness(coefs, threshold=SPARSE_DSR_ACTIVE_THRESHOLD):
+        a = np.abs(np.asarray(coefs, dtype=float))
+        if a.max() <= 1e-12:
+            return None
+        sum_a = float(a.sum())
+        sorted_a = np.sort(a)[::-1]
+        n_active = int((a >= threshold * a.max()).sum())
+        top1_share = float(sorted_a[0] / sum_a) if sum_a > 0 else np.nan
+        top3_share = (float(sorted_a[:3].sum() / sum_a)
+                      if sum_a > 0 and sorted_a.size >= 3 else np.nan)
+        return dict(n_active=n_active, top1_share=top1_share,
+                    top3_share=top3_share, max_abs=float(a.max()))
+
+    # ── Step 1: rank candidates (perm-sig DSR cells, sorted by sparseness)
+    print("  scoring perm-sig DSR cells by sparseness ...")
+    cand_rows = []
+    for sub_str, per_neuron in sparse_diag.items():
+        for n_lab, per_model in per_neuron.items():
+            d = per_model.get(SPARSE_DSR_MODEL)
+            if d is None:
+                continue
+            roi = d.get('roi')
+            p_perm = d.get('p_perm', np.nan)
+            mean_r = d.get('mean_r', np.nan)
+            if not (np.isfinite(p_perm)
+                    and p_perm < SPARSE_DSR_P_PERM_ALPHA):
+                continue
+            r_per_fold = np.asarray(d.get('r_per_fold', []), dtype=float)
+            if r_per_fold.size == 0 or not np.isfinite(r_per_fold).any():
+                continue
+            best_fold = int(np.nanargmax(r_per_fold))
+            coefs_list = d.get('coefs', [])
+            if best_fold >= len(coefs_list):
+                continue
+            best_coefs = np.asarray(coefs_list[best_fold], dtype=float)
+            if best_coefs.size != DSR_N_COEFS:
+                continue
+            sp = _sparseness(best_coefs)
+            if sp is None:
+                continue
+            top_idx = int(np.argmax(np.abs(best_coefs)))
+            top_loc, top_phase, top_lag = _decode_coef_idx(top_idx)
+            
+            configs = d.get('configs', [])
+            cand_rows.append({
+                'subject': sub_str, 'neuron': n_lab, 'roi': roi,
+                'mean_r': float(mean_r), 'p_perm': float(p_perm),
+                'best_fold': best_fold,
+                'best_fold_r': float(r_per_fold[best_fold]),
+                'best_fold_test_config': (configs[best_fold]
+                                          if best_fold < len(configs)
+                                          else None),
+                'n_active':          sp['n_active'],
+                'top1_share':        sp['top1_share'],
+                'top3_share':        sp['top3_share'],
+                'max_abs_coef':      sp['max_abs'],
+                'top_coef_loc_1idx': top_loc + 1,
+                'top_coef_phase':    PHASE_NAMES[top_phase],
+                'top_coef_lag':      top_lag,
+                'top_coef_value':    float(best_coefs[top_idx]),
+            })
+
+    if not cand_rows:
+        print("  no perm-sig DSR cells found — skipping fig 24.")
+    else:
+        cand_df = pd.DataFrame(cand_rows)
+        # Per-ROI ranking: sparsest first (small n_active), then largest top1.
+        ranked = (cand_df.sort_values(
+                    ['roi', 'n_active', 'top1_share'],
+                    ascending=[True, True, False])
+                  .reset_index(drop=True))
+        ranked_csv = os.path.join(SPARSE_OUT_DIR,
+                                  'sparse_candidates_ranked.csv')
+        ranked.to_csv(ranked_csv, index=False)
+        print(f"  ranked {len(ranked)} candidates -> {ranked_csv}")
+
+        # ── Step 2: prepare helpers + per-figure renderer ───────────
+        SUBJECT_DATA_CACHE = {}
+
+        def _get_sub_data(sub_str):
+            if sub_str not in SUBJECT_DATA_CACHE:
+                SUBJECT_DATA_CACHE[sub_str] = (
+                    mc.analyse.helpers_human_cells.load_norm_data(
+                        SPARSE_DATA_DIR, [sub_str]))
+            return SUBJECT_DATA_CACHE[sub_str]
+
+        def _config_locations(sub_str, config_str):
+            """Per-bin (360,) mode location 1..9 for `config_str`."""
+            sd = _get_sub_data(sub_str)
+            key = f'sub-{sub_str}'
+            if key not in sd:
+                return None
+            beh = sd[key]['beh'].copy().reset_index(drop=True)
+            beh['config_str'] = (
+                beh['loc_A'].astype(int).astype(str) + '-' +
+                beh['loc_B'].astype(int).astype(str) + '-' +
+                beh['loc_C'].astype(int).astype(str) + '-' +
+                beh['loc_D'].astype(int).astype(str))
+            idx = beh.index[(beh['config_str'] == config_str)
+                            & (beh['correct'] == 1)].to_numpy()
+            if len(idx) == 0:
+                return None
+            arr = sd[key]['locations'].iloc[idx].to_numpy()
+            mode_vec = stats.mode(arr, axis=0, keepdims=False,
+                                  nan_policy='omit').mode
+            return np.asarray(mode_vec, dtype=int)
+
+        def _draw_location_bar(ax, locations):
+            """Solid colour blocks per consecutive-same-location run."""
+            locs = np.asarray(locations, dtype=int)
+            n = len(locs)
+            i = 0
+            while i < n:
+                j = i
+                while j < n and locs[j] == locs[i]:
+                    j += 1
+                loc = int(locs[i])
+                color = LOCATION_COLORS.get(loc, '#888888')
+                ax.axvspan(i, j, color=color, alpha=1.0, lw=0)
+                if j - i > 8:
+                    text_color = ('white' if loc in LOCATION_TEXT_LIGHT
+                                  else 'black')
+                    ax.text((i + j) / 2, 0.5, str(loc),
+                            ha='center', va='center',
+                            fontsize=11, fontweight='bold',
+                            color=text_color)
+                i = j
+            ax.set_xlim(0, n)
+            ax.set_ylim(0, 1)
+
+        def _draw_phase_bar(ax, n_states=4, n_phases=DSR_N_PHASES,
+                            n_bins=360):
+            """e/m/l × n_states burgundy bar."""
+            bins_per_state = n_bins // n_states
+            bins_per_phase = bins_per_state // n_phases
+            letters = ['e', 'm', 'l']
+            pos = 0
+            for _ in range(n_states):
+                for p in range(n_phases):
+                    end = pos + bins_per_phase
+                    ax.axvspan(pos, end, color=PHASE_COLORS[p],
+                               alpha=1.0, lw=0)
+                    text_color = ('white' if p in PHASE_TEXT_LIGHT
+                                  else 'black')
+                    ax.text((pos + end) / 2, 0.5, letters[p],
+                            ha='center', va='center', fontsize=10,
+                            fontweight='bold', color=text_color)
+                    pos = end
+            ax.set_xlim(0, n_bins)
+            ax.set_ylim(0, 1)
+
+        def _find_target_phase_idx(locations, top_loc_0idx, top_phase_0idx,
+                                   n_total_phases=DSR_N_LAGS,
+                                   n_phases=DSR_N_PHASES, n_bins=360):
+            """Phase position (0..11) where preferred location is in the
+            preferred phase, or None if it never coincides for this config.
+            If multiple positions match, return the latest (best matches the
+            example, where the target is on the right side of the trial)."""
+            bins_per_phase = n_bins // n_total_phases
+            candidates = []
+            locs = np.asarray(locations, dtype=int)
+            for i in range(n_total_phases):
+                if (i % n_phases) != top_phase_0idx:
+                    continue
+                start = i * bins_per_phase
+                end = start + bins_per_phase
+                window = locs[start:end] - 1
+                if window.size == 0:
+                    continue
+                vals, counts = np.unique(window, return_counts=True)
+                mode_loc = int(vals[int(np.argmax(counts))])
+                if mode_loc == top_loc_0idx:
+                    candidates.append(i)
+            return candidates[-1] if candidates else None
+
+        def _find_preferred_location_run(locations, target_phase_idx,
+                                         top_loc_0idx,
+                                         n_total_phases=DSR_N_LAGS,
+                                         n_bins=360):
+            """Return (start, end) of the contiguous run of the preferred
+            location that overlaps with the target phase window. None if
+            absent."""
+            bins_per_phase = n_bins // n_total_phases
+            target_start = target_phase_idx * bins_per_phase
+            target_end = target_start + bins_per_phase
+            locs = np.asarray(locations, dtype=int)
+            is_pref = locs == (top_loc_0idx + 1)
+            if not is_pref.any():
+                return None
+            diffs = np.diff(is_pref.astype(int))
+            starts = np.where(diffs == 1)[0] + 1
+            ends = np.where(diffs == -1)[0] + 1
+            if is_pref[0]:
+                starts = np.r_[0, starts]
+            if is_pref[-1]:
+                ends = np.r_[ends, len(is_pref)]
+            for s, e in zip(starts, ends):
+                if s < target_end and e > target_start:
+                    return int(s), int(e)
+            return None
+
+        def _add_highlight_box(ax, x0, x1, y0=0.0, y1=1.0,
+                               color=TARGET_OUTLINE_COLOR, lw=2.5,
+                               z=10):
+            from matplotlib.patches import Rectangle
+            ax.add_patch(Rectangle(
+                (x0, y0), x1 - x0, y1 - y0,
+                fill=False, edgecolor=color, linewidth=lw, zorder=z,
+            ))
+
+        def _draw_lag_bar_explicit(ax, locations, top_loc_0idx,
+                                   top_phase_0idx, top_lag,
+                                   n_total_phases=DSR_N_LAGS,
+                                   n_phases=DSR_N_PHASES, n_bins=360):
+            """12-box lag grid showing peak firing -> target offset.
+
+            Each box represents one of the 12 phases in the trial. The
+            "Peak firing" box is solid red, the target box (preferred
+            location × phase) is outlined red, and the boxes between are
+            numbered 1..offset where offset = (12 - top_lag).
+
+            Returns (peak_idx, target_idx) so the caller can also outline
+            the target phase on the location and phase bars.
+            """
+            from matplotlib.patches import Rectangle
+            bins_per_phase = n_bins // n_total_phases
+            target_idx = _find_target_phase_idx(
+                locations, top_loc_0idx, top_phase_0idx,
+                n_total_phases=n_total_phases, n_phases=n_phases,
+                n_bins=n_bins)
+
+            # Empty 12-box grid first.
+            for i in range(n_total_phases):
+                start = i * bins_per_phase
+                ax.add_patch(Rectangle(
+                    (start, 0), bins_per_phase, 1,
+                    fill=False, edgecolor='black', lw=0.8))
+
+            if target_idx is None:
+                ax.set_xlim(0, n_bins)
+                ax.set_ylim(-0.9, 1.9)
+                ax.text(
+                    n_bins / 2, -0.55,
+                    f'(preferred loc {top_loc_0idx + 1} × '
+                    f'{PHASE_NAMES[top_phase_0idx]} '
+                    f'not visited in this config)',
+                    ha='center', va='top', fontsize=8, style='italic',
+                    color='0.5')
+                return None, None
+
+            offset = (DSR_N_LAGS - top_lag) % DSR_N_LAGS
+            peak_idx = (target_idx - offset) % n_total_phases
+            peak_start = peak_idx * bins_per_phase
+            target_start = target_idx * bins_per_phase
+
+            # Peak firing: solid red fill.
+            ax.add_patch(Rectangle(
+                (peak_start, 0), bins_per_phase, 1,
+                color=PEAK_FIRING_COLOR, alpha=0.92, lw=0))
+
+            # Target: red outline.
+            ax.add_patch(Rectangle(
+                (target_start, 0), bins_per_phase, 1,
+                fill=False, edgecolor=TARGET_OUTLINE_COLOR,
+                linewidth=2.6, zorder=10))
+
+            # Number the boxes between peak and target (1, 2, ..., offset).
+            for k in range(1, offset + 1):
+                idx_ = (peak_idx + k) % n_total_phases
+                cx = idx_ * bins_per_phase + bins_per_phase / 2
+                ax.text(cx, 0.5, str(k),
+                        ha='center', va='center',
+                        fontsize=11, fontweight='bold', color='black')
+
+            # "Peak firing" label below the peak box.
+            ax.text(peak_start + bins_per_phase / 2, -0.5,
+                    'Peak\nfiring',
+                    ha='center', va='top',
+                    fontsize=10, fontweight='bold',
+                    color=PEAK_FIRING_COLOR)
+
+            # Arrow from peak to target (linear if no wrap, else two segments
+            # so it stays inside the panel).
+            arrow_y = 1.5
+            peak_cx = peak_start + bins_per_phase / 2
+            target_cx = target_start + bins_per_phase / 2
+            if peak_idx + offset <= n_total_phases - 1:
+                ax.annotate(
+                    '', xy=(target_cx, arrow_y),
+                    xytext=(peak_cx, arrow_y),
+                    arrowprops=dict(arrowstyle='->', color=ARROW_COLOR,
+                                    lw=1.8),
+                    annotation_clip=False)
+            else:
+                # Wrap: arrow goes from peak to right edge, then from left
+                # edge to target. Draw two arrows.
+                ax.annotate(
+                    '', xy=(n_bins, arrow_y),
+                    xytext=(peak_cx, arrow_y),
+                    arrowprops=dict(arrowstyle='-', color=ARROW_COLOR,
+                                    lw=1.8),
+                    annotation_clip=False)
+                ax.annotate(
+                    '', xy=(target_cx, arrow_y),
+                    xytext=(0, arrow_y),
+                    arrowprops=dict(arrowstyle='->', color=ARROW_COLOR,
+                                    lw=1.8),
+                    annotation_clip=False)
+
+            ax.set_xlim(0, n_bins)
+            ax.set_ylim(-0.9, 1.9)
+            return int(peak_idx), int(target_idx)
+
+        def _hide_spines(ax, sides=('top', 'left', 'right', 'bottom')):
+            for s in sides:
+                ax.spines[s].set_visible(False)
+
+        def _render_one(diag, sub_str, info, save_path, rank):
+            best_fold = info['best_fold']
+            r_per_fold = np.asarray(diag['r_per_fold'])
+            test_config = diag['configs'][best_fold]
+            coefs = np.asarray(diag['coefs'][best_fold], dtype=float)
+            y_test = np.asarray(diag['y_test_per_fold'][best_fold])
+            y_pred = np.asarray(diag['y_pred_per_fold'][best_fold])
+
+            locations = _config_locations(sub_str, test_config)
+            if locations is None or len(locations) != len(y_test):
+                print(f"    skip {info['neuron']}: cannot resolve locations "
+                      f"for config {test_config!r}.")
+                return False, None
+
+            # Build the DSR design matrix for this config.
+            walked = (locations - 1).astype(int).tolist()
+            try:
+                _, _, _, _, dsr_matrix, _, _ = (
+                    mc.simulation.predictions.model_DSR(
+                        locations=walked,
+                        no_phase_neurons=DSR_N_PHASES))
+            except Exception as e:
+                print(f"    model_DSR failed for {info['neuron']}: {e}")
+                return False, None
+
+            top_idx = int(np.argmax(np.abs(coefs)))
+            top_loc, top_phase, top_lag = _decode_coef_idx(top_idx)
+
+            # Prediction if only the strongest coefficient were used. Same
+            # scale as y_pred up to the elastic-net intercept / scaling.
+            coefs_top = np.zeros_like(coefs)
+            coefs_top[top_idx] = coefs[top_idx]
+            y_pred_top = dsr_matrix.T @ coefs_top                # (n_bins,)
+
+            # Top-N coefficients for the per-cell CSV row.
+            order = (np.argsort(np.abs(coefs))[::-1]
+                     [:SPARSE_DSR_N_TOP_COEFS_TO_REPORT])
+            top_coefs_rows = []
+            for k, idx_ in enumerate(order, start=1):
+                L, P, K = _decode_coef_idx(int(idx_))
+                top_coefs_rows.append({
+                    'rank_in_cell':  k,
+                    'coef_index':    int(idx_),
+                    'location_1idx': L + 1,
+                    'phase':         PHASE_NAMES[P],
+                    'phase_0idx':    P,
+                    'lag':           K,
+                    'coef':          float(coefs[idx_]),
+                    'abs_coef':      float(abs(coefs[idx_])),
+                })
+
+            # Layout: hist (narrow) + trace (wide) on top; three bars below
+            # the trace (location, phase, time-lag). The lag panel gets
+            # extra height so the "Peak firing" label and the arrow above
+            # the boxes have room.
+            n_bins_per_trial = len(y_test)
+            fig = plt.figure(figsize=(14.0, 8.0))
+            gs = fig.add_gridspec(11, 14, hspace=0.45, wspace=0.55)
+            ax_hist  = fig.add_subplot(gs[0:6, 0:3])
+            ax_ts    = fig.add_subplot(gs[0:6, 3:14])
+            ax_loc   = fig.add_subplot(gs[6, 3:14], sharex=ax_ts)
+            ax_phase = fig.add_subplot(gs[7, 3:14], sharex=ax_ts)
+            ax_lag   = fig.add_subplot(gs[8:11, 3:14], sharex=ax_ts)
+
+            _draw_perm_hist(ax_hist, diag, bins=30)
+            ax_hist.set_title('permutation null', fontsize=11)
+
+            x = np.arange(n_bins_per_trial)
+            ax_ts.plot(x, y_test, color='black', lw=1.0, label='neuron')
+            ax_ts2 = ax_ts.twinx()
+            ax_ts2.plot(x, y_pred, color='tab:red', lw=1.4, alpha=0.9,
+                        label='predicted')
+            ax_ts2.plot(x, y_pred_top, color='tab:red', lw=1.6, alpha=0.95,
+                        linestyle='--', label='top-coef pred')
+            ax_ts.set_xlim(0, n_bins_per_trial)
+            ax_ts.set_ylabel('neuron (a.u.)', fontsize=9)
+            ax_ts2.set_ylabel('predicted', color='tab:red', fontsize=9)
+            ax_ts2.tick_params(labelcolor='tab:red')
+            ax_ts.spines['top'].set_visible(False)
+            ax_ts2.spines['top'].set_visible(False)
+            ax_ts.set_title(
+                f'best fold: held-out {test_config}   '
+                f'r = {r_per_fold[best_fold]:.3f}',
+                fontsize=11, loc='left')
+            l1, lab1 = ax_ts.get_legend_handles_labels()
+            l2, lab2 = ax_ts2.get_legend_handles_labels()
+            ax_ts.legend(l1 + l2, lab1 + lab2, fontsize=9,
+                         loc='upper right', frameon=False)
+
+            _draw_location_bar(ax_loc, locations)
+            ax_loc.set_yticks([]); ax_loc.set_xticks([])
+            ax_loc.set_ylabel('locations', rotation=0, ha='right',
+                              va='center', fontsize=10)
+            _hide_spines(ax_loc)
+
+            _draw_phase_bar(ax_phase, n_bins=n_bins_per_trial)
+            ax_phase.set_yticks([]); ax_phase.set_xticks([])
+            ax_phase.set_ylabel('phases', rotation=0, ha='right',
+                                va='center', fontsize=10)
+            _hide_spines(ax_phase)
+
+            peak_idx, target_idx = _draw_lag_bar_explicit(
+                ax_lag, locations, top_loc, top_phase, top_lag,
+                n_bins=n_bins_per_trial,
+            )
+            ax_lag.set_yticks([])
+            ax_lag.set_ylabel('Time-lag', rotation=0, ha='right',
+                              va='center', fontsize=10)
+            ax_lag.set_xlabel('time bin', fontsize=9)
+            _hide_spines(ax_lag, sides=('top', 'left', 'right'))
+
+            # Highlight the target phase on the location + phase bars so
+            # the reader can match the lag-bar's outlined box to the actual
+            # location / phase that the neuron is "predicting".
+            if target_idx is not None:
+                bins_per_phase = (n_bins_per_trial // DSR_N_LAGS)
+                target_start = target_idx * bins_per_phase
+                target_end = target_start + bins_per_phase
+                _add_highlight_box(ax_phase, target_start, target_end)
+                pref_run = _find_preferred_location_run(
+                    locations, target_idx, top_loc,
+                    n_bins=n_bins_per_trial,
+                )
+                if pref_run is not None:
+                    _add_highlight_box(ax_loc, pref_run[0], pref_run[1])
+
+            fig.suptitle(
+                f"#{rank} sparse dsr cell in {diag.get('roi')}    "
+                f"sub-{sub_str} {info['neuron']}    "
+                f"mean r = {diag['mean_r']:.3f}    "
+                f"p_perm = {diag['p_perm']:.3f}    "
+                f"top coef: loc={top_loc + 1}, "
+                f"phase={PHASE_NAMES[top_phase]}, lag={top_lag}    "
+                f"n_active={info['n_active']}",
+                fontsize=11.5, fontweight='bold')
+
+            fig.savefig(save_path, dpi=200, bbox_inches='tight')
+            fig.savefig(save_path.replace('.png', '.svg'),
+                        bbox_inches='tight')
+            plt.close(fig)
+            return True, top_coefs_rows
+
+        # ── Step 3: render per-ROI top-N sparsest cells ─────────────
+        all_top_coefs = []
+        rois_to_render = ([r for r in SPARSE_DSR_TARGET_ROIS
+                           if r in ranked['roi'].unique()]
+                          if SPARSE_DSR_TARGET_ROIS
+                          else sorted(ranked['roi'].dropna().unique()))
+        for roi in rois_to_render:
+            roi_df = ranked[ranked['roi'] == roi].head(SPARSE_DSR_N_PER_ROI)
+            if roi_df.empty:
+                print(f"  {roi}: no candidates.")
+                continue
+            roi_dir = os.path.join(SPARSE_OUT_DIR, roi)
+            os.makedirs(roi_dir, exist_ok=True)
+            print(f"  rendering top {len(roi_df)} sparse cells in {roi} ...")
+            for rank, (_, row) in enumerate(roi_df.iterrows(), start=1):
+                sub_str = row['subject']
+                n_lab = row['neuron']
+                diag = (sparse_diag.get(sub_str, {})
+                        .get(n_lab, {})
+                        .get(SPARSE_DSR_MODEL))
+                if diag is None:
+                    continue
+                info = {
+                    'neuron':    n_lab,
+                    'best_fold': int(row['best_fold']),
+                    'n_active':  int(row['n_active']),
+                }
+                fname = (f'fig24_top{rank}_dsr_{roi}_sub-{sub_str}_'
+                         f'{n_lab}.png').replace('/', '_')
+                save_path = os.path.join(roi_dir, fname)
+                ok, tc_rows = _render_one(diag, sub_str, info,
+                                          save_path, rank)
+                if ok:
+                    for tc in tc_rows:
+                        tc.update({
+                            'subject':              sub_str,
+                            'neuron':               n_lab,
+                            'roi':                  roi,
+                            'rank_in_roi':          rank,
+                            'best_fold_r':          float(row['best_fold_r']),
+                            'best_fold_test_config':
+                                row['best_fold_test_config'],
+                            'n_active':             int(row['n_active']),
+                            'top1_share':           float(row['top1_share']),
+                            'mean_r':               float(row['mean_r']),
+                            'p_perm':               float(row['p_perm']),
+                        })
+                        all_top_coefs.append(tc)
+                    print(f"    rendered #{rank} {n_lab} "
+                          f"(n_active={info['n_active']}) -> {fname}")
+
+        if all_top_coefs:
+            top_coefs_csv = os.path.join(SPARSE_OUT_DIR,
+                                         'sparse_top_coefs.csv')
+            pd.DataFrame(all_top_coefs).to_csv(top_coefs_csv, index=False)
+            print(f"Wrote per-cell top coefficients -> {top_coefs_csv}")
 
 
 print(f"\nAll outputs in: {OUT_DIR}")

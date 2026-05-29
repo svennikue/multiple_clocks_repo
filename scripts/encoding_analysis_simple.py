@@ -43,7 +43,7 @@ OUT_BASE = os.path.join(DATA_DIR, 'group', 'encoding_analysis_simple')
 # '2026-05-18_16-33-05') to skip the heavy elastic-net + permutation loop
 # and just re-render the summary plots from the saved
 # encoding_results.csv (+ diagnostics.pkl, if present).  None = fresh run.
-RELOAD_RUN = None # '2026-05-20_22-57-03-GREATONE/' # None # '2026-05-18_16-33-05' # None
+RELOAD_RUN = '2026-05-28_16-45-09-nopenality-newROIs' # '2026-05-20_22-57-03-GREATONE/' # None # '2026-05-18_16-33-05' # None
 
 # Subset re-plot: take an existing run's cell-wise results, restrict them
 # to a subset of subjects, and regenerate every result file + plot into a
@@ -55,7 +55,7 @@ RELOAD_RUN = None # '2026-05-20_22-57-03-GREATONE/' # None # '2026-05-18_16-33-0
 #                                            'none-RSA-subset')
 #   {'tag': 'name', 'exclude': ['05',..]} -> drop an explicit subject list
 #   {'tag': 'name', 'include': ['01',..]} -> keep only an explicit list
-SUBSET_REPLOT = None # 'none_RSA' # None
+SUBSET_REPLOT = 'none_RSA' #None # 'none_RSA' # None
 
 N_PHASES = 3
 N_BINS_PER_TRIAL = 360
@@ -69,7 +69,7 @@ AVERAGE_REPEATS = True
 # Elastic net
 ALPHA = 0.001 # 0.001         # 0.01 in El-Gaby; smaller = less penalty
 L1_RATIO = 0.5
-POSITIVE = True
+POSITIVE = False
 MAX_ITER = 2000
 
 # Permutations (one-sided test: emp > perm)
@@ -94,7 +94,7 @@ models = [
 #   'singles_only' -> original per-base-model loop only (legacy behaviour).
 #   'combos_only'  -> new combination + Δ-comparison loop only.
 #   'all'          -> both.
-COMBO_ANALYSIS_MODE = 'all'
+COMBO_ANALYSIS_MODE = 'singles_only'
 
 # Combination models: name -> list of base regressors to concatenate.
 # Each base name must be buildable by `build_single_trial_regressors`.
@@ -166,6 +166,11 @@ if run_combos:
     print(f"  Δ comparisons:  {COMBO_COMPARISONS}")
 
 
+# Models that get the full publication treatment (FDR table, histogram,
+# top-N cell fits). The heatmap + glass-brain still cover every model.
+PUB_MODELS = ['dsr', 'dsr_only_fut', 'state']
+
+
 # ROI labels are taken from the MNI-coordinate-based table produced by
 # scripts/cell_to_roi_MNI.py.  Rows are matched to neuron labels via
 # (subject, cell_idx) parsed from the label `{sub:02d}_{cell_idx:02d}-...`.
@@ -215,7 +220,7 @@ else:
 PLOT_DSR_COEF_MAPS    = True
 DSR_COEF_MAP_ALPHA    = 0.05
 # DSR_COEF_MAP_FAMILY   = ('dsr', 'dsr_now_next', 'dsr_only_fut')
-DSR_COEF_MAP_FAMILY   = ('dsr',)   # trailing comma is required for 1-tuple
+DSR_COEF_MAP_FAMILY   = ('dsr','dsr_only_fut')   # trailing comma is required for 1-tuple
 
 
 # Per-(neuron, model) diagnostics (y_pred, y_test, perm_rs) are needed for the
@@ -1399,9 +1404,29 @@ from mc.plotting.cell_results import (
     plot_best_neuron_per_roi_model,
     plot_r_distribution_grid,
     plot_significance_proportion,
+    plot_significance_counts_bars,
     plot_significant_cells_glassbrain,
     plot_significant_cells_mesh3d,
+    compute_roi_model_tstats,
+    bh_fdr,
+    plot_roi_model_heatmap,
+    plot_publication_r_histogram,
+    plot_top_n_cells_per_model,
+    plot_top_n_cells_per_roi_model,
+    plot_roi_beta_glassbrain,
+    CANONICAL_ROI_ORDER,
+    CANONICAL_ENC_MODEL_ORDER,
 )
+
+# Per-(ROI, model) top-cell targets, resolved at render time against ROIs
+# actually present in `results_df`.  None -> every ROI in the data.
+PUB_TOP_CELL_TARGETS_SPEC = {
+    'dsr':   None,
+    'state': ['EC', 'medialOFC'],
+}
+PUB_TOP_N = 5
+
+
 
 if PLOT_DIAGNOSTICS and diagnostics_all:
     diag_plot_dir = os.path.join(OUT_DIR, 'diagnostic_plots')
@@ -1461,36 +1486,171 @@ if not results_df.empty:
         results_df, models,
         save_path=os.path.join(summary_plot_dir, 'significant_proportion.png'),
         reg_alpha=ALPHA,
+        use_fdr=True,
+        legend_outside=True,
+        model_order=CANONICAL_ENC_MODEL_ORDER,
     )
     print(f"Saved aggregate result plots → {summary_plot_dir}")
+    
+    # import pdb; pdb.set_trace()
+    # # ── Glass-brain plots of significant cells per model ────────────
+    # glass_dir = os.path.join(summary_plot_dir, 'significant_glassbrain')
+    # os.makedirs(glass_dir, exist_ok=True)
+    # # results_df already carries MNI_x/y/z and the new `roi` from the table.
+    # coord_ok = results_df[['MNI_x', 'MNI_y', 'MNI_z']].notna().all(axis=1)
+    # plot_df = results_df[coord_ok].copy().rename(columns={'roi': 'final_roi'})
+    # if plot_df.empty:
+    #     print("No cells with MNI coordinates — skipping glass-brain plots.")
+    # else:
+    #     for m in models:
+    #         sub_df = plot_df[plot_df['model'] == m]
+    #         if sub_df.empty:
+    #             continue
+    #         plot_significant_cells_glassbrain(
+    #             sub_df, model_name=m,
+    #             save_path=os.path.join(glass_dir, f'glassbrain_{m}.png'),
+    #             p_threshold=GLASSBRAIN_P_THRESHOLD,
+    #             title_suffix=f'reg alpha={ALPHA}',
+    #         )
+    #         if PLOT_GLASSBRAIN_3D:
+    #             plot_significant_cells_mesh3d(
+    #                 sub_df, model_name=m,
+    #                 save_path=os.path.join(glass_dir, f'mesh3d_{m}.html'),
+    #                 p_threshold=GLASSBRAIN_P_THRESHOLD,
+    #                 title_suffix=f'reg alpha={ALPHA}',
+    #             )
+    #     print(f"Saved glass-brain plots → {glass_dir}")
 
-    # ── Glass-brain plots of significant cells per model ────────────
-    glass_dir = os.path.join(summary_plot_dir, 'significant_glassbrain')
-    os.makedirs(glass_dir, exist_ok=True)
-    # results_df already carries MNI_x/y/z and the new `roi` from the table.
-    coord_ok = results_df[['MNI_x', 'MNI_y', 'MNI_z']].notna().all(axis=1)
-    plot_df = results_df[coord_ok].copy().rename(columns={'roi': 'final_roi'})
-    if plot_df.empty:
-        print("No cells with MNI coordinates — skipping glass-brain plots.")
+    # ── Publication-style figures ───────────────────────────────────
+    # 1. ROI × model t-test heatmap (all models).
+    # 2. ROI-shaded glass-brain per model (one PNG + SVG per model).
+    # 3. BH-FDR-corrected table for PUB_MODELS only.
+    # 4. Publication histogram for PUB_MODELS (PNG + SVG + PDF).
+    # 5. Top-5 cell fits per PUB_MODEL (PNG + SVG + PDF).
+    pub_dir = os.path.join(OUT_DIR, 'publication_figures')
+    os.makedirs(pub_dir, exist_ok=True)
+
+    # 1. Per-(ROI, model) t-statistic + p-value.
+    stats_df = compute_roi_model_tstats(results_df, models=models)
+    stats_csv = os.path.join(pub_dir, 'roi_model_tstats.csv')
+    stats_df.to_csv(stats_csv, index=False)
+    print(f"Saved per-(ROI, model) t-stat table → {stats_csv}")
+
+    plot_roi_model_heatmap(
+        stats_df,
+        models=CANONICAL_ENC_MODEL_ORDER,
+        rois=CANONICAL_ROI_ORDER,
+        value_col='t', annot_col='p_t', sig_col='p_t',
+        n_col='n_cells', alpha=0.05,
+        value_label='t-statistic (mean_r > 0)',
+        save_path=os.path.join(pub_dir,
+                               'roi_model_tstat_heatmap.png'),
+        title='ROI × model — one-sided t-test of mean_r > 0',
+        base_fontsize=15,
+    )
+
+    # # 2. ROI-shaded glass-brain coloured by t-statistic.
+    # coord_ok = results_df[['MNI_x', 'MNI_y', 'MNI_z']].notna().all(axis=1)
+    # coord_df = results_df[coord_ok].copy()
+    # electrodes_per_roi = {}
+    # for roi, g in coord_df.groupby('roi'):
+    #     electrodes_per_roi[roi] = (
+    #         g.drop_duplicates(subset=['subject', 'neuron'])
+    #          [['MNI_x', 'MNI_y', 'MNI_z']]
+    #          .to_numpy(dtype=float)
+    #     )
+    # rois_with_cells = sorted(electrodes_per_roi)
+
+    # if rois_with_cells:
+    #     glassbrain_dir = os.path.join(pub_dir, 'tstat_glassbrains')
+    #     os.makedirs(glassbrain_dir, exist_ok=True)
+    #     for m in models:
+    #         sub_stats = stats_df[stats_df['model'] == m]
+    #         if sub_stats.empty:
+    #             continue
+    #         ts = dict(zip(sub_stats['roi'], sub_stats['t']))
+    #         ps = dict(zip(sub_stats['roi'], sub_stats['p_t']))
+    #         plot_roi_beta_glassbrain(
+    #             roi_betas=ts, roi_pvals=ps,
+    #             only_rois=rois_with_cells,
+    #             roi_cell_coords=electrodes_per_roi,
+    #             roi_label_column=ROI_LABEL_COLUMN,
+    #             title=f'{m} — t-stat (mean_r > 0)',
+    #             save_path=os.path.join(
+    #                 glassbrain_dir, f'roi_tstat_glassbrain_{m}.png'),
+    #         )
+    #         plt.close('all')
+
+    # 3. BH-FDR-corrected table over PUB_MODELS × all ROIs.
+    pub_stats = stats_df[stats_df['model'].isin(PUB_MODELS)].copy()
+    if not pub_stats.empty:
+        pub_stats['p_t_fdr'] = bh_fdr(pub_stats['p_t'].to_numpy())
+        pub_stats['fdr_family'] = (
+            f"models={PUB_MODELS}; n_tests={len(pub_stats)}"
+        )
+        pub_stats = pub_stats.sort_values(['model', 'p_t_fdr'])
+        pub_fdr_csv = os.path.join(pub_dir,
+                                   'roi_pub_models_tstats_fdr.csv')
+        pub_stats.to_csv(pub_fdr_csv, index=False)
+        n_sig_fdr = int((pub_stats['p_t_fdr'] < 0.05).sum())
+        print(f"\n=== BH-FDR over PUB_MODELS={PUB_MODELS} "
+              f"(n_tests={len(pub_stats)}) ===")
+        print(f"{n_sig_fdr} (ROI, model) pairs significant at q < 0.05")
+        with pd.option_context('display.max_rows', None,
+                               'display.width', 160):
+            print(pub_stats[['model', 'roi', 'n_cells',
+                             'mean_r', 't', 'p_t', 'p_t_fdr',
+                             'prop_sig_perm']].to_string(index=False))
+        print(f"Saved FDR table → {pub_fdr_csv}")
+
+    # 4. Publication-ready histogram for the chosen models. Panel sig
+    # uses the FDR-adjusted p from step 3 if available, otherwise an
+    # in-panel one-sided t-test.
+    p_fdr_for_panels = None
+    if not pub_stats.empty:
+        p_fdr_for_panels = {}
+        for m in PUB_MODELS:
+            sub_m = pub_stats[pub_stats['model'] == m]
+            p_fdr_for_panels[m] = dict(zip(sub_m['roi'], sub_m['p_t_fdr']))
+
+    plot_publication_r_histogram(
+        results_df, models=PUB_MODELS,
+        rois=CANONICAL_ROI_ORDER,
+        model_order=PUB_MODELS,
+        save_path=os.path.join(pub_dir, 'pub_r_histogram.png'),
+        alpha=0.05,
+        base_fontsize=14,
+        p_t_per_roi_model=p_fdr_for_panels,
+    )
+
+    # 4b. Counts-bar plot: grey total + coloured significant per ROI.
+    plot_significance_counts_bars(
+        results_df, models=PUB_MODELS,
+        rois=CANONICAL_ROI_ORDER,
+        model_order=PUB_MODELS,
+        save_path=os.path.join(pub_dir, 'pub_sig_counts_bars.png'),
+        alpha=0.05, use_fdr=True,
+        base_fontsize=13,
+    )
+
+    # 5. Top-N cell fits per (PUB_MODEL, ROI), per the user's targets.
+    if diagnostics_all:
+        rois_in_data = sorted(results_df['roi'].dropna().unique().tolist())
+        targets = []
+        for model_name, roi_spec in PUB_TOP_CELL_TARGETS_SPEC.items():
+            roi_list = (rois_in_data if roi_spec is None
+                        else [r for r in roi_spec if r in rois_in_data])
+            for roi in roi_list:
+                targets.append((model_name, roi, PUB_TOP_N))
+        plot_top_n_cells_per_roi_model(
+            diagnostics_all, results_df, targets=targets,
+            save_dir=os.path.join(pub_dir, 'top_cells_per_roi_model'),
+            base_fontsize=13,
+        )
     else:
-        for m in models:
-            sub_df = plot_df[plot_df['model'] == m]
-            if sub_df.empty:
-                continue
-            plot_significant_cells_glassbrain(
-                sub_df, model_name=m,
-                save_path=os.path.join(glass_dir, f'glassbrain_{m}.png'),
-                p_threshold=GLASSBRAIN_P_THRESHOLD,
-                title_suffix=f'reg alpha={ALPHA}',
-            )
-            if PLOT_GLASSBRAIN_3D:
-                plot_significant_cells_mesh3d(
-                    sub_df, model_name=m,
-                    save_path=os.path.join(glass_dir, f'mesh3d_{m}.html'),
-                    p_threshold=GLASSBRAIN_P_THRESHOLD,
-                    title_suffix=f'reg alpha={ALPHA}',
-                )
-        print(f"Saved glass-brain plots → {glass_dir}")
+        print("Skipping top-N cell fits: no diagnostics saved/loaded.")
+
+    print(f"Saved publication figures → {pub_dir}")
 
     if PLOT_DIAGNOSTICS:
         plt.show()

@@ -52,6 +52,11 @@ N_PHASES = 3
 # downstream without re-running this script.
 P_THRESHOLD = 0.05
 
+# A neuron counts as "state/phase tuned" if it is tuned (p<P_THRESHOLD) in
+# at least this fraction of configs. Used for the pie-chart overlap figure
+# and the strict-threshold neuron-level boolean columns.
+TUNED_FRAC_THRESHOLD = 1.0 / 3.0
+
 # Joblib parallelism over neurons.
 N_JOBS = -1
 
@@ -269,6 +274,15 @@ def per_neuron_summary(per_neuron_config_df):
             if valid_phase.size else np.nan
         )
 
+        frac_state = (n_configs_state_tuned / n_configs
+                      if n_configs else np.nan)
+        frac_phase = (n_configs_phase_tuned / n_configs
+                      if n_configs else np.nan)
+        is_state_strict = bool(np.isfinite(frac_state)
+                               and frac_state >= TUNED_FRAC_THRESHOLD)
+        is_phase_strict = bool(np.isfinite(frac_phase)
+                               and frac_phase >= TUNED_FRAC_THRESHOLD)
+
         rows.append({
             'neuron':                 neuron,
             'roi':                    g['roi'].iloc[0],
@@ -277,17 +291,17 @@ def per_neuron_summary(per_neuron_config_df):
             'MNI_z':                  g['MNI_z'].iloc[0],
             'n_configs':              n_configs,
             'n_configs_state_tuned':  n_configs_state_tuned,
-            'frac_configs_state_tuned': (n_configs_state_tuned / n_configs
-                                         if n_configs else np.nan),
+            'frac_configs_state_tuned': frac_state,
             'n_configs_phase_tuned':  n_configs_phase_tuned,
-            'frac_configs_phase_tuned': (n_configs_phase_tuned / n_configs
-                                         if n_configs else np.nan),
+            'frac_configs_phase_tuned': frac_phase,
             'state_consistency':      state_consistency,
             'phase_consistency':      phase_consistency,
             'any_config_state_tuned': bool(n_configs_state_tuned > 0),
             'all_configs_state_tuned': bool(n_configs_state_tuned == n_configs),
             'any_config_phase_tuned': bool(n_configs_phase_tuned > 0),
             'all_configs_phase_tuned': bool(n_configs_phase_tuned == n_configs),
+            'is_state_tuned_strict':  is_state_strict,
+            'is_phase_tuned_strict':  is_phase_strict,
         })
     return pd.DataFrame(rows)
 
@@ -362,6 +376,296 @@ def plot_n_configs_state_tuned(per_neuron_df, out_dir):
         ax.axis('off')
     fig.tight_layout()
     fig.savefig(os.path.join(out_dir, 'n_configs_state_tuned_per_roi.png'),
+                dpi=150)
+    plt.close(fig)
+
+
+# def _pie(ax, counts, labels, colors, title):
+#     counts = [max(int(c), 0) for c in counts]
+#     if sum(counts) == 0:
+#         ax.text(0.5, 0.5, 'n=0', ha='center', va='center', fontsize=10)
+#         ax.axis('off')
+#         ax.set_title(title, fontsize=10)
+#         return
+#     _wedges, _texts, autotexts = ax.pie(
+#         counts, labels=labels, colors=colors,
+#         autopct=lambda pct: f'{pct:.0f}%' if pct >= 3 else '',
+#         startangle=90, wedgeprops={'edgecolor': 'white', 'linewidth': 1.2},
+#         textprops={'fontsize': 9},
+#     )
+#     for t in autotexts:
+#         t.set_fontweight('bold')
+#     ax.set_title(title, fontsize=10)
+
+from matplotlib.patches import Patch
+
+def _pie(ax, counts, colors, title, radius=1.25):
+    counts = [max(int(c), 0) for c in counts]
+
+    if sum(counts) == 0:
+        ax.text(0.5, 0.5, 'n=0', ha='center', va='center',
+                fontsize=11, transform=ax.transAxes)
+        ax.axis('off')
+        ax.set_title(title, fontsize=11, pad=8)
+        return
+
+    wedges, texts, autotexts = ax.pie(
+        counts,
+        labels=None,                 # no labels around individual pies
+        colors=colors,
+        autopct=lambda pct: f'{pct:.0f}%' if pct >= 3 else '',
+        startangle=90,
+        radius=radius,               # larger pies
+        wedgeprops={'edgecolor': 'white', 'linewidth': 1.2},
+        textprops={'fontsize': 10},
+        pctdistance=0.68,             # keep percentages inside pie
+    )
+
+    for t in autotexts:
+        t.set_fontweight('bold')
+
+    ax.set_title(title, fontsize=11, pad=8)
+    ax.set_aspect('equal')
+    
+def plot_state_phase_pies(per_neuron_df, out_dir,
+                          frac_threshold=TUNED_FRAC_THRESHOLD):
+    """Per ROI + whole brain: 4 pies showing
+       1. state-tuned fraction of all neurons
+       2. phase-tuned fraction of all neurons
+       3. phase-tuned fraction of state-tuned neurons
+       4. state-tuned fraction of phase-tuned neurons
+
+    A neuron counts as state/phase tuned if its `frac_configs_*_tuned`
+    is >= frac_threshold.
+    """
+    df = per_neuron_df.copy()
+    df['is_state'] = df['frac_configs_state_tuned'].fillna(0) >= frac_threshold
+    df['is_phase'] = df['frac_configs_phase_tuned'].fillna(0) >= frac_threshold
+
+    rois = sorted(df['roi'].dropna().unique().tolist())
+    panels = [('whole brain', df)] + [(r, df[df['roi'] == r]) for r in rois]
+
+    state_color = '#5cc7d6'   # cyan
+    phase_color = '#f4a93b'   # orange
+    other_color = '#d0d0d0'   # grey
+
+    n_rows = len(panels)
+
+    fig, axes = plt.subplots(
+        n_rows, 4,
+        figsize=(15, 2.8 * n_rows),
+        squeeze=False
+    )
+
+    # One legend per column
+    col_legends = [
+        [
+            Patch(facecolor=state_color, edgecolor='white', label='state'),
+            Patch(facecolor=other_color, edgecolor='white', label='other'),
+        ],
+        [
+            Patch(facecolor=phase_color, edgecolor='white', label='phase'),
+            Patch(facecolor=other_color, edgecolor='white', label='other'),
+        ],
+        [
+            Patch(facecolor=phase_color, edgecolor='white', label='phase'),
+            Patch(facecolor=state_color, edgecolor='white', label='state-only'),
+        ],
+        [
+            Patch(facecolor=state_color, edgecolor='white', label='state'),
+            Patch(facecolor=phase_color, edgecolor='white', label='phase-only'),
+        ],
+    ]
+
+    for j in range(4):
+        axes[0, j].legend(
+            handles=col_legends[j],
+            loc='lower center',
+            bbox_to_anchor=(0.5, 1.42),
+            ncol=2,
+            frameon=False,
+            fontsize=10,
+            handlelength=1.2,
+            columnspacing=1.0,
+        )
+
+    for i, (label, g) in enumerate(panels):
+        n_total = len(g)
+        n_state = int(g['is_state'].sum())
+        n_phase = int(g['is_phase'].sum())
+        n_both  = int((g['is_state'] & g['is_phase']).sum())
+
+        _pie(
+            axes[i, 0],
+            counts=[n_state, n_total - n_state],
+            colors=[state_color, other_color],
+            title=f'All neurons\n(n={n_total})',
+        )
+
+        _pie(
+            axes[i, 1],
+            counts=[n_phase, n_total - n_phase],
+            colors=[phase_color, other_color],
+            title=f'All neurons\n(n={n_total})',
+        )
+
+        _pie(
+            axes[i, 2],
+            counts=[n_both, n_state - n_both],
+            colors=[phase_color, state_color],
+            title=f'State neurons\n(n={n_state})',
+        )
+
+        _pie(
+            axes[i, 3],
+            counts=[n_both, n_phase - n_both],
+            colors=[state_color, phase_color],
+            title=f'Phase neurons\n(n={n_phase})',
+        )
+
+        axes[i, 0].set_ylabel(
+            label,
+            rotation=0,
+            ha='right',
+            va='center',
+            fontsize=13,
+            fontweight='bold',
+            labelpad=55,
+        )
+
+    fig.suptitle(
+        f'State / phase tuning overlap  '
+        f'(tuned = tuned in ≥{frac_threshold:.2f} of configs at '
+        f'p<{P_THRESHOLD})',
+        fontsize=15,
+        y=0.995,
+    )
+
+    fig.subplots_adjust(
+        left=0.12,
+        right=0.98,
+        top=0.90,
+        bottom=0.02,
+        wspace=0.45,
+        hspace=0.85,
+    )
+
+    fig.savefig(
+        os.path.join(out_dir, 'state_phase_overlap_pies.png'),
+        dpi=150,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+    
+# def plot_state_phase_pies(per_neuron_df, out_dir,
+#                           frac_threshold=TUNED_FRAC_THRESHOLD):
+#     """Per ROI + whole brain: 4 pies showing
+#        1. state-tuned fraction of all neurons
+#        2. phase-tuned fraction of all neurons
+#        3. phase-tuned fraction of state-tuned neurons
+#        4. state-tuned fraction of phase-tuned neurons
+
+#     A neuron counts as state/phase tuned if its `frac_configs_*_tuned`
+#     is >= frac_threshold.
+#     """
+#     df = per_neuron_df.copy()
+#     df['is_state'] = df['frac_configs_state_tuned'].fillna(0) >= frac_threshold
+#     df['is_phase'] = df['frac_configs_phase_tuned'].fillna(0) >= frac_threshold
+
+#     rois = sorted(df['roi'].dropna().unique().tolist())
+#     panels = [('whole brain', df)] + [(r, df[df['roi'] == r]) for r in rois]
+
+#     state_color = '#5cc7d6'   # cyan
+#     phase_color = '#f4a93b'   # orange
+#     other_color = '#d0d0d0'   # grey
+
+#     n_rows = len(panels)
+#     fig, axes = plt.subplots(n_rows, 4,
+#                              figsize=(13, 3.0 * n_rows),
+#                              squeeze=False)
+
+#     for i, (label, g) in enumerate(panels):
+#         n_total = len(g)
+#         n_state = int(g['is_state'].sum())
+#         n_phase = int(g['is_phase'].sum())
+#         n_both  = int((g['is_state'] & g['is_phase']).sum())
+
+#         _pie(axes[i, 0],
+#              counts=[n_state, n_total - n_state],
+#              labels=['state', 'other'],
+#              colors=[state_color, other_color],
+#              title=f'All neurons (n={n_total})')
+
+#         _pie(axes[i, 1],
+#              counts=[n_phase, n_total - n_phase],
+#              labels=['phase', 'other'],
+#              colors=[phase_color, other_color],
+#              title=f'All neurons (n={n_total})')
+
+#         _pie(axes[i, 2],
+#              counts=[n_both, n_state - n_both],
+#              labels=['phase', 'state-only'],
+#              colors=[phase_color, state_color],
+#              title=f'State neurons (n={n_state})')
+
+#         _pie(axes[i, 3],
+#              counts=[n_both, n_phase - n_both],
+#              labels=['state', 'phase-only'],
+#              colors=[state_color, phase_color],
+#              title=f'Phase neurons (n={n_phase})')
+
+#         axes[i, 0].set_ylabel(label, rotation=0, ha='right', va='center',
+#                               fontsize=12, fontweight='bold', labelpad=50)
+
+#     fig.suptitle(
+#         f'State / phase tuning overlap  '
+#         f'(tuned = tuned in ≥{frac_threshold:.2f} of configs at '
+#         f'p<{P_THRESHOLD})',
+#         fontsize=13, y=1.0,
+#     )
+#     fig.tight_layout()
+#     fig.savefig(os.path.join(out_dir, 'state_phase_overlap_pies.png'),
+#                 dpi=150, bbox_inches='tight')
+#     plt.close(fig)
+
+
+def plot_frac_configs_tuned_by_roi(per_neuron_config_df, out_dir):
+    """Per ROI: fraction of (neuron, config) pairs that are state/phase tuned.
+
+    This is the "how often does a typical config show tuning in this ROI"
+    view — complements the neuron-level pies which ask "how many neurons
+    are tuned overall".
+    """
+    rows = []
+    for roi, g in per_neuron_config_df.groupby('roi'):
+        rows.append({
+            'roi':                          roi,
+            'n_pairs':                      int(len(g)),
+            'frac_state_tuned_per_config':  float(g['elgaby_state_tuned'].mean()),
+            'frac_phase_tuned_per_config':  float(g['elgaby_phase_tuned'].mean()),
+        })
+    df = (pd.DataFrame(rows)
+            .sort_values('frac_state_tuned_per_config', ascending=False)
+            .reset_index(drop=True))
+
+    x = np.arange(len(df))
+    width = 0.4
+    fig, ax = plt.subplots(figsize=(max(6, 0.55 * len(df)), 5))
+    ax.bar(x - width/2, df['frac_state_tuned_per_config'], width,
+           color='#5cc7d6', label='state-tuned')
+    ax.bar(x + width/2, df['frac_phase_tuned_per_config'], width,
+           color='#f4a93b', label='phase-tuned')
+    ax.axhline(P_THRESHOLD, ls='--', color='k', lw=0.8,
+               label=f'chance ({P_THRESHOLD:g})')
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"{r}\n(n={n})"
+                        for r, n in zip(df['roi'], df['n_pairs'])],
+                       rotation=45, ha='right')
+    ax.set_ylabel('fraction of (neuron, config) pairs tuned')
+    ax.set_title('Per-config tuning rate by ROI')
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(os.path.join(out_dir, 'frac_configs_tuned_per_roi.png'),
                 dpi=150)
     plt.close(fig)
 
@@ -482,8 +786,10 @@ def main():
         #     )
         #     for n_lab, roi, neuron_df in neuron_args
         # )
-        for n_lab, roi, neuron_df in neuron_args:
-            results = characterise_one_neuron(n_lab, roi, neuron_df, beh, configs)
+        results = [
+            characterise_one_neuron(n_lab, roi, neuron_df, beh, configs)
+            for n_lab, roi, neuron_df in neuron_args
+        ]
 
         for rows in results:
             for row in rows:
@@ -513,6 +819,9 @@ def main():
     plot_roi_fractions(roi_df, OUT_DIR)
     plot_n_configs_state_tuned(per_neuron_df, OUT_DIR)
     plot_pref_distributions(per_neuron_config_df, OUT_DIR)
+    plot_state_phase_pies(per_neuron_df, OUT_DIR,
+                          frac_threshold=TUNED_FRAC_THRESHOLD)
+    plot_frac_configs_tuned_by_roi(per_neuron_config_df, OUT_DIR)
     print(f"Saved plots to {OUT_DIR}")
 
     # Quick console summary so we can spot-check without opening files.

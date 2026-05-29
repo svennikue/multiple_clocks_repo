@@ -38,7 +38,7 @@ OUT_BASE     = os.path.join(DATA_DIR, 'group', 'DSR_RSA_simple_ROI')
 # '2026-05-18_16-33-05') to skip the heavy RSA + permutation loop and
 # just re-render the overview plots from the saved
 # results_summary*.csv files in OUT_BASE/<RELOAD_RUN>/.  None = run fresh.
-RELOAD_RUN = None # '2026-05-19_13-05-09'#  None
+RELOAD_RUN = '2026-05-26_17-54-23' #None 
 
 
 configs = [
@@ -1195,50 +1195,63 @@ def _render_overview_plots(summary_df, summary_combo_df,
         print(pivot_pperm.to_string())
 
     # base models heatmap (only if any base models were evaluated)
+    from mc.plotting.cell_results import (
+        plot_roi_model_heatmap, CANONICAL_ROI_ORDER,
+        CANONICAL_RSA_MODEL_ORDER,
+    )
     if len(models) > 0 and not summary_df.empty:
-        fig_h, ax_h = plot_roi_model_heatmap(
-            summary_df,
-            columns_order=models,
-            test=heatmap_test,
-            alpha=0.05,
-            title=f'ROIs x base models — {heatmap_test}',
-        )
-        if fig_h is not None:
-            fig_h.savefig(
-                os.path.join(out_dir, f'heatmap_roi_models_{heatmap_test}.png'),
-                dpi=150,
+        sub_df_base = summary_df[summary_df['test'] == heatmap_test].copy()
+        if sub_df_base.empty:
+            print(f"No rows for test={heatmap_test}; skipping base-model heatmap.")
+        else:
+            fig_h, ax_h = plot_roi_model_heatmap(
+                sub_df_base,
+                models=CANONICAL_RSA_MODEL_ORDER,
+                rois=CANONICAL_ROI_ORDER,
+                value_col='beta', annot_col='p_perm', sig_col='p_perm',
+                n_col='n_neurons', alpha=0.05,
+                value_label='empirical beta',
+                title=f'ROIs x base models — {heatmap_test}',
+                save_path=os.path.join(
+                    out_dir, f'heatmap_roi_models_{heatmap_test}.png'),
+                base_fontsize=15,
             )
-            plt.show()
+            if fig_h is not None:
+                plt.show()
     else:
         print("No base models evaluated this run — skipping base-model heatmap.")
 
     # combo models heatmap
     if not summary_combo_df.empty:
         for combo_key, sub_models in combo_models.items():
-            sub_df = summary_combo_df[summary_combo_df['combo'] == combo_key].copy()
+            sub_df = summary_combo_df[
+                (summary_combo_df['combo'] == combo_key)
+                & (summary_combo_df['test'] == heatmap_test)
+            ].copy()
             if sub_df.empty:
                 continue
             sub_df['model'] = sub_df['sub_model']
 
             fig_hc, ax_hc = plot_roi_model_heatmap(
                 sub_df,
-                columns_order=sub_models,
-                test=heatmap_test,
-                alpha=0.05,
+                models=sub_models,
+                rois=CANONICAL_ROI_ORDER,
+                value_col='beta', annot_col='p_perm', sig_col='p_perm',
+                n_col='n_neurons', alpha=0.05,
+                value_label='empirical beta',
                 title=f'ROIs x {combo_key} sub-models — {heatmap_test}',
+                save_path=os.path.join(
+                    out_dir,
+                    f'heatmap_roi_combo_{combo_key}_{heatmap_test}.png'),
+                base_fontsize=15,
             )
             if fig_hc is not None:
-                fig_hc.savefig(
-                    os.path.join(
-                        out_dir,
-                        f'heatmap_roi_combo_{combo_key}_{heatmap_test}.png',
-                    ),
-                    dpi=150,
-                )
                 plt.show()
 
     # ROI electrode schematic
-    from mc.plotting.cell_results import plot_roi_electrodes_glassbrain
+    from mc.plotting.cell_results import (
+        plot_roi_electrodes_glassbrain, plot_roi_beta_glassbrain,
+    )
     electrodes_per_roi = {
         roi: np.array(list(coords.values()), dtype=float)
         for roi, coords in roi_electrode_coords.items()
@@ -1261,88 +1274,62 @@ def _render_overview_plots(summary_df, summary_combo_df,
     else:
         print("No electrode coordinates collected — skipping ROI glass-brain.")
 
+    # ── ROI-shaded glass-brain (heatmap colours on a brain) ──────────
+    # One figure per (model, heatmap_test): each anatomical ROI mask is
+    # shaded by its beta value, using the same RdBu_r palette as the
+    # ROI x model heatmap.  Restricted to ROIs that actually have cells.
+    rois_with_cells = sorted(electrodes_per_roi)
+    if rois_with_cells:
+        glassbrain_dir = os.path.join(out_dir, 'roi_beta_glassbrains')
+        os.makedirs(glassbrain_dir, exist_ok=True)
+
+        if len(models) > 0 and not summary_df.empty:
+            sub_t = summary_df[summary_df['test'] == heatmap_test]
+            for m in models:
+                rows = sub_t[sub_t['model'] == m]
+                if rows.empty:
+                    continue
+                betas = dict(zip(rows['roi'], rows['beta']))
+                pvals = dict(zip(rows['roi'], rows['p_perm']))
+                plot_roi_beta_glassbrain(
+                    roi_betas=betas, roi_pvals=pvals,
+                    only_rois=rois_with_cells,
+                    roi_cell_coords=electrodes_per_roi,
+                    roi_label_column=ROI_LABEL_COLUMN,
+                    title=f'{m} beta — {heatmap_test}',
+                    save_path=os.path.join(
+                        glassbrain_dir,
+                        f'roi_beta_glassbrain_{m}_{heatmap_test}.png'),
+                )
+                plt.show()
+
+        if not summary_combo_df.empty:
+            sub_t = summary_combo_df[summary_combo_df['test'] == heatmap_test]
+            for combo_key, sub_models in combo_models.items():
+                for sm in sub_models:
+                    rows = sub_t[(sub_t['combo'] == combo_key)
+                                 & (sub_t['sub_model'] == sm)]
+                    if rows.empty:
+                        continue
+                    betas = dict(zip(rows['roi'], rows['beta']))
+                    pvals = dict(zip(rows['roi'], rows['p_perm']))
+                    plot_roi_beta_glassbrain(
+                        roi_betas=betas, roi_pvals=pvals,
+                        only_rois=rois_with_cells,
+                        roi_cell_coords=electrodes_per_roi,
+                        roi_label_column=ROI_LABEL_COLUMN,
+                        title=f'{combo_key} | {sm} beta — {heatmap_test}',
+                        save_path=os.path.join(
+                            glassbrain_dir,
+                            f'roi_beta_glassbrain_{combo_key}_{sm}_{heatmap_test}.png'),
+                    )
+                    plt.show()
+
 
 # ── Cross-ROI heatmap (rows=ROI, cols=model) ─────────────────────────────
-def plot_roi_model_heatmap(
-    summary_df,
-    columns_order,
-    test='across_z',
-    alpha=0.05,
-    title=None,
-    figsize=None,
-):
-    """Heatmap of empirical betas across ROIs x models for one test.
-
-    Cell color = beta, annotation = permutation p-value, thick black outline
-    drawn when p_perm < alpha.
-    """
-    sub = summary_df[summary_df['test'] == test]
-    if sub.empty:
-        print(f"[heatmap] no rows for test={test}")
-        return None, None
-
-    rois_present = [r for r in sub['roi'].unique()]
-    cols_present = [m for m in columns_order if m in sub['model'].unique()]
-
-    # actual neurons per ROI, derived from the data that was actually included
-    roi_n = {
-        roi: int(sub.loc[sub['roi'] == roi, 'n_neurons'].iloc[0])
-        for roi in rois_present
-    }
-    roi_labels = [f'{roi} (n={roi_n[roi]})' for roi in rois_present]
-
-    beta_mat = np.full((len(rois_present), len(cols_present)), np.nan)
-    pperm_mat = np.full_like(beta_mat, np.nan)
-
-    for i, roi in enumerate(rois_present):
-        for j, m in enumerate(cols_present):
-            row = sub[(sub['roi'] == roi) & (sub['model'] == m)]
-            if not row.empty:
-                beta_mat[i, j] = float(row['beta'].iloc[0])
-                pperm_mat[i, j] = float(row['p_perm'].iloc[0])
-
-    if figsize is None:
-        figsize = (1.2 * len(cols_present) + 2, 0.7 * len(rois_present) + 2)
-
-    fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
-
-    finite = beta_mat[np.isfinite(beta_mat)]
-    if finite.size:
-        vmax = np.nanmax(np.abs(finite))
-        vmax = vmax if vmax > 0 else 1.0
-    else:
-        vmax = 1.0
-
-    im = ax.imshow(beta_mat, cmap='RdBu_r', vmin=-vmax, vmax=vmax, aspect='auto')
-
-    ax.set_xticks(np.arange(len(cols_present)))
-    ax.set_xticklabels(cols_present, rotation=40, ha='right', fontsize=9)
-    ax.set_yticks(np.arange(len(rois_present)))
-    ax.set_yticklabels(roi_labels, fontsize=9)
-
-    for i in range(len(rois_present)):
-        for j in range(len(cols_present)):
-            p = pperm_mat[i, j]
-            if np.isfinite(p):
-                ax.text(
-                    j, i, f"p={p:.3f}",
-                    ha='center', va='center', fontsize=8,
-                    color='black',
-                )
-            if np.isfinite(p) and p < alpha:
-                ax.add_patch(plt.Rectangle(
-                    (j - 0.5, i - 0.5), 1, 1,
-                    fill=False, edgecolor='black', linewidth=2.5,
-                ))
-
-    cbar = fig.colorbar(im, ax=ax, shrink=0.8)
-    cbar.set_label('empirical beta', fontsize=9)
-
-    if title is None:
-        title = f'ROI x model — {test} (outline: p_perm < {alpha})'
-    ax.set_title(title, fontsize=11)
-
-    return fig, ax
+# Heatmap rendering now lives in mc.plotting.cell_results
+# (plot_roi_model_heatmap), shared with encoding_analysis_simple.py so
+# fonts, ROI/model order and significance styling stay in sync.
 
 
 HEATMAP_TEST = 'across_z'  # one of: crossval, crossval_z, within, within_z, across, across_z

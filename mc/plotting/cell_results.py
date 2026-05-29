@@ -30,12 +30,116 @@ plot_peaklag_3d_mesh(coords, lags, save_path, title, n_lags, ...)
 from __future__ import annotations
 
 import os
+import textwrap
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from scipy import stats
+
+
+# Canonical orderings used by the shared heatmap/histogram/bar helpers
+# so RSA and encoding analyses are visually comparable. Override with the
+# ``roi_order`` / ``model_order`` kwargs if you want a non-default layout.
+# ACC sits at the top-left of the heatmap, DSR is the left-most column.
+CANONICAL_ROI_ORDER = [
+    'ACC',
+    'medial_CC',
+    'HC_anterior',
+    'HC_mid',
+    'HC_posterior',
+    'EC',
+    'Parahippocampal',
+    'PCC',
+    'posterior_CC',
+    'medialOFC',
+    'OFC11',
+    'OFC13',
+    'ventral_ACC',
+    'Visual',
+]
+
+# Encoding-analysis model names (encoding_analysis_simple.py).
+CANONICAL_ENC_MODEL_ORDER = [
+    'dsr',
+    'dsr_only_fut',
+    'dsr_now_next',
+    'state',
+    'state_phase',
+    'phase',
+    'midnight',
+    'location',
+    'bttn_curr',
+    'bttn_prev',
+    'bttn_next',
+    'uncover',
+]
+
+# RSA model names (RSA_DSR_ROIs_simple.py uses 'dsr_old' rather than 'dsr').
+CANONICAL_RSA_MODEL_ORDER = [
+    'dsr_old',
+    'dsr_old_now_next',
+    'state',
+    'state_phase',
+    'phase',
+    'midnight',
+    'repeat_counter',
+    'location',
+    'bttn_curr',
+    'bttn_prev',
+    'bttn_next',
+    'uncover',
+]
+
+
+def _order_keep_present(canonical, present):
+    """Reorder `present` using `canonical` as a priority list.
+
+    Items missing from `canonical` are appended in their original order so
+    nothing is silently dropped.
+    """
+    seen = set()
+    out = [x for x in canonical if x in present and not (x in seen or seen.add(x))]
+    # out.extend(x for x in present if x not in seen)
+    return out
+
+
+def _wrap_label(label, width=10):
+    """Wrap a label to multi-line if longer than `width` characters.
+
+    Underscores are treated as soft break points (e.g. ``HC_anterior``
+    becomes ``HC\nanterior`` rather than being squashed).
+    """
+    if label is None:
+        return ''
+    s = str(label)
+    if len(s) <= width:
+        return s
+    if '_' in s:
+        parts = s.split('_')
+        # Greedy newline insertion to keep lines roughly under `width`.
+        lines, cur = [], parts[0]
+        for p in parts[1:]:
+            if len(cur) + 1 + len(p) <= width:
+                cur = cur + '_' + p
+            else:
+                lines.append(cur)
+                cur = p
+        lines.append(cur)
+        return '\n'.join(lines)
+    return '\n'.join(textwrap.wrap(s, width=width, break_long_words=False))
+
+
+def _pval_to_stars(p, alphas=(0.05, 0.01, 0.001)):
+    """Return '*'/'**'/'***'/'' for the given p-value thresholds (ascending)."""
+    if not np.isfinite(p):
+        return ''
+    star = ''
+    for a in alphas:
+        if p < a:
+            star += '*'
+    return star
 
 
 # ── Significance helper ────────────────────────────────────────────────
@@ -735,96 +839,223 @@ def plot_r_distribution_grid(results_df, models, save_path=None,
 
 def plot_significance_proportion(results_df, models, save_path=None,
                                   alpha=0.05, chance_level=0.05,
-                                  reg_alpha=None):
+                                  reg_alpha=None, use_fdr=True,
+                                  legend_outside=True,
+                                  rois=None, model_order=None,
+                                  base_fontsize=12):
     """Grouped bar plot: proportion of significant neurons per (ROI, model).
 
-    One-sided binomial test vs chance_level; a star is drawn above bars
-    that pass.  Uses the Dark2 colormap for ROI colours.
-
-    Parameters
-    ----------
-    results_df : pd.DataFrame
-        Must contain columns ``roi``, ``model``, ``p_perm``.
-    models : list of str
-        Ordered list of model names; controls x-axis order.
-    save_path : str or None
-        Full path to save the figure.
-    alpha : float
-        Significance threshold for both binomial test and bar annotation.
-    chance_level : float
-        Expected proportion under the null (dashed reference line).
-    reg_alpha : float or None
-        Regularisation strength — included in the title if provided.
+    One-sided binomial test vs `chance_level`. If `use_fdr=True` the
+    binomial p-values are BH-adjusted across all (ROI × model) cells and
+    stars reflect the adjusted q: 0.05=*, 0.01=**, 0.001=***. Legend is
+    placed outside the axes by default.
     """
     if results_df.empty:
         return None
     rdf = results_df.dropna(subset=['mean_r']).copy()
-    rois = sorted(rdf['roi'].unique())
-    mods = [m for m in models if m in rdf['model'].unique()]
-    if not rois or not mods:
+    present_rois = set(rdf['roi'].unique())
+    present_models = set(rdf['model'].unique())
+    rois_order = _order_keep_present(
+        rois if rois is not None else CANONICAL_ROI_ORDER, present_rois)
+    mods = _order_keep_present(
+        model_order if model_order is not None else models, present_models)
+    if not rois_order or not mods:
         return None
 
+    # First pass: collect props, n_total, raw binomial p (per (roi, model)).
+    props = np.zeros((len(rois_order), len(mods)))
+    n_total_mat = np.zeros_like(props, dtype=int)
+    n_sig_mat = np.zeros_like(props, dtype=int)
+    pbin_mat = np.full_like(props, np.nan)
+    for i, roi in enumerate(rois_order):
+        for j, m in enumerate(mods):
+            sub = rdf[(rdf['roi'] == roi) & (rdf['model'] == m)]
+            n_total = int(len(sub))
+            n_sig = int((sub['p_perm'] < alpha).sum())
+            n_total_mat[i, j] = n_total
+            n_sig_mat[i, j] = n_sig
+            props[i, j] = (n_sig / n_total) if n_total else 0.0
+            if n_total > 0:
+                bt = stats.binomtest(n_sig, n_total, p=chance_level,
+                                     alternative='greater')
+                pbin_mat[i, j] = bt.pvalue
+
+    # Stars use either raw or FDR-adjusted binomial p.
+    if use_fdr:
+        flat = pbin_mat.flatten()
+        flat_q = bh_fdr(flat)
+        p_for_stars = flat_q.reshape(pbin_mat.shape)
+        sig_label = 'q (BH-FDR)'
+    else:
+        p_for_stars = pbin_mat
+        sig_label = 'p (binomial vs chance)'
+
     n_models = len(mods)
-    n_rois = len(rois)
+    n_rois = len(rois_order)
     width = 0.8 / max(n_rois, 1)
     x_base = np.arange(n_models)
 
     fig, ax = plt.subplots(
-        figsize=(max(8, n_models * 1.0 + 2), 4.5),
+        figsize=(max(9, n_models * 1.1 + 3.5), 5.0),
         constrained_layout=True,
     )
     cmap = plt.get_cmap('Set3')
 
-    max_prop = 0.0
-    for r_idx, roi in enumerate(rois):
-        props, n_total_arr, sig_marks = [], [], []
-        for m in mods:
-            sub = rdf[(rdf['roi'] == roi) & (rdf['model'] == m)]
-            n_total = int(len(sub))
-            n_sig = int((sub['p_perm'] < alpha).sum())
-            prop = (n_sig / n_total) if n_total > 0 else 0.0
-            props.append(prop)
-            n_total_arr.append(n_total)
-            if n_total > 0:
-                bt = stats.binomtest(n_sig, n_total, p=chance_level,
-                                     alternative='greater')
-                sig_marks.append(bt.pvalue < alpha)
-            else:
-                sig_marks.append(False)
-
-        max_prop = max(max_prop, max(props) if props else 0.0)
-        positions = x_base - 0.4 + width / 2 + r_idx * width
-        n_max = max(n_total_arr) if n_total_arr else 0
-        bars = ax.bar(positions, props, width=width,
-                      color=cmap(r_idx),
+    max_h = 0.0
+    for i, roi in enumerate(rois_order):
+        positions = x_base - 0.4 + width / 2 + i * width
+        n_max = int(n_total_mat[i].max()) if n_total_mat[i].size else 0
+        bars = ax.bar(positions, props[i], width=width,
+                      color=cmap(i),
                       label=f'{roi} (N={n_max})',
                       edgecolor='black', linewidth=0.6)
-        for bar, sig in zip(bars, sig_marks):
-            if sig:
+        max_h = max(max_h, float(props[i].max()) if props[i].size else 0.0)
+        for j, bar in enumerate(bars):
+            stars = _pval_to_stars(p_for_stars[i, j])
+            if stars:
                 ax.text(bar.get_x() + bar.get_width() / 2,
-                        bar.get_height() + 0.01, '*',
+                        bar.get_height() + 0.005, stars,
                         ha='center', va='bottom',
-                        fontsize=14, fontweight='bold')
+                        fontsize=base_fontsize + 2, fontweight='bold')
 
     ax.axhline(chance_level, color='black', lw=0.8, ls='--',
                label=f'chance ({chance_level:.0%})')
     ax.set_xticks(x_base)
-    ax.set_xticklabels(mods, rotation=30, ha='right', fontsize=9)
-    ax.set_ylabel(f'proportion of neurons with p_perm < {alpha}')
-    ax.set_ylim(0, max(0.3, 1.15 * max_prop))
+    ax.set_xticklabels(mods, rotation=30, ha='right',
+                       fontsize=base_fontsize)
+    ax.set_ylabel(f'proportion of neurons with p_perm < {alpha}',
+                  fontsize=base_fontsize)
+    ax.set_ylim(0, max(0.3, 1.15 * max_h))
     reg_str = f"  |  reg alpha={reg_alpha}" if reg_alpha is not None else ""
     ax.set_title(
-        f"Significant-neuron proportion per (ROI × model){reg_str}  |  "
-        f"alpha={alpha}  |  "
-        f"* = binomial test p<{alpha} vs chance ({chance_level:.0%})",
-        fontsize=10, fontweight='bold',
+        f"Significant-neuron proportion per (ROI × model){reg_str}\n"
+        f"stars = {sig_label}:  * <0.05   ** <0.01   *** <0.001",
+        fontsize=base_fontsize + 1, fontweight='bold',
     )
-    ax.legend(fontsize=9, loc='upper right', frameon=False)
+
+    if legend_outside:
+        ax.legend(fontsize=base_fontsize - 1,
+                  loc='upper left', bbox_to_anchor=(1.02, 1.0),
+                  frameon=False, borderaxespad=0.0)
+    else:
+        ax.legend(fontsize=base_fontsize - 1, loc='upper right',
+                  frameon=False)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
 
     if save_path is not None:
         fig.savefig(save_path, dpi=150, bbox_inches='tight')
+        base, _ = os.path.splitext(save_path)
+        fig.savefig(base + '.svg', bbox_inches='tight')
+    return fig
+
+
+def plot_significance_counts_bars(results_df, models, save_path=None,
+                                   alpha=0.05, chance_level=0.05,
+                                   rois=None, model_order=None,
+                                   use_fdr=True, base_fontsize=13,
+                                   panel_w=4.2, panel_h=4.4):
+    """Per-ROI grey total + coloured significant counts, one panel per model.
+
+    Background grey bar = total number of cells in that ROI (for this
+    model). Foreground coloured bar = number with `p_perm < alpha`.
+    Stars use BH-corrected binomial p (or raw p if `use_fdr=False`):
+    0.05=*, 0.01=**, 0.001=***. Saves to PNG + SVG + PDF.
+    """
+    if results_df is None or results_df.empty:
+        return None
+    rdf = results_df.dropna(subset=['mean_r']).copy()
+    present_rois = set(rdf['roi'].unique())
+    present_models = set(rdf['model'].unique())
+    rois_order = _order_keep_present(
+        rois if rois is not None else CANONICAL_ROI_ORDER, present_rois)
+    mods = _order_keep_present(
+        model_order if model_order is not None else models, present_models)
+    if not rois_order or not mods:
+        return None
+    # import pdb; pdb.set_trace()
+    # Gather counts + raw binomial p per (roi, model).
+    n_total = np.zeros((len(rois_order), len(mods)), dtype=int)
+    n_sig = np.zeros_like(n_total)
+    pbin = np.full(n_total.shape, np.nan, dtype=float)
+    for i, roi in enumerate(rois_order):
+        for j, m in enumerate(mods):
+            sub = rdf[(rdf['roi'] == roi) & (rdf['model'] == m)]
+            n_total[i, j] = int(len(sub))
+            n_sig[i, j] = int((sub['p_perm'] < alpha).sum())
+            if n_total[i, j] > 0:
+                bt = stats.binomtest(int(n_sig[i, j]), int(n_total[i, j]),
+                                     p=chance_level, alternative='greater')
+                pbin[i, j] = bt.pvalue
+    if use_fdr:
+        p_for_stars = bh_fdr(pbin.flatten()).reshape(pbin.shape)
+        sig_label = 'q (BH-FDR)'
+    else:
+        p_for_stars = pbin
+        sig_label = 'p (binomial)'
+
+    n_models = len(mods)
+    fig, axes = plt.subplots(
+        1, n_models,
+        figsize=(panel_w * n_models + 1.0, panel_h),
+        constrained_layout=True, sharey=False,
+    )
+    if n_models == 1:
+        axes = [axes]
+
+    cmap = plt.get_cmap('Set2')
+    x = np.arange(len(rois_order))
+
+    for j, m in enumerate(mods):
+        ax = axes[j]
+        # Background grey bar = total per ROI.
+        ax.bar(x, n_total[:, j], width=0.78,
+               color='0.82', edgecolor='0.5', linewidth=0.8,
+               label='total cells')
+        # Foreground coloured bar = significant per ROI.
+        ax.bar(x, n_sig[:, j], width=0.78,
+               color=cmap(j), edgecolor='black', linewidth=0.7,
+               label=f'p_perm<{alpha:g}')
+        # Star annotations.
+        for i in range(len(rois_order)):
+            stars = _pval_to_stars(p_for_stars[i, j])
+            if stars:
+                h = max(n_total[i, j], 1)
+                ax.text(x[i], h + max(n_total[:, j].max() * 0.02, 0.5),
+                        stars,
+                        ha='center', va='bottom',
+                        fontsize=base_fontsize + 2,
+                        fontweight='bold')
+
+        ax.set_title(m, fontsize=base_fontsize + 2, fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels([_wrap_label(r, width=11) for r in rois_order],
+                           rotation=35, ha='right',
+                           fontsize=base_fontsize)
+        ax.set_ylabel('number of cells', fontsize=base_fontsize + 1)
+        ax.tick_params(axis='y', labelsize=base_fontsize)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.set_ylim(0, max(n_total[:, j].max() * 1.20, 1))
+
+    # Shared legend (right-of-figure).
+    handles, labels = axes[-1].get_legend_handles_labels()
+    fig.legend(handles, labels,
+               loc='upper left', bbox_to_anchor=(1.0, 0.95),
+               fontsize=base_fontsize, frameon=False)
+
+    fig.suptitle(
+        f'Significant-cell counts per ROI (one panel per model)\n'
+        f'stars = {sig_label}:  * <0.05   ** <0.01   *** <0.001',
+        fontsize=base_fontsize + 2, fontweight='bold',
+    )
+
+    if save_path is not None:
+        fig.savefig(save_path, dpi=200, bbox_inches='tight')
+        base, _ = os.path.splitext(save_path)
+        fig.savefig(base + '.svg', bbox_inches='tight')
+        fig.savefig(base + '.pdf', bbox_inches='tight')
+        print(f'  [sig-counts-bars] saved → {save_path} (+ .svg, .pdf)')
     return fig
 
 
@@ -1436,6 +1667,171 @@ def plot_roi_electrodes_glassbrain(
     if save_path is not None:
         fig.savefig(save_path, dpi=200, bbox_inches='tight')
         print(f"  [roi-electrodes] saved → {save_path}")
+    return fig
+
+
+def plot_roi_beta_glassbrain(
+    roi_betas,
+    roi_pvals=None,
+    only_rois=None,
+    roi_label_column='alt_final_roi',
+    brainnetome_nii=None,
+    brainnetome_lut=None,
+    vmax=None,
+    cmap_name='RdBu_r',
+    alpha_threshold=0.05,
+    display_mode='lyrz',
+    overlay_alpha=0.85,
+    roi_cell_coords=None,
+    cell_sphere_radius_mm=8.0,
+    sig_outline_color='black',
+    sig_outline_linewidth=2.0,
+    title=None,
+    save_path=None,
+):
+    """Glass-brain with each ROI shaded by a heatmap value.
+
+    Mirrors the cell colours in
+    :func:`plot_roi_model_heatmap` (RSA_DSR_ROIs_simple.py): symmetric
+    RdBu_r centred on 0, with ``vmax = max(|beta|)`` across the plotted
+    ROIs.  Each ROI mask is drawn as a single-colour overlay.
+
+    Parameters
+    ----------
+    roi_betas : dict[str, float]
+        ROI name -> beta (heatmap value).
+    roi_pvals : dict[str, float] or None
+        Optional ROI -> p-value.  ROIs with ``p < alpha_threshold`` are
+        listed in a small footer annotation.
+    only_rois : iterable[str] or None
+        Restrict plotting to these ROIs (e.g. ROIs that actually have
+        cells in the recording sample).
+    roi_label_column : {'alt_final_roi', 'final_roi'}
+        Selects the labelling scheme used to look up anatomical masks
+        in :mod:`mc.plotting.roi_atlas`.
+    brainnetome_nii, brainnetome_lut : str or None
+        Paths to the Brainnetome atlas + LUT.  Defaults come from
+        :mod:`mc.plotting.roi_atlas`.
+    vmax : float or None
+        Symmetric colour limit; defaults to ``max(|beta|)`` over plotted ROIs.
+    cmap_name : str
+    alpha_threshold : float
+    display_mode : str
+        Forwarded to nilearn's ``plot_glass_brain``.
+    overlay_alpha : float
+        Per-ROI overlay opacity (0..1).
+    roi_cell_coords : dict[str, (n, 3) ndarray] or None
+        Cell MNI positions per ROI. When supplied, each anatomical mask
+        is intersected with the union of spheres of radius
+        ``cell_sphere_radius_mm`` around that ROI's cells, so only the
+        recorded part of a large region is shaded.
+    cell_sphere_radius_mm : float or None
+        Sphere radius in mm. ``None`` disables the restriction.
+    sig_outline_color, sig_outline_linewidth :
+        Contour drawn around ROIs whose ``p_perm < alpha_threshold``.
+    title : str or None
+    save_path : str or None
+    """
+    from nilearn import plotting as nlplot
+    from matplotlib import cm
+    from matplotlib.colors import ListedColormap, Normalize
+    from mc.plotting.roi_atlas import (
+        make_roi_mask, restrict_mask_to_cell_spheres,
+    )
+
+    only_set = set(only_rois) if only_rois is not None else None
+    rois_to_plot = [r for r, v in roi_betas.items()
+                    if (only_set is None or r in only_set)
+                    and v is not None and np.isfinite(v)]
+    if not rois_to_plot:
+        print("  [roi-beta-glassbrain] no ROIs to plot.")
+        return None
+
+    if vmax is None or not np.isfinite(vmax) or vmax <= 0:
+        vmax = max(abs(roi_betas[r]) for r in rois_to_plot)
+        vmax = float(vmax) if vmax > 0 else 1.0
+
+    base_cmap = cm.get_cmap(cmap_name)
+    norm = Normalize(vmin=-vmax, vmax=vmax)
+
+    display = nlplot.plot_glass_brain(
+        None, display_mode=display_mode,
+        title=title or 'ROI beta glass-brain',
+        black_bg=False, plot_abs=False,
+    )
+
+    sig_rois_drawn, plotted, skipped = [], [], []
+    for roi in rois_to_plot:
+        try:
+            mask_img = make_roi_mask(
+                roi, roi_label_column=roi_label_column,
+                brainnetome_nii=brainnetome_nii,
+                brainnetome_lut=brainnetome_lut,
+            )
+        except Exception as e:
+            print(f"  [roi-beta-glassbrain] mask for {roi!r} failed: {e}")
+            skipped.append(roi)
+            continue
+        if mask_img is None or mask_img.get_fdata().sum() == 0:
+            skipped.append(roi)
+            continue
+
+        if (roi_cell_coords is not None
+                and cell_sphere_radius_mm is not None
+                and roi in roi_cell_coords):
+            coords = np.asarray(roi_cell_coords[roi], dtype=float)
+            if coords.size > 0:
+                mask_img = restrict_mask_to_cell_spheres(
+                    mask_img, coords,
+                    radius_mm=float(cell_sphere_radius_mm),
+                )
+        if mask_img.get_fdata().sum() == 0:
+            skipped.append(roi)
+            continue
+
+        rgba = base_cmap(norm(roi_betas[roi]))
+        single_cmap = ListedColormap([rgba])
+        display.add_overlay(mask_img, threshold=0.5,
+                            alpha=overlay_alpha, cmap=single_cmap)
+
+        # Significance outline drawn on top of the same (possibly
+        # cell-restricted) mask so the border matches what's coloured.
+        if roi_pvals is not None:
+            p = roi_pvals.get(roi, np.nan)
+            if np.isfinite(p) and p < alpha_threshold:
+                display.add_contours(
+                    mask_img, levels=[0.5],
+                    colors=sig_outline_color,
+                    linewidths=sig_outline_linewidth,
+                )
+                sig_rois_drawn.append(roi)
+        plotted.append(roi)
+
+    if skipped:
+        print(f"  [roi-beta-glassbrain] no mask available for: {skipped}")
+
+    fig = plt.gcf()
+
+    # Horizontal colour-bar in the bottom-right corner of the figure,
+    # well clear of all brain panels.
+    sm = cm.ScalarMappable(cmap=base_cmap, norm=norm)
+    sm.set_array([])
+    cax = fig.add_axes([0.74, 0.06, 0.22, 0.022])
+    cbar = fig.colorbar(sm, cax=cax, orientation='horizontal')
+    cbar.set_label('beta', fontsize=9)
+    cbar.ax.tick_params(labelsize=8)
+
+    # Footer caption listing significant ROIs (the contour already marks
+    # them on the brain; this is the legend for the outline).
+    if sig_rois_drawn:
+        fig.text(0.02, 0.02,
+                 f"outlined: p_perm < {alpha_threshold:g}  "
+                 f"({', '.join(sig_rois_drawn)})",
+                 fontsize=8, color='black')
+
+    if save_path is not None:
+        fig.savefig(save_path, dpi=200, bbox_inches='tight')
+        print(f"  [roi-beta-glassbrain] saved → {save_path}")
     return fig
 
 
@@ -2072,4 +2468,566 @@ def plot_dsr_rsa_comparison(rsa_df, enc_df, save_path=None,
         fig.savefig(save_path, dpi=200, bbox_inches='tight')
         print(f'  [fig5 DSR-vs-RSA] saved → {save_path}')
     plt.close(fig)
+
+
+# ── Publication-figure helpers for encoding_analysis_simple.py ────────
+# 1. Per (ROI, model) t-test of mean_r against 0  (one-sided, H1: mean > 0)
+# 2. ROI × model heatmap of those t-values
+# 3. Publication histogram (sister of plot_r_distribution_grid)
+# 4. Top-N cell fits (sister of plot_best_neuron_per_roi_model)
+# 5. Benjamini-Hochberg FDR adjustment
+
+
+def compute_roi_model_tstats(results_df, models=None, alpha=0.05):
+    """One-sample t-test of `mean_r > 0` per (ROI, model).
+
+    Parameters
+    ----------
+    results_df : pd.DataFrame
+        Must have columns `roi`, `model`, `mean_r`; `p_perm` is optional
+        and used to compute the per-(ROI,model) significant-cell count.
+    models : iterable of str or None
+        If given, restrict to these models.
+    alpha : float
+        Threshold for counting how many cells have `p_perm < alpha`.
+
+    Returns
+    -------
+    pd.DataFrame with rows = (roi, model) and columns:
+        n_cells, mean_r, sem_r, t, p_t, n_sig_perm, prop_sig_perm
+    """
+    if results_df is None or results_df.empty:
+        return pd.DataFrame()
+    rdf = results_df.dropna(subset=['mean_r']).copy()
+    if models is not None:
+        rdf = rdf[rdf['model'].isin(list(models))]
+    rows = []
+    for (roi, model), g in rdf.groupby(['roi', 'model'], sort=False):
+        vals = g['mean_r'].to_numpy(dtype=float)
+        t, p_t = _one_sided_t_greater(vals)
+        if 'p_perm' in g.columns:
+            p_perms = g['p_perm'].to_numpy(dtype=float)
+            n_sig = int(np.sum(p_perms < alpha))
+            prop_sig = float(n_sig / len(p_perms)) if len(p_perms) else np.nan
+        else:
+            n_sig, prop_sig = 0, np.nan
+        rows.append({
+            'roi':            roi,
+            'model':          model,
+            'n_cells':        int(vals.size),
+            'mean_r':         float(np.nanmean(vals)) if vals.size else np.nan,
+            'sem_r':          float(stats.sem(vals)) if vals.size > 1 else np.nan,
+            't':              t,
+            'p_t':            p_t,
+            'n_sig_perm':     n_sig,
+            'prop_sig_perm':  prop_sig,
+        })
+    return pd.DataFrame(rows).sort_values(['model', 'roi']).reset_index(drop=True)
+
+
+def bh_fdr(pvals):
+    """Benjamini-Hochberg FDR-adjusted p-values (q-values).
+
+    Returns an array the same length as `pvals`; NaN inputs stay NaN.
+    """
+    p = np.asarray(pvals, dtype=float)
+    q = np.full(p.shape, np.nan)
+    ok = np.isfinite(p)
+    if not ok.any():
+        return q
+    pv = p[ok]
+    n = pv.size
+    order = np.argsort(pv)
+    ranked = pv[order] * n / (np.arange(n) + 1)
+    ranked = np.minimum.accumulate(ranked[::-1])[::-1]
+    q_ok = np.empty(n)
+    q_ok[order] = np.clip(ranked, 0.0, 1.0)
+    q[ok] = q_ok
+    return q
+
+
+def plot_roi_model_heatmap(stats_df, models=None, rois=None,
+                            value_col='t', annot_col='p_t', sig_col='p_t',
+                            n_col='n_cells', alpha=0.05, vmax=None,
+                            cmap_name='RdBu_r', save_path=None,
+                            title=None, value_label='t-statistic',
+                            base_fontsize=14):
+    """Shared ROI × model heatmap used by both RSA and encoding scripts.
+
+    Each cell shows `value_col` as its colour, `annot_col` written inside,
+    and a thick black box drawn around cells where `sig_col < alpha`.
+    ROIs and models are ordered using `rois` / `models` if given, otherwise
+    via :data:`CANONICAL_ROI_ORDER` / :data:`CANONICAL_ENC_MODEL_ORDER`.
+
+    Parameters
+    ----------
+    stats_df : pd.DataFrame
+        Long table with columns ``roi``, ``model``, `value_col`, `annot_col`,
+        `sig_col`, and (optionally) `n_col`.
+    models, rois : list[str] or None
+        Explicit display order. ``None`` -> canonical default, ROIs/models
+        actually present, with absent entries appended at the end.
+    value_col, annot_col, sig_col : str
+        Column names used for colour, in-cell text, and the significance
+        outline respectively.
+    n_col : str
+        Per-(ROI, model) cell count, displayed in the row label.
+    alpha : float
+        Outline threshold applied to `sig_col`.
+    vmax : float or None
+        Symmetric colour limit; defaults to ``max(|value|)``.
+    cmap_name : str
+    save_path : str or None
+        Saved as PNG and also as SVG (same basename).
+    title : str or None
+    value_label : str
+        Colour-bar label.
+    base_fontsize : int
+        All other text scales relative to this (default 14, larger than
+        the previous default).
+    """
+    if stats_df is None or stats_df.empty:
+        return None, None
+    present_rois = set(stats_df['roi'].dropna().unique())
+    present_models = set(stats_df['model'].dropna().unique())
+    rois_order = _order_keep_present(
+        rois if rois is not None else CANONICAL_ROI_ORDER, present_rois)
+    cols_order = _order_keep_present(
+        models if models is not None else CANONICAL_ENC_MODEL_ORDER,
+        present_models)
+    if not rois_order or not cols_order:
+        return None, None
+
+    val_mat = np.full((len(rois_order), len(cols_order)), np.nan)
+    annot_mat = np.full_like(val_mat, np.nan)
+    sig_mat = np.full_like(val_mat, np.nan)
+
+    for i, roi in enumerate(rois_order):
+        for j, m in enumerate(cols_order):
+            r = stats_df[(stats_df['roi'] == roi) & (stats_df['model'] == m)]
+            if r.empty:
+                continue
+            val_mat[i, j] = float(r[value_col].iloc[0])
+            annot_mat[i, j] = float(r[annot_col].iloc[0])
+            sig_mat[i, j] = float(r[sig_col].iloc[0])
+
+    # Per-ROI cell count (max across this ROI's models).
+    roi_n = {}
+    if n_col in stats_df.columns:
+        for roi in rois_order:
+            g = stats_df[stats_df['roi'] == roi]
+            roi_n[roi] = int(g[n_col].max()) if len(g) else 0
+    roi_labels = [
+        (f'{_wrap_label(r, width=12)}\n(n={roi_n[r]})'
+         if roi_n.get(r) is not None
+         else _wrap_label(r, width=12))
+        for r in rois_order
+    ]
+
+    if vmax is None or not np.isfinite(vmax) or vmax <= 0:
+        finite = val_mat[np.isfinite(val_mat)]
+        vmax = float(np.nanmax(np.abs(finite))) if finite.size else 1.0
+        vmax = vmax if vmax > 0 else 1.0
+
+    figsize = (1.85 * len(cols_order) + 3.5,
+               0.95 * len(rois_order) + 2.4)
+    fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
+    im = ax.imshow(val_mat, cmap=cmap_name, vmin=-vmax, vmax=vmax,
+                   aspect='auto')
+
+    ax.set_xticks(np.arange(len(cols_order)))
+    ax.set_xticklabels(cols_order, rotation=35, ha='right',
+                       fontsize=base_fontsize + 1)
+    ax.set_yticks(np.arange(len(rois_order)))
+    ax.set_yticklabels(roi_labels, fontsize=base_fontsize)
+
+    for i in range(len(rois_order)):
+        for j in range(len(cols_order)):
+            p = annot_mat[i, j]
+            if np.isfinite(p):
+                ax.text(j, i, f'p={p:.3f}',
+                        ha='center', va='center',
+                        fontsize=base_fontsize - 1, color='black')
+            s = sig_mat[i, j]
+            if np.isfinite(s) and s < alpha:
+                ax.add_patch(plt.Rectangle(
+                    (j - 0.5, i - 0.5), 1, 1,
+                    fill=False, edgecolor='black', linewidth=3.0))
+
+    cbar = fig.colorbar(im, ax=ax, shrink=0.8)
+    cbar.set_label(value_label, fontsize=base_fontsize + 1)
+    cbar.ax.tick_params(labelsize=base_fontsize)
+
+    ax.set_title(title or f'ROI × model  (outline: p < {alpha})',
+                 fontsize=base_fontsize + 3, fontweight='bold')
+
+    if save_path is not None:
+        fig.savefig(save_path, dpi=200, bbox_inches='tight')
+        base, _ = os.path.splitext(save_path)
+        fig.savefig(base + '.svg', bbox_inches='tight')
+        print(f'  [roi-model-heatmap] saved → {save_path} (+ .svg)')
+    return fig, ax
+
+
+# Backwards-compatible alias for the previous name.
+def plot_roi_tstat_heatmap(stats_df, models, save_path=None,
+                            alpha=0.05, value_col='t', annot_col='p_t',
+                            sig_col='p_t', vmax=None,
+                            cmap_name='RdBu_r', title=None,
+                            base_fontsize=14):
+    return plot_roi_model_heatmap(
+        stats_df, models=models, value_col=value_col,
+        annot_col=annot_col, sig_col=sig_col, vmax=vmax,
+        cmap_name=cmap_name, save_path=save_path, alpha=alpha,
+        title=title or (f'ROI × model — one-sided t-test of mean_r > 0  '
+                        f'(outline: p_t < {alpha})'),
+        value_label='t-statistic (mean_r > 0)',
+        base_fontsize=base_fontsize,
+    )
+
+
+def plot_publication_r_histogram(results_df, models, save_path=None,
+                                  alpha=0.05, bins=21, base_fontsize=14,
+                                  rois=None, model_order=None,
+                                  panel_w=3.3, panel_h=2.7,
+                                  p_t_per_roi_model=None):
+    """Publication-ready ROI × model histogram of held-out mean r values.
+
+    * No text inside the histograms — `n = n_sig/n_total` is shown above
+      each panel, all other meta lives at the figure edges.
+    * Larger default panels (so frequency = 1 bars are visible) and bigger
+      fonts (default 14, was 13).
+    * ROI labels on the leftmost column are wrapped to multiple lines so
+      long names (HC_anterior, medialOFC) stay readable.
+    * Significance is communicated by a thick black frame only — no
+      circle markers in the corner.
+    * If `p_t_per_roi_model` is supplied (dict-of-dicts keyed by
+      ``[model][roi]`` -> p-value), the frame uses that p (e.g. FDR-
+      adjusted); otherwise an in-panel one-sided t-test is computed.
+    * Saves to PNG, SVG and PDF for publication.
+    """
+    if results_df is None or results_df.empty:
+        return None
+    rdf = results_df.dropna(subset=['mean_r']).copy()
+    present_rois = set(rdf['roi'].unique())
+    present_models = set(rdf['model'].unique())
+    rois_order = _order_keep_present(
+        rois if rois is not None else CANONICAL_ROI_ORDER, present_rois)
+    rois_order = [r for r in rois_order
+                  if (model_order or models) is None
+                  or any(((rdf['roi'] == r) & (rdf['model'] == m)).any()
+                         for m in (model_order or models))]
+    mods = _order_keep_present(
+        model_order if model_order is not None else models, present_models)
+    if not rois_order or not mods:
+        return None
+
+    n_rows, n_cols = len(rois_order), len(mods)
+    # Generous panel size so freq=1 bars are visible.
+    fig, axes = plt.subplots(
+        n_rows, n_cols,
+        figsize=(panel_w * n_cols + 2.2, panel_h * n_rows + 1.8),
+        constrained_layout=True,
+    )
+    axes = np.atleast_2d(np.asarray(axes)).reshape(n_rows, n_cols)
+
+    for r, roi in enumerate(rois_order):
+        for c, model in enumerate(mods):
+            ax = axes[r, c]
+            sub = rdf[(rdf['roi'] == roi) & (rdf['model'] == model)]
+            vals = sub['mean_r'].to_numpy(dtype=float)
+            p_perm_arr = sub['p_perm'].to_numpy(dtype=float) \
+                if 'p_perm' in sub.columns else np.full(vals.size, np.nan)
+            if vals.size == 0:
+                ax.axis('off')
+                continue
+
+            panel_lim = max(0.05, 1.05 * float(np.max(np.abs(vals))))
+            edges = np.linspace(-panel_lim, panel_lim, bins)
+            sig_mask = np.isfinite(p_perm_arr) & (p_perm_arr < alpha)
+
+            ax.hist(vals[~sig_mask], bins=edges, color='0.75',
+                    edgecolor='white', linewidth=0.6)
+            if sig_mask.any():
+                ax.hist(vals[sig_mask], bins=edges, color='tab:red',
+                        edgecolor='white', linewidth=0.6, alpha=0.9)
+            ax.axvline(0, color='black', lw=1.0)
+
+            n_sig = int(sig_mask.sum())
+            n_tot = int(vals.size)
+
+            # Panel significance from either supplied p_t (e.g. FDR) or
+            # a one-sided t-test computed here.
+            if (p_t_per_roi_model is not None
+                    and model in p_t_per_roi_model
+                    and roi in p_t_per_roi_model[model]):
+                p_panel = float(p_t_per_roi_model[model][roi])
+            else:
+                _, p_panel = _one_sided_t_greater(vals)
+
+            is_sig = np.isfinite(p_panel) and p_panel < alpha
+            if is_sig:
+                for spine in ax.spines.values():
+                    spine.set_linewidth(3.0)
+                    spine.set_color('black')
+            else:
+                ax.spines['top'].set_visible(False)
+                ax.spines['right'].set_visible(False)
+
+            ax.tick_params(labelsize=base_fontsize - 1)
+
+            # Panel title = "n = sig/total" above the data area. Adds the
+            # model name on top of the first row only.
+            if r == 0:
+                ax.set_title(f'{model}\nn = {n_sig}/{n_tot}',
+                             fontsize=base_fontsize + 1,
+                             fontweight='bold', pad=8)
+            else:
+                ax.set_title(f'n = {n_sig}/{n_tot}',
+                             fontsize=base_fontsize, pad=4)
+
+            if c == 0:
+                ax.set_ylabel(_wrap_label(roi, width=11),
+                              fontsize=base_fontsize + 1,
+                              fontweight='bold')
+            if r == n_rows - 1:
+                ax.set_xlabel('held-out mean r',
+                              fontsize=base_fontsize)
+
+    suptitle = (
+        f'Held-out r per (ROI × model)  |  alpha = {alpha}  |  '
+        f'red = perm-significant cells  |  bold frame = panel p < {alpha}'
+    )
+    fig.suptitle(suptitle, fontsize=base_fontsize + 2, fontweight='bold')
+
+    if save_path is not None:
+        fig.savefig(save_path, dpi=300, bbox_inches='tight')
+        base, _ = os.path.splitext(save_path)
+        fig.savefig(base + '.svg', bbox_inches='tight')
+        fig.savefig(base + '.pdf', bbox_inches='tight')
+        print(f'  [pub-hist] saved → {save_path} (+ .svg, .pdf)')
     return fig
+
+
+def plot_top_n_cells_per_model(diagnostics_all, results_df, models, n=5,
+                                save_dir=None, base_fontsize=12):
+    """Save publication-ready fit plots for the top-`n` cells per model.
+
+    For each model in `models`, the n cells with the highest `mean_r`
+    across all ROIs are plotted: permutation null on the left, best-fold
+    actual-vs-predicted trace on the right. Larger fonts than the diagnostic
+    plots, and saved as png + svg + pdf so they survive being shrunk for
+    figures.
+    """
+    if results_df is None or results_df.empty or not diagnostics_all:
+        return
+    if save_dir is None:
+        return
+    os.makedirs(save_dir, exist_ok=True)
+    rdf = results_df.dropna(subset=['mean_r']).copy()
+    saved = 0
+    for model in models:
+        sub = rdf[rdf['model'] == model]
+        if sub.empty:
+            continue
+        top = sub.nlargest(n, 'mean_r')
+        for rank, (_, row) in enumerate(top.iterrows(), start=1):
+            sub_str = row['subject']
+            neuron_label = row['neuron']
+            roi = row['roi']
+            diag = (diagnostics_all.get(sub_str, {})
+                    .get(neuron_label, {}).get(model))
+            if diag is None:
+                continue
+            r_per_fold = np.asarray(diag.get('r_per_fold', []), dtype=float)
+            if not r_per_fold.size or not np.isfinite(r_per_fold).any():
+                continue
+            best_fold = int(np.nanargmax(r_per_fold))
+            sub_configs = diag.get('configs', [])
+            cfg_label = (sub_configs[best_fold]
+                         if best_fold < len(sub_configs)
+                         else f'fold {best_fold}')
+
+            fig, axes = plt.subplots(
+                1, 2, figsize=(12.5, 4.2), constrained_layout=True,
+                gridspec_kw=dict(width_ratios=[1, 2]),
+            )
+
+            # Perm null (left).
+            _draw_perm_hist(axes[0], diag, bins=30)
+            axes[0].set_title('permutation null',
+                              fontsize=base_fontsize + 1)
+            axes[0].set_xlabel('mean Pearson r',
+                               fontsize=base_fontsize)
+            axes[0].tick_params(labelsize=base_fontsize - 1)
+            for txt in axes[0].get_legend().get_texts():
+                txt.set_fontsize(base_fontsize - 1)
+
+            # Actual vs predicted (right).
+            yt = np.asarray(diag['y_test_per_fold'][best_fold], dtype=float)
+            yp = np.asarray(diag['y_pred_per_fold'][best_fold], dtype=float)
+            x = np.arange(yt.size)
+
+            ax_ts = axes[1]
+            ax_ts2 = ax_ts.twinx()
+            ax_ts.plot(x, yt, color='0.30', lw=1.6, label='neuron')
+            ax_ts2.plot(x, yp, color='tab:red', lw=1.6, alpha=0.9,
+                        label='predicted')
+            ax_ts.set_title(
+                f'best fold: held-out {cfg_label}   '
+                f'r = {r_per_fold[best_fold]:.3f}',
+                fontsize=base_fontsize + 1, loc='left',
+            )
+            ax_ts.set_xlabel('time bin', fontsize=base_fontsize)
+            ax_ts.tick_params(labelsize=base_fontsize - 1)
+            ax_ts2.tick_params(labelsize=base_fontsize - 1,
+                               labelcolor='tab:red')
+            ax_ts.set_ylabel('neuron (a.u.)',
+                             fontsize=base_fontsize - 1,
+                             color='0.40')
+            ax_ts2.set_ylabel('predicted',
+                              fontsize=base_fontsize - 1,
+                              color='tab:red')
+            ax_ts.spines['top'].set_visible(False)
+            ax_ts2.spines['top'].set_visible(False)
+            lines1, labels1 = ax_ts.get_legend_handles_labels()
+            lines2, labels2 = ax_ts2.get_legend_handles_labels()
+            ax_ts.legend(lines1 + lines2, labels1 + labels2,
+                         fontsize=base_fontsize - 1,
+                         loc='upper right', frameon=False)
+
+            fig.suptitle(
+                f'#{rank} cell for model "{model}"   '
+                f'sub-{sub_str} {neuron_label}   roi: {roi}   '
+                f'mean r = {diag.get("mean_r", float("nan")):.3f}   '
+                f'p_perm = {diag.get("p_perm", float("nan")):.3f}',
+                fontsize=base_fontsize + 1, fontweight='bold',
+            )
+            fname = (f'top{rank}_{model}_{roi}_sub-{sub_str}_{neuron_label}'
+                     .replace('/', '_'))
+            base = os.path.join(save_dir, fname)
+            fig.savefig(base + '.png', dpi=300, bbox_inches='tight')
+            fig.savefig(base + '.svg', bbox_inches='tight')
+            fig.savefig(base + '.pdf', bbox_inches='tight')
+            plt.close(fig)
+            saved += 1
+    print(f'  [top-cell fits] saved {saved} figures → {save_dir}')
+
+
+def plot_top_n_cells_per_roi_model(diagnostics_all, results_df,
+                                    targets=None, models=None, rois=None,
+                                    n=5, save_dir=None, base_fontsize=13):
+    """Publication-ready fit plots for the top-`n` cells within (ROI, model).
+
+    `targets` is a list of either ``(model, roi)`` or ``(model, roi, n_i)``
+    tuples specifying exactly which subsets to render. If `targets` is
+    ``None``, iterate over the Cartesian product of `models × rois`
+    (each with `n` cells).
+
+    Saves one PNG + SVG + PDF per cell into `save_dir`.
+    """
+    if results_df is None or results_df.empty or not diagnostics_all:
+        return
+    if save_dir is None:
+        return
+    os.makedirs(save_dir, exist_ok=True)
+    rdf = results_df.dropna(subset=['mean_r']).copy()
+
+    pairs = []
+    if targets is None:
+        if not models or not rois:
+            return
+        for m in models:
+            for roi in rois:
+                pairs.append((m, roi, int(n)))
+    else:
+        for t in targets:
+            if len(t) == 2:
+                pairs.append((t[0], t[1], int(n)))
+            else:
+                pairs.append((t[0], t[1], int(t[2])))
+
+    saved = 0
+    for model, roi, n_i in pairs:
+        sub = rdf[(rdf['model'] == model) & (rdf['roi'] == roi)]
+        if sub.empty:
+            print(f'  [top-cells per (roi, model)] no cells for '
+                  f'({roi}, {model}); skipping.')
+            continue
+        top = sub.nlargest(n_i, 'mean_r')
+        for rank, (_, row) in enumerate(top.iterrows(), start=1):
+            sub_str = row['subject']
+            neuron_label = row['neuron']
+            diag = (diagnostics_all.get(sub_str, {})
+                    .get(neuron_label, {}).get(model))
+            if diag is None:
+                continue
+            r_per_fold = np.asarray(diag.get('r_per_fold', []), dtype=float)
+            if not r_per_fold.size or not np.isfinite(r_per_fold).any():
+                continue
+            best_fold = int(np.nanargmax(r_per_fold))
+            sub_configs = diag.get('configs', [])
+            cfg_label = (sub_configs[best_fold]
+                         if best_fold < len(sub_configs)
+                         else f'fold {best_fold}')
+
+            fig, axes = plt.subplots(
+                1, 2, figsize=(13, 4.3), constrained_layout=True,
+                gridspec_kw=dict(width_ratios=[1, 2]),
+            )
+            _draw_perm_hist(axes[0], diag, bins=30)
+            axes[0].set_title('permutation null',
+                              fontsize=base_fontsize + 1)
+            axes[0].set_xlabel('mean Pearson r', fontsize=base_fontsize)
+            axes[0].tick_params(labelsize=base_fontsize - 1)
+            leg = axes[0].get_legend()
+            if leg is not None:
+                for txt in leg.get_texts():
+                    txt.set_fontsize(base_fontsize - 1)
+
+            yt = np.asarray(diag['y_test_per_fold'][best_fold], dtype=float)
+            yp = np.asarray(diag['y_pred_per_fold'][best_fold], dtype=float)
+            x = np.arange(yt.size)
+            ax_ts = axes[1]
+            ax_ts2 = ax_ts.twinx()
+            ax_ts.plot(x, yt, color='0.30', lw=1.6, label='neuron')
+            ax_ts2.plot(x, yp, color='tab:red', lw=1.6, alpha=0.9,
+                        label='predicted')
+            ax_ts.set_title(
+                f'best fold: held-out {cfg_label}   '
+                f'r = {r_per_fold[best_fold]:.3f}',
+                fontsize=base_fontsize + 1, loc='left',
+            )
+            ax_ts.set_xlabel('time bin', fontsize=base_fontsize)
+            ax_ts.tick_params(labelsize=base_fontsize - 1)
+            ax_ts2.tick_params(labelsize=base_fontsize - 1,
+                               labelcolor='tab:red')
+            ax_ts.set_ylabel('neuron (a.u.)',
+                             fontsize=base_fontsize - 1, color='0.40')
+            ax_ts2.set_ylabel('predicted',
+                              fontsize=base_fontsize - 1, color='tab:red')
+            ax_ts.spines['top'].set_visible(False)
+            ax_ts2.spines['top'].set_visible(False)
+            lines1, labels1 = ax_ts.get_legend_handles_labels()
+            lines2, labels2 = ax_ts2.get_legend_handles_labels()
+            ax_ts.legend(lines1 + lines2, labels1 + labels2,
+                         fontsize=base_fontsize - 1,
+                         loc='upper right', frameon=False)
+
+            fig.suptitle(
+                f'#{rank} {model} cell in {roi}   '
+                f'sub-{sub_str} {neuron_label}   '
+                f'mean r = {diag.get("mean_r", float("nan")):.3f}   '
+                f'p_perm = {diag.get("p_perm", float("nan")):.3f}',
+                fontsize=base_fontsize + 1, fontweight='bold',
+            )
+            fname = (f'top{rank}_{model}_{roi}_sub-{sub_str}_{neuron_label}'
+                     .replace('/', '_'))
+            base = os.path.join(save_dir, fname)
+            fig.savefig(base + '.png', dpi=300, bbox_inches='tight')
+            fig.savefig(base + '.svg', bbox_inches='tight')
+            fig.savefig(base + '.pdf', bbox_inches='tight')
+            plt.close(fig)
+            saved += 1
+    print(f'  [top-cells per (roi, model)] saved {saved} figures → '
+          f'{save_dir}')

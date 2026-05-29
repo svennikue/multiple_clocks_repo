@@ -90,13 +90,6 @@ def _peak_per_phase(trial_arr, phase_idx, n_phases):
     return out
 
 
-# def _row_zscore(arr):
-#     """Row-wise z-score. Rows with zero std return NaNs."""
-#     m = np.nanmean(arr, axis=1, keepdims=True)
-#     s = np.nanstd(arr, axis=1, keepdims=True, ddof=0)
-#     z = np.where(s > 1e-12, (arr - m) / s, np.nan)
-#     return z
-
 def _row_zscore(arr, eps=1e-12, fill_constant=0.0):
     """
     Row-wise z-score.
