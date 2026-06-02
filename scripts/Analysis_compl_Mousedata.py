@@ -55,7 +55,6 @@ if save:
         os.mkdir(out_path)
 
 
-
 if load_old: 
     # if I want to load old stuff, use this:
         # USE THIS TOMORROW
@@ -109,7 +108,7 @@ for mouse in sorted(mouse_data):
         all_results[mouse] = mc.analyse.analyse_ephys.reg_across_tasks(mouse_data_clean[mouse]["rewards_configs"], mouse_data_clean[mouse]["locations"], mouse_data_clean[mouse]["neurons"], mouse_data_clean[mouse]["timings"], mouse_data[mouse]["recday"], plotting = False, continuous = True, no_bins_per_state = 10, number_phase_neurons = 3, mask_within = True, split_by_phase = False)
 
     if do_neuron_subset == True:
-        # define a mask for clock and midnight neurons, respectively
+        # define a mask for clock and midnight neurons, respecNow,tively
         midnight_neurons = []
         midnight_mask = np.where(mouse_data[mouse]["neuron_type"][:,0] == 1)[0]
         for neurons in mouse_data_clean[mouse]["neurons"]:
