@@ -17,6 +17,7 @@ are already vectorised and carry no bug.
 """
 
 import os
+import re
 import numpy as np
 import scipy.stats
 import statsmodels.api as sm
@@ -45,110 +46,175 @@ MODEL_LABELS = {
 # ---------------------------------------------------------------------------
 # data loading / cleaning
 # ---------------------------------------------------------------------------
-def load_ephys_data(dict_labels, Data_folder, raw=True):
-    """Load the ephys recordings for the requested mice.
+def discover_recdays(Data_folder):
+    """Return the authoritative recday list shipped with the dataset.
 
+    Reads ``Recording_days_combined.npy`` (the manifest written by the original
+    authors). Falls back to scanning ``Task_data_*.npy`` if that file is missing.
+    """
+    manifest = os.path.join(Data_folder, 'Recording_days_combined.npy')
+    if os.path.exists(manifest):
+        return [str(x) for x in np.load(manifest)]
+    pat = re.compile(r'^Task_data_(.+)\.npy$')
+    return sorted(m.group(1) for m in (pat.match(f) for f in os.listdir(Data_folder)) if m)
+
+
+def _discover_sessions(Data_folder, recday, kind):
+    """Find every session index for which BOTH the location and neuron files
+    exist on disk for the requested ``kind``.
+
+    ``kind`` is ``'raw'`` (variable-length recordings) or ``'norm'`` (360 bins/trial).
+    """
+    loc_prefix = 'Location_raw_' if kind == 'raw' else 'Location_'
+    neu_prefix = 'Neuron_raw_'  if kind == 'raw' else 'Neuron_'
+    loc_pat = re.compile(rf'^{loc_prefix}{re.escape(recday)}_(\d+)\.npy$')
+    neu_pat = re.compile(rf'^{neu_prefix}{re.escape(recday)}_(\d+)\.npy$')
+    loc_sessions, neu_sessions = set(), set()
+    for f in os.listdir(Data_folder):
+        m = loc_pat.match(f)
+        if m: loc_sessions.add(int(m.group(1)))
+        m = neu_pat.match(f)
+        if m: neu_sessions.add(int(m.group(1)))
+    return sorted(loc_sessions & neu_sessions)
+
+
+def cross_view_session_ids(raw_data, norm_data):
+    """For each recday present in both views, return the intersection of session
+    ids on disk. Sessions missing from the normalised view are the original
+    authors' implicit "bad session" flag, so this is the safest cleaning gate.
+    """
+    out = {}
+    for recday in raw_data:
+        if recday not in norm_data:
+            continue
+        raw_ids  = set(raw_data[recday]['session_ids'])
+        norm_ids = set(norm_data[recday]['session_ids'])
+        out[recday] = sorted(raw_ids & norm_ids)
+    return out
+
+
+def load_ephys_data(Data_folder, recdays=None, raw=True):
+    """Load the ephys recordings for the requested recdays.
+
+    ``recdays`` defaults to ``discover_recdays(Data_folder)`` (the manifest).
     ``raw=True``  -> the variable-length raw recordings (``*_raw_*`` files),
                      used by ``reg_across_tasks``.
     ``raw=False`` -> the already-normalised recordings binned to 360 bins/trial
-                     (90 per state): ``Neuron_*`` (n_neurons, n_trials, 360) and
-                     ``Location_*`` (n_trials, 360). Used by ``reg_across_tasks_DSR``.
-    """
-    rec_days = ['me11_05122021_06122021', 'me11_01122021_02122021', 'me10_09122021_10122021',
-                'me08_10092021_11092021', 'ah04_09122021_10122021', 'ah04_05122021_06122021',
-                'ah04_01122021_02122021', 'ah04_01122021_02122021', 'ah03_18082021_19082021']
+                     (90 per state). Used by ``reg_across_tasks_DSR``.
 
+    Sessions are discovered from the filesystem: only sessions that have BOTH
+    a matching ``Location*`` and ``Neuron*`` file (and a ``trialtimes_*`` file)
+    of the requested kind are loaded. ``rewards_configs`` is sliced to match
+    so the i-th loaded session always aligns with the i-th task config.
+
+    Returns a dict keyed by recday.
+    """
+    if recdays is None:
+        recdays = discover_recdays(Data_folder)
+
+    kind = 'raw' if raw else 'norm'
     loc_prefix = 'Location_raw_' if raw else 'Location_'
-    neu_prefix = 'Neuron_raw_' if raw else 'Neuron_'
+    neu_prefix = 'Neuron_raw_'  if raw else 'Neuron_'
 
     data = {}
-    for i, mouse in enumerate(dict_labels):
-        mouse_recday = rec_days[i]
-        data[mouse] = {}
-        rewards_configs = np.load(Data_folder + 'Task_data_' + mouse_recday + '.npy')
-        if mouse == 'mouse_d':
-            # the ephys file for the last task on that day was lost -> drop it
-            rewards_configs = rewards_configs[0:-1, :].copy()
-        data[mouse]["anchor_lag"] = np.load(Data_folder + 'Anchor_lag_' + mouse_recday + '.npy')
-        data[mouse]["anchor_lag_threshold"] = np.load(Data_folder + 'Anchor_lag_threshold_' + mouse_recday + '.npy')
-        data[mouse]["cells"] = np.load(Data_folder + 'Phase_state_place_anchored_' + mouse_recday + '.npy')
+    for recday in recdays:
+        rewards_configs = np.load(os.path.join(Data_folder, f'Task_data_{recday}.npy'))
+        sessions = _discover_sessions(Data_folder, recday, kind)
+        # only keep sessions that also have a trialtimes file (always present for raw,
+        # but check explicitly so a missing trialtimes file fails loudly here, not later)
+        sessions = [s for s in sessions
+                    if os.path.exists(os.path.join(Data_folder, f'trialtimes_{recday}_{s}.npy'))]
+        # Task_data has one row per intended task; drop any row whose session
+        # didn't make it onto disk (handles e.g. me08 where the last ephys
+        # file was lost, or recdays where the normalised view skips a session).
+        if sessions and max(sessions) >= len(rewards_configs):
+            raise ValueError(
+                f"{recday}: session id {max(sessions)} exceeds Task_data rows "
+                f"({len(rewards_configs)}) — manifest/file mismatch.")
+        kept_rewards = rewards_configs[sessions]
 
-        no_task_configs = len(rewards_configs)
-        # some sessions have no normalised recording (e.g. session 3 is missing
-        # for a couple of recdays). Session indices are preserved in the file
-        # names, so only load the sessions that exist and keep the matching
-        # task-config rows aligned with the loaded neurons/locations.
-        locations, neurons, timings, kept_sessions = [], [], [], []
-        for session in range(no_task_configs):
-            neu_file = Data_folder + neu_prefix + mouse_recday + '_' + str(session) + '.npy'
-            if not os.path.exists(neu_file):
-                continue
-            locations.append(np.load(Data_folder + loc_prefix + mouse_recday + '_' + str(session) + '.npy'))
-            neurons.append(np.load(neu_file))
-            timings.append(np.load(Data_folder + 'trialtimes_' + mouse_recday + '_' + str(session) + '.npy'))
-            kept_sessions.append(session)
-        # drop task-config rows whose session was not recorded
-        data[mouse]["rewards_configs"] = rewards_configs[kept_sessions]
-        data[mouse]["locations"] = locations
-        data[mouse]["neurons"] = neurons
-        data[mouse]["timings"] = timings
-        data[mouse]["session_ids"] = kept_sessions
-        data[mouse]["recday"] = mouse_recday
+        locations, neurons, timings = [], [], []
+        for s in sessions:
+            locations.append(np.load(os.path.join(Data_folder, f'{loc_prefix}{recday}_{s}.npy')))
+            neurons.append(np.load(os.path.join(Data_folder, f'{neu_prefix}{recday}_{s}.npy')))
+            timings.append(np.load(os.path.join(Data_folder, f'trialtimes_{recday}_{s}.npy')))
 
-        # one-hot of each neuron's preferred anchor lag
-        anchor_lag = data[mouse]["anchor_lag"]
-        neuron_type = np.zeros((len(anchor_lag), anchor_lag.shape[1]))
-        neuron_type[np.arange(len(anchor_lag)), np.argmax(anchor_lag, axis=1)] = 1
-        data[mouse]["neuron_type"] = neuron_type
+        entry = {
+            'recday':          recday,
+            'rewards_configs': kept_rewards,
+            'locations':       locations,
+            'neurons':         neurons,
+            'timings':         timings,
+            'session_ids':     sessions,
+        }
+
+        # extras (anchor lag etc.) — optional, only loaded if present
+        for key, fname in [
+            ('anchor_lag',           f'Anchor_lag_{recday}.npy'),
+            ('anchor_lag_threshold', f'Anchor_lag_threshold_{recday}.npy'),
+            ('cells',                f'Phase_state_place_anchored_{recday}.npy'),
+        ]:
+            path = os.path.join(Data_folder, fname)
+            if os.path.exists(path):
+                entry[key] = np.load(path)
+
+        if 'anchor_lag' in entry:
+            anchor_lag = entry['anchor_lag']
+            neuron_type = np.zeros((len(anchor_lag), anchor_lag.shape[1]))
+            neuron_type[np.arange(len(anchor_lag)), np.argmax(anchor_lag, axis=1)] = 1
+            entry['neuron_type'] = neuron_type
+
+        data[recday] = entry
 
     return data
 
 
 def clean_ephys_data(task_configs, locations_all, neurons, timings_all, mouse_recday,
-                     ignore_double_tasks=True, session_ids=None, manual_exclusions=None,
+                     session_ids=None, manual_exclusions=None, keep_session_ids=None,
                      return_metadata=False):
-    """Drop task configs that are far too short, duplicated, or manually excluded.
+    """Minimal cleaning. Keeps every session unless it is manually excluded or
+    explicitly absent from ``keep_session_ids`` (typically the intersection of
+    available raw + normalised sessions, i.e. the original authors' implicit
+    exclusion list).
 
-    ``session_ids`` should contain the original file-session index for each loaded
-    task. If omitted, list indices are used for backwards compatibility.
+    Duplicate task configurations (deliberate repeats by the experimenters) are
+    kept and tagged via ``duplicate_groups`` in the metadata, so downstream
+    pooling can treat them as extra repeats of the same task.
+
+    ``session_ids`` should contain the original file-session index for each
+    loaded task; if omitted, list indices are used.
     """
     if session_ids is None:
         session_ids = list(range(len(task_configs)))
     session_ids = [int(s) for s in session_ids]
     manual_exclusions = set() if manual_exclusions is None else {int(s) for s in manual_exclusions}
+    keep_session_ids = (None if keep_session_ids is None
+                        else {int(s) for s in keep_session_ids})
 
-    max_length = max(len(run) for run in locations_all)
-    too_short = [i for i, run in enumerate(locations_all) if len(run) < max_length / 3]
-
-    ignore = set(too_short)
-    reasons = {i: ['too_short'] for i in too_short}
+    reasons = {}
+    ignore = set()
 
     for idx, session_id in enumerate(session_ids):
         if session_id in manual_exclusions:
             ignore.add(idx)
             reasons.setdefault(idx, []).append('manual_exclusion')
+        if keep_session_ids is not None and session_id not in keep_session_ids:
+            ignore.add(idx)
+            reasons.setdefault(idx, []).append('missing_in_other_view')
 
-    duplicate_groups = []
-    if ignore_double_tasks:
-        configs = [tuple(t) for t in task_configs]
-        seen = {}
-        for idx, cfg in enumerate(configs):
-            seen.setdefault(cfg, []).append(idx)
-        # for each set of duplicates keep the run with the most trials
-        for cfg, idxs in seen.items():
-            if len(idxs) > 1:
-                best = max(idxs, key=lambda i: len(timings_all[i]))
-                duplicate_groups.append({
-                    'task_config': [int(x) for x in cfg],
-                    'list_indices': [int(i) for i in idxs],
-                    'session_ids': [int(session_ids[i]) for i in idxs],
-                    'kept_list_index': int(best),
-                    'kept_session_id': int(session_ids[best]),
-                })
-                for i in idxs:
-                    if i != best:
-                        ignore.add(i)
-                        reasons.setdefault(i, []).append('duplicate_task_config')
+    # tag duplicates (do NOT drop — they are extra repeats of the same task config)
+    configs = [tuple(int(x) for x in t) for t in task_configs]
+    seen = {}
+    for idx, cfg in enumerate(configs):
+        seen.setdefault(cfg, []).append(idx)
+    duplicate_groups = [
+        {
+            'task_config':  list(cfg),
+            'list_indices': [int(i) for i in idxs],
+            'session_ids':  [int(session_ids[i]) for i in idxs],
+        }
+        for cfg, idxs in seen.items() if len(idxs) > 1
+    ]
 
     keep = [i for i in range(len(task_configs)) if i not in ignore]
     task_configs_clean = [task_configs[i] for i in keep]
@@ -166,9 +232,9 @@ def clean_ephys_data(task_configs, locations_all, neurons, timings_all, mouse_re
         'n_kept_tasks': int(len(keep)),
         'kept_list_indices': [int(i) for i in keep],
         'kept_session_ids': [int(session_ids[i]) for i in keep],
-        'too_short_threshold_bins': float(max_length / 3),
-        'too_short_session_ids': [int(session_ids[i]) for i in too_short],
         'manual_exclusion_session_ids': sorted(manual_exclusions),
+        'keep_session_ids_filter': (None if keep_session_ids is None
+                                    else sorted(keep_session_ids)),
         'duplicate_groups': duplicate_groups,
         'excluded': [
             {
@@ -182,6 +248,169 @@ def clean_ephys_data(task_configs, locations_all, neurons, timings_all, mouse_re
         ],
     }
     return task_configs_clean, locations_clean, neurons_clean, timings_clean, metadata
+
+
+# ---------------------------------------------------------------------------
+# trial selection (apply BEFORE pool_by_task_config)
+# ---------------------------------------------------------------------------
+def keep_last_n_trials(task_configs, locations_all, neurons, timings_all,
+                       n_required, kind='raw', session_ids=None,
+                       return_metadata=False):
+    """For every session, drop it if it has fewer than ``n_required`` trials,
+    otherwise keep only its last ``n_required`` trials (most learned / stable).
+
+    Apply BEFORE ``pool_by_task_config`` so the per-session minimum is
+    enforced before duplicate-config sessions are merged.
+
+    ``kind='raw'``  -> trims only ``timings_all`` (bin-major locations/neurons
+                       stay intact; the analysis picks trials by timestamp).
+    ``kind='norm'`` -> trims ``locations_all``, ``neurons`` and ``timings_all``
+                       along the trial axis (axis 0 / axis 1 / axis 0).
+    """
+    if session_ids is None:
+        session_ids = list(range(len(task_configs)))
+
+    keep, dropped = [], []
+    for i in range(len(task_configs)):
+        n_trials = np.asarray(timings_all[i]).shape[0]
+        if n_trials >= n_required:
+            keep.append(i)
+        else:
+            dropped.append({'session_id': int(session_ids[i]), 'n_trials': int(n_trials)})
+
+    out_cfg = np.asarray([task_configs[i] for i in keep])
+    out_loc, out_neu, out_tim = [], [], []
+    for i in keep:
+        if kind == 'raw':
+            out_loc.append(locations_all[i])
+            out_neu.append(neurons[i])
+            out_tim.append(np.asarray(timings_all[i])[-n_required:])
+        elif kind == 'norm':
+            out_loc.append(np.asarray(locations_all[i])[-n_required:])
+            out_neu.append(np.asarray(neurons[i])[:, -n_required:, :])
+            out_tim.append(np.asarray(timings_all[i])[-n_required:])
+        else:
+            raise ValueError(f"kind must be 'raw' or 'norm', got {kind!r}")
+
+    if not return_metadata:
+        return out_cfg, out_loc, out_neu, out_tim
+
+    metadata = {
+        'kind':             kind,
+        'n_required':       int(n_required),
+        'n_sessions_in':    int(len(task_configs)),
+        'n_sessions_out':   int(len(keep)),
+        'kept_session_ids': [int(session_ids[i]) for i in keep],
+        'dropped_sessions': dropped,
+    }
+    return out_cfg, out_loc, out_neu, out_tim, metadata
+
+
+# ---------------------------------------------------------------------------
+# pool sessions that share the same reward configuration
+# ---------------------------------------------------------------------------
+MS_PER_BIN = 25   # one location/neuron bin = 25 ms (raw view)
+
+
+def _forward_fill_session_locations(loc):
+    """Forward-fill bridges/NaNs within a single session's 1-D location array.
+    Leading bads are back-filled with the first valid node. Keeps the original
+    1-9 node encoding so downstream code is unchanged. This is the per-session
+    pre-fill applied before pooling so the global fill in
+    ``prep_ephys_per_trial`` cannot propagate the last node of session A into
+    leading bridges of session B (which would be a spurious teleport).
+    """
+    loc = np.asarray(loc, dtype=float)
+    bad = np.isnan(loc) | (loc > 9)
+    if bad.all():
+        return loc
+    good = np.where(~bad)[0]
+    first_good = int(good[0])
+    valid_idx = np.where(~bad, np.arange(len(loc)), -1)
+    valid_idx[:first_good] = first_good
+    np.maximum.accumulate(valid_idx, out=valid_idx)
+    return loc[valid_idx]
+
+
+def pool_by_task_config(task_configs, locations_all, neurons, timings_all,
+                        kind='raw', session_ids=None, return_metadata=False):
+    """Concatenate sessions sharing the same reward configuration into one
+    "long run" each. Trials from the second, third, ... session of a group
+    pick up after the trials of the first.
+
+    ``kind='raw'``  -> bin-major arrays. Locations: 1-D (n_bins,). Neurons:
+                       (n_neurons, n_bins). Timings: (n_trials, 5) in ms. The
+                       second session's timings are shifted by
+                       ``len(locations_first) * MS_PER_BIN`` so they keep
+                       indexing the concatenated bin axis.
+    ``kind='norm'`` -> fixed 360 bins/trial. Locations: (n_trials, 360).
+                       Neurons: (n_neurons, n_trials, 360). Timings:
+                       (n_trials, 5). Only the trial axis is concatenated.
+
+    Returns the same 4-tuple but with one entry per unique task config.
+    """
+    if session_ids is None:
+        session_ids = list(range(len(task_configs)))
+
+    # group session indices by their task config (preserve first-occurrence order)
+    groups, order = {}, []
+    for idx, cfg in enumerate(task_configs):
+        key = tuple(int(x) for x in cfg)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(idx)
+
+    pooled_cfgs, pooled_locs, pooled_neus, pooled_tims, pooled_session_ids = [], [], [], [], []
+    pooled_groups = []
+
+    for cfg_key in order:
+        idxs = groups[cfg_key]
+
+        if kind == 'raw':
+            # Forward-fill each session's locations BEFORE concatenating so
+            # the global forward-fill in prep_ephys_per_trial cannot smear
+            # session A's last node into session B's leading bridges/NaNs.
+            session_locs = [_forward_fill_session_locations(locations_all[i]) for i in idxs]
+            loc_concat = np.concatenate(session_locs, axis=0)
+            neu_concat = np.concatenate([neurons[i] for i in idxs], axis=1)
+            tim_pieces = [np.asarray(timings_all[idxs[0]])]
+            offset_bins = len(session_locs[0])
+            for k, i in enumerate(idxs[1:], start=1):
+                tim_pieces.append(np.asarray(timings_all[i]) + offset_bins * MS_PER_BIN)
+                offset_bins += len(session_locs[k])
+            tim_concat = np.concatenate(tim_pieces, axis=0)
+        elif kind == 'norm':
+            loc_concat = np.concatenate([locations_all[i] for i in idxs], axis=0)
+            neu_concat = np.concatenate([neurons[i] for i in idxs], axis=1)
+            tim_concat = np.concatenate([np.asarray(timings_all[i]) for i in idxs], axis=0)
+        else:
+            raise ValueError(f"kind must be 'raw' or 'norm', got {kind!r}")
+
+        pooled_cfgs.append(np.asarray(cfg_key))
+        pooled_locs.append(loc_concat)
+        pooled_neus.append(neu_concat)
+        pooled_tims.append(tim_concat)
+        pooled_session_ids.append([int(session_ids[i]) for i in idxs])
+        pooled_groups.append({
+            'task_config':       list(cfg_key),
+            'source_session_ids':[int(session_ids[i]) for i in idxs],
+            'n_trials_combined': int(tim_concat.shape[0]),
+        })
+
+    pooled_cfgs = np.asarray(pooled_cfgs)
+
+    if not return_metadata:
+        return pooled_cfgs, pooled_locs, pooled_neus, pooled_tims
+
+    metadata = {
+        'kind': kind,
+        'n_sessions_in':  int(len(task_configs)),
+        'n_configs_out':  int(len(pooled_cfgs)),
+        'pooled_groups':  pooled_groups,
+        'pooled_session_ids_per_config': pooled_session_ids,
+    }
+    return pooled_cfgs, pooled_locs, pooled_neus, pooled_tims, metadata
 
 
 # ---------------------------------------------------------------------------
@@ -409,20 +638,27 @@ def _reg_split_by_phase(ave_models, no_bins_per_state, no_tasks, mask_within):
 # second analysis: across-task RSA built exactly like the human-cell pipeline
 # (scripts/RSA_DSR_ROIs_simple.py) - z-scored neurons, model_DSR, my_RSA
 # ---------------------------------------------------------------------------
-def _mode_path_360(location_trials):
-    """Mode location across trials -> a clean 360-bin integer node path (0-8).
-
-    ``location_trials`` is the normalised ``Location_*`` array (n_trials, 360),
-    with nodes 1-9, bridges 10-21 and NaNs. Bridges/NaNs are forward-filled
-    with the last visited node, then shifted to 0-based indices for ``model_DSR``.
+def _clean_node_path(traj):
+    """Forward-fill bridges/NaNs in a 1-D trajectory. Leading bads get the
+    first valid value (back-fill). Shifts node labels from 1-9 to 0-8.
     """
-    mode = scipy.stats.mode(location_trials, axis=0, keepdims=False, nan_policy='omit').mode
-    mode = np.asarray(mode, dtype=float)
-    bad = np.isnan(mode) | (mode > 9)
-    valid_idx = np.where(~bad, np.arange(len(mode)), 0)
+    traj = np.asarray(traj, dtype=float)
+    bad = np.isnan(traj) | (traj > 9)
+    if bad.all():
+        return np.zeros(len(traj), dtype=int)
+    good = np.where(~bad)[0]
+    first_good = int(good[0])
+    valid_idx = np.where(~bad, np.arange(len(traj)), -1)
+    valid_idx[:first_good] = first_good           # back-fill any leading bads
     np.maximum.accumulate(valid_idx, out=valid_idx)
-    mode = mode[valid_idx]
-    return (mode - 1).astype(int)
+    return (traj[valid_idx] - 1).astype(int)
+
+
+def _mode_path_360(location_trials):
+    """Mode across trials -> a clean 360-bin integer node path (0-8)."""
+    mode = scipy.stats.mode(location_trials, axis=0,
+                            keepdims=False, nan_policy='omit').mode
+    return _clean_node_path(np.asarray(mode, dtype=float))
 
 
 def _upper_no_diag(matrix):
@@ -443,20 +679,419 @@ def _evaluate_dsr_variant(model_vectors, data_vector, order):
     }
 
 
+def _build_dsr_model_cols(locations_all, no_phase_neurons, pool_method, N, binlen):
+    """Build per-task binned model matrices. ``pool_method`` picks how trials are pooled:
+
+        - ``'mode_path'``: take the mode trajectory across trials, build one
+          model per task from it.
+        - ``'per_run_avg'``: build one model per trial, average across trials.
+    """
+    out = {'dsr': [], 'stat': [], 'loc': [], 'phas': []}
+    no_tasks = len(locations_all)
+
+    for task_no in range(no_tasks):
+        trial_locs = np.asarray(locations_all[task_no])  # (n_trials, 360)
+
+        if pool_method == 'mode_path':
+            walked = _mode_path_360(trial_locs)
+            loc_m, phas_m, stat_m, _, dsr_m, _, _ = predictions.model_DSR(
+                locations=walked, no_phase_neurons=no_phase_neurons)
+            per_task = {'dsr': dsr_m, 'stat': stat_m, 'loc': loc_m, 'phas': phas_m}
+
+        elif pool_method == 'per_run_avg':
+            sums = None
+            for t in range(trial_locs.shape[0]):
+                walked = _clean_node_path(trial_locs[t])
+                loc_m, phas_m, stat_m, _, dsr_m, _, _ = predictions.model_DSR(
+                    locations=walked, no_phase_neurons=no_phase_neurons)
+                if sums is None:
+                    sums = {'dsr': dsr_m.copy(), 'stat': stat_m.copy(),
+                            'loc': loc_m.copy(), 'phas': phas_m.copy()}
+                else:
+                    sums['dsr']  += dsr_m
+                    sums['stat'] += stat_m
+                    sums['loc']  += loc_m
+                    sums['phas'] += phas_m
+            n_trials = trial_locs.shape[0]
+            per_task = {k: v / n_trials for k, v in sums.items()}
+
+        else:
+            raise ValueError(f"pool_method must be 'mode_path' or 'per_run_avg', got {pool_method!r}")
+
+        for key, M in per_task.items():
+            out[key].append(M.reshape(M.shape[0], N, binlen).mean(axis=2))
+
+    return out
+
+
+def process_one_recday(recday,
+                       raw_cleaned, raw_kept_session_ids,
+                       norm_cleaned, norm_kept_session_ids,
+                       n_required, config):
+    """Run all RSAs for one recday and one trial-filter setting.
+
+    This is a top-level pickleable function so it can be dispatched by
+    ``joblib.Parallel`` from a script running at module scope.
+
+    ``raw_cleaned``  and ``norm_cleaned`` are post-cleaning ``(cfg, loc, neu, tim)``
+    tuples (one entry per session); ``*_kept_session_ids`` are their
+    corresponding session-id lists. ``n_required`` is the trial-count cut-off
+    (or ``None``). ``config`` is a dict carrying the analysis hyperparameters.
+
+    Returns a dict with continuous, DSR (per pool method), across-halves results
+    and trim/pool metadata for this (recday, filter) combination.
+    """
+    # ----- Raw view: trim, pool, continuous RSA -----
+    # Skipped when config['run_continuous'] is False — saves the slow per-trial
+    # set_continous_models_ephys loop. ``raw_cleaned`` can then be ``None``.
+    cont, trim_raw, pool_raw = None, None, None
+    if config.get('run_continuous', True) and raw_cleaned is not None:
+        cfg, loc, neu, tim = raw_cleaned
+        sid_raw = raw_kept_session_ids
+        if n_required is not None:
+            cfg, loc, neu, tim, trim_raw = keep_last_n_trials(
+                cfg, loc, neu, tim, n_required=n_required, kind='raw',
+                session_ids=sid_raw, return_metadata=True)
+            sid_raw = trim_raw['kept_session_ids']
+        cfg, loc, neu, tim, pool_raw = pool_by_task_config(
+            cfg, loc, neu, tim, kind='raw',
+            session_ids=sid_raw, return_metadata=True)
+        cont = reg_across_tasks(
+            cfg, loc, neu, tim, recday,
+            plotting=config['plot_rsa_panels'],
+            no_bins_per_state=config['no_bins_per_state'],
+            number_phase_neurons=config['number_phase_neurons'],
+            mask_within=config['mask_within'],
+            split_by_phase=False, save_path=None,
+            segmentation=config['segmentation'])
+
+    # ----- Normalised view: trim, pool, DSR RSA per pool method -----
+    cfg_n, loc_n, neu_n, tim_n = norm_cleaned
+    trim_norm = None
+    sid_norm = norm_kept_session_ids
+    if n_required is not None:
+        cfg_n, loc_n, neu_n, tim_n, trim_norm = keep_last_n_trials(
+            cfg_n, loc_n, neu_n, tim_n, n_required=n_required, kind='norm',
+            session_ids=sid_norm, return_metadata=True)
+        sid_norm = trim_norm['kept_session_ids']
+    cfg_np, loc_np, neu_np, tim_np, pool_norm = pool_by_task_config(
+        cfg_n, loc_n, neu_n, tim_n, kind='norm',
+        session_ids=sid_norm, return_metadata=True)
+
+    dsr_by_pool = {}
+    for pool_method in config['dsr_pool_methods']:
+        dsr_by_pool[pool_method] = reg_across_tasks_DSR(
+            cfg_np, loc_np, neu_np, tim_np, recday,
+            n_conds_per_config=config['n_conds_per_config'],
+            no_phase_neurons=config['number_phase_neurons'],
+            pool_method=pool_method)
+
+    # ----- Across-task-halves: uses POST-trim / PRE-pool normalised data -----
+    halves = reg_across_task_halves_DSR(
+        cfg_n, loc_n, neu_n, tim_n, recday, session_ids=sid_norm,
+        n_conds_per_config=config['n_conds_per_config'],
+        no_phase_neurons=config['number_phase_neurons'])
+
+    return {
+        'recday':       recday,
+        'continuous':   cont,
+        'dsr_by_pool':  dsr_by_pool,
+        'halves':       halves,
+        'trim_pool_raw':  {'trim': trim_raw, 'pooling': pool_raw},
+        'trim_pool_norm': {'trim': trim_norm, 'pooling': pool_norm},
+    }
+
+
+def split_sessions_into_halves(task_configs, session_ids, timings_all):
+    """Split the duplicate-config sessions of a recday into two balanced halves.
+
+    For every task config that appears in >=2 sessions, half-1 starts as the
+    first source session and half-2 as the second; any further source sessions
+    (e.g. me10 had a triple) are added to whichever half currently has fewer
+    total trials. Configs with only one source session are skipped.
+
+    Returns a list of dicts with keys ``config``, ``half1_indices``,
+    ``half2_indices``, ``half{1,2}_session_ids``, ``half{1,2}_n_trials``.
+    """
+    groups, order = {}, []
+    for i, cfg in enumerate(task_configs):
+        key = tuple(int(x) for x in cfg)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(i)
+
+    out = []
+    for cfg in order:
+        idxs = groups[cfg]
+        if len(idxs) < 2:
+            continue
+        h1, h2 = [idxs[0]], [idxs[1]]
+        for extra in idxs[2:]:
+            n1 = sum(int(np.asarray(timings_all[i]).shape[0]) for i in h1)
+            n2 = sum(int(np.asarray(timings_all[i]).shape[0]) for i in h2)
+            (h2 if n2 < n1 else h1).append(extra)
+        out.append({
+            'config':            list(cfg),
+            'half1_indices':     h1,
+            'half2_indices':     h2,
+            'half1_session_ids': [int(session_ids[i]) for i in h1],
+            'half2_session_ids': [int(session_ids[i]) for i in h2],
+            'half1_n_trials':    sum(int(np.asarray(timings_all[i]).shape[0]) for i in h1),
+            'half2_n_trials':    sum(int(np.asarray(timings_all[i]).shape[0]) for i in h2),
+        })
+    return out
+
+
+def reg_across_task_halves_DSR(task_configs, locations_all, neurons, timings_all,
+                               mouse_recday, session_ids=None,
+                               n_conds_per_config=12, no_phase_neurons=3):
+    """Across-task-halves split-half RSA on the normalised view.
+
+    Uses the natural duplicate-config sessions as the two halves (no within-
+    session trial splitting, so the halves share no trials and no
+    autocorrelation between halves is possible). Configs with only one source
+    session are excluded. Pool method is always ``mode_path``.
+
+    Stack convention (matches ``RSA_DSR_ROIs_simple.py``):
+        [half1(task1), half1(task2), ..., half1(taskK), half2(task1), ..., half2(taskK)]
+    is passed to ``my_RSA.compute_crosscorr``, which returns the half-2-vs-
+    half-1 lower-left block symmetrised — i.e. an unbiased across-half RDM.
+
+    Inputs are POST-cleaning, PRE-pooling: one entry per session.
+    """
+    N = n_conds_per_config
+    if 360 % N != 0:
+        raise ValueError(f"n_conds_per_config={N} must divide 360")
+    binlen = 360 // N
+    if session_ids is None:
+        session_ids = list(range(len(task_configs)))
+
+    qualifying = split_sessions_into_halves(task_configs, session_ids, timings_all)
+
+    if not qualifying:
+        return {'metadata': {
+            'mouse_recday':         mouse_recday,
+            'n_qualifying_configs': 0,
+            'qualifying_groups':    [],
+            'n_conds_per_config':   int(N),
+            'pool_method':          'mode_path',
+        }}
+
+    K = len(qualifying)
+
+    def _half_neural(half):
+        """Stack per-task averaged + downsampled neural columns -> (n_neurons, K*N)."""
+        cols = []
+        for cfg_info in qualifying:
+            idxs = cfg_info[f'half{half}_indices']
+            neu_concat = np.concatenate([neurons[i] for i in idxs], axis=1)   # (n_neurons, n_trials, 360)
+            avg = np.nanmean(neu_concat, axis=1)                              # (n_neurons, 360)
+            ds = avg.reshape(avg.shape[0], N, binlen).mean(axis=2)            # (n_neurons, N)
+            cols.append(ds)
+        return np.hstack(cols)
+
+    half1_neu = _half_neural(1)
+    half2_neu = _half_neural(2)
+    mat = np.vstack([half1_neu.T, half2_neu.T])    # (2*K*N, n_neurons)
+    mu = np.nanmean(mat, axis=0)
+    sd = np.nanstd(mat, axis=0)
+    sd[sd == 0] = 1
+    mat_z = (mat - mu) / sd
+    data_vec = my_RSA.compute_crosscorr(
+        mat_z, plotting=False, include_diagonal=False,
+        no_tasks=K, model=f'half-split {mouse_recday}')[0]
+
+    def _half_models(half):
+        """Build the four model RDM-input matrices for one half: (K*N, features)."""
+        per_model = {'dsr': [], 'stat': [], 'loc': [], 'phas': []}
+        for cfg_info in qualifying:
+            idxs = cfg_info[f'half{half}_indices']
+            loc_concat = np.concatenate([locations_all[i] for i in idxs], axis=0)
+            walked = _mode_path_360(loc_concat)
+            loc_m, phas_m, stat_m, _, dsr_m, _, _ = predictions.model_DSR(
+                locations=walked, no_phase_neurons=no_phase_neurons)
+            for key, M in [('dsr', dsr_m), ('stat', stat_m), ('loc', loc_m), ('phas', phas_m)]:
+                per_model[key].append(M.reshape(M.shape[0], N, binlen).mean(axis=2))
+        return {k: np.hstack(v).T for k, v in per_model.items()}
+
+    h1_models = _half_models(1)
+    h2_models = _half_models(2)
+
+    model_RDMs = {}
+    for k in ('dsr', 'stat', 'loc', 'phas'):
+        m_combined = np.vstack([h1_models[k], h2_models[k]])
+        model_RDMs[k] = my_RSA.compute_crosscorr(
+            m_combined, plotting=False, include_diagonal=False,
+            no_tasks=K, model=k)[0]
+
+    order = ['dsr', 'stat', 'loc', 'phas']
+    stacked = np.stack([model_RDMs[k] for k in order], axis=1)
+    t_vals, betas, p_vals = my_RSA.evaluate_model(stacked, np.asarray(data_vec))
+
+    return {
+        'across_halves': {
+            'coefs':       np.asarray(betas, dtype=float).ravel(),
+            't_vals':      np.asarray(t_vals, dtype=float).ravel(),
+            'p_vals':      np.asarray(p_vals, dtype=float).ravel(),
+            'label_regs':  order,
+        },
+        'metadata': {
+            'mouse_recday':         mouse_recday,
+            'n_qualifying_configs': K,
+            'qualifying_groups':    qualifying,
+            'n_conds_per_config':   int(N),
+            'pool_method':          'mode_path',
+        },
+    }
+
+
+def dsr_example_recday_matrices(task_configs, locations_all, neurons, timings_all,
+                                n_conds_per_config=12, no_phase_neurons=3):
+    """For one (cleaned + pooled) recday, build:
+        - data activation (n_neurons, K*N), z-scored per neuron
+        - data RDM (K*N, K*N), full square (1 − cosine)
+        - per-model activation matrices, model -> (n_features, K*N)
+        - per-model RDMs,                 model -> (K*N, K*N)
+    Uses the ``mode_path`` strategy for the models (matches the chosen pipeline).
+    """
+    N = n_conds_per_config
+    binlen = 360 // N
+    no_tasks = len(task_configs)
+
+    # data
+    data_z, data_rdm = dsr_activation_and_rdm(
+        task_configs, locations_all, neurons, timings_all,
+        n_conds_per_config=N)
+
+    # models (mode_path pooling)
+    model_cols = _build_dsr_model_cols(locations_all, no_phase_neurons,
+                                       'mode_path', N, binlen)
+    model_activations = {k: np.hstack(v) for k, v in model_cols.items()}
+
+    # model RDMs (full square)
+    def _full_rdm(matrix):
+        X = matrix.T.astype(float)
+        X = X - X.mean(axis=1, keepdims=True)
+        denom = np.sqrt(np.einsum('ij,ij->i', X, X))
+        denom[denom == 0] = 1
+        X = X / denom[:, None]
+        return 1 - X @ X.T
+
+    model_rdms = {k: _full_rdm(model_activations[k]) for k in model_activations}
+
+    return data_z, data_rdm, model_activations, model_rdms
+
+
+def dsr_across_halves_matrices(task_configs, locations_all, neurons, timings_all,
+                               session_ids=None, n_conds_per_config=12,
+                               no_phase_neurons=3):
+    """For one recday's POST-CLEAN PRE-POOL normalised data, return the matrices
+    used by the across-task-halves figures.
+
+    Returns ``(data_activation, data_rdm, model_activations, model_rdms, K)``
+    where the activations are 2*K*N columns wide (half-1 of every qualifying
+    task, then half-2) and the RDMs are reconstructed K*N × K*N symmetric
+    cross-half matrices. Returns ``None`` if no qualifying configs.
+    """
+    N = n_conds_per_config
+    binlen = 360 // N
+    if session_ids is None:
+        session_ids = list(range(len(task_configs)))
+
+    qualifying = split_sessions_into_halves(task_configs, session_ids, timings_all)
+    if not qualifying:
+        return None
+    K = len(qualifying)
+    M = K * N
+    triu = np.triu_indices(M, k=1)
+
+    def _half_neural(half):
+        cols = []
+        for q in qualifying:
+            idxs = q[f'half{half}_indices']
+            neu_concat = np.concatenate([neurons[i] for i in idxs], axis=1)
+            avg = np.nanmean(neu_concat, axis=1)
+            cols.append(avg.reshape(avg.shape[0], N, binlen).mean(axis=2))
+        return np.hstack(cols)
+
+    h1_neu, h2_neu = _half_neural(1), _half_neural(2)
+    data_activation = np.hstack([h1_neu, h2_neu])
+    mat = data_activation.T
+    mu = mat.mean(axis=0); sd = mat.std(axis=0); sd[sd == 0] = 1
+    mat_z = (mat - mu) / sd
+    data_rdm_vec = my_RSA.compute_crosscorr(
+        mat_z, plotting=False, include_diagonal=False, no_tasks=K)[0]
+    data_rdm = np.zeros((M, M)); data_rdm[triu] = data_rdm_vec
+    data_rdm = data_rdm + data_rdm.T
+
+    def _half_models(half):
+        out = {'dsr': [], 'stat': [], 'loc': [], 'phas': []}
+        for q in qualifying:
+            idxs = q[f'half{half}_indices']
+            loc_concat = np.concatenate([locations_all[i] for i in idxs], axis=0)
+            walked = _mode_path_360(loc_concat)
+            loc_m, phas_m, stat_m, _, dsr_m, _, _ = predictions.model_DSR(
+                locations=walked, no_phase_neurons=no_phase_neurons)
+            for key, MM in [('dsr', dsr_m), ('stat', stat_m), ('loc', loc_m), ('phas', phas_m)]:
+                out[key].append(MM.reshape(MM.shape[0], N, binlen).mean(axis=2))
+        return {k: np.hstack(v) for k, v in out.items()}
+
+    h1_models, h2_models = _half_models(1), _half_models(2)
+    model_activations = {k: np.hstack([h1_models[k], h2_models[k]]) for k in h1_models}
+
+    model_rdms = {}
+    for k in h1_models:
+        m_combined = np.vstack([h1_models[k].T, h2_models[k].T])
+        rdm_vec = my_RSA.compute_crosscorr(
+            m_combined, plotting=False, include_diagonal=False, no_tasks=K)[0]
+        rdm_mat = np.zeros((M, M)); rdm_mat[triu] = rdm_vec
+        model_rdms[k] = rdm_mat + rdm_mat.T
+
+    return data_activation, data_rdm, model_activations, model_rdms, K
+
+
+def dsr_activation_and_rdm(task_configs, locations_all, neurons, timings_all,
+                           n_conds_per_config=12):
+    """For an example recday: build the z-scored activation matrix and the
+    full (square) data RDM that the DSR pipeline operates on. Returned matrices
+    are used by ``pub_figure_validation``.
+    """
+    N = n_conds_per_config
+    binlen = 360 // N
+    no_tasks = len(task_configs)
+    data_cols = []
+    for task_no in range(no_tasks):
+        avg = np.nanmean(neurons[task_no], axis=1)
+        data_cols.append(avg.reshape(avg.shape[0], N, binlen).mean(axis=2))
+    mat_all = np.hstack(data_cols)
+    mu = np.nanmean(mat_all, axis=1)
+    sd = np.nanstd(mat_all, axis=1)
+    sd[sd == 0] = 1
+    mat_all_z = (mat_all - mu[:, None]) / sd[:, None]    # (n_neurons, K*N)
+
+    # full square RDM
+    X = (mat_all_z.T - mat_all_z.T.mean(axis=1, keepdims=True))
+    X /= np.sqrt(np.einsum('ij,ij->i', X, X))[:, None]
+    rdm_full = 1 - X @ X.T                                # (K*N, K*N)
+    return mat_all_z, rdm_full
+
+
 def reg_across_tasks_DSR(task_configs, locations_all, neurons, timings_all, mouse_recday,
-                         n_conds_per_config=12, no_phase_neurons=3, plotting=False):
+                         n_conds_per_config=12, no_phase_neurons=3,
+                         pool_method='mode_path', plotting=False):
     """Across-task RSA in parallel with ``scripts/RSA_DSR_ROIs_simple.py``.
 
-    Uses the *normalised* recordings (360 bins/trial). For each task config it
-    averages over repeats, downsamples to ``n_conds_per_config`` conditions and
-    z-scores per neuron; the across-task neural RDM is regressed on the four
-    ``model_DSR`` model RDMs (DSR, state, location, phase) using ``my_RSA``.
+    Uses the *normalised* recordings (360 bins/trial). Neural data is averaged
+    across trials per task, downsampled to ``n_conds_per_config`` conditions
+    and z-scored per neuron. Model RDMs are built from ``model_DSR`` using the
+    pooling strategy chosen by ``pool_method`` (see ``_build_dsr_model_cols``).
 
     Returns three z-scored RSA variants:
 
-        - ``across_z``: across-task/off-block pairs only (the previous DSR result).
+        - ``across_z``: across-task/off-block pairs only.
         - ``within_z``: within-task off-diagonal pairs only.
-        - ``full_z``: all off-diagonal pairs, with only the diagonal removed.
+        - ``full_z``:   all off-diagonal pairs, diagonal removed only.
     """
     N = n_conds_per_config
     if 360 % N != 0:
@@ -486,16 +1121,9 @@ def reg_across_tasks_DSR(task_configs, locations_all, neurons, timings_all, mous
         'full_z': _upper_no_diag(data_RDM_full),
     }
 
-    # --- model RDMs from model_DSR, same across-task split -------------------
-    # model_DSR returns: loc, phas, stat, midn, clo(=dsr), phas_stat, clo_subpath
-    model_cols = {'dsr': [], 'stat': [], 'loc': [], 'phas': []}
-    for task_no in range(no_tasks):
-        walked = _mode_path_360(locations_all[task_no])
-        loc_m, phas_m, stat_m, _midn, dsr_m, _phas_stat, _dsr_nn = predictions.model_DSR(
-            locations=walked, no_phase_neurons=no_phase_neurons)
-        for key, M in [('dsr', dsr_m), ('stat', stat_m), ('loc', loc_m), ('phas', phas_m)]:
-            ds = M.reshape(M.shape[0], N, binlen).mean(axis=2)   # (features, N)
-            model_cols[key].append(ds)
+    # --- model RDMs from model_DSR, with chosen pool method ------------------
+    model_cols = _build_dsr_model_cols(locations_all, no_phase_neurons,
+                                       pool_method, N, binlen)
 
     model_RDM = {'across_z': {}, 'within_z': {}, 'full_z': {}}
     for key, cols in model_cols.items():
@@ -519,6 +1147,7 @@ def reg_across_tasks_DSR(task_configs, locations_all, neurons, timings_all, mous
         'n_conds_per_config': int(N),
         'binlen': int(binlen),
         'number_phase_neurons': int(no_phase_neurons),
+        'pool_method': pool_method,
         'neural_input': 'normalised recordings averaged over trials and z-scored per neuron',
         'variants': {
             'across_z': 'across-task/off-block pairs only',
@@ -544,6 +1173,472 @@ def plot_rsa_panels(data_matrix, no_bins_per_state, no_tasks, title='', save_pat
     RDMs.within_task_RDM(
         data_matrix, plotting=True,
         titlestring=f"cov by time - {title}", intervalline=intervalline)
+
+
+# ---------------------------------------------------------------------------
+# publication figures for the chosen key analysis (DSR mode_path full_z)
+# ---------------------------------------------------------------------------
+def _benjamini_hochberg(pvals):
+    """BH-FDR adjusted p-values (q-values). NaN inputs stay NaN."""
+    p = np.asarray(pvals, dtype=float)
+    q = np.full(p.shape, np.nan)
+    ok = np.isfinite(p)
+    if not ok.any():
+        return q
+    pv = p[ok]
+    n = pv.size
+    order = np.argsort(pv)
+    ranked = pv[order] * n / (np.arange(n) + 1)
+    ranked = np.minimum.accumulate(ranked[::-1])[::-1]
+    q_ok = np.empty(n)
+    q_ok[order] = np.clip(ranked, 0.0, 1.0)
+    q[ok] = q_ok
+    return q
+
+
+# Categorical colours: DSR is highlighted in light blue, others in dark red
+# (matches the original ``plotting_hist_scat`` scheme).
+DSR_COLOUR     = '#96C5D8'
+OTHER_COLOUR   = '#882048'
+
+
+def _midnight_cmap():
+    """Sequential cmap from white to dark midnight blue (era_brewer Midnight2)."""
+    try:
+        import era_brewer
+        from matplotlib.colors import LinearSegmentedColormap
+        cols = era_brewer.era_brew('Midnight2')
+        return LinearSegmentedColormap.from_list(
+            'Midnight2_seq',
+            ['#FFFFFF', cols[7], cols[1], cols[5]], N=256)   # white -> mid -> dark navy
+    except Exception:
+        from matplotlib.colors import LinearSegmentedColormap
+        return LinearSegmentedColormap.from_list(
+            'Midnight_fallback', ['#FFFFFF', '#7191A9', '#2B4159', '#202D3C'], N=256)
+
+
+def _model_palette(model_order):
+    """Per-model categorical colours; DSR highlighted, the rest in dark red."""
+    return [DSR_COLOUR if m in ('dsr', 'clo_model') else OTHER_COLOUR
+            for m in model_order]
+
+
+def _save_fig(fig, save_stem):
+    """Save fig as both ``<stem>.pdf`` (vector) and ``<stem>.jpg`` (preview)."""
+    if not save_stem:
+        return
+    fig.savefig(save_stem + '.pdf', dpi=300, bbox_inches='tight')
+    fig.savefig(save_stem + '.jpg', dpi=200, bbox_inches='tight')
+
+
+def methods_results_stats(per_recday_results, n_neurons_per_recday,
+                          n_tasks_per_recday, model_label_order=None,
+                          alpha_fdr=0.05):
+    """Build a methods/results-section-ready stats dict for one analysis.
+
+    ``per_recday_results``: ``{recday: {coefs, t_vals, p_vals, label_regs}}``
+    ``n_neurons_per_recday`` / ``n_tasks_per_recday``: dicts keyed by recday.
+    ``model_label_order``: optional list of model keys controlling output order.
+    """
+    recdays = list(per_recday_results)
+    if not recdays:
+        return {'n_recdays': 0}
+    label_regs = list(next(iter(per_recday_results.values()))['label_regs'])
+    if model_label_order is None:
+        model_label_order = label_regs
+
+    out = {
+        'pipeline':           'DSR mode_path / all_trials / full_z',
+        'n_recdays':          len(recdays),
+        'recdays':            recdays,
+        'n_neurons':          {rd: int(n_neurons_per_recday[rd]) for rd in recdays},
+        'n_tasks':            {rd: int(n_tasks_per_recday[rd]) for rd in recdays},
+        'n_neurons_summary':  {
+            'mean':   float(np.mean(list(n_neurons_per_recday.values()))),
+            'median': float(np.median(list(n_neurons_per_recday.values()))),
+            'min':    int(min(n_neurons_per_recday.values())),
+            'max':    int(max(n_neurons_per_recday.values())),
+        },
+        'n_tasks_summary': {
+            'mean':   float(np.mean(list(n_tasks_per_recday.values()))),
+            'median': float(np.median(list(n_tasks_per_recday.values()))),
+            'min':    int(min(n_tasks_per_recday.values())),
+            'max':    int(max(n_tasks_per_recday.values())),
+        },
+        'models': {},
+        'fdr_alpha': float(alpha_fdr),
+    }
+
+    # collect group p-values per model first so we can BH-correct across models
+    group_pvals = {}
+    for m in model_label_order:
+        mi = label_regs.index(m)
+        coefs = np.asarray([per_recday_results[rd]['coefs'][mi] for rd in recdays],
+                           dtype=float)
+        coefs = coefs[np.isfinite(coefs)]
+        if coefs.size > 1:
+            t_grp, p_grp = ttest_1samp(coefs, 0, alternative='greater')
+        else:
+            t_grp, p_grp = np.nan, np.nan
+        out['models'][m] = {
+            'label': MODEL_LABELS.get(m, m),
+            'coefs_by_recday':  {rd: float(per_recday_results[rd]['coefs'][mi]) for rd in recdays},
+            'mean':   float(np.nanmean(coefs)),
+            'sd':     float(np.nanstd(coefs, ddof=1)) if coefs.size > 1 else None,
+            'sem':    float(np.nanstd(coefs, ddof=1) / np.sqrt(coefs.size)) if coefs.size > 1 else None,
+            'median': float(np.nanmedian(coefs)),
+            'min':    float(np.nanmin(coefs)),
+            'max':    float(np.nanmax(coefs)),
+            'n':      int(coefs.size),
+            't_group':            float(t_grp) if np.isfinite(t_grp) else None,
+            'p_group_uncorrected':float(p_grp) if np.isfinite(p_grp) else None,
+        }
+        group_pvals[m] = p_grp
+
+    # BH-FDR across the model_label_order family
+    pvec = np.asarray([group_pvals[m] for m in model_label_order])
+    qvec = _benjamini_hochberg(pvec)
+    for m, q in zip(model_label_order, qvec):
+        out['models'][m]['p_group_fdr'] = float(q) if np.isfinite(q) else None
+        out['models'][m]['sig_fdr']     = bool(q < alpha_fdr) if np.isfinite(q) else False
+
+    return out
+
+
+def _draw_betas_box_panel(ax, coefs_by_model, model_order,
+                          fdr_pvals=None, font_size=11,
+                          star_y_below=-0.10, star_y_above=0.10):
+    """Box + scatter of per-recday betas with FDR-corrected stars placed
+    on the OPPOSITE side of zero from the data (so they never overlap the
+    box/scatter).
+
+    ``star_y_below`` is used when the data are above zero (stars go below);
+    ``star_y_above`` is used when the data are below zero (stars go above).
+    """
+    palette = _model_palette(model_order)
+    box_data = [np.asarray(coefs_by_model[m], dtype=float) for m in model_order]
+    box_data = [d[np.isfinite(d)] for d in box_data]
+    n_models = len(model_order)
+    positions = np.arange(n_models) + 1
+
+    bp = ax.boxplot(box_data, positions=positions, widths=0.5,
+                    showfliers=False, patch_artist=True,
+                    medianprops=dict(color='black', linewidth=1.2))
+    for patch, c in zip(bp['boxes'], palette):
+        patch.set_facecolor(c); patch.set_alpha(0.35); patch.set_edgecolor('black')
+    for i, (d, c) in enumerate(zip(box_data, palette)):
+        jitter = 0.07 * np.random.randn(d.size)
+        ax.scatter(positions[i] + jitter, d, s=40, color=c,
+                   edgecolor='black', linewidth=0.6, zorder=3)
+
+    ax.axhline(0, color='gray', ls='--', lw=0.8)
+    ax.set_xticks(positions)
+    ax.set_xticklabels([MODEL_LABELS.get(m, m) for m in model_order],
+                       rotation=20, ha='right')
+    ax.set_ylabel('β (z-scored)', fontsize=font_size)
+    for spine in ('top', 'right'):
+        ax.spines[spine].set_visible(False)
+
+    if fdr_pvals is not None:
+        for i, (m, d) in enumerate(zip(model_order, box_data)):
+            p = fdr_pvals.get(m)
+            if p is None or not np.isfinite(p):
+                continue
+            sig = ('***' if p < 0.001 else '**' if p < 0.01
+                   else '*' if p < 0.05 else '')
+            if not sig:
+                continue
+            mean_val = float(np.nanmean(d)) if d.size else 0.0
+            if mean_val >= 0:
+                y_star, va = star_y_below, 'top'
+            else:
+                y_star, va = star_y_above, 'bottom'
+            ax.text(positions[i], y_star, sig, ha='center', va=va,
+                    fontsize=font_size + 4)
+
+    # make sure star positions are inside the axis
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(min(ymin, star_y_below - 0.02),
+                max(ymax, star_y_above + 0.02))
+
+
+_PUB_RC = {
+    'font.family':     'sans-serif',
+    'font.sans-serif': ['Arial', 'DejaVu Sans'],
+    'font.size':       11,
+    'axes.labelsize':  11,
+    'axes.titlesize':  12,
+    'xtick.labelsize': 10,
+    'ytick.labelsize': 10,
+}
+
+
+def _imshow_with_task_grid(ax, M, K, N, *, cmap, vmin=None, vmax=None,
+                           aspect='auto', square=False, gridcolor='white'):
+    """imshow with vertical (and optional horizontal) task-boundary lines + tick labels."""
+    im = ax.imshow(M, aspect=('equal' if square else aspect), cmap=cmap,
+                   vmin=vmin, vmax=vmax, interpolation='nearest')
+    for k in range(1, K):
+        ax.axvline(k * N - 0.5, color=gridcolor, lw=0.8)
+        if square:
+            ax.axhline(k * N - 0.5, color=gridcolor, lw=0.8)
+    ax.set_xticks(np.arange(K) * N + N / 2)
+    ax.set_xticklabels([f"task {k+1}" for k in range(K)], rotation=45, ha='right')
+    if square:
+        ax.set_yticks(np.arange(K) * N + N / 2)
+        ax.set_yticklabels([f"task {k+1}" for k in range(K)])
+    return im
+
+
+def pub_figure_dsr_overview(dsr_model_activation, dsr_model_rdm,
+                            coefs_by_model, model_order, fdr_pvals,
+                            n_tasks, n_conds_per_task=12, recday_label='',
+                            save_stem=None, font_size=11):
+    """Main publication figure (3 panels):
+        a) DSR modelled neurons — activation across all tasks (single subject's
+           binning grid; n_features × K*N).
+        b) DSR model RDM — full square, lower triangle drawn.
+        c) Betas across recdays for the four models, FDR-corrected stars.
+    """
+    K, N = n_tasks, n_conds_per_task
+    seq_cmap = _midnight_cmap()
+    with plt.rc_context({**_PUB_RC, 'font.size': font_size,
+                         'axes.labelsize': font_size,
+                         'axes.titlesize': font_size + 1}):
+        fig, axes = plt.subplots(1, 3, figsize=(13, 3.5),
+                                 gridspec_kw={'width_ratios': [2.0, 1.4, 1.6]},
+                                 constrained_layout=True)
+
+        # (a) DSR modelled neurons
+        ax = axes[0]
+        _imshow_with_task_grid(ax, dsr_model_activation, K, N, cmap=seq_cmap)
+        ax.set_ylabel('simulated neurons')
+        ax.set_title(f'a) DSR modelled neurons — {recday_label}', loc='left')
+
+        # (b) DSR model RDM (lower triangle, RdBu_r)
+        ax = axes[1]
+        rdm_disp = dsr_model_rdm.copy()
+        rdm_disp[np.triu_indices_from(rdm_disp, k=1)] = np.nan
+        vmax = np.nanmax(np.abs(rdm_disp))
+        im = _imshow_with_task_grid(ax, rdm_disp, K, N, cmap='RdBu_r',
+                                    vmin=-vmax, vmax=vmax, square=True,
+                                    gridcolor='black')
+        ax.set_title('b) DSR model RDM', loc='left')
+        fig.colorbar(im, ax=ax, fraction=0.045, pad=0.02, label='1 − r')
+
+        # (c) betas with FDR stars
+        ax = axes[2]
+        _draw_betas_box_panel(ax, coefs_by_model, model_order,
+                              fdr_pvals=fdr_pvals, font_size=font_size)
+        ax.set_title('c) betas across recdays (FDR *)', loc='left')
+
+        _save_fig(fig, save_stem)
+        plt.show()
+    return fig
+
+
+def pub_figure_example_subject(data_activation, data_rdm,
+                               model_activations, model_rdms, model_order,
+                               n_tasks, n_conds_per_task=12, recday_label='',
+                               save_stem=None, font_size=10):
+    """Single-subject supplementary figure: per-column nested layout. Each
+    column has its activation (top) stacked above its RDM (bottom), sized
+    independently by the column's n_features. Per-panel colorbars throughout.
+
+        col 0:    actual data
+        col 1..n: each model
+
+    ``model_activations[m]`` / ``model_rdms[m]`` keyed by model order.
+    """
+    K, N = n_tasks, n_conds_per_task
+    seq_cmap = _midnight_cmap()
+    columns = [('data — neurons',                 data_activation, data_rdm,         'neurons')] + [
+        (f'{MODEL_LABELS.get(m, m)} — simulated', model_activations[m], model_rdms[m], 'simulated neurons')
+        for m in model_order
+    ]
+    n_cols = len(columns)
+
+    # vmax for the diverging RDM colormap (shared scale across all RDMs)
+    def _lower(rdm):
+        r = rdm.copy()
+        r[np.triu_indices_from(r, k=1)] = np.nan
+        return r
+    vmax = max(np.nanmax(np.abs(_lower(c[2]))) for c in columns if c[2] is not None)
+
+    # height ratios per column: activation height ∝ n_features (capped 0.4..2.0)
+    def _h_ratio(n_feat):
+        return min(max(n_feat / 40.0, 0.4), 2.0)
+
+    with plt.rc_context({**_PUB_RC, 'font.size': font_size,
+                         'axes.titlesize': font_size + 1,
+                         'axes.labelsize': font_size}):
+        fig = plt.figure(figsize=(3.4 * n_cols, 6.5))
+        outer = fig.add_gridspec(1, n_cols, wspace=0.55)
+
+        for col_idx, (name, act, rdm, ylab) in enumerate(columns):
+            h_top = _h_ratio(act.shape[0])
+            inner = outer[0, col_idx].subgridspec(
+                2, 2, height_ratios=[h_top, 1.0],
+                width_ratios=[20, 1], wspace=0.06, hspace=0.35)
+
+            # activation (top)
+            ax_act  = fig.add_subplot(inner[0, 0])
+            cax_act = fig.add_subplot(inner[0, 1])
+            _imshow_with_task_grid(ax_act, act, K, N, cmap=seq_cmap)
+            ax_act.set_title(name, loc='left')
+            ax_act.set_ylabel(ylab)
+            fig.colorbar(ax_act.images[0], cax=cax_act)
+
+            # RDM (bottom)
+            ax_rdm  = fig.add_subplot(inner[1, 0])
+            cax_rdm = fig.add_subplot(inner[1, 1])
+            _imshow_with_task_grid(ax_rdm, _lower(rdm), K, N,
+                                   cmap='RdBu_r', vmin=-vmax, vmax=vmax,
+                                   square=True, gridcolor='black')
+            # short title for RDM — the column header already says which model
+            short_name = name.split(' — ')[0]
+            ax_rdm.set_title(f'{short_name} RDM', loc='left')
+            fig.colorbar(ax_rdm.images[0], cax=cax_rdm, label='1 − r')
+
+        fig.suptitle(f'Example subject — {recday_label}',
+                     fontsize=font_size + 2, y=0.995)
+
+        _save_fig(fig, save_stem)
+        plt.show()
+    return fig
+
+
+def pub_figure_model_schematics(walked_path, task_config=None,
+                                no_phase_neurons=3, recday_label='',
+                                save_stem=None, font_size=11):
+    """One panel per model (Location, State-in-task, Subgoal Progress, DSR)
+    for a single example task configuration. Uses the Midnight2 sequential
+    cmap. Explanation text is drawn alongside each panel.
+    """
+    import mc.simulation.predictions as predictions
+    loc_m, phas_m, stat_m, _midn_m, _dsr_m, phas_stat_m, _ = predictions.model_DSR(
+        locations=walked_path, no_phase_neurons=no_phase_neurons)
+
+    seq_cmap = _midnight_cmap()
+    n_bins = loc_m.shape[1]
+    bins_per_state = n_bins // 4
+
+    panels = [
+        ('Location',         loc_m,
+         '9 grid nodes × time bin\n(binary: animal at node)'),
+        ('State-in-task',    stat_m,
+         '4 subgoals × time bin\n(binary: subgoal active)'),
+        ('Subgoal Progress', phas_m,
+         f'{no_phase_neurons} phase neurons (early/mid/late)\ntiled across subgoals'),
+        ('DSR (one module)', phas_stat_m,
+         f'4 subgoals × {no_phase_neurons} phases\n= {4*no_phase_neurons} simulated neurons'),
+    ]
+
+    cfg_str = (f'task {tuple(int(x) for x in task_config)}'
+               if task_config is not None else '')
+
+    with plt.rc_context({**_PUB_RC, 'font.size': font_size,
+                         'axes.titlesize': font_size + 1}):
+        fig, axes = plt.subplots(1, len(panels), figsize=(14, 4.4),
+                                 constrained_layout=True)
+        for ax, (name, M, descr) in zip(axes, panels):
+            ax.imshow(M, aspect='auto', cmap=seq_cmap, interpolation='nearest')
+            ax.set_title(name, loc='left')
+            for k in range(1, 4):
+                ax.axvline(k * bins_per_state - 0.5, color='white', lw=0.8)
+            ax.set_xticks([(k + 0.5) * bins_per_state for k in range(4)])
+            ax.set_xticklabels(['A', 'B', 'C', 'D'])
+            ax.set_xlabel('subgoal\n\n' + descr,
+                          fontsize=font_size - 1, linespacing=1.3)
+            ax.set_ylabel('simulated neuron')
+
+        suptitle = ' — '.join(s for s in (cfg_str, recday_label) if s)
+        if suptitle:
+            fig.suptitle(suptitle, fontsize=font_size + 1)
+        _save_fig(fig, save_stem)
+        plt.show()
+    return fig
+
+
+def plot_betas_grid(panel_data, row_labels, col_labels, suptitle,
+                    save_path=None, figsize_per_panel=(1.3, 1.3), font_size=8,
+                    point_colour='#882048'):
+    """Compact grid of box+scatter plots — one panel per (row_label, col_label).
+
+    ``panel_data[row_label][col_label]`` must be a 1-D list/array of one
+    beta-per-recday. Rows share a y-axis. One-sample t-tests vs zero (greater)
+    are annotated as stars at the bottom of each panel.
+
+    Font changes are wrapped in ``plt.rc_context`` so they don't leak globally.
+    ``save_path`` is a full filename (e.g. ``overview.jpeg``); the extension
+    determines the format. ``plt.show()`` is called; figures are NOT closed.
+    """
+    n_rows, n_cols = len(row_labels), len(col_labels)
+    figsize = (figsize_per_panel[0] * n_cols + 1.4,
+               figsize_per_panel[1] * n_rows + 0.8)
+
+    with plt.rc_context({
+        'font.size':       font_size,
+        'axes.labelsize':  font_size,
+        'axes.titlesize':  font_size,
+        'xtick.labelsize': font_size - 1,
+        'ytick.labelsize': font_size - 1,
+        'legend.fontsize': font_size - 1,
+    }):
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize,
+                                 sharey='row', constrained_layout=True)
+        axes = np.atleast_2d(axes)
+        if axes.shape[1] != n_cols:   # single-row corner case
+            axes = axes.reshape(n_rows, n_cols)
+
+        for r, row_label in enumerate(row_labels):
+            # per-row symmetric y-limits
+            row_vals = np.concatenate([
+                np.asarray(panel_data[row_label].get(c, []), dtype=float).ravel()
+                for c in col_labels])
+            row_vals = row_vals[np.isfinite(row_vals)]
+            ylim = 1.2 * np.max(np.abs(row_vals)) if row_vals.size else 1.0
+
+            for c, col_label in enumerate(col_labels):
+                ax = axes[r, c]
+                vals = np.asarray(panel_data[row_label].get(col_label, []), dtype=float)
+                vals = vals[np.isfinite(vals)]
+
+                if vals.size:
+                    ax.boxplot([vals], widths=0.55, showfliers=False,
+                               medianprops=dict(color='black'))
+                    jitter = 0.07 * np.random.randn(vals.size)
+                    ax.scatter(1 + jitter, vals, s=10, color=point_colour,
+                               edgecolor='black', linewidth=0.4, zorder=3)
+                    if vals.size > 1:
+                        _, p = ttest_1samp(vals, 0, alternative='greater')
+                        sig = ('***' if p < 0.001
+                               else '**' if p < 0.01
+                               else '*' if p < 0.05 else '')
+                        if sig:
+                            ax.text(0.5, 0.02, sig, transform=ax.transAxes,
+                                    ha='center', va='bottom',
+                                    fontsize=font_size + 2)
+
+                ax.axhline(0, color='gray', ls='--', lw=0.5)
+                ax.set_xticks([])
+                ax.set_ylim(-ylim, ylim)
+                for spine in ('top', 'right'):
+                    ax.spines[spine].set_visible(False)
+
+                if r == 0:
+                    ax.set_title(col_label, pad=2)
+                if c == 0:
+                    ax.set_ylabel(row_label, rotation=0, ha='right', va='center',
+                                  labelpad=22)
+
+        fig.suptitle(suptitle, fontsize=font_size + 2)
+
+        if save_path:
+            fig.savefig(save_path, dpi=120, bbox_inches='tight')
+        plt.show()
+
+    return fig
 
 
 def plotting_hist_scat(data_list, label_string_list, label_tick_list, title_string, save_fig=False):
