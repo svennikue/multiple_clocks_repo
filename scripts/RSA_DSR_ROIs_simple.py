@@ -24,6 +24,7 @@ import pandas as pd
 from scipy import stats
 from matplotlib import pyplot as plt
 import mc
+import mc.plotting.dsr_figures as dsr_figs   # shared rodent/human pub figures
 from collections import Counter
 
 sys.path.insert(0, '/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_clocks_repo')
@@ -38,7 +39,7 @@ OUT_BASE     = os.path.join(DATA_DIR, 'group', 'DSR_RSA_simple_ROI')
 # '2026-05-18_16-33-05') to skip the heavy RSA + permutation loop and
 # just re-render the overview plots from the saved
 # results_summary*.csv files in OUT_BASE/<RELOAD_RUN>/.  None = run fresh.
-RELOAD_RUN = '2026-05-26_17-54-23' #None 
+RELOAD_RUN = None  #'2026-05-26_17-54-23' 
 
 
 configs = [
@@ -57,6 +58,7 @@ PLOT_FIGS = False
 N_PERMUTATIONS = 1000 # 500 # None or 300
 SPLIT_UNCV_BUTTONS = True
 
+PLOT_GLASSBRAINS = True
 # ── Models / combos to evaluate per ROI this round ────────────────────
 # All model RDMs are built each run (cheap). These lists only restrict the
 # *expensive* per-ROI evaluation + permutation step.
@@ -138,6 +140,11 @@ ROIS_TO_ANALYZE_BY_COLUMN = {
     ],
 }
 ROIS_TO_ANALYZE = ROIS_TO_ANALYZE_BY_COLUMN[ROI_LABEL_COLUMN]
+
+# ROI that gets the shared rodent-style publication figures (fig 2 + fig 3)
+# saved into ``OUT_DIR/pub_figures/``. Set to None to disable, or to another
+# ROI name from ROIS_TO_ANALYZE to pick a different reference ROI.
+EXAMPLE_ROI_FOR_FIGS = 'ACC'
 
 
 def parse_neuron_label(label):
@@ -644,6 +651,43 @@ if RELOAD_RUN is None:
         # make nans in repeat counter to 0
         nan_mask_feedback = np.isnan(model_RDMs['repeat_counter'][0])
         model_RDMs['repeat_counter'][0][nan_mask_feedback] = 1
+
+        # ── Publication figures 2 + 3 (shared with rodent pipeline) ────────
+        # Built once for the example ROI: data + per-model activations and
+        # RDMs across all 8 task configurations, using the mode-path models
+        # (mode_locs_all, which already pools both halves). Mirrors the
+        # rodent pipeline so a single change to the plotting helpers
+        # propagates to both analyses.
+        if roi_name == EXAMPLE_ROI_FOR_FIGS:
+            DSR_MODEL_ORDER_HUMAN = ['dsr_old', 'state', 'location_old', 'phase']
+            half1_slice = slice(0, N_CONFIGS * N_CONDS_PER_CONF)  # the across-blocks RDM is built from half-1
+            fig_model_acts = {m: model_concat[m][half1_slice].T
+                              for m in DSR_MODEL_ORDER_HUMAN}
+            fig_model_rdms = {m: full[m] for m in DSR_MODEL_ORDER_HUMAN}
+            fig_data_act   = mat_all_z.T      # (n_neurons, N_CONFIGS*N_CONDS_PER_CONF)
+            fig_data_rdm   = data_RDM_full_z  # (N_CONFIGS*N_CONDS_PER_CONF, ...) square
+
+            figs_dir = os.path.join(OUT_DIR, 'pub_figures')
+            os.makedirs(figs_dir, exist_ok=True)
+
+            dsr_figs.pub_figure_example_subject(
+                data_activation=fig_data_act, data_rdm=fig_data_rdm,
+                model_activations=fig_model_acts, model_rdms=fig_model_rdms,
+                model_order=DSR_MODEL_ORDER_HUMAN,
+                n_tasks=N_CONFIGS, n_conds_per_task=N_CONDS_PER_CONF,
+                recday_label=f'human cells / {roi_name}',
+                save_stem=os.path.join(figs_dir, f'fig2_human_{roi_name}'))
+
+            # Fig 3 schematics: one example config from the mode trajectory.
+            ex_config_str = configs[0]
+            ex_walked = np.asarray(mode_locs_all[ex_config_str], dtype=int) - 1   # 0-indexed
+            ex_walked = np.clip(ex_walked, 0, 8)
+            ex_config_tuple = tuple(int(x) for x in ex_config_str.split('-'))
+            dsr_figs.pub_figure_model_schematics(
+                walked_path=ex_walked, task_config=ex_config_tuple,
+                no_phase_neurons=N_PHASES,
+                recday_label=f'human cells / config {ex_config_str}',
+                save_stem=os.path.join(figs_dir, 'fig3_human_model_schematics'))
 
         # import pdb; pdb.set_trace()
         print("Computing RSA...")
@@ -1249,59 +1293,60 @@ def _render_overview_plots(summary_df, summary_combo_df,
                 plt.show()
 
     # ROI electrode schematic
-    from mc.plotting.cell_results import (
-        plot_roi_electrodes_glassbrain, plot_roi_beta_glassbrain,
-    )
-    electrodes_per_roi = {
-        roi: np.array(list(coords.values()), dtype=float)
-        for roi, coords in roi_electrode_coords.items()
-        if coords
-    }
-    if electrodes_per_roi:
-        plot_roi_electrodes_glassbrain(
-            electrodes_per_roi,
-            save_path=os.path.join(out_dir, 'roi_electrodes_glassbrain.png'),
-            title='ROI electrode locations (one panel per ROI)',
-            per_roi_panels=True,
+    if PLOT_GLASSBRAINS == True:
+        from mc.plotting.cell_results import (
+            plot_roi_electrodes_glassbrain, plot_roi_beta_glassbrain,
         )
-        plot_roi_electrodes_glassbrain(
-            electrodes_per_roi,
-            save_path=os.path.join(
-                out_dir, 'roi_electrodes_glassbrain_combined.png'),
-            title='ROI electrode locations (all ROIs combined)',
-            per_roi_panels=False,
-        )
-    else:
-        print("No electrode coordinates collected — skipping ROI glass-brain.")
+        electrodes_per_roi = {
+            roi: np.array(list(coords.values()), dtype=float)
+            for roi, coords in roi_electrode_coords.items()
+            if coords
+        }
+        if electrodes_per_roi:
+            plot_roi_electrodes_glassbrain(
+                electrodes_per_roi,
+                save_path=os.path.join(out_dir, 'roi_electrodes_glassbrain.png'),
+                title='ROI electrode locations (one panel per ROI)',
+                per_roi_panels=True,
+            )
+            plot_roi_electrodes_glassbrain(
+                electrodes_per_roi,
+                save_path=os.path.join(
+                    out_dir, 'roi_electrodes_glassbrain_combined.png'),
+                title='ROI electrode locations (all ROIs combined)',
+                per_roi_panels=False,
+            )
+        else:
+            print("No electrode coordinates collected — skipping ROI glass-brain.")
 
-    # ── ROI-shaded glass-brain (heatmap colours on a brain) ──────────
-    # One figure per (model, heatmap_test): each anatomical ROI mask is
-    # shaded by its beta value, using the same RdBu_r palette as the
-    # ROI x model heatmap.  Restricted to ROIs that actually have cells.
-    rois_with_cells = sorted(electrodes_per_roi)
-    if rois_with_cells:
-        glassbrain_dir = os.path.join(out_dir, 'roi_beta_glassbrains')
-        os.makedirs(glassbrain_dir, exist_ok=True)
-
-        if len(models) > 0 and not summary_df.empty:
-            sub_t = summary_df[summary_df['test'] == heatmap_test]
-            for m in models:
-                rows = sub_t[sub_t['model'] == m]
-                if rows.empty:
-                    continue
-                betas = dict(zip(rows['roi'], rows['beta']))
-                pvals = dict(zip(rows['roi'], rows['p_perm']))
-                plot_roi_beta_glassbrain(
-                    roi_betas=betas, roi_pvals=pvals,
-                    only_rois=rois_with_cells,
-                    roi_cell_coords=electrodes_per_roi,
-                    roi_label_column=ROI_LABEL_COLUMN,
-                    title=f'{m} beta — {heatmap_test}',
-                    save_path=os.path.join(
-                        glassbrain_dir,
-                        f'roi_beta_glassbrain_{m}_{heatmap_test}.png'),
-                )
-                plt.show()
+        # ── ROI-shaded glass-brain (heatmap colours on a brain) ──────────
+        # One figure per (model, heatmap_test): each anatomical ROI mask is
+        # shaded by its beta value, using the same RdBu_r palette as the
+        # ROI x model heatmap.  Restricted to ROIs that actually have cells.
+        rois_with_cells = sorted(electrodes_per_roi)
+        if rois_with_cells:
+            glassbrain_dir = os.path.join(out_dir, 'roi_beta_glassbrains')
+            os.makedirs(glassbrain_dir, exist_ok=True)
+    
+            if len(models) > 0 and not summary_df.empty:
+                sub_t = summary_df[summary_df['test'] == heatmap_test]
+                for m in models:
+                    rows = sub_t[sub_t['model'] == m]
+                    if rows.empty:
+                        continue
+                    betas = dict(zip(rows['roi'], rows['beta']))
+                    pvals = dict(zip(rows['roi'], rows['p_perm']))
+                    plot_roi_beta_glassbrain(
+                        roi_betas=betas, roi_pvals=pvals,
+                        only_rois=rois_with_cells,
+                        roi_cell_coords=electrodes_per_roi,
+                        roi_label_column=ROI_LABEL_COLUMN,
+                        title=f'{m} beta — {heatmap_test}',
+                        save_path=os.path.join(
+                            glassbrain_dir,
+                            f'roi_beta_glassbrain_{m}_{heatmap_test}.png'),
+                    )
+                    plt.show()
 
         if not summary_combo_df.empty:
             sub_t = summary_combo_df[summary_combo_df['test'] == heatmap_test]

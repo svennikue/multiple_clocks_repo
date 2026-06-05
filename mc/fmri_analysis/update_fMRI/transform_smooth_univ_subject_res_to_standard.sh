@@ -1,0 +1,59 @@
+#!/bin/sh
+# transforms beta-results per model and subject to standard space
+# to prepare group stats.
+# submit like bash transform_subject_res_to_standard.sh
+# requires results from submit_RSA_fmri.sh
+
+# Set scratch directory for execution on server
+scratchDir="/home/fs0/xpsy1114/scratch/data"
+analysisDir="/home/fs0/xpsy1114/scratch/analysis"
+#fslDir="/opt/fmrib/fsl"
+export fslDir=~/scratch/fsl
+export PATH=$fslDir/share/fsl/bin/:$PATH
+source $fslDir/etc/fslconf/fsl.sh
+module load fsl 
+
+glm_version="all_paths-stickrews-split_buttons"
+result_version="state_univ_rewards"
+
+echo now starting transforming all results of glm $glm_version $result_version to standard space
+
+# for subjectTag in 34 35 ; do #without 21 AND 29!
+for subjectTag in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 22 23 24 25 26 27 28 30 31 32 33 34 35 ; do #without 21 AND 29! plus from 30 the date changes to 10th of nov...
+    # for every result file
+    resultDir=${scratchDir}/derivatives/sub-${subjectTag}/func/${result_version}_glmbase_${glm_version}/smoothed
+    stdDir=${scratchDir}/derivatives/sub-${subjectTag}/func/${result_version}_glmbase_${glm_version}/results-standard-space
+    if [ -d $stdDir ]; then
+        mv $stdDir ${scratchDir}/derivatives/sub-${subjectTag}/func/${result_version}_glmbase_${glm_version}/old-results-standard-space
+        mkdir $stdDir
+    fi
+    if [ ! -d $stdDir ]; then
+        echo making new directory to save standard files: $stdDir
+        mkdir $stdDir
+    fi
+    preprocDir=${scratchDir}/derivatives/sub-${subjectTag}/func/preproc_clean_02.feat
+
+    echo now for subject $subjectTag glm $glm_version for $result_version
+
+    # Loop through each .nii.gz file in the directory
+    for file in "$resultDir"/*.nii.gz; do
+        # only do this if the file is newer than 3 days×24 hours * 60 minutes * 60 seconds =259,200 seconds
+        # 7 days: 7*24*60*60 = 604800
+        if [[ ! "$(( $(date +"%s") - $(stat -c "%Y" "$file") ))" -gt "604800" ]]; then
+                # Extract the filename without the extension
+            file_name=$(basename "$file" .nii.gz)
+            echo $file_name 
+            # Define the output filename
+            output="${stdDir}/${file_name}_std.nii.gz"
+            
+            # skip if you already transformed this
+            if [ -e "${output}" ]; then
+                continue
+            fi
+            # Transform to standard
+            echo input is $file and output is $output
+            # fsl_sub -q short flirt -in "$file" -ref ${preprocDir}/reg/standard.nii.gz -applyxfm -init ${preprocDir}/reg/example_func2standard.mat -out "$output"
+            flirt -in "$file" -ref ${preprocDir}/reg/standard.nii.gz -applyxfm -init ${preprocDir}/reg/example_func2standard.mat -out "$output"
+        fi
+    done
+done

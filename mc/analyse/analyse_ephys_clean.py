@@ -28,18 +28,40 @@ import mc.simulation.predictions_clean as predictions_clean
 import mc.simulation.RDMs as RDMs
 import mc.simulation.predictions as predictions  # model_DSR + plot_without_legends
 import mc.analyse.my_RSA as my_RSA               # shared RSA helpers (human pipeline)
+import mc.plotting.figure_layout as figure_layout  # A4-aware figsize helper
 
 
 # the four models entering the GLM (midnight deliberately excluded), in the
 # order GLM_RDMs returns them (alphabetical).
 REGRESSORS_TO_INCLUDE = ['clo_model', 'loc_model', 'phas_model', 'stat_model']
 
-# human-readable labels for the four regressors (used by both analyses)
+# human-readable labels for each model. Used by both the rodent pipeline and
+# the human-cells pipeline (scripts/RSA_DSR_ROIs_simple.py); multiple aliases
+# may map to the same human-readable label so each script can use its own keys.
 MODEL_LABELS = {
+    # rodent pipeline keys
     'clo_model': 'DSR', 'dsr': 'DSR',
     'stat_model': 'Location in Task', 'stat': 'Location in Task',
     'loc_model': 'Physical Location', 'loc': 'Physical Location',
     'phas_model': 'Subgoal Progress', 'phas': 'Subgoal Progress',
+    # human-cells pipeline aliases
+    'dsr_old':      'DSR',
+    'midnight':     'DSR (only current)',
+    'state':        'Location in Task',
+    'location_old': 'Physical Location',
+    'phase':        'Subgoal Progress',
+}
+
+# Which model-row-structure each key represents. Drives the nested y-axis
+# tick labelling inside ``_imshow_with_task_grid`` (full DSR vs midnight vs
+# loc/stat/phas).
+MODEL_KINDS = {
+    'clo_model':    'dsr',  'dsr':          'dsr',
+    'dsr_old':      'dsr',
+    'midnight':     'midn',
+    'stat_model':   'stat', 'stat':         'stat',  'state':        'stat',
+    'loc_model':    'loc',  'loc':          'loc',   'location_old': 'loc',
+    'phas_model':   'phas', 'phas':         'phas',  'phase':        'phas',
 }
 
 
@@ -1246,7 +1268,7 @@ def methods_results_stats(per_recday_results, n_neurons_per_recday,
     label_regs = list(next(iter(per_recday_results.values()))['label_regs'])
     if model_label_order is None:
         model_label_order = label_regs
-
+    #  pdb; pdb.set_trace()
     out = {
         'pipeline':           'DSR mode_path / all_trials / full_z',
         'n_recdays':          len(recdays),
@@ -1306,8 +1328,7 @@ def methods_results_stats(per_recday_results, n_neurons_per_recday,
 
 
 def _draw_betas_box_panel(ax, coefs_by_model, model_order,
-                          fdr_pvals=None, font_size=11,
-                          star_y_below=-0.10, star_y_above=0.10):
+                          fdr_pvals=None, font_size=11):
     """Box + scatter of per-recday betas with FDR-corrected stars placed
     on the OPPOSITE side of zero from the data (so they never overlap the
     box/scatter).
@@ -1339,6 +1360,10 @@ def _draw_betas_box_panel(ax, coefs_by_model, model_order,
     for spine in ('top', 'right'):
         ax.spines[spine].set_visible(False)
 
+
+    ymin, ymax = ax.get_ylim()
+    scale = ymax -ymin 
+    star_y_below = - (scale/10)  
     if fdr_pvals is not None:
         for i, (m, d) in enumerate(zip(model_order, box_data)):
             p = fdr_pvals.get(m)
@@ -1348,18 +1373,18 @@ def _draw_betas_box_panel(ax, coefs_by_model, model_order,
                    else '*' if p < 0.05 else '')
             if not sig:
                 continue
-            mean_val = float(np.nanmean(d)) if d.size else 0.0
-            if mean_val >= 0:
+            min_val = float(np.nanmin(d)) if d.size else 0.0
+            if min_val >= 0:
                 y_star, va = star_y_below, 'top'
-            else:
-                y_star, va = star_y_above, 'bottom'
+                # y_star, va = star_y_below, 'top'
+            if min_val <= 0:
+                y_star, va = min_val - (scale/10), 'top'
+                star_y_below = y_star
+
             ax.text(positions[i], y_star, sig, ha='center', va=va,
                     fontsize=font_size + 4)
 
-    # make sure star positions are inside the axis
-    ymin, ymax = ax.get_ylim()
-    ax.set_ylim(min(ymin, star_y_below - 0.02),
-                max(ymax, star_y_above + 0.02))
+    ax.set_ylim(min(ymin, star_y_below - (scale/10)  ))
 
 
 _PUB_RC = {
@@ -1373,64 +1398,311 @@ _PUB_RC = {
 }
 
 
+def _ytick_labels_for_model(name, n_rows, no_phase_neurons=3):
+    """Per-model y-tick labels + optional row-group separators (semantic, not
+    numeric). Returns ``(positions, labels, separator_rows)`` or
+    ``(None, None, None)`` if no semantic labelling is appropriate.
+
+    ``name`` is one of ``'loc'``, ``'stat'``, ``'phas'``, ``'phas_stat'``,
+    ``'midn'``, ``'dsr'`` (full clo_model), or ``'data'``.
+    """
+    phase_short  = (['early', 'mid', 'late'] if no_phase_neurons == 3
+                    else [f'p{i+1}' for i in range(no_phase_neurons)])
+    state_letter = ['A', 'B', 'C', 'D']
+
+    if name == 'loc':
+        return list(range(n_rows)), [f'Loc {i+1}' for i in range(n_rows)], None
+
+    if name == 'stat':
+        return (list(range(n_rows)),
+                [f'State {state_letter[i]}' for i in range(n_rows)], None)
+
+    if name == 'phas':
+        return list(range(n_rows)), phase_short[:n_rows], None
+
+    if name == 'phas_stat':
+        # one DSR module — 4 states × no_phase_neurons phase = lags 0..(n-1)
+        labels = [f'lag {i}' for i in range(n_rows)]
+        # separators between state blocks
+        seps = [i * no_phase_neurons for i in range(1, 4)]
+        return list(range(n_rows)), labels, seps
+
+    if name == 'midn':
+        # 9 locations × no_phase_neurons phase neurons.
+        positions, labels = [], []
+        n_loc = n_rows // no_phase_neurons
+        for loc in range(n_loc):
+            for pi in range(no_phase_neurons):
+                positions.append(loc * no_phase_neurons + pi)
+                labels.append(f'L{loc+1}-{phase_short[pi]}')
+        seps = [loc * no_phase_neurons for loc in range(1, n_loc)]
+        return positions, labels, seps
+
+    if name == 'dsr':
+        # Full clo_model: 9 locations × no_phase_neurons phase × (4 × no_phase_neurons) lag
+        n_lags = 4 * no_phase_neurons
+        n_groups = n_rows // n_lags                # = n_loc * no_phase_neurons
+        n_loc = n_groups // no_phase_neurons
+        positions, labels = [], []
+        # tick at the middle of each (location, phase) group of n_lags rows
+        for loc in range(n_loc):
+            for pi in range(no_phase_neurons):
+                g = loc * no_phase_neurons + pi
+                positions.append(g * n_lags + n_lags / 2)
+                labels.append(f'L{loc+1}-{phase_short[pi]}')
+        # separators between locations (thicker visually applied later)
+        seps = [loc * no_phase_neurons * n_lags for loc in range(1, n_loc)]
+        return positions, labels, seps
+
+    return None, None, None
+
+
+def _set_nested_task_x_axis(ax, K, N, x_axis_groups=None, *,
+                            rotation=45, ha='right', tick_fs=None,
+                            outer_fs=None, outer_y_bar=-0.30,
+                            outer_y_text=-0.42, draw_outer=True):
+    """Inner ``task N`` x-tick labels (restarting per group) + optional outer
+    group brackets/labels below.
+
+    ``x_axis_groups``: ``[(label, n_in_group), ...]`` summing to ``K``.
+    Outer labels are drawn with a small horizontal bracket below the inner ticks.
+    """
+    inner_pos = np.arange(K) * N + N / 2
+    if x_axis_groups:
+        inner_labels = []
+        for _, n_in_grp in x_axis_groups:
+            inner_labels += [f"task {i+1}" for i in range(n_in_grp)]
+    else:
+        inner_labels = [f"task {k+1}" for k in range(K)]
+    ax.set_xticks(inner_pos)
+    if tick_fs is not None:
+        ax.set_xticklabels(inner_labels, rotation=rotation, ha=ha, fontsize=tick_fs)
+    else:
+        ax.set_xticklabels(inner_labels, rotation=rotation, ha=ha)
+    if not x_axis_groups or not draw_outer:
+        return
+    xtrans = ax.get_xaxis_transform()
+    offsets = np.cumsum([0] + [n for _, n in x_axis_groups[:-1]])
+    for (label, n_in_grp), off in zip(x_axis_groups, offsets):
+        x0 = off * N - 0.5
+        x1 = (off + n_in_grp) * N - 0.5
+        # bracket
+        ax.plot([x0, x1], [outer_y_bar, outer_y_bar], color='black', lw=0.8,
+                transform=xtrans, clip_on=False)
+        for xe in (x0, x1):
+            ax.plot([xe, xe], [outer_y_bar, outer_y_bar - 0.04], color='black',
+                    lw=0.8, transform=xtrans, clip_on=False)
+        ax.text((x0 + x1) / 2, outer_y_text, label, ha='center', va='top',
+                transform=xtrans, clip_on=False,
+                fontsize=(outer_fs or plt.rcParams['axes.labelsize']))
+
+
+def _set_nested_task_y_axis(ax, K, N, x_axis_groups=None, *,
+                            tick_fs=None, outer_fs=None,
+                            outer_x_bar=-0.14, outer_x_text=-0.22,
+                            draw_outer=True):
+    """Same as ``_set_nested_task_x_axis`` but applied to the (square-RDM)
+    y-axis. Inner labels are vertical-friendly; outer label is rotated 90°.
+    """
+    inner_pos = np.arange(K) * N + N / 2
+    if x_axis_groups:
+        inner_labels = []
+        for _, n_in_grp in x_axis_groups:
+            inner_labels += [f"task {i+1}" for i in range(n_in_grp)]
+    else:
+        inner_labels = [f"task {k+1}" for k in range(K)]
+    ax.set_yticks(inner_pos)
+    if tick_fs is not None:
+        ax.set_yticklabels(inner_labels, fontsize=tick_fs)
+    else:
+        ax.set_yticklabels(inner_labels)
+    if not x_axis_groups or not draw_outer:
+        return
+    ytrans = ax.get_yaxis_transform()
+    offsets = np.cumsum([0] + [n for _, n in x_axis_groups[:-1]])
+    for (label, n_in_grp), off in zip(x_axis_groups, offsets):
+        y0 = off * N - 0.5
+        y1 = (off + n_in_grp) * N - 0.5
+        ax.plot([outer_x_bar, outer_x_bar], [y0, y1], color='black', lw=0.8,
+                transform=ytrans, clip_on=False)
+        for ye in (y0, y1):
+            ax.plot([outer_x_bar, outer_x_bar + 0.04], [ye, ye], color='black',
+                    lw=0.8, transform=ytrans, clip_on=False)
+        ax.text(outer_x_text, (y0 + y1) / 2, label, ha='right', va='center',
+                rotation=90, transform=ytrans, clip_on=False,
+                fontsize=(outer_fs or plt.rcParams['axes.labelsize']))
+
+
+def _apply_nested_y_dsr_midn(ax, kind, n_rows, no_phase_neurons=3, *,
+                             inner_fs=None, outer_fs=None,
+                             outer_x_text=-0.18, sep_color='white'):
+    """Nested y-axis: phase letter (inner: E/M/L) + location number (outer).
+    For ``'midn'`` (27 rows) and ``'dsr'`` (324 rows, the full clo_model).
+
+    Also draws thin row separators between locations.
+    """
+    phase_short = (['E', 'M', 'L'] if no_phase_neurons == 3
+                   else [f'p{i+1}' for i in range(no_phase_neurons)])
+
+    if kind == 'midn':
+        n_loc = n_rows // no_phase_neurons
+        inner_pos = list(range(n_rows))
+        inner_labels = [phase_short[i % no_phase_neurons] for i in range(n_rows)]
+        outer_pos = [loc * no_phase_neurons + (no_phase_neurons - 1) / 2
+                     for loc in range(n_loc)]
+        loc_seps  = [loc * no_phase_neurons - 0.5 for loc in range(1, n_loc)]
+
+    elif kind == 'dsr':
+        n_lags = 4 * no_phase_neurons
+        n_loc = (n_rows // n_lags) // no_phase_neurons
+        inner_pos, inner_labels = [], []
+        for loc in range(n_loc):
+            for pi in range(no_phase_neurons):
+                g = loc * no_phase_neurons + pi
+                inner_pos.append(g * n_lags + n_lags / 2)
+                inner_labels.append(phase_short[pi])
+        outer_pos = [loc * no_phase_neurons * n_lags
+                     + (no_phase_neurons * n_lags) / 2
+                     for loc in range(n_loc)]
+        loc_seps  = [loc * no_phase_neurons * n_lags - 0.5
+                     for loc in range(1, n_loc)]
+    else:
+        return
+
+    ax.set_yticks(inner_pos)
+    if inner_fs is not None:
+        ax.set_yticklabels(inner_labels, fontsize=inner_fs)
+    else:
+        ax.set_yticklabels(inner_labels)
+
+    ytrans = ax.get_yaxis_transform()
+    for pos, loc_idx in zip(outer_pos, range(1, len(outer_pos) + 1)):
+        ax.text(outer_x_text, pos, str(loc_idx), ha='right', va='center',
+                transform=ytrans, clip_on=False,
+                fontsize=(outer_fs or plt.rcParams['axes.labelsize']))
+    for row in loc_seps:
+        ax.axhline(row, color='grey', lw=0.5, alpha=0.7)
+
+
 def _imshow_with_task_grid(ax, M, K, N, *, cmap, vmin=None, vmax=None,
-                           aspect='auto', square=False, gridcolor='white'):
-    """imshow with vertical (and optional horizontal) task-boundary lines + tick labels."""
+                           aspect='auto', square=False, gridcolor='white',
+                           model_kind=None, no_phase_neurons=3,
+                           ytick_fontsize=None, x_axis_groups=None,
+                           draw_outer_x=True, draw_outer_y=True):
+    """imshow with task-boundary lines + (nested) tick labels.
+
+    ``x_axis_groups``: optional ``[(label, n_in_group), ...]`` to draw outer
+    brackets below the inner ``task N`` labels (and to the left of the y-axis
+    on square RDMs). Vertical/horizontal dividers at group boundaries are
+    drawn thicker than inner task dividers.
+    """
     im = ax.imshow(M, aspect=('equal' if square else aspect), cmap=cmap,
                    vmin=vmin, vmax=vmax, interpolation='nearest')
+
+    group_bounds = set()
+    if x_axis_groups:
+        cum = 0
+        for _, n_in_grp in x_axis_groups[:-1]:
+            cum += n_in_grp
+            group_bounds.add(cum)
+
     for k in range(1, K):
-        ax.axvline(k * N - 0.5, color=gridcolor, lw=0.8)
+        lw = 1.4 if k in group_bounds else 0.8
+        ax.axvline(k * N - 0.5, color=gridcolor, lw=lw)
         if square:
-            ax.axhline(k * N - 0.5, color=gridcolor, lw=0.8)
-    ax.set_xticks(np.arange(K) * N + N / 2)
-    ax.set_xticklabels([f"task {k+1}" for k in range(K)], rotation=45, ha='right')
+            ax.axhline(k * N - 0.5, color=gridcolor, lw=lw)
+
+    _set_nested_task_x_axis(ax, K, N, x_axis_groups=x_axis_groups,
+                            tick_fs=ytick_fontsize, draw_outer=draw_outer_x)
+
     if square:
-        ax.set_yticks(np.arange(K) * N + N / 2)
-        ax.set_yticklabels([f"task {k+1}" for k in range(K)])
+        _set_nested_task_y_axis(ax, K, N, x_axis_groups=x_axis_groups,
+                                tick_fs=ytick_fontsize, draw_outer=draw_outer_y)
+        return im
+
+    if model_kind in ('dsr', 'midn'):
+        _apply_nested_y_dsr_midn(ax, model_kind, M.shape[0],
+                                 no_phase_neurons=no_phase_neurons,
+                                 inner_fs=ytick_fontsize)
+    elif model_kind is not None:
+        positions, labels, seps = _ytick_labels_for_model(
+            model_kind, M.shape[0], no_phase_neurons=no_phase_neurons)
+        if positions is not None:
+            ax.set_yticks(positions)
+            if ytick_fontsize is not None:
+                ax.set_yticklabels(labels, fontsize=ytick_fontsize)
+            else:
+                ax.set_yticklabels(labels)
+        if seps:
+            for row in seps:
+                ax.axhline(row - 0.5, color='black', lw=0.5, alpha=0.7)
     return im
 
 
+# def pub_figure_dsr_overview(dsr_model_activation, dsr_model_rdm,
+#                             coefs_by_model, model_order, fdr_pvals,
+#                             n_tasks, n_conds_per_task=12, recday_label='',
+#                             save_stem=None, font_size=11,
+#                             width_fracs=(0.4, 0.3, 0.3), height_in=3.6,
+#                             x_axis_groups=None):
 def pub_figure_dsr_overview(dsr_model_activation, dsr_model_rdm,
                             coefs_by_model, model_order, fdr_pvals,
                             n_tasks, n_conds_per_task=12, recday_label='',
-                            save_stem=None, font_size=11):
+                            save_stem=None, font_size=11,
+                            width_fracs=(0.3, 0.3, 0.4), height_in=3.6,
+                            x_axis_groups=None):
+    
     """Main publication figure (3 panels):
         a) DSR modelled neurons — activation across all tasks (single subject's
            binning grid; n_features × K*N).
         b) DSR model RDM — full square, lower triangle drawn.
         c) Betas across recdays for the four models, FDR-corrected stars.
+
+    ``width_fracs`` is the fraction of usable A4 page width each subpanel will
+    occupy in the final printed document — saved figsize is set so the file
+    can be dropped in at 100% and the ``font_size`` renders correctly.
     """
     K, N = n_tasks, n_conds_per_task
     seq_cmap = _midnight_cmap()
-    with plt.rc_context({**_PUB_RC, 'font.size': font_size,
-                         'axes.labelsize': font_size,
-                         'axes.titlesize': font_size + 1}):
-        fig, axes = plt.subplots(1, 3, figsize=(13, 3.5),
-                                 gridspec_kw={'width_ratios': [2.0, 1.4, 1.6]},
-                                 constrained_layout=True)
+    layout = figure_layout.subpanel_figure(
+        width_fracs=width_fracs, height_in=height_in,
+        target_font_pt=font_size)
+    with plt.rc_context(layout['rc']):
+        fig, axes = plt.subplots(
+            1, 3, figsize=layout['figsize'],
+            gridspec_kw={'width_ratios': layout['width_ratios']},
+            constrained_layout=True)
 
-        # (a) DSR modelled neurons
+        # (a) DSR modelled neurons (full clo_model: location × phase × lag)
         ax = axes[0]
-        _imshow_with_task_grid(ax, dsr_model_activation, K, N, cmap=seq_cmap)
-        ax.set_ylabel('simulated neurons')
-        ax.set_title(f'a) DSR modelled neurons — {recday_label}', loc='left')
+        _imshow_with_task_grid(ax, dsr_model_activation, K, N, cmap=seq_cmap,
+                               model_kind='dsr',
+                               ytick_fontsize=max(font_size - 6, 4),
+                               x_axis_groups=x_axis_groups)
+        # Push the "simulated neurons" label past the nested loc/phase labels
+        ax.set_ylabel('simulated neurons', labelpad=20)
+        #ax.set_title(f'a) DSR modelled neurons — {recday_label}', loc='left')
 
-        # (b) DSR model RDM (lower triangle, RdBu_r)
+        # (b) DSR model RDM (lower triangle, RdBu_r). For the across-halves
+        # variant the activation matrix has 2*K_h*N columns but the RDM is
+        # already collapsed by ``compute_crosscorr`` to a K_h*N square — so
+        # infer the RDM's task count from its shape rather than reusing K.
         ax = axes[1]
         rdm_disp = dsr_model_rdm.copy()
         rdm_disp[np.triu_indices_from(rdm_disp, k=1)] = np.nan
         vmax = np.nanmax(np.abs(rdm_disp))
-        im = _imshow_with_task_grid(ax, rdm_disp, K, N, cmap='RdBu_r',
+        K_rdm = rdm_disp.shape[0] // N
+        im = _imshow_with_task_grid(ax, rdm_disp, K_rdm, N, cmap='RdBu_r',
                                     vmin=-vmax, vmax=vmax, square=True,
-                                    gridcolor='black')
-        ax.set_title('b) DSR model RDM', loc='left')
+                                    gridcolor='white')
+        #ax.set_title('b) DSR model RDM', loc='left')
         fig.colorbar(im, ax=ax, fraction=0.045, pad=0.02, label='1 − r')
 
         # (c) betas with FDR stars
         ax = axes[2]
         _draw_betas_box_panel(ax, coefs_by_model, model_order,
                               fdr_pvals=fdr_pvals, font_size=font_size)
-        ax.set_title('c) betas across recdays (FDR *)', loc='left')
+        #ax.set_title('c) betas across recdays (FDR *)', loc='left')
 
         _save_fig(fig, save_stem)
         plt.show()
@@ -1440,65 +1712,76 @@ def pub_figure_dsr_overview(dsr_model_activation, dsr_model_rdm,
 def pub_figure_example_subject(data_activation, data_rdm,
                                model_activations, model_rdms, model_order,
                                n_tasks, n_conds_per_task=12, recday_label='',
-                               save_stem=None, font_size=10):
-    """Single-subject supplementary figure: per-column nested layout. Each
-    column has its activation (top) stacked above its RDM (bottom), sized
-    independently by the column's n_features. Per-panel colorbars throughout.
+                               save_stem=None, font_size=10,
+                               total_width_frac=1.0, height_in=6.5,
+                               page_width_in=figure_layout.A4_HEIGHT_IN,
+                               x_axis_groups=None):
+    """Single-subject supplementary figure: per-column layout.
+    col 0 = recorded data; cols 1..n = each model. Top row = activation matrix
+    (sequential cmap, no individual colorbars), bottom row = RDM (RdBu_r,
+    shared symmetric scale, single colorbar at the right of the row).
 
-        col 0:    actual data
-        col 1..n: each model
-
-    ``model_activations[m]`` / ``model_rdms[m]`` keyed by model order.
+    ``x_axis_groups``: optional outer grouping for nested x-tick labels (e.g.
+    ``[('run 1', K_h), ('run 2', K_h)]`` for the across-halves variant).
     """
     K, N = n_tasks, n_conds_per_task
     seq_cmap = _midnight_cmap()
-    columns = [('data — neurons',                 data_activation, data_rdm,         'neurons')] + [
-        (f'{MODEL_LABELS.get(m, m)} — simulated', model_activations[m], model_rdms[m], 'simulated neurons')
+    columns = [('data', data_activation, data_rdm, None)] + [
+        (MODEL_LABELS.get(m, m), model_activations[m], model_rdms[m],
+         MODEL_KINDS.get(m))
         for m in model_order
     ]
     n_cols = len(columns)
 
-    # vmax for the diverging RDM colormap (shared scale across all RDMs)
     def _lower(rdm):
         r = rdm.copy()
         r[np.triu_indices_from(r, k=1)] = np.nan
         return r
     vmax = max(np.nanmax(np.abs(_lower(c[2]))) for c in columns if c[2] is not None)
 
-    # height ratios per column: activation height ∝ n_features (capped 0.4..2.0)
-    def _h_ratio(n_feat):
-        return min(max(n_feat / 40.0, 0.4), 2.0)
+    # Uniform activation / RDM row heights so RDMs align across columns.
+    h_top = 1.0
 
-    with plt.rc_context({**_PUB_RC, 'font.size': font_size,
-                         'axes.titlesize': font_size + 1,
-                         'axes.labelsize': font_size}):
-        fig = plt.figure(figsize=(3.4 * n_cols, 6.5))
-        outer = fig.add_gridspec(1, n_cols, wspace=0.55)
+    layout = figure_layout.subpanel_figure(
+        width_fracs=[total_width_frac / n_cols] * n_cols,
+        height_in=height_in, target_font_pt=font_size,
+        page_width_in=page_width_in)
+    with plt.rc_context(layout['rc']):
+        fig = plt.figure(figsize=layout['figsize'])
+        # 2 rows × (n_cols + 1) cells. Last column is the shared colorbar slot;
+        # the activation (top) row leaves it empty.
+        outer = fig.add_gridspec(
+            2, n_cols + 1,
+            height_ratios=[h_top, 1.0],
+            width_ratios=[1.0] * n_cols + [0.04],
+            wspace=0.55, hspace=0.45)
 
-        for col_idx, (name, act, rdm, ylab) in enumerate(columns):
-            h_top = _h_ratio(act.shape[0])
-            inner = outer[0, col_idx].subgridspec(
-                2, 2, height_ratios=[h_top, 1.0],
-                width_ratios=[20, 1], wspace=0.06, hspace=0.35)
-
-            # activation (top)
-            ax_act  = fig.add_subplot(inner[0, 0])
-            cax_act = fig.add_subplot(inner[0, 1])
-            _imshow_with_task_grid(ax_act, act, K, N, cmap=seq_cmap)
+        rdm_axes = []
+        for col_idx, (name, act, rdm, mkind) in enumerate(columns):
+            # activation (top) — no colorbar, no y-label
+            ax_act = fig.add_subplot(outer[0, col_idx])
+            _imshow_with_task_grid(
+                ax_act, act, K, N, cmap=seq_cmap, model_kind=mkind,
+                ytick_fontsize=(max(font_size - 4, 4)
+                                if mkind in ('dsr', 'midn') else None),
+                x_axis_groups=x_axis_groups)
             ax_act.set_title(name, loc='left')
-            ax_act.set_ylabel(ylab)
-            fig.colorbar(ax_act.images[0], cax=cax_act)
 
-            # RDM (bottom)
-            ax_rdm  = fig.add_subplot(inner[1, 0])
-            cax_rdm = fig.add_subplot(inner[1, 1])
-            _imshow_with_task_grid(ax_rdm, _lower(rdm), K, N,
+            # RDM (bottom) — square, no individual colorbar. For across-
+            # halves the activation has 2*K_h*N columns but ``compute_crosscorr``
+            # collapses the RDM to a K_h*N square — infer the RDM's task
+            # count from its shape so we draw the right number of dividers.
+            ax_rdm = fig.add_subplot(outer[1, col_idx])
+            K_rdm = rdm.shape[0] // N
+            _imshow_with_task_grid(ax_rdm, _lower(rdm), K_rdm, N,
                                    cmap='RdBu_r', vmin=-vmax, vmax=vmax,
                                    square=True, gridcolor='black')
-            # short title for RDM — the column header already says which model
-            short_name = name.split(' — ')[0]
-            ax_rdm.set_title(f'{short_name} RDM', loc='left')
-            fig.colorbar(ax_rdm.images[0], cax=cax_rdm, label='1 − r')
+            ax_rdm.set_title('RDM', loc='left')
+            rdm_axes.append(ax_rdm)
+
+        # Single shared colorbar for the bottom RDM row only.
+        cax = fig.add_subplot(outer[1, n_cols])
+        fig.colorbar(rdm_axes[-1].images[0], cax=cax, label='1 − r')
 
         fig.suptitle(f'Example subject — {recday_label}',
                      fontsize=font_size + 2, y=0.995)
@@ -1510,47 +1793,81 @@ def pub_figure_example_subject(data_activation, data_rdm,
 
 def pub_figure_model_schematics(walked_path, task_config=None,
                                 no_phase_neurons=3, recday_label='',
-                                save_stem=None, font_size=11):
-    """One panel per model (Location, State-in-task, Subgoal Progress, DSR)
-    for a single example task configuration. Uses the Midnight2 sequential
-    cmap. Explanation text is drawn alongside each panel.
+                                save_stem=None, font_size=11,
+                                total_width_frac=1.0, height_in=3.2):
+    """One panel per model building block, for a single example task
+    configuration. Panels (left → right):
+
+        Physical Location, Location in Task, Subgoal Progress,
+        Midnight model ("Now" DSR), DSR (full).
+
+    The Midnight model encodes only currently-visited locations (loc × phase,
+    no future-lag content). The full DSR adds the 4 × no_phase_neurons lag
+    rows per (location, phase) — i.e. its row count is the Midnight model
+    repeated once per lag.
     """
     import mc.simulation.predictions as predictions
-    loc_m, phas_m, stat_m, _midn_m, _dsr_m, phas_stat_m, _ = predictions.model_DSR(
+    loc_m, phas_m, stat_m, midn_m, dsr_m, _phas_stat_m, _ = predictions.model_DSR(
         locations=walked_path, no_phase_neurons=no_phase_neurons)
 
     seq_cmap = _midnight_cmap()
     n_bins = loc_m.shape[1]
     bins_per_state = n_bins // 4
+    n_lags = 4 * no_phase_neurons
 
     panels = [
-        ('Location',         loc_m,
-         '9 grid nodes × time bin\n(binary: animal at node)'),
-        ('State-in-task',    stat_m,
-         '4 subgoals × time bin\n(binary: subgoal active)'),
-        ('Subgoal Progress', phas_m,
-         f'{no_phase_neurons} phase neurons (early/mid/late)\ntiled across subgoals'),
-        ('DSR (one module)', phas_stat_m,
-         f'4 subgoals × {no_phase_neurons} phases\n= {4*no_phase_neurons} simulated neurons'),
+        ('Physical\nLocation', loc_m, 'loc',
+         '9 grid nodes\n(at-node binary)'),
+        ('Location in\nTask',  stat_m, 'stat',
+         '4 subgoals\n(active binary)'),
+        ('Subgoal\nProgress',  phas_m, 'phas',
+         f'{no_phase_neurons} phase neurons\ntiled / subgoal'),
+        ('DSR\n(only current)', midn_m, 'midn',
+         f'9 loc × {no_phase_neurons} phase\n= {9*no_phase_neurons} ("now"-only)'),
+        ('DSR\n(1 module)',     _phas_stat_m, 'phas_stat',
+         f'{n_lags} lags\n= {n_lags} neurons'),
+        ('DSR (full)',          dsr_m, 'dsr',
+         f'9 × {no_phase_neurons} × {n_lags} lags\n= {9*no_phase_neurons*n_lags} neurons'),
     ]
 
     cfg_str = (f'task {tuple(int(x) for x in task_config)}'
                if task_config is not None else '')
 
-    with plt.rc_context({**_PUB_RC, 'font.size': font_size,
-                         'axes.titlesize': font_size + 1}):
-        fig, axes = plt.subplots(1, len(panels), figsize=(14, 4.4),
+    layout = figure_layout.subpanel_figure(
+        width_fracs=[total_width_frac / len(panels)] * len(panels),
+        height_in=height_in, target_font_pt=font_size)
+    with plt.rc_context(layout['rc']):
+        fig, axes = plt.subplots(1, len(panels), figsize=layout['figsize'],
                                  constrained_layout=True)
-        for ax, (name, M, descr) in zip(axes, panels):
+        for ax, (name, M, kind, descr) in zip(axes, panels):
             ax.imshow(M, aspect='auto', cmap=seq_cmap, interpolation='nearest')
             ax.set_title(name, loc='left')
+            # vertical subgoal dividers (4 states A..D)
             for k in range(1, 4):
-                ax.axvline(k * bins_per_state - 0.5, color='white', lw=0.8)
+                ax.axvline(k * bins_per_state - 0.5, color='black', lw=0.8)
             ax.set_xticks([(k + 0.5) * bins_per_state for k in range(4)])
             ax.set_xticklabels(['A', 'B', 'C', 'D'])
             ax.set_xlabel('subgoal\n\n' + descr,
                           fontsize=font_size - 1, linespacing=1.3)
-            ax.set_ylabel('simulated neuron')
+
+            # semantic y-tick labels per model. For DSR/midnight, use nested
+            # labels (inner phase letter, outer location number).
+            if kind in ('dsr', 'midn'):
+                _apply_nested_y_dsr_midn(
+                    ax, kind, M.shape[0],
+                    no_phase_neurons=no_phase_neurons,
+                    inner_fs=max(font_size - 4, 5),
+                    outer_fs=max(font_size - 2, 6),
+                    outer_x_text=-0.25)
+            else:
+                positions, labels, seps = _ytick_labels_for_model(
+                    kind, M.shape[0], no_phase_neurons=no_phase_neurons)
+                if positions is not None:
+                    ax.set_yticks(positions)
+                    ax.set_yticklabels(labels, fontsize=max(font_size - 2, 6))
+                if seps:
+                    for row in seps:
+                        ax.axhline(row - 0.5, color='white', lw=0.4, alpha=0.7)
 
         suptitle = ' — '.join(s for s in (cfg_str, recday_label) if s)
         if suptitle:
@@ -1643,7 +1960,8 @@ def plot_betas_grid(panel_data, row_labels, col_labels, suptitle,
 
 def plotting_hist_scat(data_list, label_string_list, label_tick_list, title_string, save_fig=False):
     """Boxplot + scatter of the per-mouse betas with one-sample t-test stars."""
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(6, 8))
+    # fig, ax = plt.subplots(figsize=(8, 6))
     ax.boxplot(data_list, medianprops=dict(color='black'))
 
     sigma, mu = 0.08, 0.01

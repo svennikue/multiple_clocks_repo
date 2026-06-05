@@ -193,6 +193,210 @@ def plot_model_rdm_half(
     return fig, ax, rdm
 
 
+# ---------------------------------------------------------------------------
+# Publication-ready model-RDM helpers
+# Used by scripts/create_fMRI_model_RDMs_on_clean_beh.py. Both helpers consume
+# matrices that have ALREADY been computed by the main script — they never
+# recompute an RDM and never re-derive an EV. They only handle layout, label
+# grouping and saving at the requested A4 size.
+# ---------------------------------------------------------------------------
+def _ev_task_code(ev_label):
+    """``'A1_forw_A_reward'`` → ``'A1_forw'`` (task code + direction)."""
+    parts = ev_label.split('_')
+    return '_'.join(parts[:2])
+
+
+def _group_labels_by_task(ev_labels, task_label_lookup):
+    """Walk ``ev_labels`` and return per-task-block centres + boundaries +
+    display labels (resolved via ``task_label_lookup``)."""
+    task_per = [_ev_task_code(ev) for ev in ev_labels]
+    unique_tasks = []
+    for t in task_per:
+        if not unique_tasks or unique_tasks[-1] != t:
+            unique_tasks.append(t)
+    starts = {}
+    for i, t in enumerate(task_per):
+        starts.setdefault(t, i)
+    starts_list = [starts[t] for t in unique_tasks]
+    sizes = [starts_list[i+1] - starts_list[i]
+             for i in range(len(starts_list)-1)]
+    sizes.append(len(task_per) - starts_list[-1])
+    centres = [starts_list[i] + sizes[i] / 2 - 0.5
+               for i in range(len(unique_tasks))]
+    boundaries = [starts_list[i] - 0.5 for i in range(1, len(starts_list))]
+    display = [task_label_lookup.get(t, t) for t in unique_tasks]
+    return centres, boundaries, display
+
+
+def plot_model_rdm_pub(rdm, ev_labels, task_label_lookup, *,
+                       save_stem=None, title=None,
+                       vmin=0.5, vmax=1.5, vcenter=1.0,
+                       cmap='RdBu_r',
+                       fig_width_cm=4.0, fig_height_cm=4.0, font_pt=8,
+                       mask_lower=True, show=True):
+    """Publication-ready model RDM. Takes a **precomputed** RDM matrix (the
+    main script must compute it once and pass it in).
+
+    Parameters
+    ----------
+    rdm              : (n, n) RDM matrix matching ``ev_labels``.
+    ev_labels        : EV strings (length n) like ``'A1_forw_A_reward'``.
+    task_label_lookup: dict ``{'A1_forw': '1-7-5-3', ...}`` — the goal
+                       configuration as actually executed (direction-aware).
+    vmin/vmax/vcenter: colorbar range. Defaults match crosscorr dissimilarity;
+                       use ``vmin=0, vmax=1, vcenter=0.5`` for hamming.
+    fig_width_cm,
+    fig_height_cm    : printed size of the saved figure. Fonts render at
+                       ``font_pt`` exactly when dropped into an A4 page at 100 %.
+
+    Saves to ``<save_stem>.pdf`` and ``<save_stem>.png`` when ``save_stem``
+    is given (no recomputation, no return-value side effects).
+    """
+    rdm = np.asarray(rdm, dtype=float)
+    if rdm.shape[0] != rdm.shape[1] or rdm.shape[0] != len(ev_labels):
+        raise ValueError(f"RDM shape {rdm.shape} doesn't match {len(ev_labels)} labels")
+
+    centres, boundaries, display = _group_labels_by_task(ev_labels, task_label_lookup)
+
+    rdm_disp = rdm.copy()
+    if mask_lower:
+        rdm_disp[np.tril_indices(rdm.shape[0], k=-1)] = np.nan
+
+    cm_per_in = 2.54
+    figsize = (fig_width_cm / cm_per_in, fig_height_cm / cm_per_in)
+    rc = {
+        'font.family':     'sans-serif',
+        'font.sans-serif': ['Arial', 'DejaVu Sans'],
+        'font.size':       font_pt,
+        'axes.labelsize':  font_pt,
+        'axes.titlesize':  font_pt + 1,
+        'xtick.labelsize': font_pt,
+        'ytick.labelsize': font_pt,
+    }
+    with plt.rc_context(rc):
+        fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
+        cmap_obj = plt.get_cmap(cmap).copy()
+        cmap_obj.set_bad(color='white')
+        norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=vcenter, vmax=vmax)
+        ax.imshow(rdm_disp, cmap=cmap_obj, norm=norm,
+                  interpolation='none', aspect='equal')
+        ax.set_xticks(centres)
+        ax.set_yticks(centres)
+        ax.set_xticklabels(display, rotation=90)
+        ax.set_yticklabels(display)
+        for k in boundaries:
+            ax.axhline(k, color='black', ls='-', linewidth=0.4)
+            ax.axvline(k, color='black', ls='-', linewidth=0.4)
+        if title:
+            ax.set_title(title, loc='left')
+        for sp in ('top', 'right'):
+            ax.spines[sp].set_visible(False)
+        if save_stem:
+            fig.savefig(save_stem + '.pdf', bbox_inches='tight')
+            fig.savefig(save_stem + '.png', dpi=300, bbox_inches='tight')
+        if show:
+            plt.show()
+    return fig
+
+
+def plot_model_activation_examples(EVs, model_names, example_task,
+                                   task_label_lookup, *,
+                                   temp_order=None, save_stem=None,
+                                   panel_width_cm=2.0, panel_height_cm=3.0,
+                                   font_pt=9, show=True):
+    """One-task "schematic" of every model's activation pattern. Pulls
+    directly from the already-built ``EVs`` dict — no recomputation.
+
+    For each model in ``model_names``, stacks the 8 ``temp_order`` bins of
+    ``example_task`` into an (n_features, 8) panel. Object-dtype EVs (e.g.
+    button strings) are integer-encoded per panel just for display; the
+    underlying values in ``EVs`` are NOT modified.
+    """
+    if temp_order is None:
+        temp_order = ['A_path', 'A_reward', 'B_path', 'B_reward',
+                      'C_path', 'C_reward', 'D_path', 'D_reward']
+
+    panels = []
+    for m in model_names:
+        if m not in EVs:
+            continue
+        cols = []
+        for tb in temp_order:
+            v = EVs[m].get(f'{example_task}_{tb}')
+            if v is None:
+                cols.append(None); continue
+            arr_v = np.asarray(v)
+            if arr_v.ndim == 0:
+                arr_v = arr_v.reshape(1)
+            cols.append(arr_v)
+        valid = [c for c in cols if c is not None]
+        if not valid:
+            continue
+        n_feat = max(c.size for c in valid)
+        is_string = any(c.dtype == object or c.dtype.kind in ('U', 'S')
+                        for c in valid)
+        if is_string:
+            all_strs = set()
+            for c in valid:
+                all_strs.update(str(x) for x in c.tolist())
+            sorted_strs = sorted(s for s in all_strs if s not in ('nan', 'None'))
+            s2i = {s: i for i, s in enumerate(sorted_strs)}
+            arr = np.full((n_feat, len(cols)), np.nan)
+            for j, c in enumerate(cols):
+                if c is None: continue
+                for i, x in enumerate(c[:n_feat]):
+                    arr[i, j] = s2i.get(str(x), np.nan)
+            cmap = 'tab10'
+        else:
+            arr = np.full((n_feat, len(cols)), np.nan)
+            for j, c in enumerate(cols):
+                if c is None: continue
+                arr[:c.size, j] = c.astype(float)
+            cmap = 'Greys'
+        panels.append((m, arr, cmap))
+
+    if not panels:
+        return None
+
+    cm_per_in = 2.54
+    fig_width_cm  = panel_width_cm * len(panels) + 0.5
+    fig_height_cm = panel_height_cm
+    figsize = (fig_width_cm / cm_per_in, fig_height_cm / cm_per_in)
+
+    short_xticks = [t.replace('_path', '-p').replace('_reward', '-r')
+                    for t in temp_order]
+    rc = {
+        'font.family':     'sans-serif',
+        'font.sans-serif': ['Arial', 'DejaVu Sans'],
+        'font.size':       font_pt,
+        'axes.titlesize':  font_pt + 1,
+        'xtick.labelsize': max(font_pt - 2, 6),
+        'ytick.labelsize': max(font_pt - 2, 6),
+    }
+    with plt.rc_context(rc):
+        fig, axes = plt.subplots(1, len(panels), figsize=figsize,
+                                 constrained_layout=True)
+        if not isinstance(axes, np.ndarray):
+            axes = np.array([axes])
+        for ax, (m, arr, cmap) in zip(axes, panels):
+            ax.imshow(arr, aspect='auto', cmap=cmap, interpolation='nearest')
+            ax.set_title(m, loc='left')
+            ax.set_xticks(range(len(temp_order)))
+            ax.set_xticklabels(short_xticks, rotation=90)
+            ax.set_yticks([])
+            for sp in ('top', 'right'):
+                ax.spines[sp].set_visible(False)
+        ex_label = task_label_lookup.get(example_task, example_task)
+        fig.suptitle(f'Example task: {ex_label}  ({example_task})',
+                     fontsize=font_pt + 1)
+        if save_stem:
+            fig.savefig(save_stem + '.pdf', bbox_inches='tight')
+            fig.savefig(save_stem + '.png', dpi=300, bbox_inches='tight')
+        if show:
+            plt.show()
+    return fig
+
+
 def plot_dsr_task_matrices(
     EVs,
     tasks,

@@ -19,6 +19,144 @@ import os
 import nibabel as nib
 
 
+# ---------------------------------------------------------------------------
+# Across-task-halves helpers, shared by the model-EV build script and the
+# downstream RSA evaluation script so they operate on identical task pairings
+# and produce the SAME RDM that the searchlight regression uses.
+# ---------------------------------------------------------------------------
+HAMMING_MODELS_DEFAULT = frozenset({
+    'location', 'DSR', 'prev_buttons', 'buttons_out', 'next_buttons',
+    'phys_abstr_space', 'action_DSR', 'state_action_DSR',
+    'state_action_glob', 'state_action_loc',
+    'rewDSR', 'pathDSR', 'rew_stateactionDSR', 'path_stateactionDSR',
+    'DSR_onefut', 'DSR_twofut', 'DSR_threefut', 'DSR_fourfut',
+    'DSR_fivefut', 'DSR_sixfut', 'DSR_sevenfut',
+    'curr_quarter', 'next_quarter', 'next2_quarter', 'next3_quarter',
+})
+
+
+def pair_correct_tasks(data_dict, keys_list):
+    """Pair ``X1_<dir>_<state>_<phase>`` with its same-goal partner
+    ``X2_<flipped_dir>_<state>_<phase>`` (i.e. the other task-half repetition
+    of the same goal configuration). The mapping is::
+
+        '1_forw'  ↔ '2_backw'
+        '1_backw' ↔ '2_forw'
+
+    Returns ``(th_1, th_2, paired_labels)`` where ``th_1`` and ``th_2`` are
+    ``(n_pairs, n_features)`` arrays, in ``keys_list`` order, restricted to
+    keys whose pair is also in ``data_dict``. ``paired_labels`` is a list of
+    ``"<key> with <pair_key>"`` strings (for inspection / provenance).
+    """
+    task_pairs = {'1_forw': '2_backw', '1_backw': '2_forw'}
+    th_1, th_2, paired_list_control = [], [], []
+    for key in keys_list:
+        assert key in data_dict, "Mismatch between model and data RDM keys"
+        task, direction, state, phase = key.split('_')
+        pair_suffix = task_pairs.get(f"{task[-1]}_{direction}")
+        pair_key = f"{task[0]}{pair_suffix}_{state}_{phase}"
+        if pair_key in data_dict:
+            th_1.append(np.asarray(data_dict[key]))
+            th_2.append(np.asarray(data_dict[pair_key]))
+            paired_list_control.append(f"{key} with {pair_key}")
+    if not th_1:
+        return None, None, []
+    th_1 = np.vstack(th_1)
+    th_2 = np.vstack(th_2)
+    return th_1, th_2, paired_list_control
+
+
+def th1_keys_for(data_dict, keys_list):
+    """The list of ``th_1`` keys (in ``keys_list`` order) that survive the
+    pairing inside ``pair_correct_tasks`` — i.e. the row/column labels of
+    the resulting across-halves RDM.
+    """
+    task_pairs = {'1_forw': '2_backw', '1_backw': '2_forw'}
+    out = []
+    for key in keys_list:
+        if key not in data_dict:
+            continue
+        parts = key.split('_')
+        if len(parts) != 4:
+            continue
+        task, direction, state, phase = parts
+        pair_suffix = task_pairs.get(f"{task[-1]}_{direction}")
+        if pair_suffix is None:
+            continue
+        if f"{task[0]}{pair_suffix}_{state}_{phase}" in data_dict:
+            out.append(key)
+    return out
+
+
+def _expand_triu_to_square(vec, include_diagonal=True):
+    """Inverse of ``np.triu_indices``: rebuild the symmetric n × n matrix
+    from its upper-triangle vector. Use ``include_diagonal`` consistent with
+    how the vector was produced.
+    """
+    vec = np.asarray(vec)
+    if include_diagonal:
+        n = int(round((-1 + np.sqrt(1 + 8 * len(vec))) / 2))
+    else:
+        n = int(round((1 + np.sqrt(1 + 8 * len(vec))) / 2))
+    rdm = np.zeros((n, n), dtype=float)
+    iu = np.triu_indices(n, k=(0 if include_diagonal else 1))
+    rdm[iu] = vec
+    rdm[(iu[1], iu[0])] = vec
+    return rdm
+
+
+def build_across_halves_model_RDM(model_name, model_EV, EV_keys,
+                                  hamming_models=None,
+                                  include_diagonal=True):
+    """Build the across-task-halves model RDM exactly the way the downstream
+    script ``scripts/fMRI_run_RSA_without_rsatoolbox_clean.py`` does.
+
+    Steps: pair via :func:`pair_correct_tasks`, vstack to get the
+    ``(2*n_pairs, n_features)`` matrix, then dispatch to the matching builder
+    (``make_categorical_RDM`` for ``path_rew``, ``make_distance_RDM`` for
+    ``duration``, ``compute_hamming_distance`` for the order-preserving
+    models, ``compute_crosscorr`` for everything else). Returns the
+    ``n_pairs × n_pairs`` symmetric across-halves RDM along with the th_1
+    keys (= axis labels), the method used and a suggested vmin/vmax/vcenter
+    triple for display.
+
+    Returns ``None`` if no pairs could be formed.
+    """
+    if hamming_models is None:
+        hamming_models = HAMMING_MODELS_DEFAULT
+    th1, th2, _ = pair_correct_tasks(model_EV, EV_keys)
+    if th1 is None:
+        return None
+    th1_keys = th1_keys_for(model_EV, EV_keys)
+    model_concat = np.vstack([th1, th2])
+
+    if model_name == 'path_rew':
+        rdm_vec = make_categorical_RDM(model_concat,
+                                       include_diagonal=include_diagonal)[0]
+        method = 'categorical'
+        vrange = {'vmin': -0.5, 'vmax': 0.5, 'vcenter': 0.0}
+    elif model_name == 'duration':
+        rdm_vec = make_distance_RDM(model_concat,
+                                    include_diagonal=include_diagonal)[0]
+        method = 'distance'
+        vrange = {'vmin': 0.0, 'vmax': 2.0, 'vcenter': 1.0}
+    elif model_name in hamming_models:
+        rdm_vec = compute_hamming_distance(model_concat,
+                                           include_diagonal=include_diagonal,
+                                           model_name=model_name)[0]
+        method = 'hamming_distance'
+        vrange = {'vmin': 0.0, 'vmax': 1.0, 'vcenter': 0.5}
+    else:
+        rdm_vec = compute_crosscorr(model_concat,
+                                    include_diagonal=include_diagonal)[0]
+        method = 'crosscorr'
+        vrange = {'vmin': 0.5, 'vmax': 1.5, 'vcenter': 1.0}
+
+    rdm_square = _expand_triu_to_square(rdm_vec,
+                                        include_diagonal=include_diagonal)
+    return rdm_square, th1_keys, method, vrange
+
+
 def load_data_EVs(data_dir, regression_version, old=False, only_load_labels = False):
     EV_dict = {}
     # import pdb; pdb.set_trace()

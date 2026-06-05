@@ -103,6 +103,93 @@ for recday in sorted(mouse_data):
     print(f"  {recday:35s} {len(q):<12d} {summary}")
 
 
+# ── Repeats overview ──────────────────────────────────────────────────
+# Per-task trial counts, per-recday totals, and the average over tasks. Two
+# scopes are computed so they can be archived in the stats JSON:
+#   - all_data:       all task configs in the cleaned normalised view
+#   - across_halves:  only qualifying configs (≥2 sessions, used by the
+#                     across-task-halves analysis), split into h1 / h2.
+print("\nRepeats overview (after cleaning, normalised view):")
+print(f"  {'recday':35s} {'per-task trial counts':40s} "
+      f"{'total':>7s} {'avg/task':>10s}")
+repeats_all = {}     # per-recday: dict of summary stats for all data
+total_per_recday    = {}
+avg_per_task_recday = {}
+for recday in sorted(mouse_data):
+    _, _, _, tim = cleaned['norm'][recday]
+    per_task = [int(len(tim[t])) for t in range(len(tim))]
+    total = int(sum(per_task))
+    avg   = total / max(len(per_task), 1)
+    total_per_recday[recday]    = total
+    avg_per_task_recday[recday] = avg
+    repeats_all[recday] = {
+        'n_tasks':            len(per_task),
+        'per_task_repeats':   per_task,
+        'total_repeats':      total,
+        'avg_repeats_per_task': avg,
+    }
+    pt_str = ' '.join(str(x) for x in per_task)
+    print(f"  {recday:35s} {pt_str:40s} {total:>7d} {avg:>10.1f}")
+
+overall_total          = int(sum(total_per_recday.values()))
+overall_avg_per_task   = float(np.mean(list(avg_per_task_recday.values())))
+overall_avg_per_recday = overall_total / max(len(total_per_recday), 1)
+print(f"  {'-' * 90}")
+print(f"  {'OVERALL':35s} {'-':40s} {overall_total:>7d} "
+      f"{overall_avg_per_task:>10.1f}  (avg/recday: {overall_avg_per_recday:.1f})")
+
+# Across-halves view: only qualifying configs (≥2 sessions) and their
+# half-1 / half-2 trial counts.
+repeats_halves = {}
+for recday in sorted(mouse_data):
+    cfg, _, _, tim = cleaned['norm'][recday]
+    sid = clean_meta['norm'][recday]['kept_session_ids']
+    q   = ae.split_sessions_into_halves(cfg, sid, tim)
+    if not q:
+        repeats_halves[recday] = {'n_qualifying_configs': 0,
+                                  'per_config': [], 'totals': {}}
+        continue
+    per_cfg = [{'config':  [int(x) for x in g['config']],
+                'half1_n_trials': int(g['half1_n_trials']),
+                'half2_n_trials': int(g['half2_n_trials'])}
+               for g in q]
+    h1 = sum(g['half1_n_trials'] for g in per_cfg)
+    h2 = sum(g['half2_n_trials'] for g in per_cfg)
+    repeats_halves[recday] = {
+        'n_qualifying_configs': len(per_cfg),
+        'per_config':           per_cfg,
+        'totals': {'half1': h1, 'half2': h2,
+                   'avg_per_config_half1': h1 / len(per_cfg),
+                   'avg_per_config_half2': h2 / len(per_cfg)},
+    }
+
+repeats_overview = {
+    'all_data': {
+        'per_recday': repeats_all,
+        'overall': {
+            'total_repeats':         overall_total,
+            'avg_repeats_per_task':  overall_avg_per_task,
+            'avg_repeats_per_recday': overall_avg_per_recday,
+            'n_recdays':             len(repeats_all),
+        },
+    },
+    'across_halves': {
+        'per_recday': repeats_halves,
+        'overall': {
+            'n_recdays_with_qualifying_configs': sum(
+                1 for v in repeats_halves.values()
+                if v['n_qualifying_configs'] > 0),
+            'total_qualifying_configs': sum(
+                v['n_qualifying_configs'] for v in repeats_halves.values()),
+            'total_half1_trials': sum(
+                v['totals'].get('half1', 0) for v in repeats_halves.values()),
+            'total_half2_trials': sum(
+                v['totals'].get('half2', 0) for v in repeats_halves.values()),
+        },
+    },
+}
+
+
 # ── Run both main analyses in parallel ────────────────────────────────
 print(f"\nDispatching {len(mouse_data)} recdays across {N_JOBS} workers ...")
 per_recday = Parallel(n_jobs=N_JOBS, verbose=5)(
@@ -210,18 +297,23 @@ halves_mats = ae.dsr_across_halves_matrices(
 if halves_mats is not None:
     h_data_act, h_data_rdm, h_model_acts, h_model_rdms, K_h = halves_mats
     h_coefs, h_fdr = _coefs_and_fdr(stats_halves)
+    # Across-halves matrices stack [half-1 of all qualifying configs, half-2
+    # of all qualifying configs], so the display axis has 2*K_h task columns.
+    K_display = 2 * K_h
     ae.pub_figure_dsr_overview(
         dsr_model_activation=h_model_acts['dsr'], dsr_model_rdm=h_model_rdms['dsr'],
         coefs_by_model=h_coefs, model_order=MODEL_ORDER_DSR, fdr_pvals=h_fdr,
-        n_tasks=K_h, n_conds_per_task=N_CONDS_PER_CONFIG,
+        n_tasks=K_display, n_conds_per_task=N_CONDS_PER_CONFIG,
         recday_label=f'{example_recday} (across-halves, K={K_h})',
+        x_axis_groups=[('Task half 1', K_h), ('Task half 2', K_h)],
         save_stem=os.path.join(OUT_DIR, 'fig1_across_halves'))
     ae.pub_figure_example_subject(
         data_activation=h_data_act, data_rdm=h_data_rdm,
         model_activations=h_model_acts, model_rdms=h_model_rdms,
         model_order=MODEL_ORDER_DSR,
-        n_tasks=K_h, n_conds_per_task=N_CONDS_PER_CONFIG,
+        n_tasks=K_display, n_conds_per_task=N_CONDS_PER_CONFIG,
         recday_label=f'{example_recday} (across-halves, K={K_h})',
+        x_axis_groups=[('run 1', K_h), ('run 2', K_h)],
         save_stem=os.path.join(OUT_DIR, 'fig2_across_halves'))
 else:
     print(f"\nExample recday {example_recday} has no qualifying configs; "
@@ -240,7 +332,10 @@ ae.pub_figure_model_schematics(
 # ── Write stats JSON ──────────────────────────────────────────────────
 stats_path = os.path.join(OUT_DIR, 'key_analysis_stats.json')
 with open(stats_path, 'w') as f:
-    json.dump({'full_z': stats_full_z, 'across_halves': stats_halves}, f, indent=2)
+    json.dump({'full_z':           stats_full_z,
+               'across_halves':    stats_halves,
+               'repeats_overview': repeats_overview},
+              f, indent=2)
 print(f"\nWrote stats: {stats_path}")
 
 # Variables persist in Spyder's variable explorer because the script runs at

@@ -110,13 +110,27 @@ with open(f"{config_path}/{config_file}", "r") as f:
 #
 # SETTINGS
 #
-plot_RDMs = True 
+plot_RDMs = True
 save_RDMs = True
 EV_string = config.get("load_EVs_from", "DSR_loc-fut-rews-state-dur-type")
 plot_DSR_task_matrices = False
 plot_DSR_tasks = [] # fill this with eg tasks[14]
 plot_DSR_rotation_bins = None
 len_standardised_path = 12
+
+# Publication figures: rendered ONCE for a single example subject. Uses the
+# RDMs and EVs already computed by this script (no recomputation).
+PUBLICATION_FIGURES       = True
+EXAMPLE_SUBJECT_FOR_FIGS  = 'sub-02'
+PUB_MODELS = [
+    'state', 'A-state', 'path_rew', 'next_buttons', 'buttons_out',
+    'location', 'l2_norm',
+    'curr_quarter', 'next_quarter', 'next2_quarter', 'next3_quarter',
+    'DSR',
+]
+PUB_FIG_WIDTH_CM   = 4.0
+PUB_FIG_HEIGHT_CM  = 4.0
+PUB_FIG_FONT_PT    = 8
 
 coord_to_loc = {
     (-0.21,  0.29): 1, (0.0,  0.29): 2, (0.21,  0.29): 3,
@@ -460,43 +474,100 @@ for sub in subjects:
         )
 
        
+    # Build the "task code → executed-reward-sequence" lookup used for
+    # publication figures. We derive each task's goal label from the
+    # *location* model at its four reward phases — i.e. the modal location
+    # that was actually visited at the X_reward bin of ``{task}_X_reward``.
+    # This reflects what the subject executed (direction-aware, robust to
+    # any trial-by-trial deviation from the configured reward).
+    def _modal_loc_at_reward(task, state):
+        ev_key = f'{task}_{state}_reward'
+        v = EVs.get('location', {}).get(ev_key)
+        if v is None or len(v) == 0:
+            return '?'
+        return int(round(Counter(np.asarray(v).tolist()).most_common(1)[0][0]))
+
+    task_to_goal_label = {}
+    for task in tasks:
+        rew_seq = [_modal_loc_at_reward(task, st) for st in ('A', 'B', 'C', 'D')]
+        task_to_goal_label[task] = '-'.join(str(r) for r in rew_seq)
+
+    # All RDMs below are computed via ``mc.analyse.my_RSA.build_across_halves_model_RDM``
+    # — the SAME pairing + dispatch that the downstream RSA script
+    # ``scripts/fMRI_run_RSA_without_rsatoolbox_clean.py`` uses. Each model's
+    # ``X1_<dir>_<state>_<phase>`` row is paired with its same-goal partner
+    # ``X2_<flipped_dir>_<state>_<phase>``, stacked, and turned into a
+    # symmetric n_pairs × n_pairs across-halves RDM — exactly what enters the
+    # searchlight regression downstream.
+
     if plot_RDMs == True:
         for model in models:
             if model == 'path_rew':
                 continue
             if 'button' in model:
                 continue
-            #ev_array = np.zeros((int(len(EVs[model])/2), len(models[model])))
-            # if model == 'DSR':
-            #     ev_array = np.zeros((int(len(EVs[model])), len(EVs['DSR'][bin_curr_task])))
-            # else:
-            evs_for_model = [ev for ev in EV_keys if ev in EVs[model]]
-            if model in ['location', 'DSR', 'prev_buttons', 'buttons_out', 'next_buttons', 'phys_abstr_space', 'action_DSR', 'state_action_DSR',
-                           'state_action_glob', 'state_action_loc', "rewDSR", "pathDSR", "rew_stateactionDSR", "path_stateactionDSR",
-                           'DSR_onefut', 'DSR_twofut','DSR_threefut','DSR_fourfut','DSR_fivefut','DSR_sixfut','DSR_sevenfut',
-                           'curr_quarter','next_quarter','next2_quarter','next3_quarter']:
-                ev_array = np.zeros((int(len(evs_for_model)), len(models[model])), dtype = object)
-                method = 'hamming_distance'
-            else:
-                ev_array = np.empty((int(len(evs_for_model)), len(models[model])), dtype = float)
-                method = 'crosscorr'
-            idx = -1
-            y_labels = []
-            for ev in evs_for_model:
-                #if ev.endswith('reward'):
-                idx = idx +1
-                y_labels.append(ev)
-                ev_array[idx] = EVs[model][ev]
-                
-            print(f"now plotting RDM for {model} model")
-            mc.plotting.results.plot_model_rdm_half(
-                ev_array,
-                labels=y_labels,
-                method=method,
-                label_half="first",
-                group_size=8,
-                title=model,
+            if model not in EVs:
+                continue
+            try:
+                res = mc.analyse.my_RSA.build_across_halves_model_RDM(
+                    model, EVs[model], EV_keys)
+            except (AssertionError, ValueError, KeyError):
+                # leaked-loop-variable models, inconsistent shapes, etc.
+                continue
+            if res is None:
+                continue
+            rdm_full, th1_keys, method, vrange = res
+            print(f"now plotting across-halves RDM for {model} model "
+                  f"(n_pairs = {rdm_full.shape[0]}, method = {method})")
+            mc.plotting.results.plot_model_rdm_pub(
+                rdm_full, th1_keys, task_to_goal_label,
+                title=model, mask_lower=True,
+                fig_width_cm=8.0, fig_height_cm=8.0, font_pt=10,
+                **vrange,
+                show=True,
             )
+
+    # ── Publication figures (example subject only) ───────────────────────
+    if PUBLICATION_FIGURES and sub == EXAMPLE_SUBJECT_FOR_FIGS:
+        pub_fig_dir = os.path.join(beh_dir, 'pub_figures')
+        os.makedirs(pub_fig_dir, exist_ok=True)
+        print(f"\nBuilding publication figures for {sub} -> {pub_fig_dir}")
+
+        for model in PUB_MODELS:
+            if model not in EVs:
+                print(f"  (skip) {model!r}: not in EVs")
+                continue
+            try:
+                res = mc.analyse.my_RSA.build_across_halves_model_RDM(
+                    model, EVs[model], EV_keys)
+            except (AssertionError, ValueError, KeyError) as exc:
+                print(f"  (skip) {model!r}: {exc}")
+                continue
+            if res is None:
+                print(f"  (skip) {model!r}: no pairs after across-halves matching")
+                continue
+            rdm_full, th1_keys, method, vrange = res
+            mc.plotting.results.plot_model_rdm_pub(
+                rdm_full, th1_keys, task_to_goal_label,
+                save_stem=os.path.join(pub_fig_dir, f'model_RDM_{model}'),
+                title=model,
+                fig_width_cm=PUB_FIG_WIDTH_CM,
+                fig_height_cm=PUB_FIG_HEIGHT_CM,
+                font_pt=PUB_FIG_FONT_PT,
+                **vrange,
+                show=False,
+            )
+
+        # Side-by-side schematic of each model for ONE example task. Prefer
+        # ``A1_forw`` if available so the goal-config label is straightforward.
+        example_task = ('A1_forw' if 'A1_forw' in task_to_goal_label
+                        else sorted(task_to_goal_label)[0])
+        mc.plotting.results.plot_model_activation_examples(
+            EVs, PUB_MODELS, example_task, task_to_goal_label,
+            save_stem=os.path.join(pub_fig_dir, 'model_activation_examples'),
+            show=False,
+        )
+        print(f"  saved RDM figures + model-activation schematics")
     
 
     # import pdb; pdb.set_trace()          
