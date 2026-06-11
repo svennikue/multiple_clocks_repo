@@ -70,12 +70,9 @@ models = ['dsr_old']
 #models = ['dsr_old', 'midnight','state', 'repeat_counter', 'uncover', 'bttn_prev', 'bttn_next', 'bttn_curr', 'location', 'phase']
 
 combo_models = {
-    'MRI_combo':          ['bttn_curr', 'bttn_next', 'location', 'repeat_counter', 'dsr_old'],
-    'MRI_combo-nofdb':          ['bttn_curr', 'bttn_next', 'location', 'dsr_old'],
-    'MRI_combo-nofdb_midn':          ['bttn_curr', 'bttn_next', 'location', 'midnight', 'dsr_old'],
-    'MRI_combo-nofdb_midn-state':          ['bttn_curr', 'bttn_next', 'location', 'state', 'midnight', 'dsr_old'],
-    'MRI_combo_midn':          ['bttn_curr', 'bttn_next', 'location', 'repeat_counter', 'midnight', 'dsr_old'],
-    'MRI_combo_state':          ['bttn_curr', 'bttn_next', 'location', 'repeat_counter', 'dsr_old','state']
+    'loc-fdb-state':          ['bttn_curr', 'bttn_next', 'location', 'repeat_counter', 'state', 'dsr_old'],
+    'buttons-loc-state':          ['bttn_curr', 'bttn_next', 'location',  'state', 'dsr_old'],
+    'buttons-midn-state':          ['bttn_curr', 'bttn_next', 'midnight', 'state', 'dsr_old']
     }
 
 
@@ -105,7 +102,13 @@ print(f"Combos evaluated this run     ({len(combo_models)}): {list(combo_models.
 #   correlated; set FDR_COMBOS to a single combo if you consider them
 #   one hypothesis (a 10-test family rather than 20).
 FDR_TEST      = 'across_z'   # primary variant: across blocks, z-scored
-FDR_COMBOS    = ['MRI_combo-nofdb_midn', 'MRI_combo-nofdb_midn-state']
+# Confirmatory family: ONE primary combo × the effect of interest × all
+# ROIs tested (≈ 7-9 tests). `MRI_combo-nofdb_midn` is treated as a
+# robustness check rather than a second confirmatory test, since its
+# `dsr_old` beta is highly correlated with the primary combo (the two
+# differ only by the `state` regressor). This keeps the FDR family
+# consistent with the publication panel (encoding_publication_panels.py).
+FDR_COMBOS    = ['MRI_combo-nofdb_midn-state']
 FDR_SUBMODELS = ['dsr_old']  # effect(s) of interest within the combo
 FDR_ALPHA     = 0.05
 

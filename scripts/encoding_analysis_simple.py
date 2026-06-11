@@ -43,7 +43,7 @@ OUT_BASE = os.path.join(DATA_DIR, 'group', 'encoding_analysis_simple')
 # '2026-05-18_16-33-05') to skip the heavy elastic-net + permutation loop
 # and just re-render the summary plots from the saved
 # encoding_results.csv (+ diagnostics.pkl, if present).  None = fresh run.
-RELOAD_RUN = None # '2026-05-28_16-45-09-nopenality-newROIs' # '2026-05-20_22-57-03-GREATONE/' # None # '2026-05-18_16-33-05' # None
+RELOAD_RUN = '2026-06-05_17-58-57' # None # '2026-05-28_16-45-09-nopenality-newROIs' # '2026-05-20_22-57-03-GREATONE/' # None # '2026-05-18_16-33-05' # None
 
 # Subset re-plot: take an existing run's cell-wise results, restrict them
 # to a subset of subjects, and regenerate every result file + plot into a
@@ -55,7 +55,7 @@ RELOAD_RUN = None # '2026-05-28_16-45-09-nopenality-newROIs' # '2026-05-20_22-57
 #                                            'none-RSA-subset')
 #   {'tag': 'name', 'exclude': ['05',..]} -> drop an explicit subject list
 #   {'tag': 'name', 'include': ['01',..]} -> keep only an explicit list
-SUBSET_REPLOT = None # 'none_RSA' #None # 'none_RSA' # None
+SUBSET_REPLOT = 'none_RSA' #None # 'none_RSA' # None
 
 N_PHASES = 3
 N_BINS_PER_TRIAL = 360

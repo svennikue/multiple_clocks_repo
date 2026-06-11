@@ -54,7 +54,7 @@ import matplotlib.pyplot as plt
 # ── Settings ──────────────────────────────────────────────────────────
 
 
-RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-28_16-45-09-nopenality-newROIs/')
+RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-06-05_17-58-57/')
 # RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-22_15-57-38/')
 # RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-21_10-37-45-nopositiveReg/')
 #RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-20_22-57-03/')
@@ -2871,9 +2871,9 @@ if _run_sparse:
     print('\n=== Sparse DSR example cells ===')
 
     # Settings — edit to change which ROIs and how many cells per ROI.
-    SPARSE_DSR_TARGET_ROIS = ['ACC', 'HC_anterior', 'HC_posterior',
-                              'EC', 'medialOFC', 'PCC', 'Visual',
-                              'Parahippocampal', 'medial_CC']
+    # Publication-figure scope: ACC only. Add other ROIs back if you also
+    # want followup-style renders of those.
+    SPARSE_DSR_TARGET_ROIS = ['ACC']
     SPARSE_DSR_N_PER_ROI = 5
     SPARSE_DSR_N_TOP_COEFS_TO_REPORT = 5
     # |coef| >= ACTIVE_THRESHOLD * max(|coef|) is counted as "active".
@@ -2896,9 +2896,24 @@ if _run_sparse:
     PHASE_COLORS = {0: '#e6b3b3', 1: '#a83838', 2: '#5e1313'}
     PHASE_TEXT_LIGHT = {1, 2}
 
-    PEAK_FIRING_COLOR = '#c41e3a'
-    TARGET_OUTLINE_COLOR = '#c41e3a'
-    ARROW_COLOR = '#1f4e79'
+    # Lag-bar greys (publication style). Peak-firing box: light-grey fill +
+    # thick black outline. Target box & arrow: black.
+    PEAK_FIRING_COLOR = '0.72'
+    PEAK_FIRING_EDGE  = 'black'
+    PEAK_FIRING_EDGE_LW = 1.8
+    TARGET_OUTLINE_COLOR = 'black'
+    ARROW_COLOR = 'black'
+
+    # Publication-figure colour overrides.
+    REWARD_COLORS = {
+        'A': '#C73734',   # red    (top of task wheel)
+        'B': '#F39C5A',   # orange (right)
+        'C': '#C1B3D6',   # light lavender (bottom)
+        'D': '#6F5FA8',   # purple (left)
+    }
+    PUB_HIST_BG_COLOR  = '#bdd4c4'   # location-6 brightest green
+    PUB_HIST_SIG_COLOR = '#0f3a30'   # location-7 darkest green
+    PUB_PRED_COLOR     = '#9A383C'   # dark red from encoding-pub histogram
 
     SPARSE_OUT_DIR = os.path.join(OUT_DIR, 'fig24_sparse_dsr_examples')
     os.makedirs(SPARSE_OUT_DIR, exist_ok=True)
@@ -3044,7 +3059,10 @@ if _run_sparse:
                                   nan_policy='omit').mode
             return np.asarray(mode_vec, dtype=int)
 
-        def _draw_location_bar(ax, locations):
+        # All in-bar text is drawn at this size (matches axis-label fonts).
+        BAR_FONT_PT = 9
+
+        def _draw_location_bar(ax, locations, font_pt=BAR_FONT_PT):
             """Solid colour blocks per consecutive-same-location run."""
             locs = np.asarray(locations, dtype=int)
             n = len(locs)
@@ -3061,14 +3079,14 @@ if _run_sparse:
                                   else 'black')
                     ax.text((i + j) / 2, 0.5, str(loc),
                             ha='center', va='center',
-                            fontsize=11, fontweight='bold',
+                            fontsize=font_pt, fontweight='bold',
                             color=text_color)
                 i = j
             ax.set_xlim(0, n)
             ax.set_ylim(0, 1)
 
         def _draw_phase_bar(ax, n_states=4, n_phases=DSR_N_PHASES,
-                            n_bins=360):
+                            n_bins=360, font_pt=BAR_FONT_PT):
             """e/m/l × n_states burgundy bar."""
             bins_per_state = n_bins // n_states
             bins_per_phase = bins_per_state // n_phases
@@ -3082,7 +3100,7 @@ if _run_sparse:
                     text_color = ('white' if p in PHASE_TEXT_LIGHT
                                   else 'black')
                     ax.text((pos + end) / 2, 0.5, letters[p],
-                            ha='center', va='center', fontsize=10,
+                            ha='center', va='center', fontsize=font_pt,
                             fontweight='bold', color=text_color)
                     pos = end
             ax.set_xlim(0, n_bins)
@@ -3091,10 +3109,18 @@ if _run_sparse:
         def _find_target_phase_idx(locations, top_loc_0idx, top_phase_0idx,
                                    n_total_phases=DSR_N_LAGS,
                                    n_phases=DSR_N_PHASES, n_bins=360):
-            """Phase position (0..11) where preferred location is in the
-            preferred phase, or None if it never coincides for this config.
-            If multiple positions match, return the latest (best matches the
-            example, where the target is on the right side of the trial)."""
+            """Phase position (0..11) where the preferred location is visited
+            during the preferred sub-phase, or None.
+
+            Uses *presence* (preferred loc appears in the 30-bin window) rather
+            than mode-equals-preferred, because the mode criterion misses
+            brief pass-throughs and produced spurious 'not visited' diagrams
+            for cells whose preferred coefficient is well-supported.
+
+            If multiple phase positions match, return the latest one (matches
+            the publication example, where the target is on the right side of
+            the trial).
+            """
             bins_per_phase = n_bins // n_total_phases
             candidates = []
             locs = np.asarray(locations, dtype=int)
@@ -3106,9 +3132,7 @@ if _run_sparse:
                 window = locs[start:end] - 1
                 if window.size == 0:
                     continue
-                vals, counts = np.unique(window, return_counts=True)
-                mode_loc = int(vals[int(np.argmax(counts))])
-                if mode_loc == top_loc_0idx:
+                if (window == top_loc_0idx).any():
                     candidates.append(i)
             return candidates[-1] if candidates else None
 
@@ -3176,15 +3200,12 @@ if _run_sparse:
                     fill=False, edgecolor='black', lw=0.8))
 
             if target_idx is None:
+                # With the presence-based criterion this should not happen
+                # for cells with a strong preferred coefficient; if it does,
+                # we silently fall through to an empty lag grid rather than
+                # printing the (now misleading) "not visited" message.
                 ax.set_xlim(0, n_bins)
                 ax.set_ylim(-0.9, 1.9)
-                ax.text(
-                    n_bins / 2, -0.55,
-                    f'(preferred loc {top_loc_0idx + 1} × '
-                    f'{PHASE_NAMES[top_phase_0idx]} '
-                    f'not visited in this config)',
-                    ha='center', va='top', fontsize=8, style='italic',
-                    color='0.5')
                 return None, None
 
             offset = (DSR_N_LAGS - top_lag) % DSR_N_LAGS
@@ -3192,16 +3213,16 @@ if _run_sparse:
             peak_start = peak_idx * bins_per_phase
             target_start = target_idx * bins_per_phase
 
-            # Peak firing: solid red fill.
+            # Peak firing: grey fill with thick black outline.
             ax.add_patch(Rectangle(
                 (peak_start, 0), bins_per_phase, 1,
-                color=PEAK_FIRING_COLOR, alpha=0.92, lw=0))
-
-            # Target: red outline.
+                facecolor=PEAK_FIRING_COLOR, edgecolor=PEAK_FIRING_EDGE,
+                linewidth=PEAK_FIRING_EDGE_LW, zorder=8))
+            # Target: thick black outline.
             ax.add_patch(Rectangle(
                 (target_start, 0), bins_per_phase, 1,
                 fill=False, edgecolor=TARGET_OUTLINE_COLOR,
-                linewidth=2.6, zorder=10))
+                linewidth=PEAK_FIRING_EDGE_LW, zorder=10))
 
             # Number the boxes between peak and target (1, 2, ..., offset).
             for k in range(1, offset + 1):
@@ -3209,14 +3230,14 @@ if _run_sparse:
                 cx = idx_ * bins_per_phase + bins_per_phase / 2
                 ax.text(cx, 0.5, str(k),
                         ha='center', va='center',
-                        fontsize=11, fontweight='bold', color='black')
+                        fontsize=BAR_FONT_PT, fontweight='bold',
+                        color='black')
 
             # "Peak firing" label below the peak box.
             ax.text(peak_start + bins_per_phase / 2, -0.5,
                     'Peak\nfiring',
                     ha='center', va='top',
-                    fontsize=10, fontweight='bold',
-                    color=PEAK_FIRING_COLOR)
+                    fontsize=9, fontweight='bold', color='black')
 
             # Arrow from peak to target (linear if no wrap, else two segments
             # so it stays inside the panel).
@@ -3249,6 +3270,162 @@ if _run_sparse:
             ax.set_xlim(0, n_bins)
             ax.set_ylim(-0.9, 1.9)
             return int(peak_idx), int(target_idx)
+
+        def _draw_task_grid_legend(ax, config_str,
+                                   reward_colors=REWARD_COLORS):
+            """3x3 spatial grid with coloured A/B/C/D circles at the four
+            reward positions of ``config_str`` (e.g. '7-3-1-9' → A at tile 7,
+            B at tile 3, C at tile 1, D at tile 9). Tile-number convention:
+            row 0 (top) = 1,2,3; row 1 = 4,5,6; row 2 (bottom) = 7,8,9."""
+            try:
+                rewards = list(zip('ABCD',
+                                   (int(x) for x in str(config_str).split('-'))))
+            except Exception:
+                ax.text(0.5, 0.5, '?', ha='center', va='center',
+                        transform=ax.transAxes, fontsize=8)
+                ax.set_xticks([]); ax.set_yticks([])
+                return
+            # Each cell coloured by its location-bar colour (blue/teal/green),
+            # so the legend matches the locations strip in the trace area.
+            for row in range(3):
+                for col in range(3):
+                    loc_n = row * 3 + col + 1
+                    ax.add_patch(plt.Rectangle(
+                        (col, 2 - row), 1, 1,
+                        facecolor=LOCATION_COLORS.get(loc_n, '#cccccc'),
+                        edgecolor='white', lw=0.8))
+            for letter, loc in rewards:
+                row = (loc - 1) // 3
+                col = (loc - 1) % 3
+                cx = col + 0.5
+                cy = (2 - row) + 0.5
+                ax.add_patch(plt.Circle(
+                    (cx, cy), 0.32,
+                    facecolor=reward_colors[letter],
+                    edgecolor='white', lw=0.8, zorder=3))
+                ax.text(cx, cy, letter,
+                        ha='center', va='center',
+                        fontsize=8, fontweight='bold',
+                        color='white', zorder=4)
+            ax.set_xlim(-0.05, 3.05)
+            ax.set_ylim(-0.05, 3.05)
+            ax.set_aspect('equal')
+            ax.set_xticks([]); ax.set_yticks([])
+            for sp in ('top', 'right', 'left', 'bottom'):
+                ax.spines[sp].set_visible(False)
+
+
+        def _draw_phase_wheel_legend(ax, phase_colors=PHASE_COLORS,
+                                     reward_colors=REWARD_COLORS,
+                                     font_pt=BAR_FONT_PT):
+            """Donut-style legend: 4 quadrants A/B/C/D, each split into
+            three e/m/l burgundy wedges in clockwise order.
+
+            Quadrants in clock terms (12 o'clock = top):
+              A: 12 → 3 o'clock   (A.e at 0–1, A.m at 1–2, A.l at 2–3)
+              B:  3 → 6 o'clock   (B.e at 3–4, …)
+              C:  6 → 9 o'clock
+              D:  9 → 12 o'clock
+            Reward letter sits at the centre of each quadrant (= 1:30,
+            4:30, 7:30, 10:30 o'clock)."""
+            from matplotlib.patches import Wedge
+            center = (0.5, 0.5)
+            r_outer = 0.42
+            # (reward, phase, theta1, theta2) — matplotlib CCW; 0° = 3 o'clock.
+            wedges = [
+                ('A', 'e',  60,  90),   # 12–1 o'clock
+                ('A', 'm',  30,  60),   #  1–2
+                ('A', 'l',   0,  30),   #  2–3 (reward A reached at 3)
+                ('B', 'e', -30,   0),   #  3–4
+                ('B', 'm', -60, -30),   #  4–5
+                ('B', 'l', -90, -60),   #  5–6 (reward B at 6)
+                ('C', 'e',-120, -90),   #  6–7
+                ('C', 'm',-150,-120),   #  7–8
+                ('C', 'l',-180,-150),   #  8–9 (reward C at 9)
+                ('D', 'e', 150, 180),   #  9–10
+                ('D', 'm', 120, 150),   # 10–11
+                ('D', 'l',  90, 120),   # 11–12 (reward D at 12)
+            ]
+            phase_idx = {'e': 0, 'm': 1, 'l': 2}
+            for _rew, ph, t1, t2 in wedges:
+                ax.add_patch(Wedge(
+                    center, r_outer, t1, t2,
+                    facecolor=phase_colors[phase_idx[ph]],
+                    edgecolor='white', linewidth=0.4))
+            # Labels at quadrant centres (1:30, 4:30, 7:30, 10:30).
+            for letter, angle in [('A',  45), ('B', -45),
+                                  ('C',-135), ('D', 135)]:
+                rad = np.radians(angle)
+                lx = center[0] + 0.52 * np.cos(rad)
+                ly = center[1] + 0.52 * np.sin(rad)
+                ax.text(lx, ly, letter,
+                        ha='center', va='center',
+                        fontsize=font_pt, fontweight='bold',
+                        color=reward_colors[letter])
+            ax.set_xlim(0, 1)
+            ax.set_ylim(0, 1)
+            ax.set_aspect('equal')
+            ax.set_xticks([]); ax.set_yticks([])
+            for sp in ('top', 'right', 'left', 'bottom'):
+                ax.spines[sp].set_visible(False)
+
+
+        def _draw_reward_markers(ax, n_bins, n_states=4,
+                                 reward_colors=REWARD_COLORS,
+                                 draw_labels=True, lw=1.8, alpha=0.95,
+                                 font_pt=BAR_FONT_PT):
+            """Vertical lines at the END of each state (= reward position),
+            coloured A/B/C/D. With labels=True, the letter sits just to the
+            left of each line, indicating which reward is reached there.
+
+            Convention: the trial is split into 4 states of equal length;
+            reward A is reached at the end of state 1 (x = bins_per_state),
+            reward B at the end of state 2, etc.
+            """
+            letters = ('A', 'B', 'C', 'D')
+            bins_per_state = n_bins // n_states
+            for k, letter in enumerate(letters):
+                x_end = (k + 1) * bins_per_state
+                ax.axvline(x_end, color=reward_colors[letter],
+                           lw=lw, alpha=alpha, zorder=2)
+                if draw_labels:
+                    # text just to the LEFT of the line so it sits inside
+                    # the segment whose reward it marks
+                    ax.text(x_end - 0.02 * n_bins, 1.04, letter,
+                            transform=ax.get_xaxis_transform(),
+                            ha='right', va='bottom',
+                            fontsize=font_pt, fontweight='bold',
+                            color=reward_colors[letter])
+
+
+        def _draw_perm_hist_pub(ax, diag, bins=12, font_pt=BAR_FONT_PT):
+            """Publication-styled perm-null histogram: fewer/thicker green
+            bars + a heavy dark-green empirical-r line. No legend; the
+            empirical-r value goes in the main title."""
+            perm_rs = np.asarray(diag.get('perm_rs', []), dtype=float)
+            perm_rs = perm_rs[np.isfinite(perm_rs)]
+            emp_r = float(diag.get('mean_r', np.nan))
+            finite_vals = np.concatenate([
+                perm_rs,
+                np.array([emp_r] if np.isfinite(emp_r) else [], dtype=float),
+            ])
+            lim = (max(0.05, 1.05 * float(np.max(np.abs(finite_vals))))
+                   if finite_vals.size else 1.0)
+            edges = np.linspace(-lim, lim, bins + 1)
+            if perm_rs.size:
+                ax.hist(perm_rs, bins=edges, color=PUB_HIST_BG_COLOR,
+                        edgecolor='white', linewidth=0.6)
+            ax.axvline(0, color='0.35', lw=0.8)
+            if np.isfinite(emp_r):
+                ax.axvline(emp_r, color=PUB_HIST_SIG_COLOR, lw=2.6)
+            ax.set_xlim(-lim, lim)
+            ax.set_xlabel('mean Pearson r', fontsize=font_pt)
+            ax.set_ylabel('# perm',         fontsize=font_pt)
+            ax.tick_params(labelsize=font_pt)
+            ax.set_title('permutation null', fontsize=font_pt)
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+
 
         def _hide_spines(ax, sides=('top', 'left', 'right', 'bottom')):
             for s in sides:
@@ -3305,95 +3482,134 @@ if _run_sparse:
                     'abs_coef':      float(abs(coefs[idx_])),
                 })
 
-            # Layout: hist (narrow) + trace (wide) on top; three bars below
-            # the trace (location, phase, time-lag). The lag panel gets
-            # extra height so the "Peak firing" label and the arrow above
-            # the boxes have room.
+            # ── Publication layout (~14 cm × 10.5 cm, fits the subpanel-e
+            # slot of the multi-panel figure at 2/3 A4 width). ───────────
             n_bins_per_trial = len(y_test)
-            fig = plt.figure(figsize=(14.0, 8.0))
-            gs = fig.add_gridspec(11, 14, hspace=0.45, wspace=0.55)
-            ax_hist  = fig.add_subplot(gs[0:6, 0:3])
-            ax_ts    = fig.add_subplot(gs[0:6, 3:14])
-            ax_loc   = fig.add_subplot(gs[6, 3:14], sharex=ax_ts)
-            ax_phase = fig.add_subplot(gs[7, 3:14], sharex=ax_ts)
-            ax_lag   = fig.add_subplot(gs[8:11, 3:14], sharex=ax_ts)
+            FIG_W_CM, FIG_H_CM = 14.0, 11.5
+            FONT_PT = 9
+            with plt.rc_context({'font.family': 'sans-serif',
+                                 'font.sans-serif':
+                                     ['Arial', 'DejaVu Sans'],
+                                 'font.size': FONT_PT}):
+                fig = plt.figure(figsize=(FIG_W_CM / 2.54,
+                                          FIG_H_CM / 2.54))
+                # 11 rows × 16 cols. Histogram top-left; trace + 3 bars on
+                # the right. Below the histogram: task-config grid and
+                # phase-wheel legends side by side. The lag bar gets only
+                # 2 rows (was 4) — visibly thinner per user request.
+                # top=0.86 leaves a comfortable gap below the figure title.
+                gs = fig.add_gridspec(11, 16,
+                                      hspace=0.50, wspace=0.55,
+                                      left=0.07, right=0.97,
+                                      top=0.82, bottom=0.07)
+                ax_hist  = fig.add_subplot(gs[0:5, 0:4])
+                ax_ts    = fig.add_subplot(gs[0:5, 4:16])
+                ax_loc   = fig.add_subplot(gs[5, 4:16], sharex=ax_ts)
+                ax_phase = fig.add_subplot(gs[6, 4:16], sharex=ax_ts)
+                ax_lag   = fig.add_subplot(gs[7:9, 4:16], sharex=ax_ts)
+                ax_grid  = fig.add_subplot(gs[7:11, 0:2])
+                ax_wheel = fig.add_subplot(gs[7:11, 2:4])
 
-            _draw_perm_hist(ax_hist, diag, bins=30)
-            ax_hist.set_title('permutation null', fontsize=11)
+                # --- Histogram (greens, no legend) ---
+                _draw_perm_hist_pub(ax_hist, diag, bins=22)
 
-            x = np.arange(n_bins_per_trial)
-            ax_ts.plot(x, y_test, color='black', lw=1.0, label='neuron')
-            ax_ts2 = ax_ts.twinx()
-            ax_ts2.plot(x, y_pred, color='tab:red', lw=1.4, alpha=0.9,
-                        label='predicted')
-            ax_ts2.plot(x, y_pred_top, color='tab:red', lw=1.6, alpha=0.95,
-                        linestyle='--', label='top-coef pred')
-            ax_ts.set_xlim(0, n_bins_per_trial)
-            ax_ts.set_ylabel('neuron (a.u.)', fontsize=9)
-            ax_ts2.set_ylabel('predicted', color='tab:red', fontsize=9)
-            ax_ts2.tick_params(labelcolor='tab:red')
-            ax_ts.spines['top'].set_visible(False)
-            ax_ts2.spines['top'].set_visible(False)
-            ax_ts.set_title(
-                f'best fold: held-out {test_config}   '
-                f'r = {r_per_fold[best_fold]:.3f}',
-                fontsize=11, loc='left')
-            l1, lab1 = ax_ts.get_legend_handles_labels()
-            l2, lab2 = ax_ts2.get_legend_handles_labels()
-            ax_ts.legend(l1 + l2, lab1 + lab2, fontsize=9,
-                         loc='upper right', frameon=False)
+                # --- Trace ---
+                x = np.arange(n_bins_per_trial)
+                ax_ts.plot(x, y_test, color='black', lw=0.7, zorder=3)
+                ax_ts2 = ax_ts.twinx()
+                ax_ts2.plot(x, y_pred,
+                            color=PUB_PRED_COLOR, lw=1.2, alpha=0.95,
+                            zorder=4)
+                ax_ts2.plot(x, y_pred_top,
+                            color=PUB_PRED_COLOR, lw=1.2, alpha=0.95,
+                            linestyle='--', zorder=4)
+                ax_ts.set_xlim(0, n_bins_per_trial)
+                ax_ts.set_ylabel('neuron (a.u.)', fontsize=FONT_PT)
+                ax_ts2.set_ylabel('predicted',
+                                  color=PUB_PRED_COLOR,
+                                  fontsize=FONT_PT)
+                ax_ts2.tick_params(labelcolor=PUB_PRED_COLOR,
+                                   labelsize=FONT_PT)
+                ax_ts.tick_params(labelsize=FONT_PT)
+                ax_ts.spines['top'].set_visible(False)
+                ax_ts2.spines['top'].set_visible(False)
+                # No per-axis subtitle — the held-out config and r are
+                # already in the main figure title, and putting them here
+                # collided with the A/B/C/D reward labels above the trace.
 
-            _draw_location_bar(ax_loc, locations)
-            ax_loc.set_yticks([]); ax_loc.set_xticks([])
-            ax_loc.set_ylabel('locations', rotation=0, ha='right',
-                              va='center', fontsize=10)
-            _hide_spines(ax_loc)
+                # --- Reward markers (A/B/C/D) across trace + bars ---
+                _draw_reward_markers(ax_ts, n_bins_per_trial,
+                                     draw_labels=True,
+                                     lw=0.9, alpha=0.85)
+                for axx in (ax_loc, ax_phase, ax_lag):
+                    _draw_reward_markers(axx, n_bins_per_trial,
+                                         draw_labels=False,
+                                         lw=0.9, alpha=0.85)
 
-            _draw_phase_bar(ax_phase, n_bins=n_bins_per_trial)
-            ax_phase.set_yticks([]); ax_phase.set_xticks([])
-            ax_phase.set_ylabel('phases', rotation=0, ha='right',
-                                va='center', fontsize=10)
-            _hide_spines(ax_phase)
+                # --- Location bar ---
+                _draw_location_bar(ax_loc, locations)
+                ax_loc.set_yticks([]); ax_loc.set_xticks([])
+                ax_loc.set_ylabel('locations', rotation=0,
+                                  ha='right', va='center',
+                                  fontsize=FONT_PT)
+                _hide_spines(ax_loc)
 
-            peak_idx, target_idx = _draw_lag_bar_explicit(
-                ax_lag, locations, top_loc, top_phase, top_lag,
-                n_bins=n_bins_per_trial,
-            )
-            ax_lag.set_yticks([])
-            ax_lag.set_ylabel('Time-lag', rotation=0, ha='right',
-                              va='center', fontsize=10)
-            ax_lag.set_xlabel('time bin', fontsize=9)
-            _hide_spines(ax_lag, sides=('top', 'left', 'right'))
+                # --- Phase bar ---
+                _draw_phase_bar(ax_phase, n_bins=n_bins_per_trial)
+                ax_phase.set_yticks([]); ax_phase.set_xticks([])
+                ax_phase.set_ylabel('phases', rotation=0,
+                                    ha='right', va='center',
+                                    fontsize=FONT_PT)
+                _hide_spines(ax_phase)
 
-            # Highlight the target phase on the location + phase bars so
-            # the reader can match the lag-bar's outlined box to the actual
-            # location / phase that the neuron is "predicting".
-            if target_idx is not None:
-                bins_per_phase = (n_bins_per_trial // DSR_N_LAGS)
-                target_start = target_idx * bins_per_phase
-                target_end = target_start + bins_per_phase
-                _add_highlight_box(ax_phase, target_start, target_end)
-                pref_run = _find_preferred_location_run(
-                    locations, target_idx, top_loc,
+                # --- Time-lag bar ---
+                peak_idx, target_idx = _draw_lag_bar_explicit(
+                    ax_lag, locations, top_loc, top_phase, top_lag,
                     n_bins=n_bins_per_trial,
                 )
-                if pref_run is not None:
-                    _add_highlight_box(ax_loc, pref_run[0], pref_run[1])
+                ax_lag.set_yticks([])
+                ax_lag.set_ylabel('Time-lag', rotation=0,
+                                  ha='right', va='center',
+                                  fontsize=FONT_PT)
+                ax_lag.set_xlabel('time bin', fontsize=FONT_PT)
+                ax_lag.tick_params(labelsize=FONT_PT)
+                _hide_spines(ax_lag, sides=('top', 'left', 'right'))
 
-            fig.suptitle(
-                f"#{rank} sparse dsr cell in {diag.get('roi')}    "
-                f"sub-{sub_str} {info['neuron']}    "
-                f"mean r = {diag['mean_r']:.3f}    "
-                f"p_perm = {diag['p_perm']:.3f}    "
-                f"top coef: loc={top_loc + 1}, "
-                f"phase={PHASE_NAMES[top_phase]}, lag={top_lag}    "
-                f"n_active={info['n_active']}",
-                fontsize=11.5, fontweight='bold')
+                # --- Outline target on locations & phases ---
+                if target_idx is not None:
+                    bins_per_phase = (n_bins_per_trial // DSR_N_LAGS)
+                    target_start = target_idx * bins_per_phase
+                    target_end   = target_start + bins_per_phase
+                    _add_highlight_box(ax_phase,
+                                       target_start, target_end, lw=1.4)
+                    pref_run = _find_preferred_location_run(
+                        locations, target_idx, top_loc,
+                        n_bins=n_bins_per_trial,
+                    )
+                    if pref_run is not None:
+                        _add_highlight_box(ax_loc,
+                                           pref_run[0], pref_run[1],
+                                           lw=1.4)
 
-            fig.savefig(save_path, dpi=200, bbox_inches='tight')
-            fig.savefig(save_path.replace('.png', '.svg'),
-                        bbox_inches='tight')
-            plt.close(fig)
+                # --- Mini legends ---
+                _draw_task_grid_legend(ax_grid, test_config)
+                _draw_phase_wheel_legend(ax_wheel)
+
+                # --- One-line title with cell metadata ---
+                fig.suptitle(
+                    f"#{rank} sparse DSR cell in {diag.get('roi')}  |  "
+                    f"sub-{sub_str} {info['neuron']}  |  "
+                    f"mean r = {diag['mean_r']:.3f}  |  "
+                    f"p_perm = {diag['p_perm']:.3f}  |  "
+                    f"top coef: loc={top_loc + 1}, "
+                    f"phase={PHASE_NAMES[top_phase]}, lag={top_lag}  |  "
+                    f"n_active={info['n_active']}",
+                    fontsize=FONT_PT, y=0.96)
+
+                save_path_pdf = save_path.replace('.png', '.pdf')
+                fig.savefig(save_path, dpi=300, bbox_inches='tight')
+                fig.savefig(save_path_pdf, bbox_inches='tight')
+                plt.close(fig)
             return True, top_coefs_rows
 
         # ── Step 3: render per-ROI top-N sparsest cells ─────────────
