@@ -91,6 +91,7 @@ Group inference uses PALM permutation tests; the DSR contrast is then
 thresholded to define the DSR-effect mask (`scripts/cell_mask_overlap.py`
 builds the binary `p_FWE < 0.05` mask from the cluster-mass FWE map and
 writes it to `data/masks/DSR_main_effect_mask.nii.gz`).
+
 ---
 
 ## Glue / publication scripts (work in progress)
@@ -130,3 +131,4 @@ writes it to `data/masks/DSR_main_effect_mask.nii.gz`).
    `encoding_analysis_simple.py` (encoding), in that order.
 3. Publication panels are assembled by `encoding_publication_panels.py`.
 4. Whole-brain fMRI RSA (after fMRI preprocessing, and data preparation): `fMRI_run_RSA_without_rsatoolbox_clean.py`.
+

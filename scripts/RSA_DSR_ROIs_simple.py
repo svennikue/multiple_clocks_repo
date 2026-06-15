@@ -101,7 +101,10 @@ print(f"Combos evaluated this run     ({len(combo_models)}): {list(combo_models.
 #   FDR_COMBOS differ only by `state` -> their dsr_old betas are
 #   correlated; set FDR_COMBOS to a single combo if you consider them
 #   one hypothesis (a 10-test family rather than 20).
-FDR_TEST      = 'across_z'   # primary variant: across blocks, z-scored
+FDR_TEST      = 'between_tasks_z'   # primary variant: all-repeat-averaged
+                                    # per-config, z-scored per neuron,
+                                    # between-task-config cells only
+                                    # (within-config block masked out).
 # Confirmatory family: ONE primary combo × the effect of interest × all
 # ROIs tested (≈ 7-9 tests). `MRI_combo-nofdb_midn` is treated as a
 # robustness check rather than a second confirmatory test, since its
@@ -704,9 +707,13 @@ if RELOAD_RUN is None:
 
 
         test_specs = [
-            ('crossval', model_RDMs, data_RDM[0], data_RDM_z[0]),
-            #('within',   model_RDMs_within, data_RDM_within[0], data_RDM_within_z[0]),
-            ('across',   model_RDMs_across, data_RDM_across[0], data_RDM_across_z[0]),
+            # 'split_halves' = full off-diagonal RDM from a 2-half (10
+            # reps each) population matrix; 'between_tasks' = repeats
+            # pre-averaged per config, only off-block (between-task-
+            # config) cells used.
+            ('split_halves',  model_RDMs,        data_RDM[0],        data_RDM_z[0]),
+            #('within',       model_RDMs_within, data_RDM_within[0], data_RDM_within_z[0]),
+            ('between_tasks', model_RDMs_across, data_RDM_across[0], data_RDM_across_z[0]),
         ]
 
         for test_name, rdm_dict, raw_data, z_data in test_specs:
@@ -726,8 +733,8 @@ if RELOAD_RUN is None:
 
 
 
-        #tests = ['crossval', 'crossval_z', 'within', 'within_z', 'across', 'across_z']
-        tests = ['crossval', 'crossval_z', 'across', 'across_z']
+        #tests = ['split_halves', 'split_halves_z', 'within', 'within_z', 'between_tasks', 'between_tasks_z']
+        tests = ['split_halves', 'split_halves_z', 'between_tasks', 'between_tasks_z']
         perm_results = {test: {m: [] for m in models} for test in tests}
         perm_results_combo = {
             test: {combo: {'t': [], 'beta': [], 'p': []} for combo in combo_models}
@@ -783,12 +790,12 @@ if RELOAD_RUN is None:
 
 
                 perm_specs = [
-                    ('crossval',   model_RDMs,        perm_data_RDM[0]),
-                    ('crossval_z', model_RDMs,        perm_data_RDM_z[0]),
-                    #('within',     model_RDMs_within,  perm_data_RDM_within[0]),
-                    #('within_z',   model_RDMs_within,  perm_data_RDM_within_z[0]),
-                    ('across',     model_RDMs_across,  perm_data_RDM_across[0]),
-                    ('across_z',   model_RDMs_across,  perm_data_RDM_across_z[0]),
+                    ('split_halves',    model_RDMs,        perm_data_RDM[0]),
+                    ('split_halves_z',  model_RDMs,        perm_data_RDM_z[0]),
+                    #('within',         model_RDMs_within, perm_data_RDM_within[0]),
+                    #('within_z',       model_RDMs_within, perm_data_RDM_within_z[0]),
+                    ('between_tasks',   model_RDMs_across, perm_data_RDM_across[0]),
+                    ('between_tasks_z', model_RDMs_across, perm_data_RDM_across_z[0]),
                 ]
 
                 for test_name, rdm_dict, data_rdm in perm_specs:
@@ -813,8 +820,8 @@ if RELOAD_RUN is None:
             perm_results,
             empirical_results,
             empirical_results_z,
-            #tests=('crossval', 'crossval_z', 'within', 'within_z', 'across', 'across_z'),
-            tests=('crossval', 'crossval_z', 'across', 'across_z'),
+            #tests=('split_halves', 'split_halves_z', 'within', 'within_z', 'between_tasks', 'between_tasks_z'),
+            tests=('split_halves', 'split_halves_z', 'between_tasks', 'between_tasks_z'),
             models=('location', 'dsr', 'state', 'dsr_old', 'midnight', 'dsr_old_now_next'),
             bins=25,
             density=True,
@@ -909,8 +916,8 @@ if RELOAD_RUN is None:
             empirical_combo_results_z,
             combo_key,
             combo_models,
-            #tests=('crossval', 'crossval_z', 'within', 'within_z', 'across', 'across_z'),
-            tests=('crossval', 'crossval_z', 'across', 'across_z'),
+            #tests=('split_halves', 'split_halves_z', 'within', 'within_z', 'between_tasks', 'between_tasks_z'),
+            tests=('split_halves', 'split_halves_z', 'between_tasks', 'between_tasks_z'),
             bins=25,
             density=True,
             figsize_per_panel=(2.0, 1.8),
@@ -1042,17 +1049,19 @@ if RELOAD_RUN is None:
         # ── Build per-ROI rows for the overview table ────────────────────────
         # tests for raw vs z follow the same naming convention used in perm_results
         test_pairs = [
-            ('crossval',   'raw'), ('crossval_z', 'z'),
-            #('within',     'raw'), ('within_z',   'z'),
-            ('across',     'raw'), ('across_z',   'z'),
+            ('split_halves',    'raw'), ('split_halves_z',    'z'),
+            #('within',         'raw'), ('within_z',          'z'),
+            ('between_tasks',   'raw'), ('between_tasks_z',   'z'),
         ]
+        # Internal cache keys still use the old short labels — they're
+        # private to this loop and not exposed in any output.
         test_to_emp_key = {
-            'crossval':   'crossval',
-            'crossval_z': 'crossval',
-            #'within':     'within',
-            #'within_z':   'within',
-            'across':     'across',
-            'across_z':   'across',
+            'split_halves':     'crossval',
+            'split_halves_z':   'crossval',
+            #'within':          'within',
+            #'within_z':        'within',
+            'between_tasks':    'across',
+            'between_tasks_z':  'across',
         }
 
         for test_name, kind in test_pairs:
@@ -1111,7 +1120,7 @@ if RELOAD_RUN is None:
     for rdm_dict, label in [
         (model_RDMs,        'full'),
         #(model_RDMs_within, 'within'),
-        (model_RDMs_across, 'across'),
+        (model_RDMs_across, 'between_tasks'),
     ]:
         mc.plotting.results.plot_model_rdm_correlation(
             rdm_dict,
@@ -1380,7 +1389,9 @@ def _render_overview_plots(summary_df, summary_combo_df,
 # fonts, ROI/model order and significance styling stay in sync.
 
 
-HEATMAP_TEST = 'across_z'  # one of: crossval, crossval_z, within, within_z, across, across_z
+HEATMAP_TEST = 'between_tasks_z'  # one of: split_halves, split_halves_z,
+                                  # within, within_z, between_tasks,
+                                  # between_tasks_z
 
 # Save the per-ROI electrode coordinates so that the reload path can
 # reproduce the schematic glass-brain without rerunning the analysis.

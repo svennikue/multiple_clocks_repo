@@ -77,7 +77,7 @@ STATE_VARIANTS  = ['state', 'state_phase']
 DSR_COEF_P_PERM_THRESHOLD = 0.05
 
 
-SECTIONS_TO_RUN = ['sparse_examples']
+SECTIONS_TO_RUN = ['gradient', 'brain_lag']
 
 _run_classification  = 'classification'    in SECTIONS_TO_RUN
 _run_focal           = 'focal'             in SECTIONS_TO_RUN

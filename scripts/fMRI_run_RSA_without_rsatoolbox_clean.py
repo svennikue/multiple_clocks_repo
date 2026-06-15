@@ -407,6 +407,7 @@ for sub in subjects:
                             raise ValueError(f"Combo model {combo_model_name} not possible, as {missing} not computed")
   
                 stacked_model_RDMs = np.stack([model_RDM_dir[m][0] for m in models_to_combine], axis=1)
+                
                 # check how correlated each model is whith each other.
                 # corr = np.corrcoef(stacked_model_RDMs, rowvar=False)
                 # for i in range(len(models_to_combine)):

@@ -60,7 +60,10 @@ ENC_NONRSA_DIR = ENC_FULL_DIR + '-none-RSA-subset'
 OUT_DIR = os.path.join(ENC_FULL_DIR, 'publication_panels')
 os.makedirs(OUT_DIR, exist_ok=True)
 
-RSA_TEST            = 'across_z'   # ALWAYS across task halves + z-scored
+RSA_TEST            = 'between_tasks_z'   # all-correct-repeats averaged
+                                          # per config, z-scored per neuron,
+                                          # between-task-config cells only
+                                          # (within-config block masked).
 RSA_COMBO           = 'MRI_combo-nofdb_midn-state'  # the combo we report from
 DSR_MODEL_RSA       = 'dsr_old'
 DSR_MODEL_ENC       = 'dsr'
@@ -140,12 +143,14 @@ def _add_fdr_per_model(df, p_col, out_col):
 # ─── RSA stats table (DSR + control) — unchanged across variants ─────────
 def _rsa_stats(dsr_model, control_model, combo_name, rsa_test):
     """Pull BOTH the DSR and control betas from the combo regression — never
-    from the per-model 'unique' file. Enforces test == across_z (across task
-    halves, z-scored) at the data-loading boundary. Adds ``p_perm_fdr`` =
-    BH-FDR of ``p_perm`` across ROIs, per model (this is the test family the
+    from the per-model 'unique' file. Enforces test == between_tasks_z
+    (all correct repeats averaged per config, z-scored per neuron,
+    between-task-config cells only — within-config block masked out) at
+    the data-loading boundary.  Adds ``p_perm_fdr`` = BH-FDR of
+    ``p_perm`` across ROIs, per model (this is the test family the
     publication panels report)."""
-    assert rsa_test == 'across_z', \
-        "Publication panels only use across-task-halves z-scored RSA."
+    assert rsa_test == 'between_tasks_z', \
+        "Publication panels only use the between_tasks_z RSA variant."
     sub = rsa_combos[(rsa_combos['combo'] == combo_name)
                      & (rsa_combos['test']  == rsa_test)].copy()
     sub = sub.rename(columns={'n_neurons': 'n_cells'})
@@ -428,7 +433,8 @@ def _n_str(n_per_roi, rois=ROI_ORDER):
 
 
 def _caption_heatmap_pair(n_rsa, n_enc, variant_subtitle):
-    return (f"RSA (across-task-halves, z-scored, combo '{RSA_COMBO}'): "
+    return (f"RSA (across-tasks, excluding within-task diagonal, z-scored, " 
+            f"combo '{RSA_COMBO}'): "
             f"{_n_str(n_rsa)}.\n"
             f"Encoding ({variant_subtitle}): {_n_str(n_enc)}.\n"
             f"Black box = BH-FDR-corrected p < {ALPHA:.2f} "

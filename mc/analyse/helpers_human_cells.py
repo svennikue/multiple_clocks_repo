@@ -401,7 +401,95 @@ def load_norm_data(source_folder, subject_list, res_data = False):
     return data_dict
 
 
-    
+def compute_mode_paths_per_config(source_folder, subject_list, configs,
+                                    n_bins=360, verbose=True):
+    """Aggregate correct-trial walked-location and button sequences across
+    every subject in `subject_list` and return the per-bin MODE per config.
+
+    This is the SINGLE source of truth for "the across-subject mode walked
+    path" — every downstream script (RSA_DSR_ROIs_simple.py,
+    State_RSA_ROIs_simple.py, create_fMRI_model_RDMs_on_clean_beh.py)
+    should call this rather than re-implementing the aggregation.
+
+    Parameters
+    ----------
+    source_folder : str
+        Same root path used by `load_norm_data`.
+    subject_list : iterable of str
+        Subject IDs as zero-padded strings (e.g. ['27', '28']).
+    configs : iterable of tuple
+        Each config is a 4-tuple of reward locations
+        (loc_A, loc_B, loc_C, loc_D) at integers in [1, 9].
+    n_bins : int, default 360
+        Number of binned time points per trial.
+
+    Returns
+    -------
+    dict
+        Keyed by the config tuple. Each value is
+        {'mode_locs': (n_bins,) int array,
+         'mode_btns': (n_bins,) object array of button labels,
+         'n_trials':  int}
+        Configs with no matching correct trials are absent from the dict.
+    """
+    cfg_loc_stacks = {cfg: [] for cfg in configs}
+    cfg_btn_stacks = {cfg: [] for cfg in configs}
+    for sub in subject_list:
+        data = load_norm_data(source_folder, [sub])
+        key = f"sub-{sub}"
+        if key not in data:
+            continue
+        beh = data[key]['beh']
+        locs = data[key]['locations']
+        btns = data[key]['buttons']
+        beh_correct = beh[beh['correct'] == 1].copy()
+        beh_correct['cfg_tuple'] = list(zip(
+            beh_correct['loc_A'].astype(int),
+            beh_correct['loc_B'].astype(int),
+            beh_correct['loc_C'].astype(int),
+            beh_correct['loc_D'].astype(int)))
+        for cfg in configs:
+            idx = beh_correct.index[beh_correct['cfg_tuple'] == cfg]
+            if len(idx) == 0:
+                continue
+            cfg_loc_stacks[cfg].append(locs.loc[idx].to_numpy())
+            cfg_btn_stacks[cfg].append(btns.loc[idx].to_numpy())
+
+    def _mode_per_col(arr):
+        out = np.empty(arr.shape[1], dtype=arr.dtype)
+        for j in range(arr.shape[1]):
+            col = arr[:, j]
+            mask = pd.notna(col)
+            col = col[mask]
+            if col.size == 0:
+                out[j] = arr[0, j]
+                continue
+            vals, cnts = np.unique(col, return_counts=True)
+            out[j] = vals[np.argmax(cnts)]
+        return out
+
+    mode_paths = {}
+    for cfg in configs:
+        loc_stk = cfg_loc_stacks[cfg]
+        btn_stk = cfg_btn_stacks[cfg]
+        if not loc_stk:
+            if verbose:
+                print(f"  no correct trials for config {cfg} — skipping")
+            continue
+        loc_arr = np.vstack(loc_stk).astype(int)
+        btn_arr = np.vstack(btn_stk)
+        mode_paths[cfg] = {
+            'mode_locs': _mode_per_col(loc_arr).astype(int),
+            'mode_btns': _mode_per_col(btn_arr),
+            'n_trials':  loc_arr.shape[0],
+        }
+    if verbose and mode_paths:
+        ns = [p['n_trials'] for p in mode_paths.values()]
+        print(f"  mode paths built for {len(mode_paths)} configs "
+              f"(trials/config: mean={np.mean(ns):.0f}, range "
+              f"{int(np.min(ns))}–{int(np.max(ns))})")
+    return mode_paths
+
     
     
 def load_cell_data(source_folder, subject_list):

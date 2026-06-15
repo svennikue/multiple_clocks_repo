@@ -87,9 +87,9 @@ else:
     subj_no = '02'
 
 subjects = [f"sub-{subj_no}"]
-subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36)]
-subjects.remove('sub-29')
-subjects.remove('sub-21')
+#subjects = subs_list = [f'sub-{i:02}' for i in range(1, 36)]
+#subjects.remove('sub-21')
+#subjects.remove('sub-29')
 
 # --- Load configuration ---
 source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks"
