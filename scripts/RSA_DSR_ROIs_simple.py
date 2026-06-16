@@ -41,7 +41,7 @@ OUT_BASE     = os.path.join(DATA_DIR, 'group', 'DSR_RSA_simple_ROI')
 # results_summary*.csv files in OUT_BASE/<RELOAD_RUN>/.  None = run fresh.
 RELOAD_RUN = None  #'2026-05-26_17-54-23' 
 
-
+# import pdb; pdb.set_trace()
 configs = [
     '3-7-9-5', '8-2-6-7', '1-9-5-8', '4-8-1-3',
     '6-4-2-9', '9-1-3-4', '7-3-4-2', '2-5-7-6',
@@ -50,15 +50,33 @@ configs = [
 
 N_CONFIGS = len(configs)
 N_CONDS_PER_CONF = 12
-LEN_STANDARDISED_PATH = 10
+LEN_STANDARDISED_PATH = 12
 N_PHASES = 3
 states           = ['A', 'B', 'C', 'D']
 RESOLUTIONx = 1
 PLOT_FIGS = False
-N_PERMUTATIONS = 1000 # 500 # None or 300
+N_PERMUTATIONS = 100 #None #1000 # 500 # None or 300
 SPLIT_UNCV_BUTTONS = True
 
-PLOT_GLASSBRAINS = True
+# Phase-based masking. Phase of a condition at position pos inside a config is
+# (pos % N_CONDS_PER_CONF) % N_PHASES; with N_PHASES=3 this cycles
+# early–middle–late across the 12 conds per config.
+#   'full'         -> no masking (all pairs)
+#   'within_phase' -> keep only same-phase pairs (e.g. early ↔ early)
+#   'across_phase' -> keep only different-phase pairs (e.g. early ↔ middle)
+# Drives the *primary* RSA pipeline (used by FDR, summary tables, glassbrains,
+# permutations, pub figures).
+PHASE_MASK_MODE = 'full'
+
+# If True, ALSO run the empirical (no-permutation) RSA in all three modes
+# and produce comparison heatmaps of the combo betas side-by-side per ROI.
+# Cheap; uses the model + data RDMs already built. Does not change the primary
+# results.
+RUN_PHASE_MODE_COMPARISON = True
+
+assert PHASE_MASK_MODE in ('full', 'within_phase', 'across_phase'), PHASE_MASK_MODE
+
+PLOT_GLASSBRAINS = False
 # ── Models / combos to evaluate per ROI this round ────────────────────
 # All model RDMs are built each run (cheap). These lists only restrict the
 # *expensive* per-ROI evaluation + permutation step.
@@ -66,13 +84,16 @@ PLOT_GLASSBRAINS = True
 # - `combo_models`: combos evaluated per ROI. Sub-models are pulled from the
 #   always-built model_RDMs, so combos may reference any model regardless of
 #   what's in `models`.
-models = ['dsr_old']
+models = ['dsr_old', 'dsr_fmri','state','midnight', 'bttn_curr', 'bttn_next', 'location', 'phase', 'repeat_counter', 'uncover']
 #models = ['dsr_old', 'midnight','state', 'repeat_counter', 'uncover', 'bttn_prev', 'bttn_next', 'bttn_curr', 'location', 'phase']
 
 combo_models = {
-    'loc-fdb-state':          ['bttn_curr', 'bttn_next', 'location', 'repeat_counter', 'state', 'dsr_old'],
-    'buttons-loc-state':          ['bttn_curr', 'bttn_next', 'location',  'state', 'dsr_old'],
-    'buttons-midn-state':          ['bttn_curr', 'bttn_next', 'midnight', 'state', 'dsr_old']
+    'fMRI_midnight_state':          ['bttn_curr', 'bttn_next', 'location', 'state', 'midnight', 'dsr_fmri'],
+    'fMRI_state':          ['bttn_curr', 'bttn_next', 'location', 'state', 'dsr_fmri'],
+    'fMRIold_state':          ['bttn_curr', 'bttn_next', 'location', 'state', 'dsr_old'],
+    'fMRI':          ['bttn_curr', 'bttn_next', 'location','dsr_fmri'],
+    'fMRI_phase_rep':          ['bttn_curr', 'bttn_next', 'location','dsr_fmri', 'phase', 'repeat_counter'],
+    'fMRI_phase_rep_uncvr':          ['bttn_curr', 'bttn_next', 'location','dsr_fmri', 'phase', 'repeat_counter', 'uncover'],
     }
 
 
@@ -111,8 +132,8 @@ FDR_TEST      = 'between_tasks_z'   # primary variant: all-repeat-averaged
 # `dsr_old` beta is highly correlated with the primary combo (the two
 # differ only by the `state` regressor). This keeps the FDR family
 # consistent with the publication panel (encoding_publication_panels.py).
-FDR_COMBOS    = ['MRI_combo-nofdb_midn-state']
-FDR_SUBMODELS = ['dsr_old']  # effect(s) of interest within the combo
+FDR_COMBOS    = ['fMRI_midnight_state'] # usually 'MRI_combo-nofdb_midn-state'
+FDR_SUBMODELS = ['dsr_fmri']  # dsr_fmri dsr_old effect(s) of interest within the combo
 FDR_ALPHA     = 0.05
 
 
@@ -221,20 +242,172 @@ ROI_RULES = {roi: _make_roi_predicate(roi) for roi in ROIS_TO_ANALYZE}
 
 
 def downsample_mode(x, target_len=10):
+    """Mode-downsample x to ``target_len`` slots without discarding bins.
+
+    Using ``block = len(x) // target_len`` truncated whenever target_len did
+    not divide len(x): with len(x)=360 and target_len=144 (n_dsr_neurons or
+    n_conds_per_config*len_per_bin) the last 72 raw bins were dropped and
+    every cond's downsampled window was misaligned by 6 bins relative to
+    the conceptual 30-bin layout. Similarly target_len=12 on a 30-bin
+    subpath dropped 6 bins per cond.
+
+    This version distributes input bins evenly across the output slots:
+    slot i = x[(i*n)//target_len : ((i+1)*n)//target_len]. All bins are
+    used; slot sizes differ by at most 1.
+    """
     x = np.asarray(x, dtype=object)
-    block = len(x) // target_len
+    n = len(x)
     return np.array([
-        Counter(x[i*block:(i+1)*block]).most_common(1)[0][0]
+        Counter(x[(i * n) // target_len : ((i + 1) * n) // target_len])
+            .most_common(1)[0][0]
         for i in range(target_len)
     ], dtype=object)
+
+
+def make_phase_masks_for_cells(n_configs, n_conds_per_config, n_phases,
+                                include_diagonal=False):
+    """Phase-based boolean masks aligned with the cells RSA vector layouts.
+
+    Phase of a condition at position ``pos`` inside a config is
+    ``(pos % n_conds_per_config) % n_phases``; with N_PHASES=3 this cycles
+    early–middle–late–early–middle–late–… across the 12 conds per config.
+
+    Returns a dict ``{variant: {mode: 1d_bool_array}}`` plus a
+    ``'_phase_per_condition'`` vector and a ``'_n'`` size, both for
+    diagnostics.
+
+      variants:
+        'split_halves'   -> mask aligned with ``compute_crosscorr``'s output:
+                            upper-tri (k=1 unless include_diagonal) of a
+                            symmetrized cross-half N×N block, where
+                            N = n_configs * n_conds_per_config.
+        'between_tasks'  -> mask aligned with ``compute_crosscorr_within``'s
+                            between-block output: upper-tri of the same N×N
+                            RDM, with same-config blocks already excluded.
+
+      modes:
+        'full'         -> all True (no masking).
+        'within_phase' -> True where the two conds share a phase.
+        'across_phase' -> True where the two conds have different phases.
+    """
+    n = n_configs * n_conds_per_config
+    phase = np.tile(np.arange(n_conds_per_config) % n_phases, n_configs)
+    k = 0 if include_diagonal else 1
+    ii, jj = np.triu_indices(n, k=k)
+    same_phase = phase[ii] == phase[jj]
+    between_block = (ii // n_conds_per_config) != (jj // n_conds_per_config)
+    split_halves = {
+        'full':         np.ones_like(same_phase, dtype=bool),
+        'within_phase': same_phase,
+        'across_phase': ~same_phase,
+    }
+    same_phase_bt = same_phase[between_block]
+    between_tasks = {
+        'full':         np.ones_like(same_phase_bt, dtype=bool),
+        'within_phase': same_phase_bt,
+        'across_phase': ~same_phase_bt,
+    }
+    return {
+        'split_halves':         split_halves,
+        'between_tasks':        between_tasks,
+        '_phase_per_condition': phase,
+        '_n':                   n,
+    }
+
+
+# Layout-only — does not depend on data, so build once.
+PHASE_MASKS = make_phase_masks_for_cells(
+    N_CONFIGS, N_CONDS_PER_CONF, N_PHASES, include_diagonal=False)
+
+ALL_PHASE_MODES = ('full', 'within_phase', 'across_phase')
+
+
+def _phase_mask_for(test_name, mode):
+    """Mask vector for (test_name, mode). Returns None when no masking is needed.
+
+    test_name may end in '_z' (the permutation loop uses suffixed names);
+    that suffix is stripped for the variant lookup.
+    """
+    if mode == 'full':
+        return None
+    base = test_name[:-2] if test_name.endswith('_z') else test_name
+    return PHASE_MASKS[base][mode]
+
+
+def _apply_phase_mask(arr, mask):
+    """Slice a 1-D RDM vector or a (n_pairs, n_models) stacked design matrix."""
+    if mask is None:
+        return arr
+    a = np.asarray(arr)
+    return a[mask] if a.ndim == 1 else a[mask, :]
+
+
+def _phase_mask_matrix(mode, n_configs, n_conds_per_config, n_phases):
+    """Square N×N boolean mask (True = kept) for visualising RDMs.
+
+    Same definition as the 1-D vector masks but expanded to a full N×N matrix
+    (no upper-tri restriction) so it can be applied to a square RDM image.
+    """
+    n = n_configs * n_conds_per_config
+    phase = np.tile(np.arange(n_conds_per_config) % n_phases, n_configs)
+    same_phase_mat = phase[:, None] == phase[None, :]
+    if mode == 'full':
+        return np.ones((n, n), dtype=bool)
+    if mode == 'within_phase':
+        return same_phase_mat
+    if mode == 'across_phase':
+        return ~same_phase_mat
+    raise ValueError(f"unknown phase mode {mode!r}")
+
+
+def build_mode_path_dsr(mode_vec, n_conds_per_config, len_per_bin):
+    """fMRI-style DSR: per-bin mode trajectory, flattened and rolled by bin.
+
+    Mirrors the construction in create_fMRI_model_RDMs_on_clean_beh.py
+    (EVs['DSR']): take the mode trajectory, downsample to
+    n_conds_per_config * len_per_bin integer location IDs, then for each
+    bin roll the flattened vector left by ``pos * len_per_bin`` so the
+    "current" bin sits at the front. Returned matrix feeds compute_hamming_distance.
+    """
+    base = downsample_mode(mode_vec, target_len=n_conds_per_config * len_per_bin)
+    return np.stack([np.roll(base, -pos * len_per_bin)
+                     for pos in range(n_conds_per_config)], axis=0)
 
 
 def make_empty(rows, cols, dtype=float):
     return np.zeros((rows, cols), dtype=dtype)
 
-def eval_tuple(rdm, data_rdm):
-    """Return (t, beta, p) as plain Python floats."""
-    return tuple(_scalar(v) for v in mc.analyse.my_RSA.evaluate_model(rdm, data_rdm))
+def _scalar(arr):
+    """Safely extract a Python float from a size-1 array or scalar."""
+    return float(np.asarray(arr, dtype=float).ravel()[0])
+
+
+def _degenerate(x, atol=1e-12):
+    """A 1-D vector is degenerate if it has any non-finite entry or zero variance."""
+    x = np.asarray(x, dtype=float).ravel()
+    return (not np.isfinite(x).all()) or (np.nanvar(x) <= atol)
+
+
+def eval_tuple(rdm, data_rdm, label=''):
+    """Single-model RSA eval. Returns (t, beta, p) as plain floats.
+
+    Returns (NaN, NaN, NaN) when the model or data vector is degenerate
+    (constant after masking, contains NaN/inf, etc.) — phase-mask modes
+    can make e.g. the 'phase' regressor constant; we surface that with a
+    print rather than letting statsmodels error out.
+    """
+    if _degenerate(rdm):
+        print(f"  [skip-single] {label}: model RDM is constant/non-finite "
+              f"under current mask → NaN")
+        return (float('nan'), float('nan'), float('nan'))
+    if _degenerate(data_rdm):
+        return (float('nan'), float('nan'), float('nan'))
+    try:
+        return tuple(_scalar(v) for v in mc.analyse.my_RSA.evaluate_model(
+            rdm, data_rdm))
+    except Exception as exc:
+        print(f"  [skip-single] {label}: {exc!s} → NaN")
+        return (float('nan'), float('nan'), float('nan'))
 
 
 def build_combo_rdm(rdm_dict, combo_list):
@@ -242,9 +415,48 @@ def build_combo_rdm(rdm_dict, combo_list):
     return np.stack([rdm_dict[m][0] for m in combo_list], axis=1)
 
 
-def _scalar(arr):
-    """Safely extract a Python float from a size-1 array or scalar."""
-    return float(np.asarray(arr, dtype=float).ravel()[0])
+def evaluate_combo_safe(stacked, data_vec, sub_models, label=''):
+    """Combo RSA eval that drops degenerate regressor columns.
+
+    Each column of ``stacked`` corresponds to one ``sub_models`` entry. Any
+    column that is non-finite or zero-variance after masking is removed from
+    the design before calling evaluate_model; its slot in the returned arrays
+    is set to NaN so the caller still sees one (t, beta, p) per sub-model.
+
+    Returns (t_arr, beta_arr, p_arr) as 1-D numpy arrays of length ``len(sub_models)``.
+    """
+    X = np.asarray(stacked, dtype=float)
+    if X.ndim == 1:
+        X = X[:, None]
+    n_reg = X.shape[1]
+    nan_arr = lambda: np.full(n_reg, np.nan, dtype=float)
+    if _degenerate(data_vec):
+        return nan_arr(), nan_arr(), nan_arr()
+
+    finite_cols = np.isfinite(X).all(axis=0)
+    var_cols = np.nanvar(X, axis=0) > 1e-12
+    good = finite_cols & var_cols
+    if not good.any():
+        print(f"  [skip-combo] {label}: all {n_reg} regressors degenerate "
+              f"under current mask → NaN")
+        return nan_arr(), nan_arr(), nan_arr()
+    if not good.all():
+        dropped = [sub_models[i] for i in range(n_reg) if not good[i]]
+        print(f"  [drop-combo] {label}: dropping {dropped} "
+              f"(constant/non-finite under mask)")
+
+    X_sub = X[:, good]
+    try:
+        t_sub, beta_sub, p_sub = mc.analyse.my_RSA.evaluate_model(X_sub, data_vec)
+    except Exception as exc:
+        print(f"  [skip-combo] {label}: {exc!s} → NaN")
+        return nan_arr(), nan_arr(), nan_arr()
+
+    t_full, beta_full, p_full = nan_arr(), nan_arr(), nan_arr()
+    t_full[good] = np.asarray(t_sub, dtype=float).ravel()
+    beta_full[good] = np.asarray(beta_sub, dtype=float).ravel()
+    p_full[good] = np.asarray(p_sub, dtype=float).ravel()
+    return t_full, beta_full, p_full
 
 
 with open(os.path.join(DATA_DIR, 'all_sessions_dsrRSA_grouping_summary.json'), 'r') as f:
@@ -284,6 +496,8 @@ else:
         'fdr_combos':           FDR_COMBOS,
         'fdr_submodels':        FDR_SUBMODELS,
         'fdr_alpha':            FDR_ALPHA,
+        'phase_mask_mode':      PHASE_MASK_MODE,
+        'run_phase_mode_comparison': RUN_PHASE_MODE_COMPARISON,
         'rois':                 list(ROI_RULES.keys()),
     }
     with open(os.path.join(OUT_DIR, 'config.json'), 'w') as f:
@@ -305,9 +519,66 @@ if RELOAD_RUN is None:
     summary_combo_rows = []
     roi_perm_results = {}
     roi_empirical_results = {}
+    # mode -> roi -> test_name -> {raw_combo, z_combo, n_pairs_kept, n_pairs_total}
+    # Populated only when RUN_PHASE_MODE_COMPARISON; used by the cross-ROI
+    # phase-mode comparison plot at the end of the run.
+    roi_mode_comparison = {}
     # Per-ROI electrode coordinates (deduplicated by (sub, cell_idx)) for the
     # schematic glass-brain shown alongside the overview heatmaps.
     roi_electrode_coords = {roi: {} for roi in ROI_RULES}
+
+    # ── Phase-mask diagnostic (once, before ROI loop) ────────────────────
+    # Print phase per condition + mask sizes per (variant, mode) so we can
+    # verify which RDM cells are kept vs. excluded by each masking mode.
+    # Also save a visual of the three mask matrices (96×96 each).
+    print("\n=== Phase-mask diagnostic ===")
+    print(f"Phase per condition (length {PHASE_MASKS['_n']}) — "
+          f"{N_CONFIGS} configs × {N_CONDS_PER_CONF} conds each, "
+          f"phase = (pos % {N_CONDS_PER_CONF}) % {N_PHASES} → cycles 0,1,2 = "
+          f"early,middle,late within each state's sub-path.")
+    _phase_vec = PHASE_MASKS['_phase_per_condition']
+    for c_idx in range(N_CONFIGS):
+        seg = _phase_vec[c_idx * N_CONDS_PER_CONF:(c_idx + 1) * N_CONDS_PER_CONF]
+        print(f"  config {c_idx} ({configs[c_idx]:>8s}): {seg.tolist()}")
+    print(f"\nMask sizes per RDM variant × mode "
+          f"(kept = pairs entering evaluate_model):")
+    print(f"  {'variant':<16s} {'mode':<14s} {'kept':>7s} / {'total':>7s} "
+          f"{'(% kept)':>10s}")
+    for _variant in ('split_halves', 'between_tasks'):
+        for _mode in ALL_PHASE_MODES:
+            _mask = PHASE_MASKS[_variant][_mode]
+            _k, _t = int(_mask.sum()), int(_mask.size)
+            print(f"  {_variant:<16s} {_mode:<14s} {_k:>7d} / {_t:>7d} "
+                  f"{100.0*_k/_t:>9.1f}%")
+
+    # Plot the three 96×96 mask matrices once.
+    _N = N_CONFIGS * N_CONDS_PER_CONF
+    fig_pm, ax_pm = plt.subplots(1, 3, figsize=(13.5, 4.5))
+    for _a, _mode in zip(ax_pm, ALL_PHASE_MODES):
+        _M = _phase_mask_matrix(_mode, N_CONFIGS, N_CONDS_PER_CONF, N_PHASES)
+        _a.imshow(_M.astype(int), cmap='Greys_r', vmin=0, vmax=1, aspect='equal')
+        _a.set_title(f"mask: {_mode}\n(white = kept, black = excluded)",
+                     fontsize=10)
+        # Config boundaries (red) and phase boundaries (faint cyan).
+        for c in range(1, N_CONFIGS):
+            _a.axvline(c * N_CONDS_PER_CONF - 0.5, color='red', lw=0.7)
+            _a.axhline(c * N_CONDS_PER_CONF - 0.5, color='red', lw=0.7)
+        _a.set_xticks(np.arange(N_CONFIGS) * N_CONDS_PER_CONF + N_CONDS_PER_CONF / 2)
+        _a.set_xticklabels([str(i) for i in range(N_CONFIGS)], fontsize=8)
+        _a.set_yticks(np.arange(N_CONFIGS) * N_CONDS_PER_CONF + N_CONDS_PER_CONF / 2)
+        _a.set_yticklabels([str(i) for i in range(N_CONFIGS)], fontsize=8)
+        _a.set_xlabel('config (12 conds each)', fontsize=9)
+    fig_pm.suptitle('Phase masks (96×96) — red lines = config boundaries',
+                    fontsize=11)
+    fig_pm.tight_layout()
+    fig_pm.savefig(os.path.join(OUT_DIR, 'phase_mask_diagnostic.png'),
+                   dpi=150, bbox_inches='tight')
+    print(f"Saved phase-mask diagnostic figure to "
+          f"{os.path.join(OUT_DIR, 'phase_mask_diagnostic.png')}")
+    plt.show()
+    print(f"\nPrimary pipeline runs with PHASE_MASK_MODE = '{PHASE_MASK_MODE}'.")
+    print(f"RUN_PHASE_MODE_COMPARISON = {RUN_PHASE_MODE_COMPARISON} — "
+          f"{'will produce cross-mode comparison heatmaps.' if RUN_PHASE_MODE_COMPARISON else 'comparison disabled.'}\n")
 
 
     for roi_name, roi_pred in ROI_RULES.items():
@@ -518,6 +789,7 @@ if RELOAD_RUN is None:
             run_id: {
                 'loc':     make_empty(n_conditions, LEN_STANDARDISED_PATH),
                 'dsr':     make_empty(n_conditions, n_dsr_neurons),
+                'dsr_fmri': make_empty(n_conditions, N_CONDS_PER_CONF * LEN_STANDARDISED_PATH),
                 'bttn_curr': make_empty(n_conditions, LEN_STANDARDISED_PATH, dtype=object),
                 'bttn_prev': make_empty(n_conditions, LEN_STANDARDISED_PATH, dtype=object),
                 'bttn_next': make_empty(n_conditions, LEN_STANDARDISED_PATH, dtype=object),
@@ -533,7 +805,14 @@ if RELOAD_RUN is None:
                 LEN_OG_SUBPATH = int(len(mode_vec)/N_CONDS_PER_CONF)
         
                 dsr_base = downsample_mode(mode_vec, target_len=n_dsr_neurons)
-        
+
+                # fMRI-style DSR: integer-ID mode trajectory, rolled per bin
+                # (parallel to create_fMRI_model_RDMs_on_clean_beh.py / EVs['DSR']).
+                # Same construct as 'dsr' above, just labelled separately so we
+                # can compare the L=12-per-bin / fMRI-aligned wiring head-to-head.
+                mats['dsr_fmri'][row_start:row_start + N_CONDS_PER_CONF] = (
+                    build_mode_path_dsr(mode_vec, N_CONDS_PER_CONF, LEN_STANDARDISED_PATH))
+
                 for n_subpath in range(N_CONDS_PER_CONF):
                     row = row_start + n_subpath
         
@@ -547,6 +826,7 @@ if RELOAD_RUN is None:
                     # --- buttons (current / previous / next), shift by ±1 subpath ---
                     # --- buttons (current / previous / next), wraparound by ±1 subpath ---
                     for key, offset in [('bttn_curr', 0), ('bttn_prev', -1), ('bttn_next', +1)]:
+                        # import pdb; pdb.set_trace()
                         shifted_n = (n_subpath + offset) % N_CONDS_PER_CONF
                         s = shifted_n * LEN_OG_SUBPATH
                         mats[key][row] = downsample_mode(mode_vec_button[s : s + LEN_OG_SUBPATH], target_len=LEN_STANDARDISED_PATH)
@@ -572,6 +852,7 @@ if RELOAD_RUN is None:
         model_concat = {
             'location':   np.concatenate([matrices[1]['loc'],     matrices[2]['loc']],     axis=0),
             'dsr':        np.concatenate([matrices[1]['dsr'],     matrices[2]['dsr']],     axis=0),
+            'dsr_fmri':   np.concatenate([matrices[1]['dsr_fmri'], matrices[2]['dsr_fmri']], axis=0),
             'bttn_curr':    np.concatenate([matrices[1]['bttn_curr'], matrices[2]['bttn_curr']], axis=0),
             'bttn_prev':    np.concatenate([matrices[1]['bttn_prev'], matrices[2]['bttn_prev']], axis=0),
             'bttn_next':    np.concatenate([matrices[1]['bttn_next'], matrices[2]['bttn_next']], axis=0),
@@ -633,7 +914,7 @@ if RELOAD_RUN is None:
 
         for m in model_concat:
 
-            if m in ('location', 'dsr', 'bttn_prev', 'bttn_next', 'bttn_curr', 'uncover'):
+            if m in ('location', 'dsr', 'dsr_fmri', 'bttn_prev', 'bttn_next', 'bttn_curr', 'uncover'):
                 model_RDMs[m] = mc.analyse.my_RSA.compute_hamming_distance(
                     model_concat[m], plotting=False, include_diagonal=False,
                     model_name=m, no_tasks=len(configs))
@@ -654,9 +935,29 @@ if RELOAD_RUN is None:
                     block_size=N_CONDS_PER_CONF)
 
 
-        # make nans in repeat counter to 0
-        nan_mask_feedback = np.isnan(model_RDMs['repeat_counter'][0])
-        model_RDMs['repeat_counter'][0][nan_mask_feedback] = 1
+        # Repeat-counter rows are mostly zero, so the cosine RDM has NaN cells
+        # wherever both endpoints are all-zero (norm=0). Replace with 1 (max
+        # cosine dissimilarity) across ALL three RDM-vector dicts so combos
+        # that include 'repeat_counter' don't blow up evaluate_model when run
+        # on the between_tasks / within variants.
+        for _rdm_dict in (model_RDMs, model_RDMs_within, model_RDMs_across):
+            _vec = _rdm_dict['repeat_counter'][0]
+            _vec[np.isnan(_vec)] = 1
+        # Defensive guard for the vector RDMs that actually feed evaluate_model.
+        # Any remaining NaN/inf in any model would crash statsmodels deep
+        # inside evaluate_model; replace with 0 and report which model produced
+        # them so we can investigate rather than silently fudge results.
+        for _label, _rdm_dict in (('split_halves',  model_RDMs),
+                                  ('within',        model_RDMs_within),
+                                  ('between_tasks', model_RDMs_across)):
+            for _m in _rdm_dict:
+                _arr = np.asarray(_rdm_dict[_m][0], dtype=float)
+                if not np.isfinite(_arr).all():
+                    n_bad = int((~np.isfinite(_arr)).sum())
+                    print(f"  [{roi_name}] {_label} / {_m}: {n_bad} non-finite "
+                          f"entries -> replaced with 0")
+                    _arr[~np.isfinite(_arr)] = 0
+                    _rdm_dict[_m][0] = _arr
 
         # ── Publication figures 2 + 3 (shared with rodent pipeline) ────────
         # Built once for the example ROI: data + per-model activations and
@@ -669,9 +970,29 @@ if RELOAD_RUN is None:
             half1_slice = slice(0, N_CONFIGS * N_CONDS_PER_CONF)  # the across-blocks RDM is built from half-1
             fig_model_acts = {m: model_concat[m][half1_slice].T
                               for m in DSR_MODEL_ORDER_HUMAN}
-            fig_model_rdms = {m: full[m] for m in DSR_MODEL_ORDER_HUMAN}
+            fig_model_rdms = {m: np.asarray(full[m], dtype=float).copy()
+                              for m in DSR_MODEL_ORDER_HUMAN}
             fig_data_act   = mat_all_z.T      # (n_neurons, N_CONFIGS*N_CONDS_PER_CONF)
-            fig_data_rdm   = data_RDM_full_z  # (N_CONFIGS*N_CONDS_PER_CONF, ...) square
+            fig_data_rdm   = np.asarray(data_RDM_full_z, dtype=float).copy()
+
+            # CONFIRMATORY view: when the primary pipeline masks out pairs,
+            # NaN those same cells in the pub figure RDMs so the figure shows
+            # ONLY what entered evaluate_model. Diagonal blocks (within-config)
+            # are already masked from the between-tasks variant, so for the
+            # phase-mask we additionally NaN cross-phase OR within-phase cells
+            # depending on the mode.
+            if PHASE_MASK_MODE != 'full':
+                _keep_phase = _phase_mask_matrix(
+                    PHASE_MASK_MODE, N_CONFIGS, N_CONDS_PER_CONF, N_PHASES)
+                _cfg_idx = np.repeat(np.arange(N_CONFIGS), N_CONDS_PER_CONF)
+                _between_cfg = _cfg_idx[:, None] != _cfg_idx[None, :]
+                _keep_for_fig = _keep_phase & _between_cfg
+                fig_data_rdm = np.where(_keep_for_fig, fig_data_rdm, np.nan)
+                for _m in DSR_MODEL_ORDER_HUMAN:
+                    fig_model_rdms[_m] = np.where(_keep_for_fig,
+                                                  fig_model_rdms[_m], np.nan)
+                print(f"[pub fig] masked pub-figure RDMs to mode "
+                      f"'{PHASE_MASK_MODE}' (between-config cells only).")
 
             figs_dir = os.path.join(OUT_DIR, 'pub_figures')
             os.makedirs(figs_dir, exist_ok=True)
@@ -681,8 +1002,9 @@ if RELOAD_RUN is None:
                 model_activations=fig_model_acts, model_rdms=fig_model_rdms,
                 model_order=DSR_MODEL_ORDER_HUMAN,
                 n_tasks=N_CONFIGS, n_conds_per_task=N_CONDS_PER_CONF,
-                recday_label=f'human cells / {roi_name}',
-                save_stem=os.path.join(figs_dir, f'fig2_human_{roi_name}'))
+                recday_label=f'human cells / {roi_name} [{PHASE_MASK_MODE}]',
+                save_stem=os.path.join(figs_dir,
+                                       f'fig2_human_{roi_name}_{PHASE_MASK_MODE}'))
 
             # Fig 3 schematics: one example config from the mode trajectory.
             ex_config_str = configs[0]
@@ -717,19 +1039,76 @@ if RELOAD_RUN is None:
         ]
 
         for test_name, rdm_dict, raw_data, z_data in test_specs:
+            pmask = _phase_mask_for(test_name, PHASE_MASK_MODE)
+            raw_m = _apply_phase_mask(raw_data, pmask)
+            z_m   = _apply_phase_mask(z_data, pmask)
+
             empirical_results[test_name] = {
-                m: eval_tuple(rdm_dict[m][0], raw_data) for m in models
+                m: eval_tuple(_apply_phase_mask(rdm_dict[m][0], pmask), raw_m,
+                              label=f'[{roi_name}] {PHASE_MASK_MODE}/{test_name}/{m}')
+                for m in models
             }
             empirical_results_z[test_name] = {
-                m: eval_tuple(rdm_dict[m][0], z_data) for m in models
+                m: eval_tuple(_apply_phase_mask(rdm_dict[m][0], pmask), z_m,
+                              label=f'[{roi_name}] {PHASE_MASK_MODE}/{test_name}_z/{m}')
+                for m in models
             }
 
 
-            empirical_combo_results[test_name] = {combo: mc.analyse.my_RSA.evaluate_model(
-                build_combo_rdm(rdm_dict, combo_models[combo]), raw_data) for combo in combo_models}
+            empirical_combo_results[test_name] = {
+                combo: evaluate_combo_safe(
+                    _apply_phase_mask(build_combo_rdm(rdm_dict, combo_models[combo]), pmask),
+                    raw_m, combo_models[combo],
+                    label=f'[{roi_name}] {PHASE_MASK_MODE}/{test_name}/{combo}')
+                for combo in combo_models}
 
-            empirical_combo_results_z[test_name] = {combo: mc.analyse.my_RSA.evaluate_model(
-                    build_combo_rdm(rdm_dict, combo_models[combo]), z_data)for combo in combo_models}
+            empirical_combo_results_z[test_name] = {
+                combo: evaluate_combo_safe(
+                    _apply_phase_mask(build_combo_rdm(rdm_dict, combo_models[combo]), pmask),
+                    z_m, combo_models[combo],
+                    label=f'[{roi_name}] {PHASE_MASK_MODE}/{test_name}_z/{combo}')
+                for combo in combo_models}
+
+        # ── Mode comparison: empirical-only RSA for all 3 phase modes ────
+        # Cheap (no permutations) — uses the SAME model + data RDMs and just
+        # applies a different mask per mode. Stored separately from the primary
+        # results above and consumed by the cross-ROI comparison heatmap.
+        if RUN_PHASE_MODE_COMPARISON:
+            for mode in ALL_PHASE_MODES:
+                roi_mode_comparison.setdefault(mode, {})[roi_name] = {}
+                for test_name, rdm_dict, raw_data, z_data in test_specs:
+                    pmask = _phase_mask_for(test_name, mode)
+                    raw_m = _apply_phase_mask(raw_data, pmask)
+                    z_m   = _apply_phase_mask(z_data, pmask)
+                    roi_mode_comparison[mode][roi_name][test_name] = {
+                        'raw_single': {
+                            m: eval_tuple(
+                                _apply_phase_mask(rdm_dict[m][0], pmask), raw_m,
+                                label=f'[{roi_name}] {mode}/{test_name}/{m}')
+                            for m in models},
+                        'z_single': {
+                            m: eval_tuple(
+                                _apply_phase_mask(rdm_dict[m][0], pmask), z_m,
+                                label=f'[{roi_name}] {mode}/{test_name}_z/{m}')
+                            for m in models},
+                        'raw_combo': {
+                            combo: evaluate_combo_safe(
+                                _apply_phase_mask(
+                                    build_combo_rdm(rdm_dict, combo_models[combo]), pmask),
+                                raw_m, combo_models[combo],
+                                label=f'[{roi_name}] {mode}/{test_name}/{combo}')
+                            for combo in combo_models},
+                        'z_combo': {
+                            combo: evaluate_combo_safe(
+                                _apply_phase_mask(
+                                    build_combo_rdm(rdm_dict, combo_models[combo]), pmask),
+                                z_m, combo_models[combo],
+                                label=f'[{roi_name}] {mode}/{test_name}_z/{combo}')
+                            for combo in combo_models},
+                        'n_pairs_kept': int(pmask.sum()) if pmask is not None else int(
+                            np.asarray(raw_data).size),
+                        'n_pairs_total': int(np.asarray(raw_data).size),
+                    }
 
 
 
@@ -799,13 +1178,21 @@ if RELOAD_RUN is None:
                 ]
 
                 for test_name, rdm_dict, data_rdm in perm_specs:
+                    pmask = _phase_mask_for(test_name, PHASE_MASK_MODE)
+                    data_m = _apply_phase_mask(data_rdm, pmask)
+
                     for m in models:
-                        beta = eval_tuple(rdm_dict[m][0], data_rdm)[1]
+                        beta = eval_tuple(
+                            _apply_phase_mask(rdm_dict[m][0], pmask), data_m,
+                            label=f'perm/{test_name}/{m}')[1]
                         perm_results[test_name][m].append(beta)
 
                     for combo, combo_list in combo_models.items():
-                        stacked = build_combo_rdm(rdm_dict, combo_list)
-                        res = mc.analyse.my_RSA.evaluate_model(stacked, data_rdm)
+                        stacked = _apply_phase_mask(
+                            build_combo_rdm(rdm_dict, combo_list), pmask)
+                        res = evaluate_combo_safe(
+                            stacked, data_m, combo_list,
+                            label=f'perm/{test_name}/{combo}')
 
                         perm_results_combo[test_name][combo]['t'].append(np.asarray(res[0], dtype=float).ravel())
                         perm_results_combo[test_name][combo]['beta'].append(np.asarray(res[1], dtype=float).ravel())
@@ -1053,19 +1440,10 @@ if RELOAD_RUN is None:
             #('within',         'raw'), ('within_z',          'z'),
             ('between_tasks',   'raw'), ('between_tasks_z',   'z'),
         ]
-        # Internal cache keys still use the old short labels — they're
-        # private to this loop and not exposed in any output.
-        test_to_emp_key = {
-            'split_halves':     'crossval',
-            'split_halves_z':   'crossval',
-            #'within':          'within',
-            #'within_z':        'within',
-            'between_tasks':    'across',
-            'between_tasks_z':  'across',
-        }
-
         for test_name, kind in test_pairs:
-            emp_key = test_to_emp_key[test_name]
+            # empirical_results / empirical_results_z are keyed by the BASE
+            # test name (no '_z' suffix); perm_results carries the suffix.
+            emp_key = test_name[:-2] if test_name.endswith('_z') else test_name
             emp_dict = empirical_results if kind == 'raw' else empirical_results_z
             for m in models:
                 t_val, beta_val, p_param = emp_dict[emp_key][m]
@@ -1138,6 +1516,145 @@ if RELOAD_RUN is None:
     summary_df.to_csv(summary_csv, index=False)
     summary_combo_df.to_csv(summary_combo_csv, index=False)
     print(f"\nSaved overview tables:\n  {summary_csv}\n  {summary_combo_csv}")
+
+    # ── Phase-mode comparison: betas across full / within / across ────────
+    # Empirical (no-permutation) betas for the primary test variant under each
+    # phase-mask mode. One figure per single-model row (1 column wide) AND
+    # one figure per combo (n_sub_models wide), so we can see whether a result
+    # that looks negative in one mode is positive in another and by how much.
+    if RUN_PHASE_MODE_COMPARISON and roi_mode_comparison:
+        cmp_dir = os.path.join(OUT_DIR, 'phase_mode_comparison')
+        os.makedirs(cmp_dir, exist_ok=True)
+        cmp_test_name = FDR_TEST                          # e.g. 'between_tasks_z'
+        cmp_base = (cmp_test_name[:-2]
+                    if cmp_test_name.endswith('_z') else cmp_test_name)
+        cmp_combo_key  = ('z_combo'
+                          if cmp_test_name.endswith('_z') else 'raw_combo')
+        cmp_single_key = ('z_single'
+                          if cmp_test_name.endswith('_z') else 'raw_single')
+
+        # Long-format CSVs: one for single-model rows, one for combo rows.
+        single_rows, combo_rows = [], []
+        for _mode, per_roi in roi_mode_comparison.items():
+            for _roi, per_test in per_roi.items():
+                _entry = per_test.get(cmp_base)
+                if _entry is None:
+                    continue
+                # single models
+                for m, (t_v, b_v, p_v) in _entry[cmp_single_key].items():
+                    single_rows.append({
+                        'mode':          _mode,
+                        'roi':           _roi,
+                        'model':         m,
+                        't':             float(t_v) if np.isfinite(t_v) else np.nan,
+                        'beta':          float(b_v) if np.isfinite(b_v) else np.nan,
+                        'p_param':       float(p_v) if np.isfinite(p_v) else np.nan,
+                        'n_pairs_kept':  _entry['n_pairs_kept'],
+                        'n_pairs_total': _entry['n_pairs_total'],
+                    })
+                # combo models
+                for combo, res in _entry[cmp_combo_key].items():
+                    _t    = np.asarray(res[0], dtype=float).ravel()
+                    _beta = np.asarray(res[1], dtype=float).ravel()
+                    _p    = np.asarray(res[2], dtype=float).ravel()
+                    for sub_idx, sub_model in enumerate(combo_models[combo]):
+                        combo_rows.append({
+                            'mode':       _mode,
+                            'roi':        _roi,
+                            'combo':      combo,
+                            'sub_model':  sub_model,
+                            't':          float(_t[sub_idx]),
+                            'beta':       float(_beta[sub_idx]),
+                            'p_param':    float(_p[sub_idx]),
+                            'n_pairs_kept':  _entry['n_pairs_kept'],
+                            'n_pairs_total': _entry['n_pairs_total'],
+                        })
+
+        single_df = pd.DataFrame(single_rows)
+        combo_df  = pd.DataFrame(combo_rows)
+        single_csv = os.path.join(cmp_dir,
+                                  f'phase_mode_comparison_singles_{cmp_test_name}.csv')
+        combo_csv  = os.path.join(cmp_dir,
+                                  f'phase_mode_comparison_combos_{cmp_test_name}.csv')
+        single_df.to_csv(single_csv, index=False)
+        combo_df.to_csv(combo_csv, index=False)
+        print(f"\nSaved phase-mode comparison CSVs:\n  {single_csv}\n  {combo_csv}")
+
+        def _draw_mode_heatmaps(df, columns, col_axis, suptitle, save_stem):
+            """Three side-by-side ROI x ``columns`` β heatmaps, one per mode.
+
+            ``col_axis`` is the column name in ``df`` used to pivot horizontally
+            ('model' for singles, 'sub_model' for combos). ``columns`` is the
+            ordered list of column values to display.
+            """
+            _rois = sorted(df['roi'].unique(),
+                           key=lambda r: list(ROI_RULES).index(r)
+                           if r in ROI_RULES else 999)
+            _grid = {}
+            for _mode in ALL_PHASE_MODES:
+                _g = (df[df['mode'] == _mode]
+                      .pivot_table(index='roi', columns=col_axis,
+                                   values='beta'))
+                _g = _g.reindex(index=_rois, columns=columns)
+                _grid[_mode] = _g
+            _stack = np.concatenate([g.to_numpy().ravel() for g in _grid.values()])
+            _lim = float(np.nanmax(np.abs(_stack)))
+            if not np.isfinite(_lim) or _lim == 0:
+                _lim = 1.0
+
+            n_cols = max(len(columns), 1)
+            fig, axes = plt.subplots(
+                1, 3,
+                figsize=(max(2.6, 0.7 * n_cols + 1.6) * 3,
+                         0.55 * len(_rois) + 1.6),
+                sharey=True, constrained_layout=True)
+            for ax, _mode in zip(axes, ALL_PHASE_MODES):
+                G = _grid[_mode].to_numpy()
+                im = ax.imshow(G, cmap='RdBu_r', vmin=-_lim, vmax=_lim,
+                               aspect='auto')
+                ax.set_xticks(np.arange(n_cols))
+                ax.set_xticklabels(columns, rotation=40, ha='right', fontsize=8)
+                ax.set_yticks(np.arange(len(_rois)))
+                ax.set_yticklabels(_rois, fontsize=8)
+                ax.set_title(f'{_mode}', fontsize=10)
+                for i in range(G.shape[0]):
+                    for j in range(G.shape[1]):
+                        v = G[i, j]
+                        if np.isfinite(v):
+                            ax.text(j, i, f'{v:.2f}',
+                                    ha='center', va='center', fontsize=7,
+                                    color='white' if abs(v) > 0.55 * _lim
+                                    else 'black')
+            cbar = fig.colorbar(im, ax=axes, shrink=0.8, pad=0.02)
+            cbar.set_label('empirical β', fontsize=9)
+            fig.suptitle(suptitle, fontsize=11)
+            png = f'{save_stem}.png'
+            fig.savefig(png, dpi=150, bbox_inches='tight')
+            plt.show()
+            return png
+
+        # Single-model heatmap (all single models in one figure x 3 modes).
+        if not single_df.empty:
+            png = _draw_mode_heatmaps(
+                single_df, columns=list(models), col_axis='model',
+                suptitle=f'Phase-mode comparison — single models  ({cmp_test_name})',
+                save_stem=os.path.join(
+                    cmp_dir, f'phase_mode_comparison_singles_{cmp_test_name}'))
+            print(f"  saved {png}")
+
+        # One figure per combo.
+        if not combo_df.empty:
+            for combo, sub_models in combo_models.items():
+                _cdf = combo_df[combo_df['combo'] == combo]
+                if _cdf.empty:
+                    continue
+                png = _draw_mode_heatmaps(
+                    _cdf, columns=list(sub_models), col_axis='sub_model',
+                    suptitle=f'Phase-mode comparison — combo {combo}  ({cmp_test_name})',
+                    save_stem=os.path.join(
+                        cmp_dir,
+                        f'phase_mode_comparison_combo_{combo}_{cmp_test_name}'))
+                print(f"  saved {png}")
 else:
     # Reload mode: pull summary CSVs (and electrode coords if saved) from disk.
     summary_df = pd.read_csv(os.path.join(OUT_DIR, 'results_summary.csv'))

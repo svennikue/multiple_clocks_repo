@@ -38,7 +38,7 @@ OUT_BASE    = f"{DATA_FOLDER}derivatives/rodent_DSR_RSA/"
 
 NUMBER_PHASE_NEURONS = 3
 N_CONDS_PER_CONFIG   = 12       # 12 conditions / task config (matches human pipeline)
-MODEL_ORDER_DSR      = ['dsr', 'phas', 'loc', 'stat']
+MODEL_ORDER_DSR      = ['dsr', 'phas', 'loc', 'midn', 'stat']
 
 EXAMPLE_RECDAY = None           # None -> pick the recday with the most neurons
 N_JOBS         = -1             # joblib: -1 = all cores, 1 = serial (for debugging)

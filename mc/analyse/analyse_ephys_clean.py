@@ -33,7 +33,7 @@ import mc.plotting.figure_layout as figure_layout  # A4-aware figsize helper
 
 # the four models entering the GLM (midnight deliberately excluded), in the
 # order GLM_RDMs returns them (alphabetical).
-REGRESSORS_TO_INCLUDE = ['clo_model', 'loc_model', 'phas_model', 'stat_model']
+REGRESSORS_TO_INCLUDE = ['clo_model', 'loc_model', 'phas_model', 'stat_model', 'midnight']
 
 # human-readable labels for each model. Used by both the rodent pipeline and
 # the human-cells pipeline (scripts/RSA_DSR_ROIs_simple.py); multiple aliases
@@ -46,7 +46,7 @@ MODEL_LABELS = {
     'phas_model': 'Subgoal Progress', 'phas': 'Subgoal Progress',
     # human-cells pipeline aliases
     'dsr_old':      'DSR',
-    'midnight':     'DSR (only current)',
+    'midnight':     'DSR (only current)', 'midn': 'DSR (only current)',
     'state':        'Location in Task',
     'location_old': 'Physical Location',
     'phase':        'Subgoal Progress',
@@ -708,7 +708,7 @@ def _build_dsr_model_cols(locations_all, no_phase_neurons, pool_method, N, binle
           model per task from it.
         - ``'per_run_avg'``: build one model per trial, average across trials.
     """
-    out = {'dsr': [], 'stat': [], 'loc': [], 'phas': []}
+    out = {'dsr': [], 'stat': [], 'loc': [], 'phas': [], 'midn': []}
     no_tasks = len(locations_all)
 
     for task_no in range(no_tasks):
@@ -716,24 +716,28 @@ def _build_dsr_model_cols(locations_all, no_phase_neurons, pool_method, N, binle
 
         if pool_method == 'mode_path':
             walked = _mode_path_360(trial_locs)
-            loc_m, phas_m, stat_m, _, dsr_m, _, _ = predictions.model_DSR(
+            loc_m, phas_m, stat_m, midn_m, dsr_m, _, _ = predictions.model_DSR(
                 locations=walked, no_phase_neurons=no_phase_neurons)
-            per_task = {'dsr': dsr_m, 'stat': stat_m, 'loc': loc_m, 'phas': phas_m}
+            per_task = {'dsr': dsr_m, 'stat': stat_m, 'loc': loc_m,
+                        'phas': phas_m, 'midn': midn_m}
 
         elif pool_method == 'per_run_avg':
             sums = None
             for t in range(trial_locs.shape[0]):
                 walked = _clean_node_path(trial_locs[t])
-                loc_m, phas_m, stat_m, _, dsr_m, _, _ = predictions.model_DSR(
+                # loc_model, phas_model, stat_model, midn_model, clo_model, phas_stat, clo_model_subpath
+                loc_m, phas_m, stat_m, midn_m, dsr_m, _, _ = predictions.model_DSR(
                     locations=walked, no_phase_neurons=no_phase_neurons)
                 if sums is None:
                     sums = {'dsr': dsr_m.copy(), 'stat': stat_m.copy(),
-                            'loc': loc_m.copy(), 'phas': phas_m.copy()}
+                            'loc': loc_m.copy(), 'phas': phas_m.copy(),
+                            'midn': midn_m.copy()}
                 else:
                     sums['dsr']  += dsr_m
                     sums['stat'] += stat_m
                     sums['loc']  += loc_m
                     sums['phas'] += phas_m
+                    sums['midn'] += midn_m
             n_trials = trial_locs.shape[0]
             per_task = {k: v / n_trials for k, v in sums.items()}
 
@@ -925,15 +929,16 @@ def reg_across_task_halves_DSR(task_configs, locations_all, neurons, timings_all
         no_tasks=K, model=f'half-split {mouse_recday}')[0]
 
     def _half_models(half):
-        """Build the four model RDM-input matrices for one half: (K*N, features)."""
-        per_model = {'dsr': [], 'stat': [], 'loc': [], 'phas': []}
+        """Build the five model RDM-input matrices for one half: (K*N, features)."""
+        per_model = {'dsr': [], 'stat': [], 'loc': [], 'phas': [], 'midn': []}
         for cfg_info in qualifying:
             idxs = cfg_info[f'half{half}_indices']
             loc_concat = np.concatenate([locations_all[i] for i in idxs], axis=0)
             walked = _mode_path_360(loc_concat)
-            loc_m, phas_m, stat_m, _, dsr_m, _, _ = predictions.model_DSR(
+            loc_m, phas_m, stat_m, midn_m, dsr_m, _, _ = predictions.model_DSR(
                 locations=walked, no_phase_neurons=no_phase_neurons)
-            for key, M in [('dsr', dsr_m), ('stat', stat_m), ('loc', loc_m), ('phas', phas_m)]:
+            for key, M in [('dsr', dsr_m), ('stat', stat_m), ('loc', loc_m),
+                           ('phas', phas_m), ('midn', midn_m)]:
                 per_model[key].append(M.reshape(M.shape[0], N, binlen).mean(axis=2))
         return {k: np.hstack(v).T for k, v in per_model.items()}
 
@@ -941,13 +946,13 @@ def reg_across_task_halves_DSR(task_configs, locations_all, neurons, timings_all
     h2_models = _half_models(2)
 
     model_RDMs = {}
-    for k in ('dsr', 'stat', 'loc', 'phas'):
+    for k in ('dsr', 'stat', 'loc', 'phas', 'midn'):
         m_combined = np.vstack([h1_models[k], h2_models[k]])
         model_RDMs[k] = my_RSA.compute_crosscorr(
             m_combined, plotting=False, include_diagonal=False,
             no_tasks=K, model=k)[0]
 
-    order = ['dsr', 'stat', 'loc', 'phas']
+    order = ['dsr', 'stat', 'loc', 'phas', 'midn']
     stacked = np.stack([model_RDMs[k] for k in order], axis=1)
     t_vals, betas, p_vals = my_RSA.evaluate_model(stacked, np.asarray(data_vec))
 
@@ -1048,14 +1053,15 @@ def dsr_across_halves_matrices(task_configs, locations_all, neurons, timings_all
     data_rdm = data_rdm + data_rdm.T
 
     def _half_models(half):
-        out = {'dsr': [], 'stat': [], 'loc': [], 'phas': []}
+        out = {'dsr': [], 'stat': [], 'loc': [], 'phas': [], 'midn': []}
         for q in qualifying:
             idxs = q[f'half{half}_indices']
             loc_concat = np.concatenate([locations_all[i] for i in idxs], axis=0)
             walked = _mode_path_360(loc_concat)
-            loc_m, phas_m, stat_m, _, dsr_m, _, _ = predictions.model_DSR(
+            loc_m, phas_m, stat_m, midn_m, dsr_m, _, _ = predictions.model_DSR(
                 locations=walked, no_phase_neurons=no_phase_neurons)
-            for key, MM in [('dsr', dsr_m), ('stat', stat_m), ('loc', loc_m), ('phas', phas_m)]:
+            for key, MM in [('dsr', dsr_m), ('stat', stat_m), ('loc', loc_m),
+                            ('phas', phas_m), ('midn', midn_m)]:
                 out[key].append(MM.reshape(MM.shape[0], N, binlen).mean(axis=2))
         return {k: np.hstack(v) for k, v in out.items()}
 
@@ -1157,8 +1163,8 @@ def reg_across_tasks_DSR(task_configs, locations_all, neurons, timings_all, mous
         model_RDM['within_z'][key] = within[0]
         model_RDM['full_z'][key] = _upper_no_diag(full)
 
-    # --- one GLM with all four model RDMs (parallel to a my_RSA combo) -------
-    order = ['dsr', 'stat', 'loc', 'phas']
+    # --- one GLM with all five model RDMs (parallel to a my_RSA combo) -------
+    order = ['dsr', 'stat', 'loc', 'phas', 'midn']
     result = {
         variant: _evaluate_dsr_variant(model_RDM[variant], data_vectors[variant], order)
         for variant in ['across_z', 'within_z', 'full_z']

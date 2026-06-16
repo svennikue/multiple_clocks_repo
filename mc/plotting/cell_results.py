@@ -79,6 +79,7 @@ CANONICAL_ENC_MODEL_ORDER = [
 # RSA model names (RSA_DSR_ROIs_simple.py uses 'dsr_old' rather than 'dsr').
 CANONICAL_RSA_MODEL_ORDER = [
     'dsr_old',
+    'dsr_fmri',
     'dsr_old_now_next',
     'state',
     'state_phase',

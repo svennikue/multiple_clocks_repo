@@ -48,14 +48,17 @@ import mc
 
 DATA_DIR = '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives'
 OUT_BASE = os.path.join(DATA_DIR, 'group', 'State_RSA_simple_ROI')
-RELOAD_RUN = '2026-06-15_09-55-28' #None     # e.g. '2026-06-12_14-17-48' — reuse saved CSVs +
-                       # perm nulls from this run and only re-render figures.
-                       # Empirical fits + data RDMs are recomputed from the
-                       # cached averaged-trial .npy files (cheap), so any
-                       # changes to model regressors will recompute the
-                       # empirical OLS but reuse the saved permutation nulls.
-                       # Set this when you want to iterate on plots /
-                       # regressors without paying the ~30 min perm cost.
+RELOAD_RUN = '2026-06-15_15-56-53' #None #'2026-06-15_09-55-28' #None     # e.g. '2026-06-12_14-17-48' — RELOAD MODE.
+                       # When set, skip ALL heavy compute (no SUBJECT_DATA
+                       # load, no empirical RSA fits, no permutation loop)
+                       # and instead load every artifact from this prior
+                       # run folder: results CSVs, perm null .npz files,
+                       # data RDMs, electrode coords, and model RDMs.
+                       # Then jump straight to the figure stage so you can
+                       # iterate on plots without paying any compute cost.
+                       # The prior run MUST have completed (i.e. saved
+                       # data_rdms_by_roi.npz, electrode_coords.json,
+                       # model_rdms.npz alongside the CSVs/perm npz).
 
 N_BINS    = 360       # raw bin count per half-config / run
 N_STATES  = 4
@@ -1058,11 +1061,25 @@ else:
 # ── Build model RDMs (once — same for every ROI) ──────────────────────
 # ══════════════════════════════════════════════════════════════════════
 
-print("\nBuilding model RDMs (state-only) for all_cells branch...")
-model_rdms_all = build_model_rdms_state_only(N_GROUPS_ALL, TESTS)
-
-print("Building model RDMs (combos) for rsa_cells branch...")
-model_rdms_rsa = build_model_rdms_rsa_cells(DSR_CONFIGS, TESTS)
+MODEL_RDMS_PATH = os.path.join(OUT_DIR, 'model_rdms.npz')
+if RELOAD_RUN is not None and os.path.isfile(MODEL_RDMS_PATH):
+    print(f"\nLoading model RDMs from {MODEL_RDMS_PATH} ...")
+    _mr = np.load(MODEL_RDMS_PATH, allow_pickle=False)
+    model_rdms_all = {v: {} for v in TESTS}
+    model_rdms_rsa = {v: {} for v in TESTS}
+    for k in _mr.files:
+        branch, variant, name = k.split('__', 2)
+        if branch == 'all':
+            model_rdms_all.setdefault(variant, {})[name] = _mr[k]
+        else:
+            model_rdms_rsa.setdefault(variant, {})[name] = _mr[k]
+    print(f"  loaded {sum(len(v) for v in model_rdms_all.values())} all-cells "
+          f"+ {sum(len(v) for v in model_rdms_rsa.values())} rsa-cells model RDMs")
+else:
+    print("\nBuilding model RDMs (state-only) for all_cells branch...")
+    model_rdms_all = build_model_rdms_state_only(N_GROUPS_ALL, TESTS)
+    print("Building model RDMs (combos) for rsa_cells branch...")
+    model_rdms_rsa = build_model_rdms_rsa_cells(DSR_CONFIGS, TESTS)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -1115,14 +1132,15 @@ square_rdms_by_roi = {'all_cells': {}, 'rsa_cells': {}}
 # identical to DSR's `acc_neurons_all[conf]` and `perm_ACC_neurons_all[conf]`.
 # ══════════════════════════════════════════════════════════════════════
 
-# Cache all subject data once via the canonical loader.
-print("\nLoading SUBJECT_DATA via mc.analyse.helpers_human_cells.load_norm_data ...")
-ALL_SUBS_UNION = sorted(set(ALL_CELLS_SUBJECTS) | set(RSA_CELLS_SUBJECTS))
+# Cache all subject data once via the canonical loader. Skipped in RELOAD mode.
 SUBJECT_DATA = {}
-for sub_str in ALL_SUBS_UNION:
-    SUBJECT_DATA[sub_str] = mc.analyse.helpers_human_cells.load_norm_data(
-        DATA_DIR, [sub_str])
-print(f"  cached data for {len(SUBJECT_DATA)} subjects.")
+if RELOAD_RUN is None:
+    print("\nLoading SUBJECT_DATA via mc.analyse.helpers_human_cells.load_norm_data ...")
+    ALL_SUBS_UNION = sorted(set(ALL_CELLS_SUBJECTS) | set(RSA_CELLS_SUBJECTS))
+    for sub_str in ALL_SUBS_UNION:
+        SUBJECT_DATA[sub_str] = mc.analyse.helpers_human_cells.load_norm_data(
+            DATA_DIR, [sub_str])
+    print(f"  cached data for {len(SUBJECT_DATA)} subjects.")
 
 
 def _build_pseudo_cfg_trial_indices(subjects):
@@ -1185,10 +1203,13 @@ def _build_rsa_cfg_trial_indices(subjects):
     return out
 
 
-pseudo_cfg_idx = _build_pseudo_cfg_trial_indices(ALL_CELLS_SUBJECTS)
-rsa_cfg_idx    = _build_rsa_cfg_trial_indices(RSA_CELLS_SUBJECTS)
-print(f"  pseudo-config trial maps : {len(pseudo_cfg_idx)} subjects")
-print(f"  rsa-config trial maps    : {len(rsa_cfg_idx)} subjects")
+if RELOAD_RUN is None:
+    pseudo_cfg_idx = _build_pseudo_cfg_trial_indices(ALL_CELLS_SUBJECTS)
+    rsa_cfg_idx    = _build_rsa_cfg_trial_indices(RSA_CELLS_SUBJECTS)
+    print(f"  pseudo-config trial maps : {len(pseudo_cfg_idx)} subjects")
+    print(f"  rsa-config trial maps    : {len(rsa_cfg_idx)} subjects")
+else:
+    pseudo_cfg_idx, rsa_cfg_idx = {}, {}
 
 
 def _ds_360_to_BPC(vec_360):
@@ -1454,112 +1475,227 @@ def _run_branch_dsr_style(branch, subjects, cfg_idx_per_sub, n_cfg,
     return results_rows, nulls
 
 
-# Run both branches.
-print("\n========== Branch 1: all_cells (state-only) ==========")
-emp_rows_all, null_all_dict = _run_branch_dsr_style(
-    'all_cells', ALL_CELLS_SUBJECTS, pseudo_cfg_idx, N_GROUPS_ALL,
-    model_rdms_all, [('state_only', None)])
+if RELOAD_RUN is None:
+    # Run both branches.
+    print("\n========== Branch 1: all_cells (state-only) ==========")
+    emp_rows_all, null_all_dict = _run_branch_dsr_style(
+        'all_cells', ALL_CELLS_SUBJECTS, pseudo_cfg_idx, N_GROUPS_ALL,
+        model_rdms_all, [('state_only', None)])
 
-print("\n========== Branch 2: rsa_cells (combos) ==========")
-emp_rows_rsa, null_rsa_dict = _run_branch_dsr_style(
-    'rsa_cells', RSA_CELLS_SUBJECTS, rsa_cfg_idx, N_CONFIGS_RSA,
-    model_rdms_rsa, list(RSA_COMBOS.items()))
+    print("\n========== Branch 2: rsa_cells (combos) ==========")
+    emp_rows_rsa, null_rsa_dict = _run_branch_dsr_style(
+        'rsa_cells', RSA_CELLS_SUBJECTS, rsa_cfg_idx, N_CONFIGS_RSA,
+        model_rdms_rsa, list(RSA_COMBOS.items()))
 
-emp_results_all = emp_rows_all
-emp_results_rsa = emp_rows_rsa
-null_all = null_all_dict
-null_rsa = null_rsa_dict
-
-
-# ── Combine empirical β/t/p with null β to produce p_perm + z_perm.
-# `emp_results_all` / `emp_results_rsa` are now lists of dicts (one row
-# per (roi, test, combo, sub_model)) coming from the DSR-style loop.
-for row in emp_results_all:
-    key = (row['roi'], row['test'], 'state_only', row['sub_model'])
-    null = null_all.get(key)
-    if null is None:
-        continue
-    beta = row['beta']
-    p_perm = (int(np.sum(null >= beta)) + 1) / (N_PERMUTATIONS + 1)
-    z_perm = float((beta - null.mean()) / null.std()) \
-        if null.std() > 0 else np.nan
-    perm_nulls['all_cells'][(row['roi'], row['test'])] = null
-    results_rows.append({**row, 'p_perm': p_perm, 'z_perm': z_perm})
-
-for row in emp_results_rsa:
-    key = (row['roi'], row['test'], row['combo'], row['sub_model'])
-    null = null_rsa.get(key)
-    if null is None:
-        continue
-    beta = row['beta']
-    p_perm = (int(np.sum(null >= beta)) + 1) / (N_PERMUTATIONS + 1)
-    z_perm = float((beta - null.mean()) / null.std()) \
-        if null.std() > 0 else np.nan
-    perm_nulls['rsa_cells'][
-        (row['roi'], row['combo'], row['test'], row['sub_model'])] = null
-    results_combo_rows.append({**row, 'p_perm': p_perm, 'z_perm': z_perm})
+    emp_results_all = emp_rows_all
+    emp_results_rsa = emp_rows_rsa
+    null_all = null_all_dict
+    null_rsa = null_rsa_dict
 
 
-# ══════════════════════════════════════════════════════════════════════
-# ── BH-FDR family for `state` ─────────────────────────────────────────
-# ══════════════════════════════════════════════════════════════════════
+    # ── Combine empirical β/t/p with null β to produce p_perm + z_perm.
+    # `emp_results_all` / `emp_results_rsa` are now lists of dicts (one row
+    # per (roi, test, combo, sub_model)) coming from the DSR-style loop.
+    for row in emp_results_all:
+        key = (row['roi'], row['test'], 'state_only', row['sub_model'])
+        null = null_all.get(key)
+        if null is None:
+            continue
+        beta = row['beta']
+        p_perm = (int(np.sum(null >= beta)) + 1) / (N_PERMUTATIONS + 1)
+        z_perm = float((beta - null.mean()) / null.std()) \
+            if null.std() > 0 else np.nan
+        perm_nulls['all_cells'][(row['roi'], row['test'])] = null
+        results_rows.append({**row, 'p_perm': p_perm, 'z_perm': z_perm})
 
-results_df       = pd.DataFrame(results_rows)
-results_combo_df = pd.DataFrame(results_combo_rows)
-
-# All-cells branch: BH-FDR over the 7 substantive ROIs at PRIMARY_TEST.
-for df_ref, fam_mask in [
-    (results_df,
-     (results_df['test'] == PRIMARY_TEST)
-     & (results_df['roi'].isin(FDR_ROIS))),
-    (results_combo_df,
-     (results_combo_df['test']      == PRIMARY_TEST)
-     & (results_combo_df['combo']   == FDR_COMBO)
-     & (results_combo_df['sub_model'] == FDR_SUBMODEL)
-     & (results_combo_df['roi'].isin(FDR_ROIS))),
-]:
-    df_ref['in_fdr_family'] = False
-    df_ref.loc[fam_mask, 'in_fdr_family'] = True
-    df_ref['p_fdr'] = np.nan
-    if fam_mask.any():
-        df_ref.loc[fam_mask, 'p_fdr'] = bh_fdr(
-            df_ref.loc[fam_mask, 'p_perm'].to_numpy())
+    for row in emp_results_rsa:
+        key = (row['roi'], row['test'], row['combo'], row['sub_model'])
+        null = null_rsa.get(key)
+        if null is None:
+            continue
+        beta = row['beta']
+        p_perm = (int(np.sum(null >= beta)) + 1) / (N_PERMUTATIONS + 1)
+        z_perm = float((beta - null.mean()) / null.std()) \
+            if null.std() > 0 else np.nan
+        perm_nulls['rsa_cells'][
+            (row['roi'], row['combo'], row['test'], row['sub_model'])] = null
+        results_combo_rows.append({**row, 'p_perm': p_perm, 'z_perm': z_perm})
 
 
-# Save CSVs.
-results_df.to_csv(os.path.join(OUT_DIR, 'results_summary.csv'), index=False)
-results_combo_df.to_csv(
-    os.path.join(OUT_DIR, 'results_summary_combos.csv'), index=False)
-print(f"\nSaved CSVs: results_summary.csv, results_summary_combos.csv")
+    # ══════════════════════════════════════════════════════════════════════
+    # ── BH-FDR family for `state` ─────────────────────────────────────────
+    # ══════════════════════════════════════════════════════════════════════
 
-# Confirmatory FDR table.
-fam_all = results_df[results_df['in_fdr_family']].copy().sort_values('p_fdr')
-fam_combo = results_combo_df[results_combo_df['in_fdr_family']].copy().sort_values('p_fdr')
-fam_all.to_csv(os.path.join(OUT_DIR, 'confirmatory_fdr_all_cells.csv'),
-               index=False)
-fam_combo.to_csv(os.path.join(OUT_DIR, 'confirmatory_fdr_rsa_cells.csv'),
-                 index=False)
+    results_df       = pd.DataFrame(results_rows)
+    results_combo_df = pd.DataFrame(results_combo_rows)
 
-# Save perm nulls (npz; one entry per key).
-all_cells_nulls = {f'{roi}__{test}': v
-                   for (roi, test), v in perm_nulls['all_cells'].items()}
-np.savez(os.path.join(OUT_DIR, 'perm_nulls_all_cells.npz'),
-         **all_cells_nulls)
-rsa_cells_nulls = {f'{roi}__{combo}__{test}__{sm}': v
-                   for (roi, combo, test, sm), v
-                   in perm_nulls['rsa_cells'].items()}
-np.savez(os.path.join(OUT_DIR, 'perm_nulls_rsa_cells.npz'),
-         **rsa_cells_nulls)
-print("Saved permutation nulls.")
+    # All-cells branch: BH-FDR over the 7 substantive ROIs at PRIMARY_TEST.
+    for df_ref, fam_mask in [
+        (results_df,
+         (results_df['test'] == PRIMARY_TEST)
+         & (results_df['roi'].isin(FDR_ROIS))),
+        (results_combo_df,
+         (results_combo_df['test']      == PRIMARY_TEST)
+         & (results_combo_df['combo']   == FDR_COMBO)
+         & (results_combo_df['sub_model'] == FDR_SUBMODEL)
+         & (results_combo_df['roi'].isin(FDR_ROIS))),
+    ]:
+        df_ref['in_fdr_family'] = False
+        df_ref.loc[fam_mask, 'in_fdr_family'] = True
+        df_ref['p_fdr'] = np.nan
+        if fam_mask.any():
+            df_ref.loc[fam_mask, 'p_fdr'] = bh_fdr(
+                df_ref.loc[fam_mask, 'p_perm'].to_numpy())
 
-# Pretty-print the confirmatory family.
-print("\n=== Confirmatory FDR family — all_cells × state ===")
-print(fam_all[['roi', 'n_neurons', 'beta', 't', 'z_perm', 'p_perm', 'p_fdr']]
-      .to_string(index=False))
-print("\n=== Confirmatory FDR family — rsa_cells × state (combo "
-      f"{FDR_COMBO}) ===")
-print(fam_combo[['roi', 'n_neurons', 'beta', 't', 'z_perm', 'p_perm', 'p_fdr']]
-      .to_string(index=False))
+
+    # Save CSVs.
+    results_df.to_csv(os.path.join(OUT_DIR, 'results_summary.csv'), index=False)
+    results_combo_df.to_csv(
+        os.path.join(OUT_DIR, 'results_summary_combos.csv'), index=False)
+    print(f"\nSaved CSVs: results_summary.csv, results_summary_combos.csv")
+
+    # Confirmatory FDR table.
+    fam_all = results_df[results_df['in_fdr_family']].copy().sort_values('p_fdr')
+    fam_combo = results_combo_df[results_combo_df['in_fdr_family']].copy().sort_values('p_fdr')
+    fam_all.to_csv(os.path.join(OUT_DIR, 'confirmatory_fdr_all_cells.csv'),
+                   index=False)
+    fam_combo.to_csv(os.path.join(OUT_DIR, 'confirmatory_fdr_rsa_cells.csv'),
+                     index=False)
+
+    # Save perm nulls (npz; one entry per key).
+    all_cells_nulls = {f'{roi}__{test}': v
+                       for (roi, test), v in perm_nulls['all_cells'].items()}
+    np.savez(os.path.join(OUT_DIR, 'perm_nulls_all_cells.npz'),
+             **all_cells_nulls)
+    rsa_cells_nulls = {f'{roi}__{combo}__{test}__{sm}': v
+                       for (roi, combo, test, sm), v
+                       in perm_nulls['rsa_cells'].items()}
+    np.savez(os.path.join(OUT_DIR, 'perm_nulls_rsa_cells.npz'),
+             **rsa_cells_nulls)
+    print("Saved permutation nulls.")
+
+    # Save data RDMs per ROI (flat vectors; square inflated on reload).
+    data_rdm_dict = {}
+    for branch in ('all_cells', 'rsa_cells'):
+        for roi, vmap in data_rdms_by_roi[branch].items():
+            for variant, vec in vmap.items():
+                data_rdm_dict[f'{branch}__{roi}__{variant}'] = np.asarray(vec)
+    if data_rdm_dict:
+        np.savez(os.path.join(OUT_DIR, 'data_rdms_by_roi.npz'), **data_rdm_dict)
+        print(f"Saved data RDMs ({len(data_rdm_dict)} entries) "
+              "→ data_rdms_by_roi.npz")
+
+    # Save electrode coords (used by F4 glass-brain).
+    electrode_save = {b: {r: {f'{s}-{i}': list(map(float, c))
+                              for (s, i), c in m.items()}
+                          for r, m in roi_map.items()}
+                      for b, roi_map in electrode_coords.items()}
+    with open(os.path.join(OUT_DIR, 'electrode_coords.json'), 'w') as f:
+        json.dump(electrode_save, f, indent=2)
+    print("Saved electrode coords → electrode_coords.json")
+
+    # Save model RDMs (so reload mode can skip the mode-paths rebuild).
+    model_rdm_dict = {}
+    for variant, sub in model_rdms_all.items():
+        for name, vec in sub.items():
+            model_rdm_dict[f'all__{variant}__{name}'] = np.asarray(vec)
+    for variant, sub in model_rdms_rsa.items():
+        for name, vec in sub.items():
+            model_rdm_dict[f'rsa__{variant}__{name}'] = np.asarray(vec)
+    np.savez(os.path.join(OUT_DIR, 'model_rdms.npz'), **model_rdm_dict)
+    print(f"Saved model RDMs ({len(model_rdm_dict)} entries) → model_rdms.npz")
+
+    # Pretty-print the confirmatory family.
+    print("\n=== Confirmatory FDR family — all_cells × state ===")
+    print(fam_all[['roi', 'n_neurons', 'beta', 't', 'z_perm', 'p_perm', 'p_fdr']]
+          .to_string(index=False))
+    print("\n=== Confirmatory FDR family — rsa_cells × state (combo "
+          f"{FDR_COMBO}) ===")
+    print(fam_combo[['roi', 'n_neurons', 'beta', 't', 'z_perm', 'p_perm', 'p_fdr']]
+          .to_string(index=False))
+else:
+    # ══════════════════════════════════════════════════════════════════
+    # ── RELOAD MODE: read all artifacts from a prior run folder ───────
+    # ══════════════════════════════════════════════════════════════════
+    print(f"\n========== RELOAD MODE — loading artifacts from {OUT_DIR} ==========")
+
+    # Results CSVs.
+    results_df       = pd.read_csv(os.path.join(OUT_DIR, 'results_summary.csv'))
+    results_combo_df = pd.read_csv(
+        os.path.join(OUT_DIR, 'results_summary_combos.csv'))
+    fam_all   = results_df[results_df.get('in_fdr_family', False) == True]\
+                    .copy().sort_values('p_fdr')
+    fam_combo = results_combo_df[results_combo_df.get('in_fdr_family', False) == True]\
+                    .copy().sort_values('p_fdr')
+    print(f"  loaded results: {len(results_df)} all-cells rows, "
+          f"{len(results_combo_df)} rsa-cells rows")
+
+    # Perm nulls.
+    p_all_path = os.path.join(OUT_DIR, 'perm_nulls_all_cells.npz')
+    p_rsa_path = os.path.join(OUT_DIR, 'perm_nulls_rsa_cells.npz')
+    if os.path.isfile(p_all_path):
+        _npz = np.load(p_all_path)
+        for k in _npz.files:
+            roi, test = k.split('__')
+            perm_nulls['all_cells'][(roi, test)] = _npz[k]
+    if os.path.isfile(p_rsa_path):
+        _npz = np.load(p_rsa_path)
+        for k in _npz.files:
+            roi, combo, test, sm = k.split('__')
+            perm_nulls['rsa_cells'][(roi, combo, test, sm)] = _npz[k]
+    print(f"  loaded perm nulls: all_cells={len(perm_nulls['all_cells'])}, "
+          f"rsa_cells={len(perm_nulls['rsa_cells'])}")
+
+    # Data RDMs (+ inflate to square for figures).
+    rdm_path = os.path.join(OUT_DIR, 'data_rdms_by_roi.npz')
+    if os.path.isfile(rdm_path):
+        _rdm = np.load(rdm_path)
+        for k in _rdm.files:
+            branch, roi, variant = k.split('__', 2)
+            data_rdms_by_roi[branch].setdefault(roi, {})[variant] = _rdm[k]
+        for branch in ('all_cells', 'rsa_cells'):
+            n_cfg = N_GROUPS_ALL if branch == 'all_cells' else N_CONFIGS_RSA
+            N_total = n_cfg * BINS_PER_CONFIG
+            for roi, vmap in data_rdms_by_roi[branch].items():
+                sq = {}
+                for variant, vec in vmap.items():
+                    if variant.startswith('split_halves'):
+                        sq[variant] = _inflate_split_halves(vec, N_total)
+                    else:
+                        sq[variant] = _inflate_between_tasks(
+                            vec, N_total, BINS_PER_CONFIG)
+                square_rdms_by_roi[branch][roi] = sq
+        n_combos = sum(len(v) for v in data_rdms_by_roi.values())
+        print(f"  loaded data RDMs for {n_combos} ROI×branch combos.")
+    else:
+        print(f"  WARNING: {rdm_path} missing — F1 data panels will be empty.")
+
+    # Electrode coords.
+    ec_path = os.path.join(OUT_DIR, 'electrode_coords.json')
+    if os.path.isfile(ec_path):
+        with open(ec_path) as f:
+            _ec = json.load(f)
+        for b in ('all_cells', 'rsa_cells'):
+            for r, m in _ec.get(b, {}).items():
+                electrode_coords[b].setdefault(r, {})
+                for k, v in m.items():
+                    sub, idx = k.split('-')
+                    electrode_coords[b][r][(int(sub), int(idx))] = tuple(v)
+        n_el = sum(len(m) for b in electrode_coords
+                   for m in electrode_coords[b].values())
+        print(f"  loaded {n_el} electrode coords.")
+    else:
+        print(f"  WARNING: {ec_path} missing — F4 glass-brain will be empty.")
+
+    # Re-print confirmatory tables so the reload output mirrors a fresh run.
+    print("\n=== Confirmatory FDR family — all_cells × state ===")
+    print(fam_all[['roi', 'n_neurons', 'beta', 't', 'z_perm', 'p_perm', 'p_fdr']]
+          .to_string(index=False))
+    print("\n=== Confirmatory FDR family — rsa_cells × state (combo "
+          f"{FDR_COMBO}) ===")
+    print(fam_combo[['roi', 'n_neurons', 'beta', 't', 'z_perm', 'p_perm', 'p_fdr']]
+          .to_string(index=False))
+    print("\nReload complete — jumping to figures.\n")
 
 print(f"\nAll outputs under: {OUT_DIR}")
 
@@ -1579,7 +1715,7 @@ COL_BAR_SIG  = '#2B4159'
 COL_ZERO     = '0.25'
 
 
-import pdb; pdb.set_trace()
+# import pdb; pdb.set_trace()
 
 def _model_rdm_square_for_plot(X, n_cfg, model_name):
     """Build the square N×N model RDM for plotting by re-using the
