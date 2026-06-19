@@ -55,7 +55,7 @@ N_PHASES = 3
 states           = ['A', 'B', 'C', 'D']
 RESOLUTIONx = 1
 PLOT_FIGS = False
-N_PERMUTATIONS = 500 #None #1000 # 500 # None or 300
+N_PERMUTATIONS = None # 500  #None #1000 # 500 # None or 300
 SPLIT_UNCV_BUTTONS = True
 
 # Phase-based masking. Phase of a condition at position pos inside a config is
@@ -214,8 +214,8 @@ FDR_TEST      = 'split_halves_z'    # primary variant. Data RDM is built
 # `dsr_old` beta is highly correlated with the primary combo (the two
 # differ only by the `state` regressor). This keeps the FDR family
 # consistent with the publication panel (encoding_publication_panels.py).
-FDR_COMBOS    = ['bttn_loc_l2_state']    # canonical DSR + ctrls (bttn+location+state)
-FDR_SUBMODELS = ['dsr_fmri']      # full 12-lag DSR (not the truncated variants)
+FDR_COMBOS    = ['bttn_loc_l2_state_midn']  # DSR + bttn + location + L2 + state + midnight
+FDR_SUBMODELS = ['dsr_fmri']                # full 12-lag DSR (not the truncated variants)
 FDR_ALPHA     = 0.05
 
 
@@ -654,18 +654,52 @@ if RELOAD_RUN is None:
         )
     print(f"Cached data for {len(SUBJECT_DATA)} subjects.")
 
+    # ── Per-subject grouping logs ────────────────────────────────────────
+    # ``s<sub>_dsr_grouping_log_two_runs.json`` holds, per config, the
+    # non-spilling block-level allocation that the dsr-avg pipeline produced:
+    # each ``grid_no`` (= one task block of ~10 trials) is assigned to either
+    # run1_blocks or run2_blocks, and the partition is chosen to even out
+    # trial counts as much as possible while respecting block boundaries.
+    # Until now this script ignored the log and hard-sliced correct trials at
+    # index [0:10] / [10:20], which (a) ignored block boundaries and (b) gave
+    # different effective splits per subject × config depending on row order.
+    # Load the logs once and consult them in the ROI loop.
+    GROUPING_LOGS = {}
+    for sub_str in SUBJECTS:
+        gpath = os.path.join(
+            DATA_DIR, f's{sub_str}', 'dsr_avg',
+            f's{sub_str}_dsr_grouping_log_two_runs.json')
+        if not os.path.exists(gpath):
+            print(f"  [grouping] s{sub_str}: log not found at {gpath} — "
+                  f"subject will be skipped per ROI when its configs are needed.")
+            GROUPING_LOGS[sub_str] = {}
+            continue
+        with open(gpath) as f:
+            _g = json.load(f)
+        GROUPING_LOGS[sub_str] = {
+            c['config']: c for c in _g.get('configs', [])
+        }
+    print(f"Loaded grouping logs for {len(GROUPING_LOGS)} subjects.")
+
     # ── Run-1 / run-2 separation + balance diagnostic ─────────────────────
-    # The pipeline hard-splits each config's correct-trial rows at index 10:
-    # rows 0:10 -> run-1, rows 10:20 -> run-2. Verify per subject × config
-    # how many trials feed each run, flag any imbalance or overlap risk,
-    # and dump a CSV for the record.
+    # Trial allocation rule (per subject × config): correct trials are
+    # bucketed by grid_no into run1_blocks / run2_blocks from the grouping
+    # log. The partition is non-spilling (each grid_no ∈ exactly one half)
+    # and chosen by the dsr-avg pipeline to even out totals as much as block
+    # boundaries allow.
+    #
+    # Balance philosophy: with 3-block configs the per-config split is
+    # naturally 2+1 or 1+2 — this is EXPECTED and not a problem. What we
+    # want to avoid is *systematic* over-loading of one half ACROSS configs
+    # (e.g. always 2 blocks in run-1 and 1 in run-2 for every config of a
+    # subject). The diagnostic therefore reports per-SUBJECT totals across
+    # all configs, plus an "alternating-balance score". No cells are excluded.
     print("\n=== Run-1 / run-2 separation diagnostic ===")
-    print("  Trial allocation rule (per subject × config): "
-          "correct trials -> rows [0:10] = run-1, rows [10:20] = run-2.")
-    print("  Indices are non-overlapping by construction; this check verifies "
-          "trial counts and whether any subject × config has < 10 trials per run.")
+    print("  Allocation: grouping-log blocks per config. Per-config 2+1 or "
+          "1+2 splits are expected with 3 runs; what matters is that any "
+          "over-loading is NOT systematic across configs within a subject.")
     diag_rows = []
-    n_imbalanced = 0
+    n_missing = 0
     for sub_str, sub_pack in SUBJECT_DATA.items():
         beh = sub_pack[f"sub-{sub_str}"]['beh'].copy()
         beh['config_str'] = (
@@ -673,34 +707,122 @@ if RELOAD_RUN is None:
             beh['loc_B'].astype(int).astype(str) + '-' +
             beh['loc_C'].astype(int).astype(str) + '-' +
             beh['loc_D'].astype(int).astype(str))
+        beh['grid_no'] = beh['grid_no'].astype(int)
+        glog = GROUPING_LOGS.get(sub_str, {})
         for c in configs:
-            n_corr = int(((beh['config_str'] == c) & (beh['correct'] == 1)).sum())
-            n_run1 = min(n_corr, 10)
-            n_run2 = max(0, min(n_corr - 10, 10))
+            n_corr_total = int(((beh['config_str'] == c)
+                                & (beh['correct'] == 1)).sum())
+            cfg_entry = glog.get(c)
+            if cfg_entry is None:
+                n_missing += 1
+                diag_rows.append({
+                    'subject':         sub_str,
+                    'config':          c,
+                    'n_correct':       n_corr_total,
+                    'n_run1':          0,
+                    'n_run2':          0,
+                    'n_blocks_run1':   0,
+                    'n_blocks_run2':   0,
+                    'run1_blocks':     '',
+                    'run2_blocks':     '',
+                    'log_present':     False,
+                })
+                continue
+            run1_blocks = cfg_entry['run1_blocks']
+            run2_blocks = cfg_entry['run2_blocks']
+            n_run1 = int(((beh['config_str'] == c)
+                          & (beh['correct'] == 1)
+                          & beh['grid_no'].isin(run1_blocks)).sum())
+            n_run2 = int(((beh['config_str'] == c)
+                          & (beh['correct'] == 1)
+                          & beh['grid_no'].isin(run2_blocks)).sum())
             diag_rows.append({
-                'subject':   sub_str,
-                'config':    c,
-                'n_correct': n_corr,
-                'n_run1':    n_run1,
-                'n_run2':    n_run2,
+                'subject':         sub_str,
+                'config':          c,
+                'n_correct':       n_corr_total,
+                'n_run1':          n_run1,
+                'n_run2':          n_run2,
+                'n_blocks_run1':   len(run1_blocks),
+                'n_blocks_run2':   len(run2_blocks),
+                'run1_blocks':     ';'.join(map(str, run1_blocks)),
+                'run2_blocks':     ';'.join(map(str, run2_blocks)),
+                'log_present':     True,
             })
-            if n_run1 != n_run2:
-                n_imbalanced += 1
     diag_df = pd.DataFrame(diag_rows)
     diag_df.to_csv(os.path.join(OUT_DIR, 'run_balance_diagnostic.csv'), index=False)
-    total_pairs = len(diag_df)
-    print(f"  subject × config cells: {total_pairs}")
-    print(f"  cells with n_run1 == n_run2: "
-          f"{total_pairs - n_imbalanced}/{total_pairs} "
-          f"({100.0 * (total_pairs - n_imbalanced) / total_pairs:.1f}%)")
-    print(f"  cells with imbalance (run1 != run2): {n_imbalanced} "
-          f"(usually subject × config with < 20 correct trials)")
-    print(f"  median trials per run: "
-          f"run1 = {int(np.median(diag_df['n_run1']))}, "
-          f"run2 = {int(np.median(diag_df['n_run2']))}")
-    print(f"  trial-overlap risk: 0 (rows [0:10] and [10:20] are disjoint by indexing).")
-    print(f"  per-subject × config breakdown -> "
+    print(f"  cells missing grouping log entry: {n_missing}")
+    print(f"  trial-overlap risk: 0 — every grid_no is in exactly one of "
+          f"run1_blocks / run2_blocks (verified by block-partition construction).")
+
+    # Per-subject totals + systematic-imbalance flag.
+    # Definitions:
+    #   total_run1   = sum of n_run1 across all configs of a subject
+    #   total_run2   = sum of n_run2 across all configs of a subject
+    #   balance_pct  = 100 * (1 - |total_run1 - total_run2| / total)
+    #                  100% = perfectly balanced, 0% = all in one half.
+    #   alternation  = fraction of configs that flipped which half had more
+    #                  trials vs. the running cumulative excess. If the log
+    #                  is genuinely alternating, this is near 1.0; if it
+    #                  systematically over-loads one side, it drops toward 0.
+    print("\n  Per-subject totals across configs (block-respecting allocation):")
+    print(f"  {'sub':>4s}  {'n_run1':>7s}  {'n_run2':>7s}  "
+          f"{'balance':>8s}  {'alternation':>11s}")
+    n_subjects_unbalanced = 0
+    n_subjects_systematic = 0
+    sys_threshold_balance     = 70.0   # below this -> flag as unbalanced
+    sys_threshold_alternation = 0.5    # below this -> flag as systematic
+    summary_subject_rows = []
+    for sub_str in diag_df['subject'].unique():
+        sub_df = diag_df[(diag_df['subject'] == sub_str)
+                         & (diag_df['log_present'])].sort_values('config')
+        if sub_df.empty:
+            continue
+        t1 = int(sub_df['n_run1'].sum())
+        t2 = int(sub_df['n_run2'].sum())
+        total = max(t1 + t2, 1)
+        balance_pct = 100.0 * (1.0 - abs(t1 - t2) / total)
+        # alternation: how often does (n_run1 - n_run2) cross zero across
+        # successive configs? Compute as fraction of non-zero diffs whose
+        # sign differs from the running cumulative.
+        diffs = (sub_df['n_run1'] - sub_df['n_run2']).to_numpy()
+        nonzero = diffs[diffs != 0]
+        if len(nonzero) <= 1:
+            alternation = 1.0
+        else:
+            cum = np.cumsum(nonzero)
+            # alternation reward: count configs whose diff opposes the cum sign
+            opposes = np.sign(nonzero[1:]) != np.sign(cum[:-1])
+            alternation = float(opposes.mean()) if len(opposes) else 1.0
+        is_unbalanced = balance_pct < sys_threshold_balance
+        is_systematic = (balance_pct < sys_threshold_balance
+                         and alternation < sys_threshold_alternation)
+        if is_unbalanced:
+            n_subjects_unbalanced += 1
+        if is_systematic:
+            n_subjects_systematic += 1
+        flag = ('  ⚠ SYSTEMATIC' if is_systematic
+                else ('  ⚠ unbalanced' if is_unbalanced else ''))
+        print(f"  {sub_str:>4s}  {t1:>7d}  {t2:>7d}  "
+              f"{balance_pct:>7.1f}%  {alternation:>10.2f}{flag}")
+        summary_subject_rows.append({
+            'subject': sub_str,
+            'total_run1': t1, 'total_run2': t2,
+            'balance_pct': balance_pct,
+            'alternation_score': alternation,
+            'flag_unbalanced': is_unbalanced,
+            'flag_systematic': is_systematic,
+        })
+    pd.DataFrame(summary_subject_rows).to_csv(
+        os.path.join(OUT_DIR, 'run_balance_summary_by_subject.csv'), index=False)
+    print(f"  -> {n_subjects_unbalanced} subjects flagged as unbalanced "
+          f"(<{sys_threshold_balance:.0f}% balance), "
+          f"{n_subjects_systematic} of those also systematic "
+          f"(alternation <{sys_threshold_alternation:.2f}).")
+    print(f"  No cells are excluded; flags are advisory.")
+    print(f"  per-subject × config breakdown   -> "
           f"{os.path.join(OUT_DIR, 'run_balance_diagnostic.csv')}")
+    print(f"  per-subject totals + flags       -> "
+          f"{os.path.join(OUT_DIR, 'run_balance_summary_by_subject.csv')}")
 
     # Optional per-cell phase residualisation on raw 360-bin firing rate.
     # Applied to data ONLY (not models). Each cell's mean firing rate is
@@ -792,6 +914,14 @@ if RELOAD_RUN is None:
     for roi_name, roi_pred in ROI_RULES.items():
         print(f"\n========== ROI: {roi_name} ==========")
 
+        # Data-loss counters for this ROI. Anything that produces NaN entries
+        # in the per-cell averages — either because the grouping log lacks an
+        # entry for (subject, config) or because one of the run halves has
+        # zero correct trials — gets logged here and reported at the end of
+        # the ROI block. We *never* drop a cell silently.
+        missing_log_subject_configs = []   # list of (sub_str, conf)
+        empty_half_subject_configs  = []   # list of (sub_str, conf, half, n_other_half)
+
         # set up dicts and lists to load data
         acc_neurons, locs, buttons = {}, {}, {}
         acc_neurons_all, locs_all, buttons_all = {}, {}, {}
@@ -830,83 +960,226 @@ if RELOAD_RUN is None:
                 lambda t: f'{t[0]}-{t[1]}-{t[2]}-{t[3]}')
             curr_neurons = data_dict[f"sub-{sub_str}"]['normalised_neurons']
             
+            sub_glog = GROUPING_LOGS.get(sub_str, {})
+
             for conf in configs:
-                idx_curr_conf = (beh['config_str'] == conf) & (beh['correct'] == 1)
-                all_locs_conf = data_dict[f"sub-{sub_str}"]['locations'][idx_curr_conf].to_numpy()
-                # average 10 repeats, respectively
-                locs[conf][1].append(all_locs_conf[0:10, :])
-                locs[conf][2].append(all_locs_conf[10:20, :])
-                locs_all[conf].append(all_locs_conf)
-                
-                all_buttons_conf = data_dict[f"sub-{sub_str}"]['buttons'][idx_curr_conf].to_numpy()
-                
-                buttons[conf][1].append(all_buttons_conf[0:10, :])
-                buttons[conf][2].append(all_buttons_conf[10:20, :])
-                buttons_all[conf].append(all_buttons_conf)
-                
+                cfg_entry = sub_glog.get(conf)
+                # If the subject has no allocation for this config, treat it as
+                # zero-trials in both halves: every matching cell will still
+                # get one entry per config (NaN-filled) so the downstream
+                # np.hstack alignment across configs stays consistent. We log
+                # the case and report it at the end of the ROI block so the
+                # silent NaN-fill is never invisible.
+                if cfg_entry is None:
+                    run1_blocks, run2_blocks = [], []
+                    missing_log_subject_configs.append((sub_str, conf))
+                    print(f"  [WARN] {roi_name}: sub {sub_str} has no grouping-log "
+                          f"entry for config {conf} — cell entries for this "
+                          f"(subject, config) will be NaN in both halves.")
+                else:
+                    run1_blocks = cfg_entry['run1_blocks']
+                    run2_blocks = cfg_entry['run2_blocks']
+
+                # Trial masks per RSA half, respecting block boundaries.
+                # idx_all  : all correct trials of this config (for between_tasks avg)
+                # idx_run1 : correct trials whose grid_no ∈ run1_blocks  (RSA half-1)
+                # idx_run2 : correct trials whose grid_no ∈ run2_blocks  (RSA half-2)
+                # By construction run1_blocks ∩ run2_blocks = ∅, so no spilling.
+                idx_all  = (beh['config_str'] == conf) & (beh['correct'] == 1)
+                idx_run1 = idx_all & beh['grid_no'].isin(run1_blocks)
+                idx_run2 = idx_all & beh['grid_no'].isin(run2_blocks)
+
+                # Empty-half check at the (subject, config) level. If either
+                # half has zero correct trials for this subject × config, every
+                # one of that subject's cells in this ROI will record NaN for
+                # that half. Surface it once here rather than per-cell.
+                n_r1 = int(idx_run1.sum())
+                n_r2 = int(idx_run2.sum())
+                if n_r1 == 0 and n_r2 > 0:
+                    empty_half_subject_configs.append((sub_str, conf, 1, n_r2))
+                    print(f"  [WARN] {roi_name}: sub {sub_str} config {conf} has 0 "
+                          f"run1 trials (run2={n_r2}) — half-1 entries will be NaN.")
+                elif n_r2 == 0 and n_r1 > 0:
+                    empty_half_subject_configs.append((sub_str, conf, 2, n_r1))
+                    print(f"  [WARN] {roi_name}: sub {sub_str} config {conf} has 0 "
+                          f"run2 trials (run1={n_r1}) — half-2 entries will be NaN.")
+                elif n_r1 == 0 and n_r2 == 0 and cfg_entry is not None:
+                    empty_half_subject_configs.append((sub_str, conf, 0, 0))
+                    print(f"  [WARN] {roi_name}: sub {sub_str} config {conf} has 0 "
+                          f"correct trials in either half despite a grouping "
+                          f"log entry — all entries will be NaN.")
+
+                # locations + buttons
+                loc_df  = data_dict[f"sub-{sub_str}"]['locations']
+                btn_df  = data_dict[f"sub-{sub_str}"]['buttons']
+                locs[conf][1].append(loc_df[idx_run1].to_numpy())
+                locs[conf][2].append(loc_df[idx_run2].to_numpy())
+                locs_all[conf].append(loc_df[idx_all].to_numpy())
+                buttons[conf][1].append(btn_df[idx_run1].to_numpy())
+                buttons[conf][2].append(btn_df[idx_run2].to_numpy())
+                buttons_all[conf].append(btn_df[idx_all].to_numpy())
+
+                # Row-level masks into the trial-stack (used inside the cell loop).
+                # These map "row position in conf_neurons_all" -> {is run1, is run2}.
+                # Computed once per (subject, config) and reused for every cell.
+                _all_orig_idx = beh.index[idx_all].to_numpy()
+                _r1_orig_idx  = set(beh.index[idx_run1].to_numpy().tolist())
+                _r2_orig_idx  = set(beh.index[idx_run2].to_numpy().tolist())
+                row_run1_mask = np.array(
+                    [i in _r1_orig_idx for i in _all_orig_idx], dtype=bool)
+                row_run2_mask = np.array(
+                    [i in _r2_orig_idx for i in _all_orig_idx], dtype=bool)
+
                 for n_lab in curr_neurons:
-                    # if 'MCC' in n_lab:
-                    #     print(f"now adding hippocampal neuron with MCC label, in session {sub_str}.")
                     if roi_pred(n_lab):
                         # Record MNI coords (once per cell) for the ROI overview plot.
                         sub_int, cell_int = parse_neuron_label(n_lab)
-                        
                         if sub_int is not None:
                             key = (sub_int, cell_int)
                             if key not in roi_electrode_coords[roi_name]:
                                 mni = get_neuron_mni(n_lab)
                                 if all(np.isfinite(mni)):
                                     roi_electrode_coords[roi_name][key] = mni
-                        conf_acc_neurons = curr_neurons[n_lab][idx_curr_conf].to_numpy()
 
+                        conf_neurons_all = curr_neurons[n_lab][idx_all].to_numpy()
+                        if conf_neurons_all.shape[0] == 0:
+                            continue
 
-                        # this is where the permutations need to be
+                        # Circular-shift permutation null. The shift is per-trial
+                        # and shared across runs of that trial, so the run1/run2
+                        # split below uses the same row masks as the empirical data.
                         if N_PERMUTATIONS:
-
-                            rng     = np.random.default_rng()
-                            n_bins = conf_acc_neurons.shape[1]
-
+                            rng    = np.random.default_rng()
+                            n_bins = conf_neurons_all.shape[1]
                             for p in range(N_PERMUTATIONS):
-                                # generates the shifts for all trials
-                                shifts = rng.integers(0, n_bins, size=(conf_acc_neurons.shape[0]))
-                                # creates new column indices
+                                shifts = rng.integers(
+                                    0, n_bins, size=conf_neurons_all.shape[0])
                                 new_idx = (np.arange(n_bins) - shifts[:, None]) % n_bins
-                                # takes values from og neuron along axis 1, using the shifted per-row indices.
-                                perm_neuron = np.take_along_axis(conf_acc_neurons, new_idx, axis=1)
+                                perm_neuron = np.take_along_axis(
+                                    conf_neurons_all, new_idx, axis=1)
 
-                                perm_avg_conf_all = np.nanmean(perm_neuron, axis = 0)
-                                perm_avg_downsampled_all = perm_avg_conf_all.reshape(N_CONDS_PER_CONF, int(360/N_CONDS_PER_CONF)).mean(axis = 1)
-                                perm_ACC_neurons_all[conf].append(perm_avg_downsampled_all)
+                                perm_avg_all = np.nanmean(perm_neuron, axis=0)
+                                perm_ACC_neurons_all[conf].append(
+                                    perm_avg_all.reshape(
+                                        N_CONDS_PER_CONF,
+                                        int(360 / N_CONDS_PER_CONF)).mean(axis=1))
 
-                                for th in [1,2]:
-                                    if th == 1:
-                                        start = 0
-                                    elif th == 2:
-                                        start = 10
-                                    perm_avg_config = np.nanmean(perm_neuron[start:start+10, :], axis = 0)
-                                    perm_avg_downsampled = perm_avg_config.reshape(N_CONDS_PER_CONF, int(360/N_CONDS_PER_CONF)).mean(axis = 1)
-                                    perm_ACC_neurons[conf][th].append(perm_avg_downsampled)
+                                for th, rmask in [(1, row_run1_mask),
+                                                  (2, row_run2_mask)]:
+                                    if not rmask.any():
+                                        # No trials in this half for this subject ×
+                                        # config — push NaN so cross-ROI averaging
+                                        # still aligns shapes downstream.
+                                        perm_ACC_neurons[conf][th].append(
+                                            np.full(N_CONDS_PER_CONF, np.nan))
+                                        continue
+                                    perm_avg = np.nanmean(
+                                        perm_neuron[rmask], axis=0)
+                                    perm_ACC_neurons[conf][th].append(
+                                        perm_avg.reshape(
+                                            N_CONDS_PER_CONF,
+                                            int(360 / N_CONDS_PER_CONF)).mean(axis=1))
 
-
-                        avg_conf_all = np.nanmean(conf_acc_neurons, axis = 0)
-                        avg_downsampled_all = avg_conf_all.reshape(N_CONDS_PER_CONF, int(360/N_CONDS_PER_CONF)).mean(axis = 1)
-                        acc_neurons_all[conf].append(avg_downsampled_all)
-                        for th in [1,2]:
-                            if th == 1:
-                                start = 0
-                            elif th == 2:
-                                start = 10
-                            avg_config = np.nanmean(conf_acc_neurons[start:start+10, :], axis = 0)
-                            avg_downsampled = avg_config.reshape(N_CONDS_PER_CONF, int(360/N_CONDS_PER_CONF)).mean(axis = 1)
-                            acc_neurons[conf][th].append(avg_downsampled)
+                        # Empirical means: between_tasks RDM uses all correct trials;
+                        # split_halves RDM uses the run1 / run2 row masks.
+                        avg_all = np.nanmean(conf_neurons_all, axis=0)
+                        acc_neurons_all[conf].append(
+                            avg_all.reshape(
+                                N_CONDS_PER_CONF,
+                                int(360 / N_CONDS_PER_CONF)).mean(axis=1))
+                        for th, rmask in [(1, row_run1_mask),
+                                          (2, row_run2_mask)]:
+                            if not rmask.any():
+                                acc_neurons[conf][th].append(
+                                    np.full(N_CONDS_PER_CONF, np.nan))
+                                continue
+                            avg_th = np.nanmean(
+                                conf_neurons_all[rmask], axis=0)
+                            acc_neurons[conf][th].append(
+                                avg_th.reshape(
+                                    N_CONDS_PER_CONF,
+                                    int(360 / N_CONDS_PER_CONF)).mean(axis=1))
 
         # import pdb; pdb.set_trace()
 
         n_neurons = len(acc_neurons[conf][th])
-        
+
         if n_neurons == 0:
             print(f"[{roi_name}] no neurons matched — skipping.")
             continue
+
+        # ── Data-loss summary for this ROI ──────────────────────────────
+        # Every (subject, config) that produced NaN entries — either because
+        # no grouping-log entry existed, or because a half had 0 correct
+        # trials — is enumerated here. NaN cells are also counted in the
+        # assembled trial matrices so we never lose visibility into
+        # silent NaN-fill.
+        print(f"\n[{roi_name}] === data-loss audit ===")
+        if missing_log_subject_configs:
+            print(f"  Missing grouping-log entries: "
+                  f"{len(missing_log_subject_configs)} (subject, config) cases")
+            for s, c in missing_log_subject_configs[:10]:
+                print(f"    sub {s}  config {c}")
+            if len(missing_log_subject_configs) > 10:
+                print(f"    ... ({len(missing_log_subject_configs) - 10} more)")
+        else:
+            print(f"  Missing grouping-log entries: 0")
+        if empty_half_subject_configs:
+            print(f"  Empty-half (subject, config, half) cases: "
+                  f"{len(empty_half_subject_configs)}")
+            for s, c, h, n_other in empty_half_subject_configs[:10]:
+                if h == 0:
+                    print(f"    sub {s}  config {c}  both halves empty")
+                else:
+                    print(f"    sub {s}  config {c}  half {h} empty "
+                          f"(other half has {n_other} trials)")
+            if len(empty_half_subject_configs) > 10:
+                print(f"    ... ({len(empty_half_subject_configs) - 10} more)")
+        else:
+            print(f"  Empty-half (subject, config, half) cases: 0")
+
+        # Per-(config, half) NaN cell counts in the assembled trial matrices.
+        nan_cells_by_half = {}
+        for conf in configs:
+            for th in [1, 2]:
+                arr = np.asarray(acc_neurons[conf][th])
+                if arr.size == 0:
+                    nan_cells_by_half[(conf, th)] = 0
+                    continue
+                # A "NaN cell" = a cell that has any NaN across the 12
+                # downsampled conditions of this config × half.
+                nan_per_cell = np.isnan(arr).any(axis=1)
+                nan_cells_by_half[(conf, th)] = int(nan_per_cell.sum())
+        total_nan_cell_entries = sum(nan_cells_by_half.values())
+        total_cell_entries = sum(
+            len(acc_neurons[c][t]) for c in configs for t in (1, 2)
+        )
+        print(f"  NaN cell-config-half entries in assembled trial matrix: "
+              f"{total_nan_cell_entries}/{total_cell_entries} "
+              f"({100.0 * total_nan_cell_entries / max(total_cell_entries, 1):.2f}%)")
+        if total_nan_cell_entries:
+            print(f"  Per-(config, half) NaN cell counts "
+                  f"(only non-zero entries shown):")
+            for (c, th), n in nan_cells_by_half.items():
+                if n:
+                    print(f"    {c}  half {th}: {n} NaN cells")
+
+        # Dump a per-ROI CSV so the audit is reproducible without re-running.
+        audit_rows = [{'roi': roi_name, 'kind': 'missing_log',
+                       'subject': s, 'config': c, 'half': 0, 'n_other_half': 0}
+                      for s, c in missing_log_subject_configs] + [
+            {'roi': roi_name, 'kind': 'empty_half',
+             'subject': s, 'config': c, 'half': h, 'n_other_half': n}
+            for s, c, h, n in empty_half_subject_configs
+        ]
+        audit_path = os.path.join(OUT_DIR, 'data_loss_audit.csv')
+        if audit_rows:
+            _df_audit = pd.DataFrame(audit_rows)
+            if os.path.exists(audit_path):
+                _df_audit.to_csv(audit_path, mode='a', header=False, index=False)
+            else:
+                _df_audit.to_csv(audit_path, index=False)
+        print(f"  Audit rows (this ROI): {len(audit_rows)}  -> {audit_path}")
 
         print(f"[{roi_name}] {n_neurons} neurons collected.")
 
@@ -933,6 +1206,16 @@ if RELOAD_RUN is None:
 
 
 
+        # ── Run-averaged data matrix (feeds the within-run RDM family) ───
+        # `acc_neurons_all[config]` holds, per cell, the mean firing rate
+        # across ALL correct trials of that config — both runs collapsed
+        # (idx_all = `correct == 1` without any run-half filter; see the
+        # subject loop above). Stacking these per-config means gives the
+        # run-averaged population matrix consumed by compute_crosscorr_within
+        # to produce data_RDM_within / _across / _full and their _z variants.
+        # → between_tasks (and the diagonal-masked between_tasks_z) is therefore
+        # built from per-config averages of all 2 or 3 runs combined, NOT
+        # from any single run.
         row_all = []
         row_labels_all = []
         for config in configs:
@@ -940,6 +1223,9 @@ if RELOAD_RUN is None:
             row_all.append(all_neuron_values)
             row_labels_all.append(config)
         mat_all = np.hstack(row_all)
+        print(f"  [{roi_name}] within-run RDM source: "
+              f"mean across all correct trials per config "
+              f"(both/all session runs collapsed) — shape {mat_all.shape}")
 
         data_RDM_within, data_RDM_across, data_RDM_full = mc.analyse.my_RSA.compute_crosscorr_within(mat_all.T, plotting=PLOT_FIGS, include_diagonal=False, no_tasks=len(configs), model=f'data in {roi_name}', block_size=N_CONDS_PER_CONF)
 
@@ -1057,18 +1343,51 @@ if RELOAD_RUN is None:
                         mats[key][row] = downsample_mode(mode_vec_button[s : s + LEN_OG_SUBPATH], target_len=LEN_STANDARDISED_PATH)
                         
 
-        # --- state / feedback / phase (unchanged logic) ---
+        # --- state / feedback / phase ---
+        # Each state must span N_CONDS_PER_CONF // len(states) consecutive
+        # conditions so the model covers ALL rows of every config block (not
+        # just the first 12 with the legacy RESOLUTIONx * N_PHASES layout,
+        # which left bins 12..N_CONDS_PER_CONF-1 zero for any subject with
+        # N_CONDS_PER_CONF > N_PHASES * len(states)).
+        # Phase divides each state's span into N_PHASES roughly-equal slices;
+        # widths may differ by ±1 when STATE_WIDTH is not exactly divisible
+        # by N_PHASES (e.g. STATE_WIDTH=5, N_PHASES=3 → [1, 1, 3] using
+        # floor-division boundaries — every condition gets one phase).
+        assert N_CONDS_PER_CONF % len(states) == 0, (
+            f"N_CONDS_PER_CONF ({N_CONDS_PER_CONF}) must be divisible by "
+            f"len(states) ({len(states)}) so state widths are equal.")
+        STATE_WIDTH = N_CONDS_PER_CONF // len(states)
         state_config    = np.zeros((N_CONDS_PER_CONF, len(states)))
         feedback_config = np.zeros((N_CONDS_PER_CONF, len(states)))
         phase_config    = np.zeros((N_CONDS_PER_CONF, N_PHASES))
-        
+
         for s_i, s in enumerate(states):
-            start_phase = RESOLUTIONx * s_i * N_PHASES
-            state_config[start_phase : RESOLUTIONx * (s_i + 1) * N_PHASES, s_i] = 1
+            s_start = s_i * STATE_WIDTH
+            s_end   = (s_i + 1) * STATE_WIDTH
+            state_config[s_start:s_end, s_i] = 1
             if s == 'A':
-                feedback_config[:RESOLUTIONx, s_i] = 1
+                # Feedback / repeat_counter pulse at the moment of reward A,
+                # i.e. the very first condition of state A within each config.
+                feedback_config[s_start:s_start + 1, s_i] = 1
             for p_i in range(N_PHASES):
-                phase_config[start_phase + p_i * RESOLUTIONx : start_phase + (p_i + 1) * RESOLUTIONx, p_i] = 1
+                p_start = s_start + (p_i * STATE_WIDTH) // N_PHASES
+                p_end   = s_start + ((p_i + 1) * STATE_WIDTH) // N_PHASES
+                # Defensive: ensure every condition is tagged with exactly one
+                # phase even when STATE_WIDTH is not divisible by N_PHASES.
+                if p_end <= p_start:
+                    p_end = min(p_start + 1, s_end)
+                phase_config[p_start:p_end, p_i] = 1
+
+        # Sanity: every condition must be claimed by exactly one state and
+        # at least one phase, so the model isn't zero on any row of any
+        # config block.
+        _state_sum = state_config.sum(axis=1)
+        _phase_sum = phase_config.sum(axis=1)
+        assert np.all(_state_sum == 1), (
+            f"state_config rows must sum to 1; got sums {_state_sum.tolist()}")
+        assert np.all(_phase_sum >= 1), (
+            f"phase_config rows must sum to ≥1 (every cond gets a phase); "
+            f"got sums {_phase_sum.tolist()}")
         
         state_half    = np.tile(state_config,    (len(configs), 1))
         feedback_half = np.tile(feedback_config, (len(configs), 1))
@@ -1163,10 +1482,20 @@ if RELOAD_RUN is None:
             if len(_show_models) == 1:
                 axes_md = [axes_md]
             for ax, mname in zip(axes_md, _show_models):
-                mat_show = np.asarray(model_concat[mname][_half1], dtype=float)
+                _raw = np.asarray(model_concat[mname][_half1])
+                # bttn_* arrays are object dtype (e.g. 'DownArrow'); factorize
+                # to integers for display only so imshow has something to draw.
+                if _raw.dtype.kind in ('O', 'U', 'S'):
+                    flat = _raw.ravel()
+                    uniq, inv = np.unique(flat.astype(str), return_inverse=True)
+                    mat_show = inv.reshape(_raw.shape).astype(float)
+                    tag = f' (categorical, {len(uniq)} levels)'
+                else:
+                    mat_show = np.asarray(_raw, dtype=float)
+                    tag = ''
                 im = ax.imshow(mat_show, aspect='auto', cmap='viridis',
                                interpolation='nearest')
-                ax.set_title(f'{mname}\n{mat_show.shape[0]}×{mat_show.shape[1]}',
+                ax.set_title(f'{mname}{tag}\n{mat_show.shape[0]}×{mat_show.shape[1]}',
                              fontsize=9)
                 ax.set_xlabel('features', fontsize=8)
                 if ax is axes_md[0]:
@@ -1431,14 +1760,25 @@ if RELOAD_RUN is None:
             else:
                 _df_bb.to_csv(block_break_path, index=False)
 
-        # ── FDR-combo RDM diagnostic ────────────────────────────────────
-        # Show exactly which cells of which RDM enter evaluate_model under
-        # each RDM-mask variant. One figure per ROI, restricted to the
-        # FDR-family combo (FDR_COMBOS[0]) so we visualise only the RDMs
-        # carrying the confirmatory hypothesis. Rows = data RDM + each
-        # FDR submodel; columns = full / block_diag / off_block masks. Cells
-        # outside the mask are NaN'd (blank in the plot). The displayed
-        # RDM is data_RDM_z[0] (= split_halves_z), matching the FDR test.
+        # ── FDR-combo RDM diagnostic ─────────────────────────────────────
+        # Show the EXACT 1-D vectors that feed evaluate_model for the
+        # FDR-family combo, embedded back into a (N×N) display grid at the
+        # positions they occupy in evaluate_model. Provenance per column:
+        #
+        #   across-run figure                 source vector
+        #   ─────────────────────────  ───────────────────────────────────
+        #   full        (= split_halves_z)   data_RDM_z[0]    / model_RDMs[m][0]
+        #   block_diag  (within-task subset) same vectors, sub-indexed
+        #   off_block   (across-task subset) same vectors, sub-indexed
+        #
+        #   within-run figure                 source vector
+        #   ─────────────────────────  ───────────────────────────────────
+        #   off_block   (= between_tasks_z)  data_RDM_across_z[0] /
+        #                                    model_RDMs_across[m][0]
+        #
+        # Both compute_crosscorr and compute_crosscorr_within strip the
+        # diagonal (include_diagonal=False, k=1), so the display has the
+        # diagonal blanked AND a red diagonal line as an explicit marker.
         fdr_combo_key = FDR_COMBOS[0] if FDR_COMBOS else None
         if (fdr_combo_key and fdr_combo_key in combo_models
                 and len(data_RDM_z[0]) == N_RDM * (N_RDM - 1) // 2):
@@ -1446,65 +1786,164 @@ if RELOAD_RUN is None:
             rdm_diag_dir = os.path.join(OUT_DIR, 'rdm_diagnostics')
             os.makedirs(rdm_diag_dir, exist_ok=True)
 
-            data_sq = _vec_to_square_rdm(data_RDM_z[0], N_RDM)
-            model_sqs = {
-                sm: _vec_to_square_rdm(model_RDMs[sm][0], N_RDM)
-                for sm in fdr_subs if sm in model_RDMs
-            }
+            # Index arrays for the upper-tri positions (k=1: diagonal excluded)
+            _ii_disp, _jj_disp = np.triu_indices(N_RDM, k=1)
+            cfg_i_disp = _ii_disp // N_CONDS_PER_CONF
+            cfg_j_disp = _jj_disp // N_CONDS_PER_CONF
+            mask_block_diag_vec = cfg_i_disp == cfg_j_disp
+            mask_off_block_vec  = cfg_i_disp != cfg_j_disp
 
-            # Square (symmetric) masks aligned with the upper-tri vector masks
-            cfg_idx_arr = np.repeat(np.arange(N_CONFIGS), N_CONDS_PER_CONF)
-            same_cfg_sq = cfg_idx_arr[:, None] == cfg_idx_arr[None, :]
-            tri_sq = np.triu(np.ones((N_RDM, N_RDM), dtype=bool), k=1)
-            sq_masks = {
-                'full':       tri_sq,
-                'block_diag': tri_sq & same_cfg_sq,
-                'off_block':  tri_sq & ~same_cfg_sq,
-            }
-            # Symmetric (display) version: mirror the upper-tri mask
-            sq_masks_disp = {k: m | m.T for k, m in sq_masks.items()}
+            def _embed_vec(vec_1d, positions_mask):
+                """Fill the 1-D evaluate_model input into a 2-D N×N display.
 
-            rows_to_plot = [('data\n(split_halves_z)', data_sq)] + [
-                (sm, model_sqs[sm]) for sm in fdr_subs if sm in model_sqs
-            ]
-            mask_cols = ['full', 'block_diag', 'off_block']
+                vec_1d         : 1-D vector exactly as it enters evaluate_model.
+                positions_mask : boolean of length N*(N-1)/2 (all upper-tri
+                                 positions in np.triu_indices order); True
+                                 where vec_1d's values live. Must satisfy
+                                 ``len(vec_1d) == positions_mask.sum()``.
+                Lower-tri and diagonal are always NaN (never seen by
+                evaluate_model under include_diagonal=False).
+                """
+                M = np.full((N_RDM, N_RDM), np.nan, dtype=float)
+                v = np.asarray(vec_1d, dtype=float)
+                pmask = np.asarray(positions_mask, dtype=bool)
+                assert v.shape[0] == int(pmask.sum()), (
+                    f"_embed_vec: vec length {v.shape[0]} does not match "
+                    f"positions_mask.sum() = {int(pmask.sum())}")
+                M[_ii_disp[pmask], _jj_disp[pmask]] = v
+                return M
 
-            nrows = len(rows_to_plot)
-            fig_rdm, axes_rdm = plt.subplots(
-                nrows, 3, figsize=(11, 2.4 * nrows),
-                constrained_layout=True)
-            if nrows == 1:
-                axes_rdm = axes_rdm[None, :]
+            # Config labels for axes (config string centred under each block)
+            cfg_centres = np.arange(N_CONFIGS) * N_CONDS_PER_CONF + N_CONDS_PER_CONF / 2 - 0.5
 
-            for r_i, (lbl, sq) in enumerate(rows_to_plot):
-                for c_i, mname in enumerate(mask_cols):
-                    ax = axes_rdm[r_i, c_i]
-                    keep = sq_masks_disp[mname]
-                    disp = np.where(keep, sq, np.nan)
-                    im = ax.imshow(disp, aspect='equal', cmap='RdBu_r',
-                                   interpolation='nearest')
-                    for k in range(1, N_CONFIGS):
-                        ax.axvline(k * N_CONDS_PER_CONF - 0.5,
-                                   color='black', lw=0.4, alpha=0.6)
-                        ax.axhline(k * N_CONDS_PER_CONF - 0.5,
-                                   color='black', lw=0.4, alpha=0.6)
-                    if r_i == 0:
-                        n_pairs = int(sq_masks[mname].sum())
-                        ax.set_title(f'{mname}\nn_pairs = {n_pairs}',
-                                     fontsize=9)
-                    if c_i == 0:
-                        ax.set_ylabel(lbl, fontsize=9)
-                    ax.tick_params(labelsize=6)
-                    plt.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
+            def _decorate(ax):
+                """Apply config-block dividers, axis labels, and the red
+                diagonal-exclusion marker that's identical across panels."""
+                for k in range(1, N_CONFIGS):
+                    ax.axvline(k * N_CONDS_PER_CONF - 0.5,
+                               color='black', lw=0.4, alpha=0.6)
+                    ax.axhline(k * N_CONDS_PER_CONF - 0.5,
+                               color='black', lw=0.4, alpha=0.6)
+                # Diagonal-exclusion marker: a thin red line on the diagonal,
+                # so it's visually clear that evaluate_model never sees those
+                # cells (k=1 upper-tri).
+                ax.plot([-0.5, N_RDM - 0.5], [-0.5, N_RDM - 0.5],
+                        color='red', lw=0.8, alpha=0.7)
+                ax.set_xticks(cfg_centres)
+                ax.set_xticklabels(configs, fontsize=5, rotation=60, ha='right')
+                ax.set_yticks(cfg_centres)
+                ax.set_yticklabels(configs, fontsize=5)
+                ax.tick_params(length=2, pad=1)
 
-            fig_rdm.suptitle(
-                f'FDR-family RDMs entering evaluate_model — ROI {roi_name} '
-                f'(combo: {fdr_combo_key})', fontsize=11)
-            _save_p = os.path.join(rdm_diag_dir,
-                                   f'fdr_rdm_diagnostic_{roi_name}.png')
-            fig_rdm.savefig(_save_p, dpi=150, bbox_inches='tight')
-            plt.show()
-            print(f"  Saved FDR-combo RDM diagnostic -> {_save_p}")
+            def _make_rdm_grid(rows_to_plot, col_specs, suptitle, save_path):
+                """rows_to_plot : list of (row_label, dict of {col_name -> 1-D vec, subset_mask})
+                col_specs      : list of (col_name, title_suffix)
+                Each row is one matrix family (data, or one model). Each cell
+                embeds the 1-D evaluate_model vector for that (row, col)
+                back into N×N upper-tri positions.
+                """
+                nrows = len(rows_to_plot)
+                ncols = len(col_specs)
+                fig, axes = plt.subplots(
+                    nrows, ncols, figsize=(4.2 * ncols, 3.0 * nrows),
+                    constrained_layout=True)
+                if nrows == 1:
+                    axes = axes[None, :]
+                if ncols == 1:
+                    axes = axes[:, None]
+                for r_i, (lbl, col_dict) in enumerate(rows_to_plot):
+                    for c_i, (col_name, suffix) in enumerate(col_specs):
+                        ax = axes[r_i, c_i]
+                        if col_name not in col_dict:
+                            ax.set_visible(False)
+                            continue
+                        vec, subset = col_dict[col_name]
+                        disp = _embed_vec(vec, subset)
+                        im = ax.imshow(disp, aspect='equal', cmap='RdBu_r',
+                                       interpolation='nearest')
+                        _decorate(ax)
+                        if r_i == 0:
+                            n_pairs = int(
+                                (~np.isnan(disp)).sum())
+                            ax.set_title(f'{col_name}{suffix}\n'
+                                         f'n_pairs = {n_pairs}',
+                                         fontsize=8)
+                        if c_i == 0:
+                            ax.set_ylabel(lbl, fontsize=8)
+                        plt.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
+                fig.suptitle(suptitle + '\n(diagonal excluded; red line marks '
+                             'k=0; axis labels = config strings)',
+                             fontsize=10)
+                fig.savefig(save_path, dpi=150, bbox_inches='tight')
+                plt.show()
+                return fig
+
+            # ── Across-run figure (split_halves family) ────────────────
+            # All three columns use the SAME source 1-D vector (the
+            # split_halves_z input). 'block_diag' and 'off_block' are
+            # subset views — sub-indexed from the full vector and placed at
+            # the corresponding subset of upper-tri positions.
+            full_pos_mask = np.ones_like(mask_block_diag_vec, dtype=bool)
+            def _full_row(label, vec_full):
+                return (label, {
+                    'full':       (vec_full,                   full_pos_mask),
+                    'block_diag': (vec_full[mask_block_diag_vec], mask_block_diag_vec),
+                    'off_block':  (vec_full[mask_off_block_vec],  mask_off_block_vec),
+                })
+            rows_across = [_full_row(
+                'data\n(split_halves_z\n= data_RDM_z[0])', data_RDM_z[0])]
+            for sm in fdr_subs:
+                if sm not in model_RDMs:
+                    continue
+                rows_across.append(_full_row(
+                    f'{sm}\n(= model_RDMs[{sm!r}][0])',
+                    model_RDMs[sm][0]))
+            _save_a = os.path.join(rdm_diag_dir,
+                                   f'fdr_rdm_across_run_{roi_name}.png')
+            _make_rdm_grid(
+                rows_across,
+                col_specs=[
+                    ('full',       '\n(= split_halves_z input)'),
+                    ('block_diag', '\n(within-task subset)'),
+                    ('off_block',  '\n(across-task subset)'),
+                ],
+                suptitle=(f'FDR-family across-run RDMs — ROI {roi_name} '
+                          f'(combo: {fdr_combo_key})'),
+                save_path=_save_a)
+            print(f"  Saved FDR across-run RDM diagnostic -> {_save_a}")
+
+            # ── Within-run figure (between_tasks family) ───────────────
+            # Single column = the off-block 1-D vector that compute_crosscorr_within
+            # returns directly (= between_tasks_z input). No mask hack: the
+            # vector has exactly the cells evaluate_model sees, placed at
+            # their off-block upper-tri positions.
+            rows_within = []
+            rows_within.append((
+                'data\n(between_tasks_z\n= data_RDM_across_z[0])',
+                {
+                    'off_block': (data_RDM_across_z[0], mask_off_block_vec),
+                },
+            ))
+            for sm in fdr_subs:
+                if sm not in model_RDMs_across:
+                    continue
+                rows_within.append((
+                    f'{sm}\n(= model_RDMs_across[{sm!r}][0])',
+                    {
+                        'off_block': (model_RDMs_across[sm][0], mask_off_block_vec),
+                    },
+                ))
+            _save_w = os.path.join(rdm_diag_dir,
+                                   f'fdr_rdm_within_run_{roi_name}.png')
+            _make_rdm_grid(
+                rows_within,
+                col_specs=[
+                    ('off_block',  '\n(= between_tasks_z input)'),
+                ],
+                suptitle=(f'FDR-family within-run RDMs — ROI {roi_name} '
+                          f'(combo: {fdr_combo_key})'),
+                save_path=_save_w)
+            print(f"  Saved FDR within-run RDM diagnostic -> {_save_w}")
 
         # ── Mode comparison: empirical-only RSA for all 3 phase modes ────
         # Cheap (no permutations) — uses the SAME model + data RDMs and just
