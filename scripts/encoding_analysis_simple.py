@@ -43,7 +43,7 @@ OUT_BASE = os.path.join(DATA_DIR, 'group', 'encoding_analysis_simple')
 # '2026-05-18_16-33-05') to skip the heavy elastic-net + permutation loop
 # and just re-render the summary plots from the saved
 # encoding_results.csv (+ diagnostics.pkl, if present).  None = fresh run.
-RELOAD_RUN = '2026-06-05_17-58-57' # None # '2026-05-28_16-45-09-nopenality-newROIs' # '2026-05-20_22-57-03-GREATONE/' # None # '2026-05-18_16-33-05' # None
+RELOAD_RUN = None # '2026-06-05_17-58-57' # None # '2026-05-28_16-45-09-nopenality-newROIs' # '2026-05-20_22-57-03-GREATONE/' # None # '2026-05-18_16-33-05' # None
 
 # Subset re-plot: take an existing run's cell-wise results, restrict them
 # to a subset of subjects, and regenerate every result file + plot into a
@@ -55,12 +55,32 @@ RELOAD_RUN = '2026-06-05_17-58-57' # None # '2026-05-28_16-45-09-nopenality-newR
 #                                            'none-RSA-subset')
 #   {'tag': 'name', 'exclude': ['05',..]} -> drop an explicit subject list
 #   {'tag': 'name', 'include': ['01',..]} -> keep only an explicit list
-SUBSET_REPLOT = 'none_RSA' #None # 'none_RSA' # None
+SUBSET_REPLOT = None # 'none_RSA' #None # 'none_RSA' # None
 
 N_PHASES = 3
 N_BINS_PER_TRIAL = 360
 N_SUBPATHS_PER_TRIAL = 12
 states = ['A', 'B', 'C', 'D']
+
+# ── Phase residualisation (applied per cell at the 360-bin firing-rate
+#    level, BEFORE design matrix build and elastic-net fit).
+#    Subtracts a single-cosine within-state phase tuning per cell so
+#    encoding models do not need to include phase as a co-regressor.
+#    See discussion in spatial_peaks_simple wrt. regularisation washout +
+#    nonlinear interactions when phase is added to the design matrix.
+#    Options:
+#       None         -> raw firing rate, current behaviour
+#       'cosine'     -> single harmonic (sin + cos at 90-bin period)
+#       'cosine_2h'  -> cosine + 2nd harmonic
+#       'categorical'-> 3-bin categorical (early/mid/late)
+PHASE_RESIDUALISE = 'cosine' # None
+
+# ── Repeat-correct residualisation: load the per-cell rep_correct-residualised
+#    files produced by scripts/residualise_data_by_repeat.py instead of the
+#    raw '*_passed.csv' files. Removes the cell's linear drift across repeats
+#    of the same trial at the DATA level (before any encoding fit). Stacks
+#    additively with PHASE_RESIDUALISE; both can be on simultaneously.
+RESIDUALISE_REPEATS = False
 
 # True  -> mode-buttons / mode-locations + mean-of-neurons => 1×360 per config
 # False -> raw per-repeat regressors and neurons, flattened across repeats
@@ -83,11 +103,17 @@ N_JOBS = -1            # joblib parallelism over neurons
 #      'phase', 'state', 'state_phase',
 #     'bttn_prev', 'bttn_next', 'bttn_curr', 'uncover',
 # ]
-models = [
-     'dsr', 'dsr_only_fut', 'dsr_now_next', 'location', 'midnight',
-     'phase', 'state', 'state_phase',
-    'bttn_prev', 'bttn_next', 'bttn_curr', 'uncover',
-]
+models =  [
+      'dsr', 'dsr_ideal', 'dsr_ideal_phases',  # all three DSR variants for sensitivity
+      'location', 'midnight', 'state',
+      'bttn_curr', 'bttn_next',
+  ]
+
+# [
+#      'dsr', 'dsr_only_fut', 'dsr_now_next', 'location', 'midnight',
+#      'phase', 'state', 'state_phase',
+#     'bttn_prev', 'bttn_next', 'bttn_curr', 'uncover',
+# ]
 
 # ── Combination-model analysis settings ───────────────────────────────
 # Which analyses to run:
@@ -339,6 +365,8 @@ run_config = {
     'N_PHASES':         N_PHASES,
     'N_BINS_PER_TRIAL': N_BINS_PER_TRIAL,
     'states':           states,
+    'phase_residualise': PHASE_RESIDUALISE,
+    'residualise_repeats': RESIDUALISE_REPEATS,
 }
 if RELOAD_RUN is None:
     with open(os.path.join(OUT_DIR, 'config.json'), 'w') as f:
@@ -486,7 +514,8 @@ def build_single_trial_regressors(loc_path, btn_path, btn_alphabet,
 
     needs_DSR = bool(set(models_to_build) & {
         'location', 'phase', 'state', 'midnight',
-        'dsr', 'state_phase', 'dsr_now_next', 'dsr_only_fut'
+        'dsr', 'state_phase', 'dsr_now_next', 'dsr_only_fut',
+        'dsr_ideal', 'dsr_ideal_phases',
     })
     if needs_DSR:
         loc_og, phas_og, stat_og, midn_og, clo_og, phas_stat_og, clo_now_next_og = (
@@ -494,16 +523,46 @@ def build_single_trial_regressors(loc_path, btn_path, btn_alphabet,
                 locations=loc_int.tolist(), no_phase_neurons=N_PHASES,
             )
         )
-        # import pdb; pdb.set_trace()
+        # ── dsr_ideal: 9 locations × 12 lag windows, rolled one-hot.
+        # For each lag k (0..11), feature (k*9 + l) is loc_og rolled left by
+        # k * (N_BINS_PER_TRIAL / N_SUBPATHS_PER_TRIAL) bins, so feature is
+        # 1 at time t if location at "subpath k ahead of t" is l. This is
+        # the encoding analogue of RSA's dsr_ideal (no explicit phase axis).
+        _STEP = N_BINS_PER_TRIAL // N_SUBPATHS_PER_TRIAL   # 30 bins per subpath
+        loc_og_arr = np.asarray(loc_og, dtype=float)
+        _dsr_ideal = np.zeros((N_SUBPATHS_PER_TRIAL * loc_og_arr.shape[0], N_BINS_PER_TRIAL))
+        for _lag in range(N_SUBPATHS_PER_TRIAL):
+            _dsr_ideal[_lag * loc_og_arr.shape[0]:(_lag + 1) * loc_og_arr.shape[0]] = \
+                np.roll(loc_og_arr, -_lag * _STEP, axis=1)
+
+        # ── dsr_ideal_phases: 9 loc × N_PHASES × 12 lag, location-at-lag gated
+        # by CURRENT within-subpath phase. Feature (k, p, l) is on at time t
+        # iff current phase is p AND location at lag k ahead is l.
+        _bins_per_phase = _STEP // N_PHASES
+        _t = np.arange(N_BINS_PER_TRIAL)
+        _current_phase = (_t % _STEP) // _bins_per_phase      # 0..N_PHASES-1
+        _dsr_ideal_phases = np.zeros((
+            N_SUBPATHS_PER_TRIAL * N_PHASES * loc_og_arr.shape[0],
+            N_BINS_PER_TRIAL,
+        ))
+        for _lag in range(N_SUBPATHS_PER_TRIAL):
+            _rolled = np.roll(loc_og_arr, -_lag * _STEP, axis=1)
+            for _ph in range(N_PHASES):
+                _gate = (_current_phase == _ph).astype(float)
+                _base = (_lag * N_PHASES + _ph) * loc_og_arr.shape[0]
+                _dsr_ideal_phases[_base:_base + loc_og_arr.shape[0]] = _rolled * _gate[None, :]
+
         DSR_MAP = {
-            'location':       loc_og,
-            'phase':          phas_og,
-            'state':          stat_og,
-            'midnight':       midn_og,
-            'dsr':            clo_og,
-            'state_phase':    phas_stat_og,
-            'dsr_now_next':   clo_now_next_og,
-            'dsr_only_fut': clo_og - clo_now_next_og
+            'location':         loc_og,
+            'phase':            phas_og,
+            'state':            stat_og,
+            'midnight':         midn_og,
+            'dsr':              clo_og,
+            'state_phase':      phas_stat_og,
+            'dsr_now_next':     clo_now_next_og,
+            'dsr_only_fut':     clo_og - clo_now_next_og,
+            'dsr_ideal':        _dsr_ideal,
+            'dsr_ideal_phases': _dsr_ideal_phases,
         }
         for m in models_to_build:
             if m in DSR_MAP:
@@ -1008,10 +1067,12 @@ def compute_combo_roi_summary(delta_df, alpha=0.05):
 if RELOAD_RUN is None:
     # ── Cache subject data ───────────────────────────────────────────────
     print("Loading subject data...")
+    if RESIDUALISE_REPEATS:
+        print("  RESIDUALISE_REPEATS=True → loading per-cell rep_correct-residualised files")
     SUBJECT_DATA = {}
     for sub_str in SUBJECTS:
         SUBJECT_DATA[sub_str] = mc.analyse.helpers_human_cells.load_norm_data(
-            DATA_DIR, [sub_str],
+            DATA_DIR, [sub_str], res_data=RESIDUALISE_REPEATS,
         )
     print(f"Cached data for {len(SUBJECT_DATA)} subjects.")
 
@@ -1047,6 +1108,20 @@ if RELOAD_RUN is None:
         locs_df    = sub_dict['locations'].reset_index(drop=True)
         buttons_df = sub_dict['buttons'].reset_index(drop=True)
         neurons    = sub_dict['normalised_neurons']
+
+        # Optional per-cell phase residualisation on raw 360-bin firing
+        # rate (so all downstream regressions see phase-cleaned signal).
+        if PHASE_RESIDUALISE:
+            from mc.analyse.future_spatial_peaks import _residualise_phase
+            neurons_resid = {}
+            for n_lab, n_df in neurons.items():
+                arr = n_df.to_numpy(dtype=float)
+                arr_clean = _residualise_phase(arr, basis=PHASE_RESIDUALISE)
+                neurons_resid[n_lab] = pd.DataFrame(
+                    arr_clean, index=n_df.index, columns=n_df.columns,
+                )
+            neurons = neurons_resid
+            print(f"  applied phase residualisation: {PHASE_RESIDUALISE}")
 
         # Filter neurons by target ROI(s).
         def neuron_keep(lbl):

@@ -74,7 +74,7 @@ configs = [
 ]
 
 N_CONFIGS             = len(configs)
-N_CONDS_PER_CONFIG    = 12
+N_CONDS_PER_CONFIG    = 20
 LEN_STANDARDISED_PATH = 12
 N_PHASES              = 2
 N_STATES              = 4

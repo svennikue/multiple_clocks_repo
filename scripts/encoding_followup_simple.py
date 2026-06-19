@@ -2874,8 +2874,11 @@ if _run_sparse:
     # Publication-figure scope: ACC only. Add other ROIs back if you also
     # want followup-style renders of those.
     SPARSE_DSR_TARGET_ROIS = ['ACC']
-    SPARSE_DSR_N_PER_ROI = 5
+    SPARSE_DSR_N_PER_ROI = 10
     SPARSE_DSR_N_TOP_COEFS_TO_REPORT = 5
+    # Gaussian sigma (in bins) applied to the displayed neuron trace only.
+    # The r in the title is still computed from the un-smoothed fit. 0 = off.
+    SPARSE_DSR_DISPLAY_SMOOTH_SIGMA = 8
     # |coef| >= ACTIVE_THRESHOLD * max(|coef|) is counted as "active".
     SPARSE_DSR_ACTIVE_THRESHOLD = 0.10
     SPARSE_DSR_P_PERM_ALPHA = 0.05
@@ -3485,7 +3488,7 @@ if _run_sparse:
             # ── Publication layout (~14 cm × 10.5 cm, fits the subpanel-e
             # slot of the multi-panel figure at 2/3 A4 width). ───────────
             n_bins_per_trial = len(y_test)
-            FIG_W_CM, FIG_H_CM = 14.0, 11.5
+            FIG_W_CM, FIG_H_CM = 14.0, 9.0
             FONT_PT = 9
             with plt.rc_context({'font.family': 'sans-serif',
                                  'font.sans-serif':
@@ -3493,29 +3496,37 @@ if _run_sparse:
                                  'font.size': FONT_PT}):
                 fig = plt.figure(figsize=(FIG_W_CM / 2.54,
                                           FIG_H_CM / 2.54))
-                # 11 rows × 16 cols. Histogram top-left; trace + 3 bars on
-                # the right. Below the histogram: task-config grid and
-                # phase-wheel legends side by side. The lag bar gets only
-                # 2 rows (was 4) — visibly thinner per user request.
-                # top=0.86 leaves a comfortable gap below the figure title.
-                gs = fig.add_gridspec(11, 16,
-                                      hspace=0.50, wspace=0.55,
+                # 8 rows × 18 cols. Histogram is shorter (3 rows) so the
+                # perm bars don't dominate; an empty spacer column (col 4)
+                # keeps the neuron y-ticks clear of the histogram's
+                # empirical-r line. Legends fill the bottom-left under the
+                # histogram, lag bar extends to the figure bottom.
+                gs = fig.add_gridspec(8, 20,
+                                      hspace=0.75, wspace=0.85,
                                       left=0.07, right=0.97,
-                                      top=0.82, bottom=0.07)
-                ax_hist  = fig.add_subplot(gs[0:5, 0:4])
-                ax_ts    = fig.add_subplot(gs[0:5, 4:16])
-                ax_loc   = fig.add_subplot(gs[5, 4:16], sharex=ax_ts)
-                ax_phase = fig.add_subplot(gs[6, 4:16], sharex=ax_ts)
-                ax_lag   = fig.add_subplot(gs[7:9, 4:16], sharex=ax_ts)
-                ax_grid  = fig.add_subplot(gs[7:11, 0:2])
-                ax_wheel = fig.add_subplot(gs[7:11, 2:4])
+                                      top=0.86, bottom=0.16)
+                ax_hist  = fig.add_subplot(gs[0:3, 0:4])
+                ax_ts    = fig.add_subplot(gs[0:4, 7:20])
+                ax_loc   = fig.add_subplot(gs[4, 7:20], sharex=ax_ts)
+                ax_phase = fig.add_subplot(gs[5, 7:20], sharex=ax_ts)
+                ax_lag   = fig.add_subplot(gs[6:8, 7:20], sharex=ax_ts)
+                ax_grid  = fig.add_subplot(gs[4:8, 0:2])
+                ax_wheel = fig.add_subplot(gs[4:8, 2:4])
 
                 # --- Histogram (greens, no legend) ---
                 _draw_perm_hist_pub(ax_hist, diag, bins=22)
 
                 # --- Trace ---
                 x = np.arange(n_bins_per_trial)
-                ax_ts.plot(x, y_test, color='black', lw=0.7, zorder=3)
+                if SPARSE_DSR_DISPLAY_SMOOTH_SIGMA > 0:
+                    from scipy.ndimage import gaussian_filter1d
+                    y_test_disp = gaussian_filter1d(
+                        y_test.astype(float),
+                        sigma=SPARSE_DSR_DISPLAY_SMOOTH_SIGMA,
+                        mode='nearest')
+                else:
+                    y_test_disp = y_test
+                ax_ts.plot(x, y_test_disp, color='black', lw=0.7, zorder=3)
                 ax_ts2 = ax_ts.twinx()
                 ax_ts2.plot(x, y_pred,
                             color=PUB_PRED_COLOR, lw=1.2, alpha=0.95,
@@ -3571,7 +3582,7 @@ if _run_sparse:
                 ax_lag.set_ylabel('Time-lag', rotation=0,
                                   ha='right', va='center',
                                   fontsize=FONT_PT)
-                ax_lag.set_xlabel('time bin', fontsize=FONT_PT)
+                ax_lag.set_xlabel('time bin', fontsize=FONT_PT, labelpad=14)
                 ax_lag.tick_params(labelsize=FONT_PT)
                 _hide_spines(ax_lag, sides=('top', 'left', 'right'))
 

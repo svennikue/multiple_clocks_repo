@@ -1,0 +1,37 @@
+{
+  "analysis_name":         "spatial_peaks_first_pass",
+
+  "cell_set":              "all_in_roi_table",
+  "subjects":              null,
+  "rois_keep":             null,
+
+  "trials":                "residualised",
+  "coverage_mode":         "paired",
+  "sparsity_filter":       "gridwise_qc",
+
+  "weighted_correlation":  true,
+  "min_dwell_bins":        25,
+  "min_shared_locs":       5,
+
+  "shifts_deg":            [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330],
+  "n_peaks":               1,
+
+  "now_set":               [330, 0, 30],
+
+  "n_jobs":                -1,
+  "random_seed":           42,
+
+  "run_permutations":      true,
+  "n_permutations":        200,
+
+  "_notes": {
+    "cell_set":             "'rsa' uses the 28 RSA subjects; 'all_in_roi_table' uses every ROI-assigned cell.",
+    "trials":               "passed straight to mc.analyse.helpers_human_cells.filter_data.",
+    "coverage_mode":        "'per_grid' = raw unique grids; 'paired' = pair_grids_to_increase_spatial_coverage.",
+    "sparsity_filter":      "null or 'gridwise_qc' (extract_consistent_grids -> idx_same_grids[bad] = -1).",
+    "weighted_correlation": "dwell-weighted Pearson r vs unweighted np.corrcoef.",
+    "n_peaks":              "K of top-K shifts picked on training; held constant across folds + cells.",
+    "now_set":              "shifts treated as 'now' for the now/future binning in plots.",
+    "run_permutations":     "first pass = false. Permutation API is wired but gated off."
+  }
+}

@@ -49,13 +49,13 @@ configs = [
 
 
 N_CONFIGS = len(configs)
-N_CONDS_PER_CONF = 12
+N_CONDS_PER_CONF = 20
 LEN_STANDARDISED_PATH = 12
 N_PHASES = 3
 states           = ['A', 'B', 'C', 'D']
 RESOLUTIONx = 1
 PLOT_FIGS = False
-N_PERMUTATIONS = 100 #None #1000 # 500 # None or 300
+N_PERMUTATIONS = 500 #None #1000 # 500 # None or 300
 SPLIT_UNCV_BUTTONS = True
 
 # Phase-based masking. Phase of a condition at position pos inside a config is
@@ -68,15 +68,55 @@ SPLIT_UNCV_BUTTONS = True
 # permutations, pub figures).
 PHASE_MASK_MODE = 'full'
 
-# If True, ALSO run the empirical (no-permutation) RSA in all three modes
-# and produce comparison heatmaps of the combo betas side-by-side per ROI.
-# Cheap; uses the model + data RDMs already built. Does not change the primary
-# results.
+# Per-cell phase residualisation applied at the 360-bin firing-rate level,
+# BEFORE downsampling and RDM construction. Conceptually different from
+# adding a phase RDM as a control regressor:
+#   * RDM-level partialling can be 'too strong' when the phase RDM is
+#     categorical / block-structured vs. graded per-cell phase tuning;
+#     it may zero out DSR variance that shares phase's RDM structure.
+#   * Data-level pre-residualisation only removes the part of each cell's
+#     firing rate that's predicted by a continuous phase basis, more
+#     conservative.
+# Options: None / 'cosine' / 'cosine_2h' / 'categorical'.
+PHASE_RESIDUALISE = 'cosine' # None
+
+# Per-cell repeat-correct residualisation. Loads the per-cell-residualised
+# files produced by scripts/residualise_data_by_repeat.py (regressing each
+# cell's 360-bin firing rate against rep_correct, then subtracting the
+# linear slope). Use this when you want to control for within-trial repeat
+# drift at the DATA level, not via a 'repeat_counter' RDM regressor.
+#   False -> load raw 'cell-*-360_bins_passed.csv' files (current default)
+#   True  -> load 'cleaned_from_reps/cell-*-360_bins_residualised.csv' files
+# Independent of PHASE_RESIDUALISE; the two stack additively.
+RESIDUALISE_REPEATS = False
+
+# If True, ALSO run the empirical (no-permutation) RSA in all three phase-mask
+# modes and produce comparison heatmaps of the combo betas side-by-side per
+# ROI. Cheap; uses the model + data RDMs already built. Does not change the
+# primary results.
 RUN_PHASE_MODE_COMPARISON = True
 
 assert PHASE_MASK_MODE in ('full', 'within_phase', 'across_phase'), PHASE_MASK_MODE
+# Safety: phase residualisation removes phase variance at the data level, so
+# any phase-mask filter on RDM cells would be applied to data that no longer
+# carries phase signal — double removal, and confusing to interpret. Force
+# one or the other.
+if PHASE_RESIDUALISE is not None and PHASE_MASK_MODE != 'full':
+    raise AssertionError(
+        f"PHASE_RESIDUALISE={PHASE_RESIDUALISE!r} implies phase is removed at "
+        f"the data level; PHASE_MASK_MODE must therefore stay 'full' (no "
+        f"RDM-cell filtering), got {PHASE_MASK_MODE!r}.")
+# Same safety for the comparison plot: if data is phase-residualised, the
+# 'within_phase' / 'across_phase' sweep has no biological meaning; turn it off.
+if PHASE_RESIDUALISE is not None and RUN_PHASE_MODE_COMPARISON:
+    print("[notice] PHASE_RESIDUALISE is set; forcing "
+          "RUN_PHASE_MODE_COMPARISON=False (phase-mask sweep meaningless on "
+          "phase-residualised data).")
+    RUN_PHASE_MODE_COMPARISON = False
+# Phase regressor pruning from combos happens below, after `combo_models`
+# is defined (see "Phase-residualisation combo pruning" block).
 
-PLOT_GLASSBRAINS = False
+PLOT_GLASSBRAINS = True
 # ── Models / combos to evaluate per ROI this round ────────────────────
 # All model RDMs are built each run (cheap). These lists only restrict the
 # *expensive* per-ROI evaluation + permutation step.
@@ -84,16 +124,31 @@ PLOT_GLASSBRAINS = False
 # - `combo_models`: combos evaluated per ROI. Sub-models are pulled from the
 #   always-built model_RDMs, so combos may reference any model regardless of
 #   what's in `models`.
-models = ['dsr_old', 'dsr_fmri','state','midnight', 'bttn_curr', 'bttn_next', 'location', 'phase', 'repeat_counter', 'uncover']
-#models = ['dsr_old', 'midnight','state', 'repeat_counter', 'uncover', 'bttn_prev', 'bttn_next', 'bttn_curr', 'location', 'phase']
+# dsr_old removed: after phase residualisation it flips sign (β goes from
+# +0.029 to −0.029 in ACC between_tasks_z) — the clock-ring rotation fits
+# phase variance that is no longer in the data.
+# dsr_fmri (Hamming on rolled 144-int mode-trajectory) is the canonical
+# DSR model. Reduced-lag splits dsr_fmri_lag01 / lag012 / lag0123 keep
+# only the first K of 12 lag-windows so we can test the
+# spatial-peaks +30/+60 prediction at the RDM level.
+models = ['dsr_fmri', 'dsr_fmri_lag01', 'dsr_fmri_lag012', 'dsr_fmri_lag0123',
+          'state', 'midnight', 'bttn_curr', 'bttn_next', 'location',
+          'l2_norm', 'phase', 'repeat_counter', 'uncover']
 
+# Canonical combo set mirroring the fMRI controls:
+#   fMRI_no_state    -> DSR + location + L2-norm + bttn_curr + bttn_next
+#   fMRI_state       -> + state                            (the FDR-family combo)
+#   fMRI_state_midn  -> + state + midnight
+# Same control stack across the three so the only thing that varies is the
+# state / midnight inclusion. L2-norm is the negative-distance-from-current-
+# location-to-each-of-9-grid-locations regressor, mirroring the fMRI version
+# in create_fMRI_model_RDMs_on_clean_beh.py (cosine RDM, 9-feature vector).
+_CTRLS = ['bttn_curr', 'bttn_next', 'location']
 combo_models = {
-    'fMRI_midnight_state':          ['bttn_curr', 'bttn_next', 'location', 'state', 'midnight', 'dsr_fmri'],
-    'fMRI_state':          ['bttn_curr', 'bttn_next', 'location', 'state', 'dsr_fmri'],
-    'fMRIold_state':          ['bttn_curr', 'bttn_next', 'location', 'state', 'dsr_old'],
-    'fMRI':          ['bttn_curr', 'bttn_next', 'location','dsr_fmri'],
-    'fMRI_phase_rep':          ['bttn_curr', 'bttn_next', 'location','dsr_fmri', 'phase', 'repeat_counter'],
-    'fMRI_phase_rep_uncvr':          ['bttn_curr', 'bttn_next', 'location','dsr_fmri', 'phase', 'repeat_counter', 'uncover'],
+    'bttn_loc':    _CTRLS + ['dsr_fmri'],
+    'bttn_loc_l2':    _CTRLS + ['dsr_fmri','l2_norm'],
+    'bttn_loc_l2_state':       _CTRLS + ['dsr_fmri', 'l2_norm','state'],
+    'bttn_loc_l2_state_midn':  _CTRLS + ['dsr_fmri', 'state', 'midnight'],
     }
 
 
@@ -109,6 +164,20 @@ combo_models = {
 #     'loc-cnt-uncvr-buttons-midn-dsr':          ['location', 'repeat_counter', 'uncover','bttn_prev', 'bttn_next', 'bttn_curr', 'midnight', 'dsr_old'], # visuals minus state plus midnight 
 # }
 
+# ── Phase-residualisation combo pruning ────────────────────────────────
+# When phase is removed at the data level, the 'phase' RDM regressor adds
+# no signal and just clutters the combo output. Drop it from every combo.
+if PHASE_RESIDUALISE is not None:
+    _stripped = 0
+    for _name, _subs in list(combo_models.items()):
+        if 'phase' in _subs:
+            combo_models[_name] = [m for m in _subs if m != 'phase']
+            _stripped += 1
+    if _stripped:
+        print(f"[notice] PHASE_RESIDUALISE={PHASE_RESIDUALISE!r} active — "
+              f"dropped 'phase' from {_stripped} combo(s)' sub-model lists "
+              f"(redundant after data-level residualisation).")
+
 print(f"Base models evaluated this run ({len(models)}): {models}")
 print(f"Combos evaluated this run     ({len(combo_models)}): {list(combo_models.keys())}")
 
@@ -122,18 +191,31 @@ print(f"Combos evaluated this run     ({len(combo_models)}): {list(combo_models.
 #   FDR_COMBOS differ only by `state` -> their dsr_old betas are
 #   correlated; set FDR_COMBOS to a single combo if you consider them
 #   one hypothesis (a 10-test family rather than 20).
-FDR_TEST      = 'between_tasks_z'   # primary variant: all-repeat-averaged
-                                    # per-config, z-scored per neuron,
-                                    # between-task-config cells only
-                                    # (within-config block masked out).
+FDR_TEST      = 'split_halves_z'    # primary variant. Data RDM is built
+                                    # from a 2-half (run-1 × run-2)
+                                    # population matrix; each RDM cell is
+                                    # an ACROSS-RUN comparison between two
+                                    # independent sub-populations. BOTH
+                                    # within-task-across-runs (block-diagonal,
+                                    # same config in run 1 vs run 2 — valid
+                                    # because halves are independent) AND
+                                    # between-task off-block cells contribute.
+                                    # We use this variant as primary because
+                                    # the spatial-peaks finding shows ACC's
+                                    # signal is config-dependent: it survives
+                                    # within-task generalisation but only
+                                    # marginally between-task.
+                                    # 'between_tasks_z' (run-averaged,
+                                    # between-task only) remains computed
+                                    # and reported as a secondary test.
 # Confirmatory family: ONE primary combo × the effect of interest × all
 # ROIs tested (≈ 7-9 tests). `MRI_combo-nofdb_midn` is treated as a
 # robustness check rather than a second confirmatory test, since its
 # `dsr_old` beta is highly correlated with the primary combo (the two
 # differ only by the `state` regressor). This keeps the FDR family
 # consistent with the publication panel (encoding_publication_panels.py).
-FDR_COMBOS    = ['fMRI_midnight_state'] # usually 'MRI_combo-nofdb_midn-state'
-FDR_SUBMODELS = ['dsr_fmri']  # dsr_fmri dsr_old effect(s) of interest within the combo
+FDR_COMBOS    = ['bttn_loc_l2_state']    # canonical DSR + ctrls (bttn+location+state)
+FDR_SUBMODELS = ['dsr_fmri']      # full 12-lag DSR (not the truncated variants)
 FDR_ALPHA     = 0.05
 
 
@@ -277,13 +359,29 @@ def make_phase_masks_for_cells(n_configs, n_conds_per_config, n_phases,
     diagnostics.
 
       variants:
-        'split_halves'   -> mask aligned with ``compute_crosscorr``'s output:
-                            upper-tri (k=1 unless include_diagonal) of a
-                            symmetrized cross-half N×N block, where
-                            N = n_configs * n_conds_per_config.
+        'split_halves'   -> mask aligned with ``compute_crosscorr``'s output.
+                            The DATA RDM here is built from a 2-half (run 1
+                            vs run 2) population matrix: every RDM cell is
+                            an ACROSS-RUN comparison between two independent
+                            sub-populations. That includes BOTH:
+                              * the within-task block-diagonal (same config,
+                                run 1 vs run 2 — valid because independent
+                                halves), AND
+                              * between-task off-block cells (different
+                                configs, run 1 vs run 2).
+                            Mask shape: upper-tri (k=1 unless
+                            include_diagonal) of a symmetrized cross-half
+                            N×N block, where N = n_configs *
+                            n_conds_per_config.
         'between_tasks'  -> mask aligned with ``compute_crosscorr_within``'s
-                            between-block output: upper-tri of the same N×N
-                            RDM, with same-config blocks already excluded.
+                            between-block output. The DATA RDM here is
+                            built from repeats pre-averaged per config (one
+                            population vector per condition, all runs
+                            collapsed), so the within-config block-diagonal
+                            would be autocorrelations (same averaged vector
+                            on both axes) and is EXCLUDED. ONLY between-task
+                            cells of the upper-tri of the run-averaged N×N
+                            RDM contribute.
 
       modes:
         'full'         -> all True (no masking).
@@ -358,6 +456,43 @@ def _phase_mask_matrix(mode, n_configs, n_conds_per_config, n_phases):
     if mode == 'across_phase':
         return ~same_phase_mat
     raise ValueError(f"unknown phase mode {mode!r}")
+
+
+# 3×3 grid coordinates in the same convention as
+# create_fMRI_model_RDMs_on_clean_beh.py (location ID 1..9 → (x, y)).
+# The L2-norm model uses the negative Euclidean distance from the current
+# location to each of the 9 grid cells as a 9-feature condition vector
+# (cosine similarity RDM, identical to the fMRI definition).
+_LOC_COORD = {
+    1: (-0.21,  0.29), 2: (0.0,  0.29), 3: (0.21,  0.29),
+    4: (-0.21,  0.0 ), 5: (0.0,  0.0 ), 6: (0.21,  0.0 ),
+    7: (-0.21, -0.29), 8: (0.0, -0.29), 9: (0.21, -0.29),
+}
+GRID_COORDS = np.array([_LOC_COORD[i] for i in range(1, 10)], dtype=float)
+GRID_L2 = np.linalg.norm(
+    GRID_COORDS[:, None, :] - GRID_COORDS[None, :, :], axis=-1
+)  # (9, 9) pairwise L2; row i is distance from loc i+1 to each grid cell.
+
+
+def l2_norm_row_for_loc(loc_id):
+    """9-vector of NEGATIVE L2 distance from `loc_id` (1..9) to each grid cell."""
+    return -GRID_L2[int(loc_id) - 1]
+
+
+def _vec_to_square_rdm(vec_1d, n):
+    """Reconstruct a symmetric n×n RDM from its upper-tri (k=1) 1-D vector.
+
+    The compute_crosscorr / compute_hamming pipelines emit the upper-triangle
+    above the main diagonal as a 1-D array (same layout as
+    ``np.triu_indices(n, k=1)``). This helper inverts that so we can visualise
+    exactly which cells fed evaluate_model under each RDM-mask variant.
+    """
+    M = np.full((n, n), np.nan, dtype=float)
+    ii, jj = np.triu_indices(n, k=1)
+    v = np.asarray(vec_1d, dtype=float)
+    M[ii, jj] = v
+    M[jj, ii] = v
+    return M
 
 
 def build_mode_path_dsr(mode_vec, n_conds_per_config, len_per_bin):
@@ -492,6 +627,8 @@ else:
         'models':               models,
         'combo_models':         combo_models,
         'roi_label_column':     ROI_LABEL_COLUMN,
+        'phase_residualise':    PHASE_RESIDUALISE,
+        'residualise_repeats':  RESIDUALISE_REPEATS,
         'fdr_test':             FDR_TEST,
         'fdr_combos':           FDR_COMBOS,
         'fdr_submodels':        FDR_SUBMODELS,
@@ -508,10 +645,81 @@ else:
 if RELOAD_RUN is None:
     # Cache subject data once; loop ROIs over the cache afterwards.
     print("Loading subject data once for all ROIs...")
+    if RESIDUALISE_REPEATS:
+        print("  RESIDUALISE_REPEATS=True → loading per-cell rep_correct-residualised files")
     SUBJECT_DATA = {}
     for sub_str in SUBJECTS:
-        SUBJECT_DATA[sub_str] = mc.analyse.helpers_human_cells.load_norm_data(DATA_DIR, [sub_str])
+        SUBJECT_DATA[sub_str] = mc.analyse.helpers_human_cells.load_norm_data(
+            DATA_DIR, [sub_str], res_data=RESIDUALISE_REPEATS,
+        )
     print(f"Cached data for {len(SUBJECT_DATA)} subjects.")
+
+    # ── Run-1 / run-2 separation + balance diagnostic ─────────────────────
+    # The pipeline hard-splits each config's correct-trial rows at index 10:
+    # rows 0:10 -> run-1, rows 10:20 -> run-2. Verify per subject × config
+    # how many trials feed each run, flag any imbalance or overlap risk,
+    # and dump a CSV for the record.
+    print("\n=== Run-1 / run-2 separation diagnostic ===")
+    print("  Trial allocation rule (per subject × config): "
+          "correct trials -> rows [0:10] = run-1, rows [10:20] = run-2.")
+    print("  Indices are non-overlapping by construction; this check verifies "
+          "trial counts and whether any subject × config has < 10 trials per run.")
+    diag_rows = []
+    n_imbalanced = 0
+    for sub_str, sub_pack in SUBJECT_DATA.items():
+        beh = sub_pack[f"sub-{sub_str}"]['beh'].copy()
+        beh['config_str'] = (
+            beh['loc_A'].astype(int).astype(str) + '-' +
+            beh['loc_B'].astype(int).astype(str) + '-' +
+            beh['loc_C'].astype(int).astype(str) + '-' +
+            beh['loc_D'].astype(int).astype(str))
+        for c in configs:
+            n_corr = int(((beh['config_str'] == c) & (beh['correct'] == 1)).sum())
+            n_run1 = min(n_corr, 10)
+            n_run2 = max(0, min(n_corr - 10, 10))
+            diag_rows.append({
+                'subject':   sub_str,
+                'config':    c,
+                'n_correct': n_corr,
+                'n_run1':    n_run1,
+                'n_run2':    n_run2,
+            })
+            if n_run1 != n_run2:
+                n_imbalanced += 1
+    diag_df = pd.DataFrame(diag_rows)
+    diag_df.to_csv(os.path.join(OUT_DIR, 'run_balance_diagnostic.csv'), index=False)
+    total_pairs = len(diag_df)
+    print(f"  subject × config cells: {total_pairs}")
+    print(f"  cells with n_run1 == n_run2: "
+          f"{total_pairs - n_imbalanced}/{total_pairs} "
+          f"({100.0 * (total_pairs - n_imbalanced) / total_pairs:.1f}%)")
+    print(f"  cells with imbalance (run1 != run2): {n_imbalanced} "
+          f"(usually subject × config with < 20 correct trials)")
+    print(f"  median trials per run: "
+          f"run1 = {int(np.median(diag_df['n_run1']))}, "
+          f"run2 = {int(np.median(diag_df['n_run2']))}")
+    print(f"  trial-overlap risk: 0 (rows [0:10] and [10:20] are disjoint by indexing).")
+    print(f"  per-subject × config breakdown -> "
+          f"{os.path.join(OUT_DIR, 'run_balance_diagnostic.csv')}")
+
+    # Optional per-cell phase residualisation on raw 360-bin firing rate.
+    # Applied to data ONLY (not models). Each cell's mean firing rate is
+    # preserved; the within-state phase tuning component is subtracted.
+    if PHASE_RESIDUALISE:
+        from mc.analyse.future_spatial_peaks import _residualise_phase
+        n_cells_total = 0
+        for sub_str, sub_pack in SUBJECT_DATA.items():
+            neurons = sub_pack[f"sub-{sub_str}"]['normalised_neurons']
+            for n_lab, n_df in neurons.items():
+                arr_clean = _residualise_phase(
+                    n_df.to_numpy(dtype=float), basis=PHASE_RESIDUALISE,
+                )
+                neurons[n_lab] = pd.DataFrame(
+                    arr_clean, index=n_df.index, columns=n_df.columns,
+                )
+                n_cells_total += 1
+        print(f"Applied phase residualisation ({PHASE_RESIDUALISE}) to "
+              f"{n_cells_total} cells across {len(SUBJECT_DATA)} subjects.")
 
 
     # Containers for cross-ROI summary
@@ -793,6 +1001,10 @@ if RELOAD_RUN is None:
                 'bttn_curr': make_empty(n_conditions, LEN_STANDARDISED_PATH, dtype=object),
                 'bttn_prev': make_empty(n_conditions, LEN_STANDARDISED_PATH, dtype=object),
                 'bttn_next': make_empty(n_conditions, LEN_STANDARDISED_PATH, dtype=object),
+                # l2_norm: 9-feature negative-Euclidean-distance vector from
+                # the current location to each of the 9 grid cells. Mirrors
+                # create_fMRI_model_RDMs_on_clean_beh.py / models['l2_norm'].
+                'l2_norm': make_empty(n_conditions, 9),
             }
             for run_id in (1, 2)
         }
@@ -819,7 +1031,20 @@ if RELOAD_RUN is None:
                     # --- location ---
                     subpath = mode_vec[n_subpath * LEN_OG_SUBPATH:(n_subpath + 1) * LEN_OG_SUBPATH]
                     mats['loc'][row] = downsample_mode(subpath, target_len=LEN_STANDARDISED_PATH)
-        
+
+                    # --- l2_norm: single curr-loc summary per condition ---
+                    # Take the most common location in this subpath; convert to
+                    # the 9-vector of negative L2 distances to each grid cell.
+                    # If subpath is all-NaN (no behaviour at that time), zero row.
+                    sub_clean = subpath[~np.isnan(subpath)] if subpath.dtype.kind == 'f' \
+                        else subpath
+                    if len(sub_clean) == 0:
+                        mats['l2_norm'][row] = 0.0
+                    else:
+                        sub_mode = int(Counter(sub_clean.tolist())
+                                       .most_common(1)[0][0])
+                        mats['l2_norm'][row] = l2_norm_row_for_loc(sub_mode)
+
                     # --- dsr ---
                     mats['dsr'][row] = np.roll(dsr_base, -n_subpath * LEN_STANDARDISED_PATH)
         
@@ -856,6 +1081,7 @@ if RELOAD_RUN is None:
             'bttn_curr':    np.concatenate([matrices[1]['bttn_curr'], matrices[2]['bttn_curr']], axis=0),
             'bttn_prev':    np.concatenate([matrices[1]['bttn_prev'], matrices[2]['bttn_prev']], axis=0),
             'bttn_next':    np.concatenate([matrices[1]['bttn_next'], matrices[2]['bttn_next']], axis=0),
+            'l2_norm':    np.concatenate([matrices[1]['l2_norm'], matrices[2]['l2_norm']], axis=0),
             'state':      np.tile(state_half, (2, 1)),
             'repeat_counter': np.tile(feedback_half, (2,1))
         }
@@ -906,6 +1132,59 @@ if RELOAD_RUN is None:
         model_concat['phase'] = np.transpose(np.concatenate(phase, axis = 1))
         model_concat['location_old'] = np.transpose(np.concatenate(loc_old, axis = 1))
 
+        # Reduced-lag dsr_fmri variants: only the first K of 12 lag-windows
+        # (LEN_STANDARDISED_PATH=12 columns per lag-window). Built by column-
+        # truncating the full dsr_fmri matrix so the Hamming metric stays
+        # identical and any difference reflects only the lag-truncation.
+        _L = LEN_STANDARDISED_PATH
+        model_concat['dsr_fmri_lag01']    = model_concat['dsr_fmri'][:, :2 * _L]   # current + 1
+        model_concat['dsr_fmri_lag012']   = model_concat['dsr_fmri'][:, :3 * _L]   # + 2
+        model_concat['dsr_fmri_lag0123']  = model_concat['dsr_fmri'][:, :4 * _L]   # + 3
+
+
+        # ── Model design-matrix plots ────────────────────────────────────
+        # Visualise the (conditions × features) matrix that actually feeds
+        # each model's RDM. One panel per model, run-1 half only (run-2 is
+        # an identical mode-trajectory so plotting both halves is redundant).
+        # Saved once, on the example ROI, into <OUT_DIR>/model_design_matrices/.
+        if roi_name == EXAMPLE_ROI_FOR_FIGS:
+            md_dir = os.path.join(OUT_DIR, 'model_design_matrices')
+            os.makedirs(md_dir, exist_ok=True)
+            _half1 = slice(0, N_CONFIGS * N_CONDS_PER_CONF)
+            _show_models = [
+                'dsr_fmri', 'location', 'l2_norm',
+                'bttn_curr', 'bttn_next', 'state', 'midnight',
+            ]
+            _show_models = [m for m in _show_models if m in model_concat]
+            fig_md, axes_md = plt.subplots(
+                1, len(_show_models),
+                figsize=(2.2 * len(_show_models), 4.5),
+                constrained_layout=True)
+            if len(_show_models) == 1:
+                axes_md = [axes_md]
+            for ax, mname in zip(axes_md, _show_models):
+                mat_show = np.asarray(model_concat[mname][_half1], dtype=float)
+                im = ax.imshow(mat_show, aspect='auto', cmap='viridis',
+                               interpolation='nearest')
+                ax.set_title(f'{mname}\n{mat_show.shape[0]}×{mat_show.shape[1]}',
+                             fontsize=9)
+                ax.set_xlabel('features', fontsize=8)
+                if ax is axes_md[0]:
+                    ax.set_ylabel('conditions (run-1 half)', fontsize=8)
+                # config boundaries every N_CONDS_PER_CONF rows
+                for k in range(1, N_CONFIGS):
+                    ax.axhline(k * N_CONDS_PER_CONF - 0.5,
+                               color='red', lw=0.4, alpha=0.6)
+                plt.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
+            fig_md.suptitle(
+                f'Model design matrices (run-1 half) — example ROI {roi_name}',
+                fontsize=11)
+            fig_md.savefig(os.path.join(md_dir,
+                                        f'model_design_matrices_{roi_name}.png'),
+                           dpi=200, bbox_inches='tight')
+            plt.show()
+            print(f"  Saved model design-matrix figure -> {md_dir}")
+
 
         model_RDMs = {}
         model_RDMs_within = {}
@@ -914,7 +1193,8 @@ if RELOAD_RUN is None:
 
         for m in model_concat:
 
-            if m in ('location', 'dsr', 'dsr_fmri', 'bttn_prev', 'bttn_next', 'bttn_curr', 'uncover'):
+            if m in ('location', 'dsr', 'dsr_fmri', 'bttn_prev', 'bttn_next', 'bttn_curr', 'uncover',
+                     'dsr_fmri_lag01', 'dsr_fmri_lag012', 'dsr_fmri_lag0123'):
                 model_RDMs[m] = mc.analyse.my_RSA.compute_hamming_distance(
                     model_concat[m], plotting=False, include_diagonal=False,
                     model_name=m, no_tasks=len(configs))
@@ -939,7 +1219,10 @@ if RELOAD_RUN is None:
         # wherever both endpoints are all-zero (norm=0). Replace with 1 (max
         # cosine dissimilarity) across ALL three RDM-vector dicts so combos
         # that include 'repeat_counter' don't blow up evaluate_model when run
-        # on the between_tasks / within variants.
+        # on the split_halves / between_tasks variants.
+        # (model_RDMs_within is the deprecated within-block-only variant —
+        #  retained in the dict structure but never used downstream because
+        #  it would be autocorrelation on the run-averaged RDM.)
         for _rdm_dict in (model_RDMs, model_RDMs_within, model_RDMs_across):
             _vec = _rdm_dict['repeat_counter'][0]
             _vec[np.isnan(_vec)] = 1
@@ -1029,12 +1312,28 @@ if RELOAD_RUN is None:
 
 
         test_specs = [
-            # 'split_halves' = full off-diagonal RDM from a 2-half (10
-            # reps each) population matrix; 'between_tasks' = repeats
-            # pre-averaged per config, only off-block (between-task-
-            # config) cells used.
+            # 'split_halves' (= across-runs RDM):
+            #   Built from a 2-half (10 reps each) population matrix; each
+            #   RDM cell compares run-1 sub-population to run-2 sub-pop.
+            #   That includes BOTH (a) the within-task block-diagonal
+            #   (same config in run 1 vs same config in run 2 — valid
+            #   because run 1 and run 2 are independent data), AND (b) the
+            #   between-task off-block cells (different configs across
+            #   runs). All upper-tri cells contribute.
+            #
+            # 'between_tasks' (= run-averaged, between-task-only):
+            #   Built from per-config means (repeats pre-averaged into one
+            #   population vector per condition). The within-config block-
+            #   diagonal is MASKED because those cells would be auto-
+            #   correlations (the same averaged vector compared to itself).
+            #   Only between-task cells contribute.
+            #
+            # The deprecated 'within' variant (commented out below) would
+            # have been "only the within-config block of the run-averaged
+            # RDM" — that is exactly the autocorrelation trap and should
+            # never be used. Kept commented as a reminder.
             ('split_halves',  model_RDMs,        data_RDM[0],        data_RDM_z[0]),
-            #('within',       model_RDMs_within, data_RDM_within[0], data_RDM_within_z[0]),
+            #('within',       model_RDMs_within, data_RDM_within[0], data_RDM_within_z[0]),  # DO NOT USE: autocorrelation
             ('between_tasks', model_RDMs_across, data_RDM_across[0], data_RDM_across_z[0]),
         ]
 
@@ -1068,6 +1367,144 @@ if RELOAD_RUN is None:
                     z_m, combo_models[combo],
                     label=f'[{roi_name}] {PHASE_MASK_MODE}/{test_name}_z/{combo}')
                 for combo in combo_models}
+
+        # ── Block-diag / off-block / full breakdown (split_halves_z) ─────
+        # Diagnostic: split the across-runs upper-tri RDM into
+        #   * block_diag  : same-config cells (within-task across runs;
+        #                   valid because runs are independent)
+        #   * off_block   : different-config cells (between-task)
+        #   * full        : both combined (= the primary split_halves_z test)
+        # For each of the 3 combos in `combo_models`, re-run evaluate_model on
+        # each subset. Saved as a per-ROI CSV row and printed inline so we can
+        # see whether the FDR-family combo's signal is carried by within-task
+        # or between-task pairs.
+        N_RDM = N_CONFIGS * N_CONDS_PER_CONF
+        _ii, _jj = np.triu_indices(N_RDM, k=1)
+        _cfg_i = _ii // N_CONDS_PER_CONF
+        _cfg_j = _jj // N_CONDS_PER_CONF
+        _MASKS_BLOCK = {
+            'block_diag': _cfg_i == _cfg_j,
+            'off_block':  _cfg_i != _cfg_j,
+            'full':       np.ones_like(_cfg_i, dtype=bool),
+        }
+        # Sanity check: vector length must match the 1-D RDM the regressions use.
+        if len(data_RDM_z[0]) != _MASKS_BLOCK['full'].sum():
+            print(f"  [block-breakdown] vector length mismatch "
+                  f"({len(data_RDM_z[0])} vs {_MASKS_BLOCK['full'].sum()}) "
+                  f"— skipping breakdown for {roi_name}.")
+        else:
+            block_break_rows = []
+            print(f"\n  --- {roi_name}: block-diag / off-block / full breakdown "
+                  f"(split_halves_z) ---")
+            for mask_name, mvec in _MASKS_BLOCK.items():
+                d_vec = np.asarray(data_RDM_z[0], dtype=float)[mvec]
+                for combo_key, sub_models in combo_models.items():
+                    stacked = build_combo_rdm(model_RDMs, sub_models)
+                    stacked_m = np.asarray(stacked, dtype=float)[mvec, :]
+                    t_arr, b_arr, p_arr = evaluate_combo_safe(
+                        stacked_m, d_vec, sub_models,
+                        label=f'[{roi_name}] {mask_name}/{combo_key}')
+                    for s_i, sm in enumerate(sub_models):
+                        block_break_rows.append({
+                            'roi':       roi_name,
+                            'mask':      mask_name,
+                            'combo':     combo_key,
+                            'sub_model': sm,
+                            't':         float(t_arr[s_i]),
+                            'beta':      float(b_arr[s_i]),
+                            'p':         float(p_arr[s_i]),
+                            'n_pairs':   int(mvec.sum()),
+                        })
+                    # Print only the dsr_fmri row to keep stdout terse.
+                    if 'dsr_fmri' in sub_models:
+                        _i = sub_models.index('dsr_fmri')
+                        print(f"    {mask_name:>11s}  {combo_key:<18s} "
+                              f"dsr_fmri  t={t_arr[_i]:+.2f}  "
+                              f"beta={b_arr[_i]:+.4f}  p={p_arr[_i]:.4f}  "
+                              f"(n_pairs={int(mvec.sum())})")
+            # Append to a global CSV (created on first ROI, appended for the rest)
+            block_break_path = os.path.join(
+                OUT_DIR, 'rdm_block_breakdown_split_halves_z.csv')
+            _df_bb = pd.DataFrame(block_break_rows)
+            if os.path.exists(block_break_path):
+                _df_bb.to_csv(block_break_path, mode='a', header=False, index=False)
+            else:
+                _df_bb.to_csv(block_break_path, index=False)
+
+        # ── FDR-combo RDM diagnostic ────────────────────────────────────
+        # Show exactly which cells of which RDM enter evaluate_model under
+        # each RDM-mask variant. One figure per ROI, restricted to the
+        # FDR-family combo (FDR_COMBOS[0]) so we visualise only the RDMs
+        # carrying the confirmatory hypothesis. Rows = data RDM + each
+        # FDR submodel; columns = full / block_diag / off_block masks. Cells
+        # outside the mask are NaN'd (blank in the plot). The displayed
+        # RDM is data_RDM_z[0] (= split_halves_z), matching the FDR test.
+        fdr_combo_key = FDR_COMBOS[0] if FDR_COMBOS else None
+        if (fdr_combo_key and fdr_combo_key in combo_models
+                and len(data_RDM_z[0]) == N_RDM * (N_RDM - 1) // 2):
+            fdr_subs = combo_models[fdr_combo_key]
+            rdm_diag_dir = os.path.join(OUT_DIR, 'rdm_diagnostics')
+            os.makedirs(rdm_diag_dir, exist_ok=True)
+
+            data_sq = _vec_to_square_rdm(data_RDM_z[0], N_RDM)
+            model_sqs = {
+                sm: _vec_to_square_rdm(model_RDMs[sm][0], N_RDM)
+                for sm in fdr_subs if sm in model_RDMs
+            }
+
+            # Square (symmetric) masks aligned with the upper-tri vector masks
+            cfg_idx_arr = np.repeat(np.arange(N_CONFIGS), N_CONDS_PER_CONF)
+            same_cfg_sq = cfg_idx_arr[:, None] == cfg_idx_arr[None, :]
+            tri_sq = np.triu(np.ones((N_RDM, N_RDM), dtype=bool), k=1)
+            sq_masks = {
+                'full':       tri_sq,
+                'block_diag': tri_sq & same_cfg_sq,
+                'off_block':  tri_sq & ~same_cfg_sq,
+            }
+            # Symmetric (display) version: mirror the upper-tri mask
+            sq_masks_disp = {k: m | m.T for k, m in sq_masks.items()}
+
+            rows_to_plot = [('data\n(split_halves_z)', data_sq)] + [
+                (sm, model_sqs[sm]) for sm in fdr_subs if sm in model_sqs
+            ]
+            mask_cols = ['full', 'block_diag', 'off_block']
+
+            nrows = len(rows_to_plot)
+            fig_rdm, axes_rdm = plt.subplots(
+                nrows, 3, figsize=(11, 2.4 * nrows),
+                constrained_layout=True)
+            if nrows == 1:
+                axes_rdm = axes_rdm[None, :]
+
+            for r_i, (lbl, sq) in enumerate(rows_to_plot):
+                for c_i, mname in enumerate(mask_cols):
+                    ax = axes_rdm[r_i, c_i]
+                    keep = sq_masks_disp[mname]
+                    disp = np.where(keep, sq, np.nan)
+                    im = ax.imshow(disp, aspect='equal', cmap='RdBu_r',
+                                   interpolation='nearest')
+                    for k in range(1, N_CONFIGS):
+                        ax.axvline(k * N_CONDS_PER_CONF - 0.5,
+                                   color='black', lw=0.4, alpha=0.6)
+                        ax.axhline(k * N_CONDS_PER_CONF - 0.5,
+                                   color='black', lw=0.4, alpha=0.6)
+                    if r_i == 0:
+                        n_pairs = int(sq_masks[mname].sum())
+                        ax.set_title(f'{mname}\nn_pairs = {n_pairs}',
+                                     fontsize=9)
+                    if c_i == 0:
+                        ax.set_ylabel(lbl, fontsize=9)
+                    ax.tick_params(labelsize=6)
+                    plt.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
+
+            fig_rdm.suptitle(
+                f'FDR-family RDMs entering evaluate_model — ROI {roi_name} '
+                f'(combo: {fdr_combo_key})', fontsize=11)
+            _save_p = os.path.join(rdm_diag_dir,
+                                   f'fdr_rdm_diagnostic_{roi_name}.png')
+            fig_rdm.savefig(_save_p, dpi=150, bbox_inches='tight')
+            plt.show()
+            print(f"  Saved FDR-combo RDM diagnostic -> {_save_p}")
 
         # ── Mode comparison: empirical-only RSA for all 3 phase modes ────
         # Cheap (no permutations) — uses the SAME model + data RDMs and just
@@ -1112,6 +1549,20 @@ if RELOAD_RUN is None:
 
 
 
+        # Active test variants:
+        #   'split_halves'    = across-runs RDM (run 1 × run 2 population
+        #                       matrix). Both within-task-across-runs and
+        #                       between-task cells contribute. Raw r.
+        #   'split_halves_z'  = same data RDM as 'split_halves' but z-scored
+        #                       per neuron before RDM construction.
+        #   'between_tasks'   = run-averaged RDM (repeats collapsed per
+        #                       config). Within-config block-diagonal is
+        #                       masked out (those cells would be autocorr).
+        #                       Only between-task pairs contribute. Raw r.
+        #   'between_tasks_z' = z-scored version of 'between_tasks'.
+        # 'within' / 'within_z' are deprecated (commented below) — they
+        # would have been "only within-config block of the run-averaged
+        # RDM", which is exactly the autocorrelation trap.
         #tests = ['split_halves', 'split_halves_z', 'within', 'within_z', 'between_tasks', 'between_tasks_z']
         tests = ['split_halves', 'split_halves_z', 'between_tasks', 'between_tasks_z']
         perm_results = {test: {m: [] for m in models} for test in tests}
@@ -1849,37 +2300,19 @@ def _render_overview_plots(summary_df, summary_combo_df,
             print("No electrode coordinates collected — skipping ROI glass-brain.")
 
         # ── ROI-shaded glass-brain (heatmap colours on a brain) ──────────
-        # One figure per (model, heatmap_test): each anatomical ROI mask is
-        # shaded by its beta value, using the same RdBu_r palette as the
-        # ROI x model heatmap.  Restricted to ROIs that actually have cells.
+        # Glass-brains are produced ONLY for the FDR-family combo (one per
+        # sub-model). Single-model results are shown via the ROI x model
+        # heatmap above; per-model glass-brains have been retired. Other
+        # combo variants are inspected via the heatmaps only.
         rois_with_cells = sorted(electrodes_per_roi)
-        if rois_with_cells:
+        if rois_with_cells and not summary_combo_df.empty:
             glassbrain_dir = os.path.join(out_dir, 'roi_beta_glassbrains')
             os.makedirs(glassbrain_dir, exist_ok=True)
-    
-            if len(models) > 0 and not summary_df.empty:
-                sub_t = summary_df[summary_df['test'] == heatmap_test]
-                for m in models:
-                    rows = sub_t[sub_t['model'] == m]
-                    if rows.empty:
-                        continue
-                    betas = dict(zip(rows['roi'], rows['beta']))
-                    pvals = dict(zip(rows['roi'], rows['p_perm']))
-                    plot_roi_beta_glassbrain(
-                        roi_betas=betas, roi_pvals=pvals,
-                        only_rois=rois_with_cells,
-                        roi_cell_coords=electrodes_per_roi,
-                        roi_label_column=ROI_LABEL_COLUMN,
-                        title=f'{m} beta — {heatmap_test}',
-                        save_path=os.path.join(
-                            glassbrain_dir,
-                            f'roi_beta_glassbrain_{m}_{heatmap_test}.png'),
-                    )
-                    plt.show()
-
-        if not summary_combo_df.empty:
             sub_t = summary_combo_df[summary_combo_df['test'] == heatmap_test]
-            for combo_key, sub_models in combo_models.items():
+            for combo_key in FDR_COMBOS:
+                if combo_key not in combo_models:
+                    continue
+                sub_models = combo_models[combo_key]
                 for sm in sub_models:
                     rows = sub_t[(sub_t['combo'] == combo_key)
                                  & (sub_t['sub_model'] == sm)]
@@ -1892,7 +2325,7 @@ def _render_overview_plots(summary_df, summary_combo_df,
                         only_rois=rois_with_cells,
                         roi_cell_coords=electrodes_per_roi,
                         roi_label_column=ROI_LABEL_COLUMN,
-                        title=f'{combo_key} | {sm} beta — {heatmap_test}',
+                        title=f'{combo_key} | {sm} beta — {heatmap_test} (FDR family)',
                         save_path=os.path.join(
                             glassbrain_dir,
                             f'roi_beta_glassbrain_{combo_key}_{sm}_{heatmap_test}.png'),
@@ -1906,7 +2339,9 @@ def _render_overview_plots(summary_df, summary_combo_df,
 # fonts, ROI/model order and significance styling stay in sync.
 
 
-HEATMAP_TEST = 'between_tasks_z'  # one of: split_halves, split_halves_z,
+HEATMAP_TEST = 'split_halves_z'   # across-runs cross-corr, z-scored
+                                  # (= FDR primary variant). One of:
+                                  # split_halves, split_halves_z,
                                   # within, within_z, between_tasks,
                                   # between_tasks_z
 
