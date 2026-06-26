@@ -94,6 +94,40 @@ CANONICAL_RSA_MODEL_ORDER = [
 ]
 
 
+# ── Project-wide colour conventions (see CLAUDE.md → 🎨 section) ──────
+# A single source of truth so every figure uses the same colour for the
+# same categorical variable. Override only with explicit reason.
+STATE_QUADRANT_COLORS = ('#F15A29', '#F7931E', '#C7C6E2', '#6B60AA')  # A,B,C,D
+
+# Phases (early, middle, late) — pastel pink → bordeaux ramp.
+PHASE_COLORS = ('#FCDDE3', '#D7657F', '#5C1027')
+
+# Locations on the 3×3 grid (1…9) — dark teal top-left → light green bottom-right.
+LOCATION_COLORS = (
+    '#0a607a', '#7eb1c4', '#b6d4e0',
+    '#175e62', '#5b9b8d', '#c8e0d0',
+    '#0e3d3a', '#3d8b7d', '#a7d9b2',
+)
+
+# ROIs — fixed era_brewer "Showgirl2" assignment so the same ROI keeps
+# the same hue across every figure in the project. Order taken from
+# CLAUDE.md. ROIs not in this dict fall back to era_brewer overflow
+# colours in _roi_color_map.
+ROI_COLORS_SHOWGIRL2 = {
+    'EC':              0,
+    'medialOFC':       1,
+    'ACC':             2,
+    'HC_anterior':     3,
+    'HC_mid':          4,
+    'Parahippocampal': 5,
+    'PCC':             6,
+}
+
+# Dark green used for the empirical / observed-value vertical line on
+# permutation-null histograms (matches LOCATION_COLORS[6]).
+OBSERVED_VALUE_COLOR = '#0e3d3a'
+
+
 def _order_keep_present(canonical, present):
     """Reorder `present` using `canonical` as a priority list.
 
@@ -1338,10 +1372,24 @@ def plot_peaklag_3d_mesh(coords, lags, save_path, title,
 # ── Glass-brain / 3-D mesh plots of significant cells ───────────────────
 
 def _roi_color_map(rois):
-    """Stable color per ROI using tab20 (matches cell_to_roi_MNI.py style)."""
-    rois = sorted([r for r in rois if r])
-    cmap = plt.get_cmap('tab20', max(len(rois), 1))
-    return {r: mcolors.to_hex(cmap(i)) for i, r in enumerate(rois)}
+    """Stable per-ROI colour from era_brewer Showgirl2 (see CLAUDE.md).
+
+    ROIs listed in ``ROI_COLORS_SHOWGIRL2`` use their fixed index in the
+    7-colour palette. Any ROI not in that mapping falls back to extra
+    Showgirl2 shades drawn in alphabetical order, so figures always have
+    *something* but the canonical 7 stay consistent across plots.
+    """
+    import era_brewer
+    rois = [r for r in rois if r]
+    known = [r for r in rois if r in ROI_COLORS_SHOWGIRL2]
+    extra = sorted(r for r in rois if r not in ROI_COLORS_SHOWGIRL2)
+    n_total = max(len(ROI_COLORS_SHOWGIRL2) + len(extra), 1)
+    palette = era_brewer.era_brew('Showgirl2', n=n_total)
+    out = {r: palette[ROI_COLORS_SHOWGIRL2[r]] for r in known}
+    # Overflow indices start after the 7 canonical slots.
+    for i, r in enumerate(extra):
+        out[r] = palette[len(ROI_COLORS_SHOWGIRL2) + i]
+    return out
 
 
 def _effect_to_alpha(effect, alpha_min=0.25, alpha_max=1.0):
@@ -1840,9 +1888,6 @@ def plot_roi_beta_glassbrain(
 # The plot_state_polar_clock helper mirrors the one in
 # scripts/plotting_human_cells.py so the publication script can import
 # from one canonical place without depending on the scripts/ folder.
-
-STATE_QUADRANT_COLORS = ('#F15A29', '#F7931E', '#C7C6E2', '#6B60AA')
-
 
 def smooth_circular(arr, sigma=2):
     """Gaussian-smooth a circular (e.g. 360-bin polar) trace."""
@@ -2589,6 +2634,29 @@ def plot_roi_model_heatmap(stats_df, models=None, rois=None,
     """
     if stats_df is None or stats_df.empty:
         return None, None
+
+    # Refuse to silently hide configuration bugs: duplicated model names in
+    # the explicit display list (e.g. a combo accidentally containing 'state'
+    # twice) collapse to a single column and the loop below would pick one
+    # row at random via iloc[0]. Same for repeated (roi, model) pairs in the
+    # long-format input. Raise so the caller fixes the upstream list / df.
+    if models is not None:
+        dup_in_arg = [m for m in set(models) if list(models).count(m) > 1]
+        if dup_in_arg:
+            raise ValueError(
+                f"plot_roi_model_heatmap: `models` contains duplicate "
+                f"entries {sorted(set(dup_in_arg))}. Fix the upstream combo "
+                f"definition; silent deduplication would hide collinear "
+                f"regressors.")
+    dup_rows = (stats_df.groupby(['roi', 'model']).size()
+                .loc[lambda s: s > 1])
+    if not dup_rows.empty:
+        raise ValueError(
+            f"plot_roi_model_heatmap: stats_df has duplicate (roi, model) "
+            f"rows — first few:\n{dup_rows.head().to_string()}\n"
+            f"Each (roi, model) must appear exactly once; otherwise the "
+            f"plotted cell value depends on row order.")
+
     present_rois = set(stats_df['roi'].dropna().unique())
     present_models = set(stats_df['model'].dropna().unique())
     rois_order = _order_keep_present(
@@ -3032,3 +3100,267 @@ def plot_top_n_cells_per_roi_model(diagnostics_all, results_df,
             saved += 1
     print(f'  [top-cells per (roi, model)] saved {saved} figures → '
           f'{save_dir}')
+
+
+# ─────────────────────────────────────────────────────────────────────
+# RSA-pipeline helpers shared with RSA_DSR_ROIs_simple.py
+# ─────────────────────────────────────────────────────────────────────
+
+
+def plot_phase_mask_diagnostic(mask_matrices, n_configs, n_conds_per_config,
+                                configs=None, save_path=None, suptitle=None):
+    """Side-by-side N×N phase masks (one panel per mode).
+
+    Parameters
+    ----------
+    mask_matrices : dict[str, ndarray]
+        ``{mode_name: (N, N) bool array}``. Each matrix marks which RDM
+        cells the corresponding masking mode keeps (True = kept).
+    n_configs, n_conds_per_config : int
+        Used to draw red config-boundary lines and tick labels.
+    configs : list[str] or None
+        Optional config strings; if given, used as tick labels.
+    save_path : str or None
+    suptitle : str or None
+    """
+    if not mask_matrices:
+        return None
+    modes = list(mask_matrices.keys())
+    n = n_configs * n_conds_per_config
+    fig, axes = plt.subplots(1, len(modes), figsize=(4.5 * len(modes), 4.5))
+    if len(modes) == 1:
+        axes = [axes]
+    for ax, mode in zip(axes, modes):
+        M = np.asarray(mask_matrices[mode]).astype(int)
+        ax.imshow(M, cmap='Greys_r', vmin=0, vmax=1, aspect='equal')
+        ax.set_title(f"mask: {mode}\n(white = kept, black = excluded)",
+                     fontsize=10)
+        for c in range(1, n_configs):
+            ax.axvline(c * n_conds_per_config - 0.5, color='red', lw=0.7)
+            ax.axhline(c * n_conds_per_config - 0.5, color='red', lw=0.7)
+        ticks = (np.arange(n_configs) * n_conds_per_config
+                 + n_conds_per_config / 2)
+        labels = (configs if configs is not None
+                  else [str(i) for i in range(n_configs)])
+        ax.set_xticks(ticks); ax.set_xticklabels(labels, fontsize=8,
+                                                  rotation=40, ha='right')
+        ax.set_yticks(ticks); ax.set_yticklabels(labels, fontsize=8)
+        ax.set_xlabel(f'config ({n_conds_per_config} conds each)', fontsize=9)
+    if suptitle:
+        fig.suptitle(suptitle, fontsize=11)
+    fig.tight_layout()
+    if save_path:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+    return fig
+
+
+def plot_model_design_matrices(model_concat, models, n_configs,
+                                n_conds_per_config, save_path=None,
+                                roi_label=None):
+    """One imshow panel per model showing the (conditions × features) design.
+
+    Object-dtype columns (e.g. button labels) are factorised to integers
+    for display only. Red horizontal lines mark config boundaries every
+    ``n_conds_per_config`` rows. Run-1 half only.
+    """
+    show = [m for m in models if m in model_concat]
+    if not show:
+        return None
+    half1 = slice(0, n_configs * n_conds_per_config)
+    fig, axes = plt.subplots(1, len(show),
+                              figsize=(2.2 * len(show), 4.5),
+                              constrained_layout=True)
+    if len(show) == 1:
+        axes = [axes]
+    for ax, mname in zip(axes, show):
+        raw = np.asarray(model_concat[mname][half1])
+        if raw.dtype.kind in ('O', 'U', 'S'):
+            uniq, inv = np.unique(raw.ravel().astype(str), return_inverse=True)
+            mat = inv.reshape(raw.shape).astype(float)
+            tag = f' (categorical, {len(uniq)} levels)'
+        else:
+            mat = np.asarray(raw, dtype=float)
+            tag = ''
+        im = ax.imshow(mat, aspect='auto', cmap='viridis',
+                       interpolation='nearest')
+        ax.set_title(f'{mname}{tag}\n{mat.shape[0]}×{mat.shape[1]}',
+                     fontsize=9)
+        ax.set_xlabel('features', fontsize=8)
+        if ax is axes[0]:
+            ax.set_ylabel('conditions (run-1 half)', fontsize=8)
+        for k in range(1, n_configs):
+            ax.axhline(k * n_conds_per_config - 0.5,
+                       color='red', lw=0.4, alpha=0.6)
+        plt.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
+    if roi_label:
+        fig.suptitle(f'Model design matrices (run-1 half) — {roi_label}',
+                     fontsize=11)
+    if save_path:
+        fig.savefig(save_path, dpi=200, bbox_inches='tight')
+    return fig
+
+
+def plot_rdm_grid(rows_to_plot, col_specs, n_rdm, n_configs,
+                   n_conds_per_config, configs=None,
+                   suptitle=None, save_path=None, cmap='RdBu_r'):
+    """N×N RDM display grid for diagnostic comparisons.
+
+    Each row of the grid is one matrix family (e.g. ``data``, or one
+    model RDM). Each column is one cell-subset (``full``, ``block_diag``,
+    ``off_block``). Cells contain the *exact* 1-D vector that fed
+    evaluate_model, embedded back into the N×N upper-tri positions
+    where they live — lower-tri + diagonal stay NaN so the figure shows
+    only what the regression actually saw.
+
+    Parameters
+    ----------
+    rows_to_plot : list[(row_label, dict)]
+        ``dict`` maps column name -> ``(vec_1d, positions_mask_bool)``.
+        ``positions_mask_bool`` is length ``N*(N-1)/2`` (upper-tri order
+        of ``np.triu_indices(n_rdm, k=1)``) and marks where vec_1d lives.
+    col_specs : list[(col_name, title_suffix)]
+    n_rdm : int
+        Side length of the displayed matrix.
+    """
+    ii, jj = np.triu_indices(n_rdm, k=1)
+    cfg_centres = (np.arange(n_configs) * n_conds_per_config
+                   + n_conds_per_config / 2 - 0.5)
+
+    def _embed(vec_1d, pos_mask):
+        M = np.full((n_rdm, n_rdm), np.nan, dtype=float)
+        v = np.asarray(vec_1d, dtype=float)
+        m = np.asarray(pos_mask, dtype=bool)
+        assert v.size == int(m.sum()), (
+            f'plot_rdm_grid: vec length {v.size} '
+            f'!= positions_mask.sum() {int(m.sum())}')
+        M[ii[m], jj[m]] = v
+        return M
+
+    def _decorate(ax):
+        for k in range(1, n_configs):
+            ax.axvline(k * n_conds_per_config - 0.5,
+                       color='black', lw=0.4, alpha=0.6)
+            ax.axhline(k * n_conds_per_config - 0.5,
+                       color='black', lw=0.4, alpha=0.6)
+        # Red diagonal marker: evaluate_model never sees those cells.
+        ax.plot([-0.5, n_rdm - 0.5], [-0.5, n_rdm - 0.5],
+                color='red', lw=0.8, alpha=0.7)
+        ax.set_xticks(cfg_centres)
+        ax.set_yticks(cfg_centres)
+        if configs is not None:
+            ax.set_xticklabels(configs, fontsize=5, rotation=60, ha='right')
+            ax.set_yticklabels(configs, fontsize=5)
+        ax.tick_params(length=2, pad=1)
+
+    nrows = len(rows_to_plot)
+    ncols = len(col_specs)
+    fig, axes = plt.subplots(nrows, ncols,
+                              figsize=(4.2 * ncols, 3.0 * nrows),
+                              constrained_layout=True)
+    if nrows == 1:
+        axes = np.array(axes)[None, :]
+    if ncols == 1:
+        axes = np.array(axes)[:, None]
+    for r_i, (lbl, col_dict) in enumerate(rows_to_plot):
+        for c_i, (col_name, suffix) in enumerate(col_specs):
+            ax = axes[r_i, c_i]
+            if col_name not in col_dict:
+                ax.set_visible(False)
+                continue
+            vec, subset = col_dict[col_name]
+            M = _embed(vec, subset)
+            im = ax.imshow(M, aspect='equal', cmap=cmap,
+                           interpolation='nearest')
+            _decorate(ax)
+            if r_i == 0:
+                n_pairs = int((~np.isnan(M)).sum())
+                ax.set_title(f'{col_name}{suffix}\nn_pairs = {n_pairs}',
+                             fontsize=8)
+            if c_i == 0:
+                ax.set_ylabel(lbl, fontsize=8)
+            plt.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
+    if suptitle:
+        fig.suptitle(suptitle + '\n(diagonal excluded; red line marks k=0)',
+                     fontsize=10)
+    if save_path:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+    return fig
+
+
+def plot_permutation_hist_combo_grid(perm_results_combo,
+                                      empirical_combo_results,
+                                      empirical_combo_results_z,
+                                      combo_key, combo_models, tests,
+                                      bins=30, density=True,
+                                      figsize_per_panel=(2.0, 1.8),
+                                      alpha=0.05, suptitle=None):
+    """Permutation-null histogram grid (rows = tests, cols = sub-models).
+
+    For each (test, sub-model) cell draws the permutation-null histogram
+    (grey) and the empirical β as a vertical line in ``OBSERVED_VALUE_COLOR``.
+    Significant positive effects get a black star above the bar.
+    """
+    cols = combo_models[combo_key]
+    nrows, ncols = len(tests), len(cols)
+    fig, axes = plt.subplots(
+        nrows, ncols,
+        figsize=(figsize_per_panel[0] * ncols,
+                 figsize_per_panel[1] * nrows),
+        sharey=False, constrained_layout=True,
+    )
+    axes = np.asarray(axes).reshape(nrows, ncols)
+
+    for r, test in enumerate(tests):
+        emp = (empirical_combo_results_z[test[:-2]]
+               if test.endswith('_z') else empirical_combo_results[test])
+        x_all = np.asarray(perm_results_combo[test][combo_key]['beta'],
+                            dtype=float)
+        beta_emp = np.asarray(emp[combo_key][1], dtype=float).ravel()
+        if x_all.ndim != 2:
+            raise ValueError(
+                f'{test}/{combo_key}: expected permuted beta array of shape '
+                f'(n_permutations, n_combo_models), got {x_all.shape}. '
+                f'Store the full beta vector per permutation.')
+
+        row_vals = np.concatenate([x_all.ravel(), beta_emp.ravel()])
+        lim = np.nanmax(np.abs(row_vals))
+        lim = 1.0 if (not np.isfinite(lim) or lim == 0) else 1.05 * lim
+        edges = np.linspace(-lim, lim, bins + 1)
+
+        for c, model_name in enumerate(cols):
+            ax = axes[r, c]
+            x = x_all[:, c]
+            beta = beta_emp[c]
+            p_one_sided = (np.sum(x >= beta) + 1) / (x.size + 1)
+
+            ax.hist(x, bins=edges, density=density,
+                    color='0.75', edgecolor='white', linewidth=0.6)
+            ax.axvline(0, color='black', lw=0.9)
+            ax.axvline(beta, color=OBSERVED_VALUE_COLOR, lw=1.8)
+
+            if p_one_sided < 0.1:
+                ax.text(0.04, 0.96, f'p={p_one_sided:.3f}',
+                        transform=ax.transAxes,
+                        ha='left', va='top', fontsize=8)
+            if (beta > 0) and (p_one_sided < alpha):
+                y0, y1 = ax.get_ylim()
+                ax.set_ylim(y0, y1 * 1.15)
+                ax.text(beta, y1 * 1.08, '★',
+                        ha='center', va='bottom',
+                        fontsize=16, fontweight='bold', color='black')
+            else:
+                y0, y1 = ax.get_ylim()
+                ax.set_ylim(y0, y1 * 1.08)
+
+            ax.set_xlim(-lim, lim)
+            ax.tick_params(labelsize=8, length=2)
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            if r == 0:
+                ax.set_title(model_name, fontsize=9)
+            if c == 0:
+                ax.set_ylabel(test, fontsize=9)
+
+    if suptitle:
+        fig.suptitle(suptitle, fontsize=12)
+    return fig, axes

@@ -54,7 +54,7 @@ import matplotlib.pyplot as plt
 # ── Settings ──────────────────────────────────────────────────────────
 
 
-RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-06-05_17-58-57/')
+RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-06-18_22-07-42/')
 # RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-22_15-57-38/')
 # RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-21_10-37-45-nopositiveReg/')
 #RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/encoding_analysis_simple/2026-05-20_22-57-03/')
@@ -77,7 +77,7 @@ STATE_VARIANTS  = ['state', 'state_phase']
 DSR_COEF_P_PERM_THRESHOLD = 0.05
 
 
-SECTIONS_TO_RUN = ['gradient', 'brain_lag']
+SECTIONS_TO_RUN = ['gradient', 'brain_lag', 'exclusion_variants']
 
 _run_classification  = 'classification'    in SECTIONS_TO_RUN
 _run_focal           = 'focal'             in SECTIONS_TO_RUN

@@ -1,0 +1,19 @@
+Spatial peak lag checks
+
+ACC cells included: 159
+High threshold quantile: 0.75
+Lag 30 high threshold: 0.064223
+Lag 60 high threshold: 0.071063
+High lag 30 only: 23
+High lag 60 only: 23
+High lag 30 and 60: 17
+Pearson lag30 vs lag60: r=0.238178, p=0.00250081
+Paired t lag30 vs lag60: t=0.129709, p=0.896961
+
+Files:
+roi_mean_self_picked_vs_fixed_lags.png/pdf
+acc_lag30_lag60_paired_bar.png/pdf
+acc_high_lag_mni_z.png/pdf
+roi_mean_self_picked_vs_fixed_lags.csv
+acc_lag30_lag60_cells.csv
+acc_high_lag30_lag60_cells.csv

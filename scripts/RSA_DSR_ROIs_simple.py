@@ -26,7 +26,7 @@ from matplotlib import pyplot as plt
 import mc
 import mc.plotting.dsr_figures as dsr_figs   # shared rodent/human pub figures
 from collections import Counter
-
+# import pdb; pdb.set_trace()
 sys.path.insert(0, '/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_clocks_repo')
 
 # import pdb; pdb.set_trace()
@@ -49,13 +49,13 @@ configs = [
 
 
 N_CONFIGS = len(configs)
-N_CONDS_PER_CONF = 20
+N_CONDS_PER_CONF = 12
 LEN_STANDARDISED_PATH = 12
 N_PHASES = 3
 states           = ['A', 'B', 'C', 'D']
 RESOLUTIONx = 1
 PLOT_FIGS = False
-N_PERMUTATIONS = None # 500  #None #1000 # 500 # None or 300
+N_PERMUTATIONS = 500 # None #1000 # 500 # None or 300
 SPLIT_UNCV_BUTTONS = True
 
 # Phase-based masking. Phase of a condition at position pos inside a config is
@@ -78,7 +78,7 @@ PHASE_MASK_MODE = 'full'
 #     firing rate that's predicted by a continuous phase basis, more
 #     conservative.
 # Options: None / 'cosine' / 'cosine_2h' / 'categorical'.
-PHASE_RESIDUALISE = 'cosine' # None
+PHASE_RESIDUALISE = None # 'cosine' # None
 
 # Per-cell repeat-correct residualisation. Loads the per-cell-residualised
 # files produced by scripts/residualise_data_by_repeat.py (regressing each
@@ -95,6 +95,13 @@ RESIDUALISE_REPEATS = False
 # ROI. Cheap; uses the model + data RDMs already built. Does not change the
 # primary results.
 RUN_PHASE_MODE_COMPARISON = True
+
+# Smoke test: if True, residualise every data RDM and every non-phase model
+# RDM against the phase model RDM at the 1-D upper-tri vector level, BEFORE
+# evaluate_model is called. Equivalent to forcing phase to be partialled out
+# of every test, regardless of whether a combo explicitly includes 'phase'.
+# Set N_PERMUTATIONS=None when using this for a fast empirical comparison.
+PHASE_RESIDUALISE_RDMS = False
 
 assert PHASE_MASK_MODE in ('full', 'within_phase', 'across_phase'), PHASE_MASK_MODE
 # Safety: phase residualisation removes phase variance at the data level, so
@@ -116,7 +123,7 @@ if PHASE_RESIDUALISE is not None and RUN_PHASE_MODE_COMPARISON:
 # Phase regressor pruning from combos happens below, after `combo_models`
 # is defined (see "Phase-residualisation combo pruning" block).
 
-PLOT_GLASSBRAINS = True
+PLOT_GLASSBRAINS = False
 # ── Models / combos to evaluate per ROI this round ────────────────────
 # All model RDMs are built each run (cheap). These lists only restrict the
 # *expensive* per-ROI evaluation + permutation step.
@@ -131,38 +138,32 @@ PLOT_GLASSBRAINS = True
 # DSR model. Reduced-lag splits dsr_fmri_lag01 / lag012 / lag0123 keep
 # only the first K of 12 lag-windows so we can test the
 # spatial-peaks +30/+60 prediction at the RDM level.
-models = ['dsr_fmri', 'dsr_fmri_lag01', 'dsr_fmri_lag012', 'dsr_fmri_lag0123',
-          'state', 'midnight', 'bttn_curr', 'bttn_next', 'location',
-          'l2_norm', 'phase', 'repeat_counter', 'uncover']
+models = [
+    # DSR variants of interest (3 only)
+    'dsr_fmri',           # full DSR  (control)
+    'dsr_fmri_fut',       # drop lag 0 (control)
+    'dsr_fmri_informed',  # lags 1,2 — pre-registered from independent fMRI prior (FDR target)
+    # Confound controls + diagnostics
+    'state', 'midnight',
+    'bttn_curr', 'bttn_next', 'location', 'l2_norm',
+    'phase', 'repeat_counter', 'uncover', 'state_phase',
+    'reward_path',
+]
 
-# Canonical combo set mirroring the fMRI controls:
-#   fMRI_no_state    -> DSR + location + L2-norm + bttn_curr + bttn_next
-#   fMRI_state       -> + state                            (the FDR-family combo)
-#   fMRI_state_midn  -> + state + midnight
-# Same control stack across the three so the only thing that varies is the
-# state / midnight inclusion. L2-norm is the negative-distance-from-current-
-# location-to-each-of-9-grid-locations regressor, mirroring the fMRI version
-# in create_fMRI_model_RDMs_on_clean_beh.py (cosine RDM, 9-feature vector).
-_CTRLS = ['bttn_curr', 'bttn_next', 'location']
+
+# Same control stack across every combo so the only thing that varies is the
+# DSR feature subset — gives a clean head-to-head DSR-variant comparison.
+# L2-norm is the negative-distance-from-current-location-to-each-of-9-grid-
+# locations regressor, mirroring the fMRI version in
+# create_fMRI_model_RDMs_on_clean_beh.py (cosine RDM, 9-feature vector).
+_CTRLS_FINAL = ['dsr_fmri', 'location', 'l2_norm', 'reward_path', 'repeat_counter']
 combo_models = {
-    'bttn_loc':    _CTRLS + ['dsr_fmri'],
-    'bttn_loc_l2':    _CTRLS + ['dsr_fmri','l2_norm'],
-    'bttn_loc_l2_state':       _CTRLS + ['dsr_fmri', 'l2_norm','state'],
-    'bttn_loc_l2_state_midn':  _CTRLS + ['dsr_fmri', 'state', 'midnight'],
-    }
-
-
-# combo_models = {
-#     'st-cnt-uncvr-bttns-loc-dsr':          ['state', 'repeat_counter', 'uncover', 'bttn_prev', 'bttn_next', 'bttn_curr', 'location', 'dsr_old'], #visual controls plus state plus buttons
-#     'cnt-uncvr-bttns-loc-dsr':          ['repeat_counter', 'uncover', 'bttn_prev', 'bttn_next', 'bttn_curr', 'location', 'dsr_old'], #visual controls minus state plus buttons
-#     'st-cnt-uncvr-loc-ph-dsr':          ['state', 'repeat_counter', 'uncover', 'location', 'phase', 'dsr_old'], #visual controls plus state and phase
-#     'st-cnt-uncvr-loc-dsr':          ['state', 'repeat_counter', 'uncover', 'location', 'dsr_old'], #visual controls plus state
-#     'cnt-loc-uncvr-dsr':          ['repeat_counter', 'uncover', 'location', 'dsr_old'], #visual controls minus state
-#     'loc-uncvr-dsr':          ['location', 'uncover', 'dsr_old'], # only location uncover and dsr
-#     'loc-ph-uncvr-dsr':          ['location', 'phase', 'uncover', 'dsr_old'], # only location uncover phase and dsr
-#     'st-loc-cnt-uncvr-buttons-midn-dsr':          ['state', 'location', 'repeat_counter', 'uncover','bttn_prev', 'bttn_next', 'bttn_curr', 'midnight', 'dsr_old'], # visuals plus state plus midnight 
-#     'loc-cnt-uncvr-buttons-midn-dsr':          ['location', 'repeat_counter', 'uncover','bttn_prev', 'bttn_next', 'bttn_curr', 'midnight', 'dsr_old'], # visuals minus state plus midnight 
-# }
+    'ctrl_dsrFULL': _CTRLS_FINAL + ['state'],
+    'ctrl_dsrFULL_phase': _CTRLS_FINAL + ['state', 'phase'],
+    'ctrl_dsrFULL_state-phase': _CTRLS_FINAL + ['state', 'state_phase']
+}
+assert all(len(set(sm)) == len(sm) for sm in combo_models.values()), \
+    f"Duplicate sub-model in combo_models: {combo_models}"
 
 # ── Phase-residualisation combo pruning ────────────────────────────────
 # When phase is removed at the data level, the 'phase' RDM regressor adds
@@ -214,8 +215,8 @@ FDR_TEST      = 'split_halves_z'    # primary variant. Data RDM is built
 # `dsr_old` beta is highly correlated with the primary combo (the two
 # differ only by the `state` regressor). This keeps the FDR family
 # consistent with the publication panel (encoding_publication_panels.py).
-FDR_COMBOS    = ['bttn_loc_l2_state_midn']  # DSR + bttn + location + L2 + state + midnight
-FDR_SUBMODELS = ['dsr_fmri']                # full 12-lag DSR (not the truncated variants)
+FDR_COMBOS    = ['fdr_dsrInformed']         # DSR_informed (lags 1,2) + bttn + location + L2 + state
+FDR_SUBMODELS = ['dsr_fmri_informed']       # pre-registered: lags 1,2, motivated by independent fMRI prior
 FDR_ALPHA     = 0.05
 
 
@@ -249,6 +250,13 @@ ROIS_TO_ANALYZE_BY_COLUMN = {
     ],
 }
 ROIS_TO_ANALYZE = ROIS_TO_ANALYZE_BY_COLUMN[ROI_LABEL_COLUMN]
+
+# TEMPORARY OVERRIDE for ACC-only perm-histogram diagnostic run.
+# Revert to ROIS_TO_ANALYZE = ROIS_TO_ANALYZE_BY_COLUMN[ROI_LABEL_COLUMN] for the full re-run.
+ROIS_TO_ANALYZE = ['ACC', 'EC', 'Parahippocampal',
+        'HC_anterior', 'HC_mid',
+        'medialOFC', 'medial_CC',
+        'PCC', 'Visual']
 
 # ROI that gets the shared rodent-style publication figures (fig 2 + fig 3)
 # saved into ``OUT_DIR/pub_figures/``. Set to None to disable, or to another
@@ -321,6 +329,104 @@ def _make_roi_predicate(target_roi):
 
 
 ROI_RULES = {roi: _make_roi_predicate(roi) for roi in ROIS_TO_ANALYZE}
+
+
+def reward_locations_for_config(config_str):
+    """Return the 4 reward location IDs (1..9) for a config like '3-7-9-5'.
+
+    Order is A, B, C, D — matches the state ordering in the model.
+    """
+    return tuple(int(x) for x in config_str.split('-'))
+
+
+def _reward_window_one_trial(loc_1d, btn_1d, reward_locs,
+                              n_states=4, uncover_label='Return'):
+    """Per-trial 0/1 reward window with CIRCULAR end-extension.
+
+    For each state k, the window START is anchored to that state's
+    state-change bin = the last bin of state k's slot, i.e.
+    ``(k+1) * W - 1`` (bins 89 / 179 / 269 / 359 for the 4×90 layout).
+    These are the warped-time equivalents of t_A / t_B / t_C / t_D from
+    state_boundaries.csv, set per repeat by the MATLAB warping pipeline
+    (save_humanABCDneurons_normalised.m). They are the best per-trial
+    proxy for 'spacebar press at the reward location' — the actual
+    Return-press samples aren't always aligned with the state-change
+    moment (presumably because not every press is captured at every
+    sample), but the time warp itself is anchored to that event.
+
+    The window END extends forward CIRCULARLY mod ``n`` as long as
+    ``loc`` stays equal to the reward. Essential for state D: the
+    anchor at bin 359 is followed by the participant chilling at
+    reward D through bins 0..~50 of the SAME trial's circular layout.
+    Treating each per-repeat 360-bin trace as a closed loop captures
+    that wrap-around exactly as the user spec asks for.
+
+    ``btn_1d`` and ``uncover_label`` are kept in the signature for API
+    stability but are not consulted — the state-change anchor already
+    encodes the press event.
+
+    Used as the building block; the model feature aggregates this across
+    trials with mode-per-bin (see build_reward_path_label_360).
+    """
+    del btn_1d, uncover_label   # state-change anchor encodes the press
+    n = len(loc_1d)
+    label = np.zeros(n, dtype=int)
+    W = n // n_states
+    loc = np.asarray(loc_1d)
+    for k in range(n_states):
+        start = (k + 1) * W - 1          # bin 89 / 179 / 269 / 359
+        target = float(reward_locs[k])
+        # Skip degenerate trials where the warping anchor itself is
+        # not at the reward — those have a real data gap and labelling
+        # them would be guesswork.
+        if not np.isclose(float(loc[start]), target):
+            continue
+        pos = start
+        steps = 0
+        while steps < n and np.isclose(float(loc[pos % n]), target):
+            label[pos % n] = 1
+            pos += 1
+            steps += 1
+    return label
+
+
+def build_reward_path_label_360(loc_trials, btn_trials, config_str,
+                                  n_states=4, uncover_label='Return',
+                                  return_per_trial=False):
+    """Per-bin binary reward-vs-path label aggregated across trials.
+
+    Builds the reward window PER TRIAL using each trial's raw loc + btn
+    (see ``_reward_window_one_trial``), then aggregates across trials by
+    taking the per-bin mode (= 1 wherever ≥50% of trials were at reward
+    in that bin, else 0). This mirrors how mode_locs / mode_buttons are
+    themselves built and is the correct sibling of those arrays.
+
+    Parameters
+    ----------
+    loc_trials, btn_trials : 2-D arrays of shape (n_trials, n_bins)
+        Raw per-trial location and button traces (NOT the per-bin mode).
+    config_str : str
+        Config name like '3-7-9-5' giving the 4 reward location IDs.
+    return_per_trial : bool
+        If True, also return the (n_trials, n_bins) per-trial label array
+        for diagnostics (e.g. flagging real data gaps).
+    """
+    loc_arr = np.asarray(loc_trials)
+    btn_arr = np.asarray(btn_trials)
+    assert loc_arr.shape == btn_arr.shape, (
+        f"loc/btn shapes mismatch: {loc_arr.shape} vs {btn_arr.shape}")
+    rewards = reward_locations_for_config(config_str)
+    per_trial = np.stack([
+        _reward_window_one_trial(loc_arr[i], btn_arr[i], rewards,
+                                  n_states=n_states,
+                                  uncover_label=uncover_label)
+        for i in range(loc_arr.shape[0])
+    ], axis=0)
+    # Mode across trials per bin: 1 wherever majority of trials had reward.
+    agg = (per_trial.mean(axis=0) >= 0.5).astype(int)
+    if return_per_trial:
+        return agg, per_trial
+    return agg
 
 
 def downsample_mode(x, target_len=10):
@@ -882,33 +988,156 @@ if RELOAD_RUN is None:
                   f"{100.0*_k/_t:>9.1f}%")
 
     # Plot the three 96×96 mask matrices once.
-    _N = N_CONFIGS * N_CONDS_PER_CONF
-    fig_pm, ax_pm = plt.subplots(1, 3, figsize=(13.5, 4.5))
-    for _a, _mode in zip(ax_pm, ALL_PHASE_MODES):
-        _M = _phase_mask_matrix(_mode, N_CONFIGS, N_CONDS_PER_CONF, N_PHASES)
-        _a.imshow(_M.astype(int), cmap='Greys_r', vmin=0, vmax=1, aspect='equal')
-        _a.set_title(f"mask: {_mode}\n(white = kept, black = excluded)",
-                     fontsize=10)
-        # Config boundaries (red) and phase boundaries (faint cyan).
-        for c in range(1, N_CONFIGS):
-            _a.axvline(c * N_CONDS_PER_CONF - 0.5, color='red', lw=0.7)
-            _a.axhline(c * N_CONDS_PER_CONF - 0.5, color='red', lw=0.7)
-        _a.set_xticks(np.arange(N_CONFIGS) * N_CONDS_PER_CONF + N_CONDS_PER_CONF / 2)
-        _a.set_xticklabels([str(i) for i in range(N_CONFIGS)], fontsize=8)
-        _a.set_yticks(np.arange(N_CONFIGS) * N_CONDS_PER_CONF + N_CONDS_PER_CONF / 2)
-        _a.set_yticklabels([str(i) for i in range(N_CONFIGS)], fontsize=8)
-        _a.set_xlabel('config (12 conds each)', fontsize=9)
-    fig_pm.suptitle('Phase masks (96×96) — red lines = config boundaries',
-                    fontsize=11)
-    fig_pm.tight_layout()
-    fig_pm.savefig(os.path.join(OUT_DIR, 'phase_mask_diagnostic.png'),
-                   dpi=150, bbox_inches='tight')
+    from mc.plotting.cell_results import plot_phase_mask_diagnostic
+    plot_phase_mask_diagnostic(
+        mask_matrices={
+            m: _phase_mask_matrix(m, N_CONFIGS, N_CONDS_PER_CONF, N_PHASES)
+            for m in ALL_PHASE_MODES
+        },
+        n_configs=N_CONFIGS, n_conds_per_config=N_CONDS_PER_CONF,
+        save_path=os.path.join(OUT_DIR, 'phase_mask_diagnostic.png'),
+        suptitle='Phase masks (96×96) — red lines = config boundaries',
+    )
     print(f"Saved phase-mask diagnostic figure to "
           f"{os.path.join(OUT_DIR, 'phase_mask_diagnostic.png')}")
     plt.show()
     print(f"\nPrimary pipeline runs with PHASE_MASK_MODE = '{PHASE_MASK_MODE}'.")
     print(f"RUN_PHASE_MODE_COMPARISON = {RUN_PHASE_MODE_COMPARISON} — "
           f"{'will produce cross-mode comparison heatmaps.' if RUN_PHASE_MODE_COMPARISON else 'comparison disabled.'}\n")
+
+
+    # ── Reward-vs-path model preview ─────────────────────────────────────
+    # Standalone demonstration of the 'reward_path' model on 2 example
+    # configs, before the ROI loop. Prints the per-bin label vector and
+    # shows the per-condition downsampled matrix + the resulting model RDM.
+    # Aggregates locations + buttons across subjects (purely behavioural —
+    # ROI-independent) just for the requested configs.
+    _PREVIEW_CONFIGS = configs[:2]
+    print(f"\n=== reward_path model preview "
+          f"(configs: {_PREVIEW_CONFIGS}) ===")
+    _preview_locs_by_c    = {c: [] for c in _PREVIEW_CONFIGS}
+    _preview_buttons_by_c = {c: [] for c in _PREVIEW_CONFIGS}
+    for _sub_str, _sub_pack in SUBJECT_DATA.items():
+        _beh = _sub_pack[f"sub-{_sub_str}"]['beh'].copy().reset_index(drop=True)
+        _beh['config_str'] = (
+            _beh['loc_A'].astype(int).astype(str) + '-' +
+            _beh['loc_B'].astype(int).astype(str) + '-' +
+            _beh['loc_C'].astype(int).astype(str) + '-' +
+            _beh['loc_D'].astype(int).astype(str))
+        _loc_df = _sub_pack[f"sub-{_sub_str}"]['locations']
+        _btn_df = _sub_pack[f"sub-{_sub_str}"]['buttons']
+        for _c in _PREVIEW_CONFIGS:
+            _idx = (_beh['config_str'] == _c) & (_beh['correct'] == 1)
+            if not _idx.any():
+                continue
+            _preview_locs_by_c[_c].append(_loc_df[_idx].to_numpy())
+            _preview_buttons_by_c[_c].append(_btn_df[_idx].to_numpy())
+
+    _preview_labels_360  = {}
+    _preview_cond_matrix = {}
+    _preview_per_trial   = {}
+    for _c in _PREVIEW_CONFIGS:
+        if not _preview_locs_by_c[_c]:
+            print(f"  [preview] {_c}: no correct trials across subjects — skipping.")
+            continue
+        _stacked_loc = np.vstack(_preview_locs_by_c[_c])
+        _stacked_btn = np.vstack(_preview_buttons_by_c[_c])
+        _label_360, _per_trial = build_reward_path_label_360(
+            loc_trials=_stacked_loc, btn_trials=_stacked_btn,
+            config_str=_c, n_states=len(states),
+            return_per_trial=True)
+        _preview_labels_360[_c] = _label_360
+        _preview_per_trial[_c] = _per_trial
+
+        # Per-condition downsampled matrix (12 conds × 12 features).
+        _W = len(_label_360) // N_CONDS_PER_CONF
+        _cond_mat = np.array([
+            downsample_mode(_label_360[i * _W:(i + 1) * _W],
+                            target_len=LEN_STANDARDISED_PATH)
+            for i in range(N_CONDS_PER_CONF)
+        ], dtype=object)
+        _preview_cond_matrix[_c] = _cond_mat
+
+        _r_locs = reward_locations_for_config(_c)
+        _n_reward_bins = int(np.asarray(_label_360, dtype=int).sum())
+        _n_trials_preview = _stacked_loc.shape[0]
+        print(f"\n  config {_c}: reward locations A,B,C,D = {_r_locs}  "
+              f"(aggregated across {_n_trials_preview} correct trials)")
+        print(f"    total reward bins in 360-bin vector: {_n_reward_bins}")
+        _bins_per_state = len(_label_360) // len(states)
+        for _k in range(len(states)):
+            _s, _e = _k * _bins_per_state, (_k + 1) * _bins_per_state
+            _n_k_agg = int(np.asarray(_label_360[_s:_e], dtype=int).sum())
+            _per_trial_state = _per_trial[:, _s:_e].sum(axis=1)
+            _mn, _md, _mx = (int(_per_trial_state.min()),
+                              int(np.median(_per_trial_state)),
+                              int(_per_trial_state.max()))
+            print(f"    state {states[_k]} (loc {_r_locs[_k]}): "
+                  f"{_n_k_agg} agg reward bins  | "
+                  f"per-trial min/median/max = {_mn}/{_md}/{_mx}"
+                  f"{'  ⚠ data gap (min=0)' if _mn == 0 else ''}")
+        print(f"    per-condition labels (12 conds × {LEN_STANDARDISED_PATH} feats):")
+        for _i in range(N_CONDS_PER_CONF):
+            _row_int = np.asarray(_cond_mat[_i], dtype=int).tolist()
+            _frac = sum(_row_int) / len(_row_int)
+            print(f"      cond {_i:2d}  [{' '.join(map(str, _row_int))}]  "
+                  f"frac_reward={_frac:.2f}")
+
+    # # ── Preview figure: bin-level overlay + 24×24 model RDM ──────────────
+    # if _preview_cond_matrix:
+    #     _stacked = np.vstack([_preview_cond_matrix[_c]
+    #                           for _c in _PREVIEW_CONFIGS
+    #                           if _c in _preview_cond_matrix]).astype(int)
+    #     _stacked_obj = _stacked.astype(object)
+    #     _rdm_preview = mc.analyse.my_RSA.compute_hamming_distance(
+    #         _stacked_obj, plotting=False, include_diagonal=False,
+    #         model_name='reward_path[preview]',
+    #         no_tasks=len(_preview_cond_matrix))
+    #     _rdm_vec = np.asarray(_rdm_preview[0], dtype=float)
+    #     _N = _stacked.shape[0]
+    #     _ii, _jj = np.triu_indices(_N, k=1)
+    #     _rdm_square = np.full((_N, _N), np.nan)
+    #     _rdm_square[_ii, _jj] = _rdm_vec
+    #     _rdm_square[_jj, _ii] = _rdm_vec
+
+    #     _fig, _axes = plt.subplots(
+    #         1 + len(_PREVIEW_CONFIGS), 1,
+    #         figsize=(11, 2.0 * len(_PREVIEW_CONFIGS) + 5.5),
+    #         gridspec_kw={'height_ratios': [1] * len(_PREVIEW_CONFIGS) + [3]})
+    #     for _ax, _c in zip(_axes[:-1], _PREVIEW_CONFIGS):
+    #         if _c not in _preview_labels_360:
+    #             _ax.set_visible(False); continue
+    #         _lbl = np.asarray(_preview_labels_360[_c], dtype=int)
+    #         _ax.imshow(_lbl[None, :], aspect='auto',
+    #                    cmap='Reds', vmin=0, vmax=1, interpolation='nearest')
+    #         for _k in range(1, len(states)):
+    #             _ax.axvline(_k * (len(_lbl) // len(states)) - 0.5,
+    #                         color='black', lw=0.7)
+    #         _ax.set_yticks([])
+    #         _ax.set_title(
+    #             f"config {_c} — per-bin reward (red) vs path (white)  "
+    #             f"  reward locs A,B,C,D = {reward_locations_for_config(_c)}",
+    #             fontsize=10)
+    #         _ax.set_xlabel('bin (0..360)', fontsize=8)
+
+    #     _ax_rdm = _axes[-1]
+    #     _im = _ax_rdm.imshow(_rdm_square, cmap='RdBu_r', aspect='equal')
+    #     _ax_rdm.set_title(
+    #         f'reward_path model RDM — preview ({_N}×{_N}, '
+    #         f'{len(_PREVIEW_CONFIGS)} configs × {N_CONDS_PER_CONF} conds)',
+    #         fontsize=10)
+    #     for _k in range(1, len(_PREVIEW_CONFIGS)):
+    #         _ax_rdm.axvline(_k * N_CONDS_PER_CONF - 0.5,
+    #                         color='black', lw=0.7)
+    #         _ax_rdm.axhline(_k * N_CONDS_PER_CONF - 0.5,
+    #                         color='black', lw=0.7)
+    #     plt.colorbar(_im, ax=_ax_rdm, fraction=0.04, pad=0.02,
+    #                  label='Hamming dist')
+    #     _fig.tight_layout()
+    #     _preview_path = os.path.join(OUT_DIR, 'reward_path_preview.png')
+    #     _fig.savefig(_preview_path, dpi=150, bbox_inches='tight')
+    #     plt.show()
+    #     print(f"\n  Saved reward_path preview figure -> {_preview_path}\n")
 
 
     for roi_name, roi_pred in ROI_RULES.items():
@@ -1242,34 +1471,82 @@ if RELOAD_RUN is None:
 
         # create a mode path.
         mode_locs, mode_locs_all, mode_buttons, mode_buttons_all = {}, {}, {}, {}
+        # reward_path is a SIBLING of mode_locs / mode_buttons (one 360-bin
+        # array per (config, half)), but built by labelling each trial
+        # individually first and then taking the mode across trials per bin.
+        # Computing the reward window on the per-bin mode of loc + btn would
+        # require both signals to coincide at the same bin position, which
+        # rarely holds since trials are not bin-aligned (see commit message /
+        # diagnostic) — that route under-reports reward bins for most states.
+        mode_reward_path, mode_reward_path_all = {}, {}
+        # Per-(config, half) min reward bins across trials per state — used
+        # to warn about real data gaps (some half has a state with zero
+        # reward bins in any trial) rather than algorithm bugs.
+        reward_path_min_per_state = {}
         for c in configs:
             mode_locs[c] = {}
+            mode_buttons[c] = {}
+            mode_reward_path[c] = {}
+            reward_path_min_per_state[c] = {}
+
             locs_all_per_conf = locs_all[c]
             stacked_all = np.vstack(locs_all_per_conf) # (n_trials_total, 360)
             m_all = stats.mode(stacked_all, axis=0, keepdims=False, nan_policy='omit')
             mode_locs_all[c] = m_all.mode.astype(float)
 
-            mode_buttons[c] = {}
             buttons_all_per_conf = buttons_all[c]
             stacked_all_buttons = np.vstack(buttons_all_per_conf) # (n_trials_total, 360)
             b_m_all = stats.mode(stacked_all_buttons, axis=0, keepdims=False, nan_policy='omit')
             mode_buttons_all[c] = b_m_all.mode
-            
-            
+
+            mode_reward_path_all[c] = build_reward_path_label_360(
+                loc_trials=stacked_all, btn_trials=stacked_all_buttons,
+                config_str=c, n_states=len(states))
+
             for th in [1, 2]:
                 loc_per_config = locs[c][th]
                 stacked = np.vstack(loc_per_config) # (n_trials_total, 360)
                 m = stats.mode(stacked, axis=0, keepdims=False, nan_policy='omit')
                 mode_locs[c][th] = m.mode.astype(float)
-                
+
                 # and for buttons
                 button_per_config = buttons[c][th]
                 stacked_b = np.vstack(button_per_config) # (n_trials_total, 360)
                 m_b = stats.mode(stacked_b, axis=0, keepdims=False, nan_policy='omit')
                 mode_buttons[c][th] = m_b.mode
 
+                # reward_path: per-trial windows, then per-bin mode across trials.
+                _rp_agg, _rp_per_trial = build_reward_path_label_360(
+                    loc_trials=stacked, btn_trials=stacked_b,
+                    config_str=c, n_states=len(states),
+                    return_per_trial=True)
+                mode_reward_path[c][th] = _rp_agg
+                _W = stacked.shape[1] // len(states)
+                reward_path_min_per_state[c][th] = [
+                    int(_rp_per_trial[:, k * _W:(k + 1) * _W].sum(axis=1).min())
+                    for k in range(len(states))
+                ]
 
-        print("Mode-location and mode-button arrays built.")
+
+        print("Mode-location, mode-button, and mode-reward-path arrays built.")
+        # Surface real data gaps: every state should visit its rewarded
+        # location in every trial. A zero here means a trial in some half
+        # had no Return-press-at-reward in that state's slot, which is a
+        # behavioural gap, not an algorithm bug.
+        _gap_rows = [(c, th, k_i, mn)
+                     for c, by_th in reward_path_min_per_state.items()
+                     for th, mins in by_th.items()
+                     for k_i, mn in enumerate(mins) if mn == 0]
+        if _gap_rows:
+            print(f"  [reward_path] WARN {len(_gap_rows)} (config, half, state) "
+                  f"cell(s) have at least one trial with zero reward bins "
+                  f"in that state's slot — these are real behavioural gaps:")
+            for c, th, k_i, mn in _gap_rows[:10]:
+                print(f"    config {c}  half {th}  state {states[k_i]}: "
+                      f"min reward bins/trial = 0")
+            if len(_gap_rows) > 10:
+                print(f"    ... and {len(_gap_rows) - 10} more (full list in "
+                      f"reward_path_min_per_state if needed).")
 
         # build model rdms
 
@@ -1291,6 +1568,12 @@ if RELOAD_RUN is None:
                 # the current location to each of the 9 grid cells. Mirrors
                 # create_fMRI_model_RDMs_on_clean_beh.py / models['l2_norm'].
                 'l2_norm': make_empty(n_conditions, 9),
+                # reward_path: per-bin binary label (1 = at uncovered reward,
+                # 0 = path) downsampled per condition to LEN_STANDARDISED_PATH
+                # features. Built via build_reward_path_label_360 from the
+                # mode-button + mode-location vectors and the config string.
+                'reward_path': make_empty(n_conditions, LEN_STANDARDISED_PATH,
+                                          dtype=object),
             }
             for run_id in (1, 2)
         }
@@ -1301,7 +1584,7 @@ if RELOAD_RUN is None:
                 mode_vec        = mode_locs[c][run_id]      # (360,)
                 mode_vec_button = mode_buttons[c][run_id]
                 LEN_OG_SUBPATH = int(len(mode_vec)/N_CONDS_PER_CONF)
-        
+
                 dsr_base = downsample_mode(mode_vec, target_len=n_dsr_neurons)
 
                 # fMRI-style DSR: integer-ID mode trajectory, rolled per bin
@@ -1311,9 +1594,15 @@ if RELOAD_RUN is None:
                 mats['dsr_fmri'][row_start:row_start + N_CONDS_PER_CONF] = (
                     build_mode_path_dsr(mode_vec, N_CONDS_PER_CONF, LEN_STANDARDISED_PATH))
 
+                # Per-bin reward/path label for this (config, half), already
+                # built per-trial and aggregated across trials in the
+                # mode_reward_path block above. Slicing it here mirrors how
+                # `loc` and `bttn_curr` slice their mode arrays.
+                reward_path_360 = mode_reward_path[c][run_id]
+
                 for n_subpath in range(N_CONDS_PER_CONF):
                     row = row_start + n_subpath
-        
+
                     # --- location ---
                     subpath = mode_vec[n_subpath * LEN_OG_SUBPATH:(n_subpath + 1) * LEN_OG_SUBPATH]
                     mats['loc'][row] = downsample_mode(subpath, target_len=LEN_STANDARDISED_PATH)
@@ -1333,7 +1622,7 @@ if RELOAD_RUN is None:
 
                     # --- dsr ---
                     mats['dsr'][row] = np.roll(dsr_base, -n_subpath * LEN_STANDARDISED_PATH)
-        
+
                     # --- buttons (current / previous / next), shift by ±1 subpath ---
                     # --- buttons (current / previous / next), wraparound by ±1 subpath ---
                     for key, offset in [('bttn_curr', 0), ('bttn_prev', -1), ('bttn_next', +1)]:
@@ -1341,6 +1630,12 @@ if RELOAD_RUN is None:
                         shifted_n = (n_subpath + offset) % N_CONDS_PER_CONF
                         s = shifted_n * LEN_OG_SUBPATH
                         mats[key][row] = downsample_mode(mode_vec_button[s : s + LEN_OG_SUBPATH], target_len=LEN_STANDARDISED_PATH)
+
+                    # --- reward_path: per-bin label → mode-downsampled per cond ---
+                    rp_sub = reward_path_360[n_subpath * LEN_OG_SUBPATH:
+                                              (n_subpath + 1) * LEN_OG_SUBPATH]
+                    mats['reward_path'][row] = downsample_mode(
+                        rp_sub, target_len=LEN_STANDARDISED_PATH)
                         
 
         # --- state / feedback / phase ---
@@ -1401,6 +1696,7 @@ if RELOAD_RUN is None:
             'bttn_prev':    np.concatenate([matrices[1]['bttn_prev'], matrices[2]['bttn_prev']], axis=0),
             'bttn_next':    np.concatenate([matrices[1]['bttn_next'], matrices[2]['bttn_next']], axis=0),
             'l2_norm':    np.concatenate([matrices[1]['l2_norm'], matrices[2]['l2_norm']], axis=0),
+            'reward_path': np.concatenate([matrices[1]['reward_path'], matrices[2]['reward_path']], axis=0),
             'state':      np.tile(state_half, (2, 1)),
             'repeat_counter': np.tile(feedback_half, (2,1))
         }
@@ -1460,6 +1756,20 @@ if RELOAD_RUN is None:
         model_concat['dsr_fmri_lag012']   = model_concat['dsr_fmri'][:, :3 * _L]   # + 2
         model_concat['dsr_fmri_lag0123']  = model_concat['dsr_fmri'][:, :4 * _L]   # + 3
 
+        # ── Lag-selected (not just truncated) DSR variants ───────────────────
+        # Pick arbitrary subsets of the 12 lag-windows by concatenating the
+        # corresponding 12-column blocks. Used for the exploratory combo
+        # family that swaps dsr_fmri for a future-only / proximal-future /
+        # next-state-only / data-informed version, holding the control set
+        # fixed.  Lag indexing: lag k = "location at subpath (current+k)";
+        # lag 0 = current bin, lag 3 = first phase of next state, etc.
+        def _lag_cols(lag_ids, L=_L):
+            return np.concatenate([np.arange(k * L, (k + 1) * L) for k in lag_ids])
+        model_concat['dsr_fmri_fut']      = model_concat['dsr_fmri'][:, _lag_cols(range(1, N_CONDS_PER_CONF))]
+        model_concat['dsr_fmri_123']      = model_concat['dsr_fmri'][:, _lag_cols([1, 2, 3])]
+        model_concat['dsr_fmri_345']      = model_concat['dsr_fmri'][:, _lag_cols([3, 4, 5])]
+        model_concat['dsr_fmri_informed'] = model_concat['dsr_fmri'][:, _lag_cols([1, 2])]
+
 
         # ── Model design-matrix plots ────────────────────────────────────
         # Visualise the (conditions × features) matrix that actually feeds
@@ -1467,50 +1777,18 @@ if RELOAD_RUN is None:
         # an identical mode-trajectory so plotting both halves is redundant).
         # Saved once, on the example ROI, into <OUT_DIR>/model_design_matrices/.
         if roi_name == EXAMPLE_ROI_FOR_FIGS:
+            from mc.plotting.cell_results import plot_model_design_matrices
             md_dir = os.path.join(OUT_DIR, 'model_design_matrices')
             os.makedirs(md_dir, exist_ok=True)
-            _half1 = slice(0, N_CONFIGS * N_CONDS_PER_CONF)
-            _show_models = [
-                'dsr_fmri', 'location', 'l2_norm',
-                'bttn_curr', 'bttn_next', 'state', 'midnight',
-            ]
-            _show_models = [m for m in _show_models if m in model_concat]
-            fig_md, axes_md = plt.subplots(
-                1, len(_show_models),
-                figsize=(2.2 * len(_show_models), 4.5),
-                constrained_layout=True)
-            if len(_show_models) == 1:
-                axes_md = [axes_md]
-            for ax, mname in zip(axes_md, _show_models):
-                _raw = np.asarray(model_concat[mname][_half1])
-                # bttn_* arrays are object dtype (e.g. 'DownArrow'); factorize
-                # to integers for display only so imshow has something to draw.
-                if _raw.dtype.kind in ('O', 'U', 'S'):
-                    flat = _raw.ravel()
-                    uniq, inv = np.unique(flat.astype(str), return_inverse=True)
-                    mat_show = inv.reshape(_raw.shape).astype(float)
-                    tag = f' (categorical, {len(uniq)} levels)'
-                else:
-                    mat_show = np.asarray(_raw, dtype=float)
-                    tag = ''
-                im = ax.imshow(mat_show, aspect='auto', cmap='viridis',
-                               interpolation='nearest')
-                ax.set_title(f'{mname}{tag}\n{mat_show.shape[0]}×{mat_show.shape[1]}',
-                             fontsize=9)
-                ax.set_xlabel('features', fontsize=8)
-                if ax is axes_md[0]:
-                    ax.set_ylabel('conditions (run-1 half)', fontsize=8)
-                # config boundaries every N_CONDS_PER_CONF rows
-                for k in range(1, N_CONFIGS):
-                    ax.axhline(k * N_CONDS_PER_CONF - 0.5,
-                               color='red', lw=0.4, alpha=0.6)
-                plt.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
-            fig_md.suptitle(
-                f'Model design matrices (run-1 half) — example ROI {roi_name}',
-                fontsize=11)
-            fig_md.savefig(os.path.join(md_dir,
+            plot_model_design_matrices(
+                model_concat=model_concat,
+                models=['dsr_fmri', 'location', 'l2_norm',
+                        'bttn_curr', 'bttn_next', 'state', 'midnight'],
+                n_configs=N_CONFIGS, n_conds_per_config=N_CONDS_PER_CONF,
+                save_path=os.path.join(md_dir,
                                         f'model_design_matrices_{roi_name}.png'),
-                           dpi=200, bbox_inches='tight')
+                roi_label=f'example ROI {roi_name}',
+            )
             plt.show()
             print(f"  Saved model design-matrix figure -> {md_dir}")
 
@@ -1523,7 +1801,9 @@ if RELOAD_RUN is None:
         for m in model_concat:
 
             if m in ('location', 'dsr', 'dsr_fmri', 'bttn_prev', 'bttn_next', 'bttn_curr', 'uncover',
-                     'dsr_fmri_lag01', 'dsr_fmri_lag012', 'dsr_fmri_lag0123'):
+                     'dsr_fmri_lag01', 'dsr_fmri_lag012', 'dsr_fmri_lag0123',
+                     'dsr_fmri_fut', 'dsr_fmri_123', 'dsr_fmri_345', 'dsr_fmri_informed',
+                     'reward_path'):
                 model_RDMs[m] = mc.analyse.my_RSA.compute_hamming_distance(
                     model_concat[m], plotting=False, include_diagonal=False,
                     model_name=m, no_tasks=len(configs))
@@ -1570,6 +1850,107 @@ if RELOAD_RUN is None:
                           f"entries -> replaced with 0")
                     _arr[~np.isfinite(_arr)] = 0
                     _rdm_dict[_m][0] = _arr
+
+        # ── Save data + model RDMs per ROI for cheap add-on replay ────────────
+        # All downstream evaluate_model calls only need the 1-D upper-tri RDM
+        # vectors (and the metadata to interpret them). Storing them lets a
+        # separate add-on script (e.g. scripts/RSA_addon_analyses.py) replay
+        # the phase-mask comparison, swap in extra combos, etc. without ever
+        # touching the cell data again.
+        # Stored canonically BEFORE the optional PHASE_RESIDUALISE_RDMS block
+        # below so the saved arrays always reflect the unmodified pipeline.
+        rdm_save_dir = os.path.join(OUT_DIR, 'rdms')
+        os.makedirs(rdm_save_dir, exist_ok=True)
+        _rdm_payload = {
+            # Test-variant identifying metadata
+            '__roi__':              np.asarray(roi_name),
+            '__n_neurons__':        np.asarray(n_neurons),
+            '__configs__':          np.asarray(list(configs)),
+            '__n_configs__':        np.asarray(N_CONFIGS),
+            '__n_conds_per_conf__': np.asarray(N_CONDS_PER_CONF),
+            '__n_phases__':         np.asarray(N_PHASES),
+            # Data RDMs (1-D upper-tri vectors). Names mirror the in-script
+            # variable names so an add-on script can pick the right one for
+            # each test variant without inventing new keys.
+            'data__split_halves':         np.asarray(data_RDM[0],          dtype=float),
+            'data__split_halves_z':       np.asarray(data_RDM_z[0],        dtype=float),
+            'data__between_tasks':        np.asarray(data_RDM_across[0],   dtype=float),
+            'data__between_tasks_z':      np.asarray(data_RDM_across_z[0], dtype=float),
+            'data__within':               np.asarray(data_RDM_within[0],   dtype=float),
+            'data__within_z':             np.asarray(data_RDM_within_z[0], dtype=float),
+        }
+        # Model RDMs for each test variant. model_RDMs / model_RDMs_across /
+        # model_RDMs_within are dicts keyed by model name; pickle them as
+        # individual arrays under model__<variant>__<modelname>.
+        for _m, _entry in model_RDMs.items():
+            _rdm_payload[f'model__split_halves__{_m}']  = np.asarray(_entry[0], dtype=float)
+        for _m, _entry in model_RDMs_across.items():
+            _rdm_payload[f'model__between_tasks__{_m}'] = np.asarray(_entry[0], dtype=float)
+        for _m, _entry in model_RDMs_within.items():
+            _rdm_payload[f'model__within__{_m}']        = np.asarray(_entry[0], dtype=float)
+        np.savez_compressed(
+            os.path.join(rdm_save_dir, f'rdms_{roi_name}.npz'),
+            **_rdm_payload,
+        )
+        print(f"  [{roi_name}] saved data + model RDMs -> "
+              f"{os.path.join(rdm_save_dir, f'rdms_{roi_name}.npz')} "
+              f"({len(_rdm_payload)} arrays)")
+
+        # ── Optional smoke test: phase-residualise every RDM (data + models) ──
+        # Regress the 'phase' model RDM out of the 1-D upper-tri vector of
+        # every data RDM and every non-phase model RDM, BEFORE evaluate_model.
+        # Equivalent to forcing phase to be partialled out of every test
+        # regardless of whether the combo explicitly includes 'phase' as a
+        # column. Used to check whether the OLS phase regressor in combos is
+        # already doing this work: if betas barely move, OLS handles it; if
+        # they shift, model-level phase contamination remained.
+        if PHASE_RESIDUALISE_RDMS:
+            def _resid_against(v_in, phase_v):
+                v = np.asarray(v_in, dtype=float).copy()
+                p = np.asarray(phase_v, dtype=float)
+                fin = np.isfinite(v) & np.isfinite(p)
+                if fin.sum() < 3:
+                    return v
+                v_m = v[fin] - v[fin].mean()
+                p_centered = p.copy()
+                p_centered[fin] = p[fin] - p[fin].mean()
+                den = (p_centered[fin] ** 2).sum()
+                if den < 1e-12:
+                    return v
+                beta = (p_centered[fin] * v_m).sum() / den
+                out = v.copy()
+                out[fin] = v[fin] - beta * p_centered[fin]
+                return out
+
+            def _set0(seq, new_val):
+                try:
+                    seq[0] = new_val
+                    return seq
+                except (TypeError, IndexError):
+                    return (new_val,) + tuple(seq[1:])
+
+            if 'phase' in model_RDMs and 'phase' in model_RDMs_across:
+                print(f"  [{roi_name}] [smoke-test] PHASE_RESIDUALISE_RDMS=True — "
+                      f"regressing phase RDM out of every data + model RDM")
+                p_full   = np.asarray(model_RDMs['phase'][0],        dtype=float)
+                p_across = np.asarray(model_RDMs_across['phase'][0], dtype=float)
+                # data RDMs
+                data_RDM          = _set0(data_RDM,          _resid_against(data_RDM[0],          p_full))
+                data_RDM_z        = _set0(data_RDM_z,        _resid_against(data_RDM_z[0],        p_full))
+                data_RDM_across   = _set0(data_RDM_across,   _resid_against(data_RDM_across[0],   p_across))
+                data_RDM_across_z = _set0(data_RDM_across_z, _resid_against(data_RDM_across_z[0], p_across))
+                # model RDMs (skip 'phase' itself, which becomes ~0 by construction)
+                for _m in list(model_RDMs):
+                    if _m == 'phase':
+                        continue
+                    model_RDMs[_m]        = _set0(model_RDMs[_m],        _resid_against(model_RDMs[_m][0],        p_full))
+                for _m in list(model_RDMs_across):
+                    if _m == 'phase':
+                        continue
+                    model_RDMs_across[_m] = _set0(model_RDMs_across[_m], _resid_against(model_RDMs_across[_m][0], p_across))
+            else:
+                print(f"  [{roi_name}] [smoke-test] WARN PHASE_RESIDUALISE_RDMS=True "
+                      f"but 'phase' RDM is missing — skipping residualisation.")
 
         # ── Publication figures 2 + 3 (shared with rodent pipeline) ────────
         # Built once for the example ROI: data + per-model activations and
@@ -1696,7 +2077,6 @@ if RELOAD_RUN is None:
                     z_m, combo_models[combo],
                     label=f'[{roi_name}] {PHASE_MASK_MODE}/{test_name}_z/{combo}')
                 for combo in combo_models}
-
         # ── Block-diag / off-block / full breakdown (split_halves_z) ─────
         # Diagnostic: split the across-runs upper-tri RDM into
         #   * block_diag  : same-config cells (within-task across runs;
@@ -1782,6 +2162,7 @@ if RELOAD_RUN is None:
         fdr_combo_key = FDR_COMBOS[0] if FDR_COMBOS else None
         if (fdr_combo_key and fdr_combo_key in combo_models
                 and len(data_RDM_z[0]) == N_RDM * (N_RDM - 1) // 2):
+            from mc.plotting.cell_results import plot_rdm_grid
             fdr_subs = combo_models[fdr_combo_key]
             rdm_diag_dir = os.path.join(OUT_DIR, 'rdm_diagnostics')
             os.makedirs(rdm_diag_dir, exist_ok=True)
@@ -1792,91 +2173,6 @@ if RELOAD_RUN is None:
             cfg_j_disp = _jj_disp // N_CONDS_PER_CONF
             mask_block_diag_vec = cfg_i_disp == cfg_j_disp
             mask_off_block_vec  = cfg_i_disp != cfg_j_disp
-
-            def _embed_vec(vec_1d, positions_mask):
-                """Fill the 1-D evaluate_model input into a 2-D N×N display.
-
-                vec_1d         : 1-D vector exactly as it enters evaluate_model.
-                positions_mask : boolean of length N*(N-1)/2 (all upper-tri
-                                 positions in np.triu_indices order); True
-                                 where vec_1d's values live. Must satisfy
-                                 ``len(vec_1d) == positions_mask.sum()``.
-                Lower-tri and diagonal are always NaN (never seen by
-                evaluate_model under include_diagonal=False).
-                """
-                M = np.full((N_RDM, N_RDM), np.nan, dtype=float)
-                v = np.asarray(vec_1d, dtype=float)
-                pmask = np.asarray(positions_mask, dtype=bool)
-                assert v.shape[0] == int(pmask.sum()), (
-                    f"_embed_vec: vec length {v.shape[0]} does not match "
-                    f"positions_mask.sum() = {int(pmask.sum())}")
-                M[_ii_disp[pmask], _jj_disp[pmask]] = v
-                return M
-
-            # Config labels for axes (config string centred under each block)
-            cfg_centres = np.arange(N_CONFIGS) * N_CONDS_PER_CONF + N_CONDS_PER_CONF / 2 - 0.5
-
-            def _decorate(ax):
-                """Apply config-block dividers, axis labels, and the red
-                diagonal-exclusion marker that's identical across panels."""
-                for k in range(1, N_CONFIGS):
-                    ax.axvline(k * N_CONDS_PER_CONF - 0.5,
-                               color='black', lw=0.4, alpha=0.6)
-                    ax.axhline(k * N_CONDS_PER_CONF - 0.5,
-                               color='black', lw=0.4, alpha=0.6)
-                # Diagonal-exclusion marker: a thin red line on the diagonal,
-                # so it's visually clear that evaluate_model never sees those
-                # cells (k=1 upper-tri).
-                ax.plot([-0.5, N_RDM - 0.5], [-0.5, N_RDM - 0.5],
-                        color='red', lw=0.8, alpha=0.7)
-                ax.set_xticks(cfg_centres)
-                ax.set_xticklabels(configs, fontsize=5, rotation=60, ha='right')
-                ax.set_yticks(cfg_centres)
-                ax.set_yticklabels(configs, fontsize=5)
-                ax.tick_params(length=2, pad=1)
-
-            def _make_rdm_grid(rows_to_plot, col_specs, suptitle, save_path):
-                """rows_to_plot : list of (row_label, dict of {col_name -> 1-D vec, subset_mask})
-                col_specs      : list of (col_name, title_suffix)
-                Each row is one matrix family (data, or one model). Each cell
-                embeds the 1-D evaluate_model vector for that (row, col)
-                back into N×N upper-tri positions.
-                """
-                nrows = len(rows_to_plot)
-                ncols = len(col_specs)
-                fig, axes = plt.subplots(
-                    nrows, ncols, figsize=(4.2 * ncols, 3.0 * nrows),
-                    constrained_layout=True)
-                if nrows == 1:
-                    axes = axes[None, :]
-                if ncols == 1:
-                    axes = axes[:, None]
-                for r_i, (lbl, col_dict) in enumerate(rows_to_plot):
-                    for c_i, (col_name, suffix) in enumerate(col_specs):
-                        ax = axes[r_i, c_i]
-                        if col_name not in col_dict:
-                            ax.set_visible(False)
-                            continue
-                        vec, subset = col_dict[col_name]
-                        disp = _embed_vec(vec, subset)
-                        im = ax.imshow(disp, aspect='equal', cmap='RdBu_r',
-                                       interpolation='nearest')
-                        _decorate(ax)
-                        if r_i == 0:
-                            n_pairs = int(
-                                (~np.isnan(disp)).sum())
-                            ax.set_title(f'{col_name}{suffix}\n'
-                                         f'n_pairs = {n_pairs}',
-                                         fontsize=8)
-                        if c_i == 0:
-                            ax.set_ylabel(lbl, fontsize=8)
-                        plt.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
-                fig.suptitle(suptitle + '\n(diagonal excluded; red line marks '
-                             'k=0; axis labels = config strings)',
-                             fontsize=10)
-                fig.savefig(save_path, dpi=150, bbox_inches='tight')
-                plt.show()
-                return fig
 
             # ── Across-run figure (split_halves family) ────────────────
             # All three columns use the SAME source 1-D vector (the
@@ -1900,16 +2196,19 @@ if RELOAD_RUN is None:
                     model_RDMs[sm][0]))
             _save_a = os.path.join(rdm_diag_dir,
                                    f'fdr_rdm_across_run_{roi_name}.png')
-            _make_rdm_grid(
-                rows_across,
+            plot_rdm_grid(
+                rows_to_plot=rows_across,
                 col_specs=[
                     ('full',       '\n(= split_halves_z input)'),
                     ('block_diag', '\n(within-task subset)'),
                     ('off_block',  '\n(across-task subset)'),
                 ],
+                n_rdm=N_RDM, n_configs=N_CONFIGS,
+                n_conds_per_config=N_CONDS_PER_CONF, configs=configs,
                 suptitle=(f'FDR-family across-run RDMs — ROI {roi_name} '
                           f'(combo: {fdr_combo_key})'),
                 save_path=_save_a)
+            plt.show()
             print(f"  Saved FDR across-run RDM diagnostic -> {_save_a}")
 
             # ── Within-run figure (between_tasks family) ───────────────
@@ -1935,24 +2234,41 @@ if RELOAD_RUN is None:
                 ))
             _save_w = os.path.join(rdm_diag_dir,
                                    f'fdr_rdm_within_run_{roi_name}.png')
-            _make_rdm_grid(
-                rows_within,
+            plot_rdm_grid(
+                rows_to_plot=rows_within,
                 col_specs=[
                     ('off_block',  '\n(= between_tasks_z input)'),
                 ],
+                n_rdm=N_RDM, n_configs=N_CONFIGS,
+                n_conds_per_config=N_CONDS_PER_CONF, configs=configs,
                 suptitle=(f'FDR-family within-run RDMs — ROI {roi_name} '
                           f'(combo: {fdr_combo_key})'),
                 save_path=_save_w)
+            plt.show()
             print(f"  Saved FDR within-run RDM diagnostic -> {_save_w}")
 
         # ── Mode comparison: empirical-only RSA for all 3 phase modes ────
         # Cheap (no permutations) — uses the SAME model + data RDMs and just
         # applies a different mask per mode. Stored separately from the primary
         # results above and consumed by the cross-ROI comparison heatmap.
+        # When PHASE_MASK_MODE='full' (the usual case), the 'full' mode here
+        # is bit-identical to the primary empirical_results — we alias rather
+        # than recompute to remove a divergence risk.
         if RUN_PHASE_MODE_COMPARISON:
             for mode in ALL_PHASE_MODES:
                 roi_mode_comparison.setdefault(mode, {})[roi_name] = {}
                 for test_name, rdm_dict, raw_data, z_data in test_specs:
+                    n_pairs_total = int(np.asarray(raw_data).size)
+                    if mode == 'full' and PHASE_MASK_MODE == 'full':
+                        roi_mode_comparison[mode][roi_name][test_name] = {
+                            'raw_single':    empirical_results[test_name],
+                            'z_single':      empirical_results_z[test_name],
+                            'raw_combo':     empirical_combo_results[test_name],
+                            'z_combo':       empirical_combo_results_z[test_name],
+                            'n_pairs_kept':  n_pairs_total,
+                            'n_pairs_total': n_pairs_total,
+                        }
+                        continue
                     pmask = _phase_mask_for(test_name, mode)
                     raw_m = _apply_phase_mask(raw_data, pmask)
                     z_m   = _apply_phase_mask(z_data, pmask)
@@ -1981,9 +2297,9 @@ if RELOAD_RUN is None:
                                 z_m, combo_models[combo],
                                 label=f'[{roi_name}] {mode}/{test_name}_z/{combo}')
                             for combo in combo_models},
-                        'n_pairs_kept': int(pmask.sum()) if pmask is not None else int(
-                            np.asarray(raw_data).size),
-                        'n_pairs_total': int(np.asarray(raw_data).size),
+                        'n_pairs_kept': (int(pmask.sum()) if pmask is not None
+                                          else n_pairs_total),
+                        'n_pairs_total': n_pairs_total,
                     }
 
 
@@ -2093,226 +2409,65 @@ if RELOAD_RUN is None:
 
 
 
-        def plot_perm_hist_grid(
-            perm_results,
-            empirical_results,
-            empirical_results_z,
-            #tests=('split_halves', 'split_halves_z', 'within', 'within_z', 'between_tasks', 'between_tasks_z'),
-            tests=('split_halves', 'split_halves_z', 'between_tasks', 'between_tasks_z'),
-            models=('location', 'dsr', 'state', 'dsr_old', 'midnight', 'dsr_old_now_next'),
-            bins=25,
-            density=True,
-            figsize_per_panel=(2.0, 1.8),
-            alpha=0.05,
-            suptitle=None,
-        ):
-            nrows, ncols = len(tests), len(models)
+        # ── Permutation null draws (pickle) + histogram (FDR combos only) ───
+        # Save the FULL null draws — every single model and every combo —
+        # so we never need to recompute permutations just to inspect the
+        # null distribution. Histograms are still rendered only for
+        # FDR_COMBOS to keep the figure count manageable; the pickle keeps
+        # the rest accessible for any ad-hoc plot later.
+        if N_PERMUTATIONS:
+            import pickle as _pickle
+            perm_pkl_dir = os.path.join(OUT_DIR, 'perm_null_draws')
+            os.makedirs(perm_pkl_dir, exist_ok=True)
+            _fdr_combos_present = [c for c in FDR_COMBOS if c in combo_models]
+            with open(os.path.join(perm_pkl_dir, f'perm_{roi_name}.pkl'), 'wb') as _f:
+                _pickle.dump({
+                    'roi':                       roi_name,
+                    'n_neurons':                 n_neurons,
+                    'n_permutations':            N_PERMUTATIONS,
+                    'tests':                     tests,
+                    'models':                    list(models),
+                    'combo_models':              {c: combo_models[c] for c in combo_models},
+                    'fdr_combos':                _fdr_combos_present,
+                    'perm_results_singles':      perm_results,
+                    'perm_results_combo':        perm_results_combo,
+                    'empirical_results':         empirical_results,
+                    'empirical_results_z':       empirical_results_z,
+                    'empirical_combo_results':   empirical_combo_results,
+                    'empirical_combo_results_z': empirical_combo_results_z,
+                }, _f)
 
-            fig, axes = plt.subplots(
-                nrows, ncols,
-                figsize=(figsize_per_panel[0] * ncols, figsize_per_panel[1] * nrows),
-                sharey=False,
-                constrained_layout=True,
-            )
-
-            # Force `axes` to a 2-D (nrows, ncols) array so axes[r, c] always works.
-            axes = np.asarray(axes).reshape(nrows, ncols)
-
-            for r, test in enumerate(tests):
-                emp = empirical_results_z[test[:-2]] if test.endswith('_z') else empirical_results[test]
-
-                # row-specific symmetric x-limits
-                row_vals = []
-                for model in models:
-                    x = np.asarray(perm_results[test][model], dtype=float).ravel()
-                    beta = float(np.asarray(emp[model][1]).ravel()[0])
-                    row_vals.append(x)
-                    row_vals.append(np.array([beta], dtype=float))
-
-                row_vals = np.concatenate(row_vals)
-                lim = np.nanmax(np.abs(row_vals))
-                lim = 1.0 if (not np.isfinite(lim) or lim == 0) else 1.05 * lim
-                edges = np.linspace(-lim, lim, bins + 1)
-
-                for c, model in enumerate(models):
-                    ax = axes[r, c]
-                    x = np.asarray(perm_results[test][model], dtype=float).ravel()
-                    beta = float(np.asarray(emp[model][1]).ravel()[0])
-
-                    # one-sided positive permutation p-value
-                    p_one_sided = (np.sum(x >= beta) + 1) / (x.size + 1)
-
-                    ax.hist(
-                        x, bins=edges, density=density,
-                        color='0.75', edgecolor='white', linewidth=0.6
-                    )
-                    ax.axvline(0, color='black', lw=0.9)
-                    ax.axvline(beta, color='red', lw=1.6)
-
-                    if p_one_sided < 0.1:
-                        ax.text(
-                            0.04, 0.96, f"p={p_one_sided:.3f}",
-                            transform=ax.transAxes,
-                            ha='left', va='top',
-                            fontsize=8
-                        )
-
-                    # add a fat star when significant and positive
-                    if (beta > 0) and (p_one_sided < alpha):
-                        y0, y1 = ax.get_ylim()
-                        ax.set_ylim(y0, y1 * 1.15)
-                        ax.text(
-                            beta, y1 * 1.08, '★',
-                            ha='center', va='bottom',
-                            fontsize=16, fontweight='bold',
-                            color='black'
-                        )
-                    else:
-                        # still leave a little headroom for consistency
-                        y0, y1 = ax.get_ylim()
-                        ax.set_ylim(y0, y1 * 1.08)
-
-                    ax.set_xlim(-lim, lim)
-                    ax.tick_params(labelsize=8, length=2)
-                    ax.spines['top'].set_visible(False)
-                    ax.spines['right'].set_visible(False)
-
-                    if r == 0:
-                        ax.set_title(model, fontsize=9)
-                    if c == 0:
-                        ax.set_ylabel(test, fontsize=9)
-
-            if suptitle is not None:
-                fig.suptitle(suptitle, fontsize=12)
-
-            return fig, axes
-
-        def plot_perm_hist_grid_combo(
-            perm_results_combo,
-            empirical_combo_results,
-            empirical_combo_results_z,
-            combo_key,
-            combo_models,
-            #tests=('split_halves', 'split_halves_z', 'within', 'within_z', 'between_tasks', 'between_tasks_z'),
-            tests=('split_halves', 'split_halves_z', 'between_tasks', 'between_tasks_z'),
-            bins=25,
-            density=True,
-            figsize_per_panel=(2.0, 1.8),
-            alpha=0.05,
-            suptitle=None,
-        ):
-            cols = combo_models[combo_key]
-            nrows, ncols = len(tests), len(cols)
-
-            fig, axes = plt.subplots(
-                nrows, ncols,
-                figsize=(figsize_per_panel[0] * ncols, figsize_per_panel[1] * nrows),
-                sharey=False,
-                constrained_layout=True,
-            )
-
-            # Force `axes` to a 2-D (nrows, ncols) array so axes[r, c] always works.
-            axes = np.asarray(axes).reshape(nrows, ncols)
-
-            for r, test in enumerate(tests):
-                emp = empirical_combo_results_z[test[:-2]] if test.endswith('_z') else empirical_combo_results[test]
-
-                x_all = np.asarray(perm_results_combo[test][combo_key]['beta'], dtype=float)
-                beta_emp = np.asarray(emp[combo_key][1], dtype=float).ravel()
-
-                if x_all.ndim != 2:
-                    raise ValueError(
-                        f"{test}/{combo_key}: expected permuted beta array with shape "
-                        f"(n_permutations, n_combo_models), got {x_all.shape}. "
-                        "Store the full beta vector, not a scalar."
-                    )
-
-                row_vals = np.concatenate([x_all.ravel(), beta_emp.ravel()])
-                lim = np.nanmax(np.abs(row_vals))
-                lim = 1.0 if (not np.isfinite(lim) or lim == 0) else 1.05 * lim
-                edges = np.linspace(-lim, lim, bins + 1)
-
-                for c, model_name in enumerate(cols):
-                    ax = axes[r, c]
-                    x = x_all[:, c]
-                    beta = beta_emp[c]
-
-                    p_one_sided = (np.sum(x >= beta) + 1) / (x.size + 1)
-
-                    ax.hist(
-                        x, bins=edges, density=density,
-                        color='0.75', edgecolor='white', linewidth=0.6
-                    )
-                    ax.axvline(0, color='black', lw=0.9)
-                    ax.axvline(beta, color='red', lw=1.6)
-
-                    if p_one_sided < 0.1:
-                        ax.text(
-                            0.04, 0.96, f"p={p_one_sided:.3f}",
-                            transform=ax.transAxes,
-                            ha='left', va='top',
-                            fontsize=8
-                        )
-
-                    if (beta > 0) and (p_one_sided < alpha):
-                        y0, y1 = ax.get_ylim()
-                        ax.set_ylim(y0, y1 * 1.15)
-                        ax.text(
-                            beta, y1 * 1.08, '★',
-                            ha='center', va='bottom',
-                            fontsize=16, fontweight='bold',
-                            color='black'
-                        )
-                    else:
-                        y0, y1 = ax.get_ylim()
-                        ax.set_ylim(y0, y1 * 1.08)
-
-                    ax.set_xlim(-lim, lim)
-                    ax.tick_params(labelsize=8, length=2)
-                    ax.spines['top'].set_visible(False)
-                    ax.spines['right'].set_visible(False)
-
-                    if r == 0:
-                        ax.set_title(model_name, fontsize=9)
-                    if c == 0:
-                        ax.set_ylabel(test, fontsize=9)
-
-            if suptitle is not None:
-                fig.suptitle(suptitle, fontsize=12)
-
-            return fig, axes
-
-        # if len(models) > 0:
-        #     fig, axes = plot_perm_hist_grid(
-        #         perm_results=perm_results,
-        #         empirical_results=empirical_results,
-        #         empirical_results_z=empirical_results_z,
-        #         models=models,
-        #         bins=30,
-        #         alpha=0.05,
-        #         suptitle=f'ROI: {roi_name} (n={n_neurons} neurons)'
-        #     )
-        #     fig.savefig(os.path.join(OUT_DIR, f'permutation_grid_{roi_name}.png'), dpi=150)
-        #     plt.show()
-        # else:
-        #     print(f"[{roi_name}] no base models selected — skipping single-model plot.")
-
-        # for combo_key in combo_models:
-        #     fig_c, axes_c = plot_perm_hist_grid_combo(
-        #         perm_results_combo=perm_results_combo,
-        #         empirical_combo_results=empirical_combo_results,
-        #         empirical_combo_results_z=empirical_combo_results_z,
-        #         combo_key=combo_key,
-        #         combo_models=combo_models,
-        #         bins=30,
-        #         alpha=0.05,
-        #         suptitle=f'ROI: {roi_name} – combo {combo_key} (n={n_neurons})'
-        #     )
-        #     fig_c.savefig(
-        #         os.path.join(OUT_DIR, f'permutation_grid_{roi_name}_combo_{combo_key}.png'),
-        #         dpi=150,
-        #     )
-        #     plt.show()
+            from mc.plotting.cell_results import plot_permutation_hist_combo_grid
+            perm_hist_dir = os.path.join(OUT_DIR, 'perm_hist')
+            os.makedirs(perm_hist_dir, exist_ok=True)
+            for combo_key in _fdr_combos_present:
+                fig_c, _ = plot_permutation_hist_combo_grid(
+                    perm_results_combo=perm_results_combo,
+                    empirical_combo_results=empirical_combo_results,
+                    empirical_combo_results_z=empirical_combo_results_z,
+                    combo_key=combo_key,
+                    combo_models=combo_models,
+                    tests=tests,
+                    bins=30,
+                    alpha=0.05,
+                    suptitle=f'ROI: {roi_name} — combo {combo_key} '
+                             f'(n={n_neurons} neurons, {N_PERMUTATIONS} perms)',
+                )
+                fig_c.savefig(
+                    os.path.join(
+                        perm_hist_dir,
+                        f'permutation_hist_{roi_name}_combo_{combo_key}.png'),
+                    dpi=150, bbox_inches='tight',
+                )
+                fig_c.savefig(
+                    os.path.join(
+                        perm_hist_dir,
+                        f'permutation_hist_{roi_name}_combo_{combo_key}.svg'),
+                    bbox_inches='tight',
+                )
+                plt.close(fig_c)
+            print(f"  Saved perm null draws + hist for {roi_name} "
+                  f"({len(_fdr_combos_present)} FDR combo[s])")
 
         # ── Cache for cross-ROI summary ──────────────────────────────────────
         roi_perm_results[roi_name] = perm_results
@@ -2470,81 +2625,69 @@ if RELOAD_RUN is None:
         combo_df.to_csv(combo_csv, index=False)
         print(f"\nSaved phase-mode comparison CSVs:\n  {single_csv}\n  {combo_csv}")
 
-        def _draw_mode_heatmaps(df, columns, col_axis, suptitle, save_stem):
-            """Three side-by-side ROI x ``columns`` β heatmaps, one per mode.
+        # Render one heatmap per phase-mask mode using the shared
+        # plot_roi_model_heatmap helper. Each figure shows exactly what
+        # evaluate_model produced for that mode — no beautification, no
+        # silent deduplication. If a sub-model name appears twice in a
+        # combo (= configuration bug) plot_roi_model_heatmap will raise.
+        from mc.plotting.cell_results import (
+            plot_roi_model_heatmap, CANONICAL_ROI_ORDER,
+            CANONICAL_RSA_MODEL_ORDER,
+        )
 
-            ``col_axis`` is the column name in ``df`` used to pivot horizontally
-            ('model' for singles, 'sub_model' for combos). ``columns`` is the
-            ordered list of column values to display.
-            """
-            _rois = sorted(df['roi'].unique(),
-                           key=lambda r: list(ROI_RULES).index(r)
-                           if r in ROI_RULES else 999)
-            _grid = {}
-            for _mode in ALL_PHASE_MODES:
-                _g = (df[df['mode'] == _mode]
-                      .pivot_table(index='roi', columns=col_axis,
-                                   values='beta'))
-                _g = _g.reindex(index=_rois, columns=columns)
-                _grid[_mode] = _g
-            _stack = np.concatenate([g.to_numpy().ravel() for g in _grid.values()])
-            _lim = float(np.nanmax(np.abs(_stack)))
-            if not np.isfinite(_lim) or _lim == 0:
-                _lim = 1.0
+        # Cell counts per ROI come from the primary summary table.
+        roi_n_neurons = (summary_df.drop_duplicates('roi')
+                                  .set_index('roi')['n_neurons'].to_dict())
 
-            n_cols = max(len(columns), 1)
-            fig, axes = plt.subplots(
-                1, 3,
-                figsize=(max(2.6, 0.7 * n_cols + 1.6) * 3,
-                         0.55 * len(_rois) + 1.6),
-                sharey=True, constrained_layout=True)
-            for ax, _mode in zip(axes, ALL_PHASE_MODES):
-                G = _grid[_mode].to_numpy()
-                im = ax.imshow(G, cmap='RdBu_r', vmin=-_lim, vmax=_lim,
-                               aspect='auto')
-                ax.set_xticks(np.arange(n_cols))
-                ax.set_xticklabels(columns, rotation=40, ha='right', fontsize=8)
-                ax.set_yticks(np.arange(len(_rois)))
-                ax.set_yticklabels(_rois, fontsize=8)
-                ax.set_title(f'{_mode}', fontsize=10)
-                for i in range(G.shape[0]):
-                    for j in range(G.shape[1]):
-                        v = G[i, j]
-                        if np.isfinite(v):
-                            ax.text(j, i, f'{v:.2f}',
-                                    ha='center', va='center', fontsize=7,
-                                    color='white' if abs(v) > 0.55 * _lim
-                                    else 'black')
-            cbar = fig.colorbar(im, ax=axes, shrink=0.8, pad=0.02)
-            cbar.set_label('empirical β', fontsize=9)
-            fig.suptitle(suptitle, fontsize=11)
-            png = f'{save_stem}.png'
-            fig.savefig(png, dpi=150, bbox_inches='tight')
+        def _render_mode_heatmap(df, models_for_cols, title, save_stem):
+            df = df.copy()
+            df['n_neurons'] = df['roi'].map(roi_n_neurons)
+            plot_roi_model_heatmap(
+                df,
+                models=list(models_for_cols),
+                rois=CANONICAL_ROI_ORDER,
+                value_col='beta', annot_col='p_param', sig_col='p_param',
+                n_col='n_neurons', alpha=0.05,
+                value_label='empirical beta (no permutation)',
+                title=title,
+                save_path=f'{save_stem}.png',
+                base_fontsize=13,
+            )
             plt.show()
-            return png
+            print(f"  saved {save_stem}.png")
 
-        # Single-model heatmap (all single models in one figure x 3 modes).
+        # Single-model heatmaps — one per mode.
         if not single_df.empty:
-            png = _draw_mode_heatmaps(
-                single_df, columns=list(models), col_axis='model',
-                suptitle=f'Phase-mode comparison — single models  ({cmp_test_name})',
-                save_stem=os.path.join(
-                    cmp_dir, f'phase_mode_comparison_singles_{cmp_test_name}'))
-            print(f"  saved {png}")
-
-        # One figure per combo.
-        if not combo_df.empty:
-            for combo, sub_models in combo_models.items():
-                _cdf = combo_df[combo_df['combo'] == combo]
-                if _cdf.empty:
+            for _mode in ALL_PHASE_MODES:
+                _sdf = single_df[single_df['mode'] == _mode]
+                if _sdf.empty:
                     continue
-                png = _draw_mode_heatmaps(
-                    _cdf, columns=list(sub_models), col_axis='sub_model',
-                    suptitle=f'Phase-mode comparison — combo {combo}  ({cmp_test_name})',
+                _render_mode_heatmap(
+                    _sdf, models_for_cols=models,
+                    title=(f'Phase-mode comparison — single models — '
+                           f'mode "{_mode}" ({cmp_test_name})'),
                     save_stem=os.path.join(
                         cmp_dir,
-                        f'phase_mode_comparison_combo_{combo}_{cmp_test_name}'))
-                print(f"  saved {png}")
+                        f'phase_mode_comparison_singles_{_mode}_{cmp_test_name}'))
+
+        # Combo heatmaps — one figure per (combo, mode).
+        if not combo_df.empty:
+            for combo, sub_models in combo_models.items():
+                _cdf_all = combo_df[combo_df['combo'] == combo].copy()
+                if _cdf_all.empty:
+                    continue
+                _cdf_all = _cdf_all.rename(columns={'sub_model': 'model'})
+                for _mode in ALL_PHASE_MODES:
+                    _cdf = _cdf_all[_cdf_all['mode'] == _mode]
+                    if _cdf.empty:
+                        continue
+                    _render_mode_heatmap(
+                        _cdf, models_for_cols=sub_models,
+                        title=(f'Phase-mode comparison — combo {combo} — '
+                               f'mode "{_mode}" ({cmp_test_name})'),
+                        save_stem=os.path.join(
+                            cmp_dir,
+                            f'phase_mode_comparison_combo_{combo}_{_mode}_{cmp_test_name}'))
 else:
     # Reload mode: pull summary CSVs (and electrode coords if saved) from disk.
     summary_df = pd.read_csv(os.path.join(OUT_DIR, 'results_summary.csv'))
@@ -2632,7 +2775,6 @@ if not summary_combo_df.empty and _fam_cols.issubset(summary_combo_df.columns):
         os.path.join(OUT_DIR, 'results_summary_combos.csv'), index=False)
 else:
     print("\nBH-FDR: no combo results available to correct.")
-
 
 def _render_overview_plots(summary_df, summary_combo_df,
                            roi_electrode_coords, out_dir,
