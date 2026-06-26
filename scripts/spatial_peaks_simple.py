@@ -1,437 +1,1331 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""Future spatial peaks — runner.
+
+This is the SURFACE script: all settings live here, the heavy compute
+lives in `mc.analyse.future_spatial_peaks`. Edit the SETTINGS block and
+re-run.
+
+Pipeline per cell:
+  1. Phase-residualise the raw per-bin firing rate (cosine basis, BEFORE
+     any rate maps are computed).
+  2. Pair grids to maximise spatial coverage (each pair = one "grid
+     group").
+  3. Compute cross-validated spatial consistency at every lag in
+     `LAGS_DEG`. Two complementary CV variants per cell:
+       * fixed_lag_r — at PRE-SPECIFIED lag(s) per ROI (a-priori).
+                       ACC → 30°/60°.  HC_anterior → 0°.  HC_mid → 0°/330°.
+                       For all other ROIs we don't fix a lag (NaN).
+       * free_peak_r — cell picks its own peak on training grids,
+                       validated on held-out grid. ORIGINAL control.
+  4. Permutation null via per-rep circular shifts of the location series.
+
+Per-ROI statistical tests:
+  (a) one-sample t-test of fixed-lag r > 0.
+  (b) within-cell paired t-test: r at predicted lag vs r at other lags.
+  (c) binomial test: fraction of cells with perm-p < α exceeds α chance.
+  All three p-values are BH-FDR-corrected across the reported ROIs.
+
+Plots written under <OUT_DIR>:
+  * per_roi_stats.csv          — (a)/(b)/(c) results per ROI
+  * roi_x_lag_overview.{pdf,png} — mean r-vs-0 t-stat per (ROI, lag),
+                                    with stars for FDR sig.
+  * fixed_vs_free_comparison.{pdf,png} — for ACC, HC_anterior, HC_mid:
+                                          fixed-lag vs free-peak r.
+  * rate_map_examples/<ROI>/   — one PDF per "good" cell (max spatial
+                                  coverage), showing the per-CV-split
+                                  rate maps (one panel per grid group).
+  * paired_grid_configs/<ROI>/ — small visualisations of which configs
+                                  the paired-coverage mode collapsed
+                                  together, for the example cells.
+
+@author: Svenja Küchenhoff (refactor: Claude)
 """
-Created on 2026-06-17
 
-@author: Svenja Kuchenhoff
+from __future__ import annotations
 
-Future spatial peaks (clean re-implementation).
-
-Per cell, identify cross-validated future-location encoding via shift-tuned
-rate-map consistency across grids. Phase-agnostic by construction (rates
-averaged over all bins where the shifted location equals a grid square).
-
-Designed to be directly comparable with:
-  * scripts/RSA_DSR_ROIs_simple.py
-  * scripts/encoding_analysis_simple.py
-
-Driven by a JSON config (see scripts/configs/spatial_peaks_default.json).
-First-pass mode (no permutations).
-"""
-
-import argparse
 import json
 import os
 import shutil
 import sys
 import time
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from itertools import combinations
+from scipy import stats
 
 sys.path.insert(0, "/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_clocks_repo")
 
 import mc
 import mc.analyse.cell_selection as cs
 import mc.analyse.future_spatial_peaks as fsp
-import mc.plotting.spatial_peaks as sp
+import era_brewer
 
 
-DATA_DIR = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives"
-OUT_BASE = os.path.join(
-    DATA_DIR, "group", "spatial_peaks_simple",
-)
-DEFAULT_CONFIG = (
-    "/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_clocks_repo/"
-    "scripts/configs/spatial_peaks_default.json"
-)
+# ====================================================================
+# SETTINGS — change here to re-run
+# ====================================================================
+# Run identity --------------------------------------------------------
+ANALYSIS_NAME   = "phase_resid_paired_fixedlag"
+DATA_DIR        = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives"
+OUT_BASE        = os.path.join(DATA_DIR, "group", "spatial_peaks_simple")
+
+# Cells / data --------------------------------------------------------
+CELL_SET        = "all_in_roi_table"     # 'rsa' or 'all_in_roi_table'
+SUBJECTS        = "all"                  # 'all' or list[int]
+ROIS_KEEP       = None                   # None = all in registry
+TRIALS          = "all_minus_explore"    # passed to filter_data
+
+# Compute settings (override module defaults if you want) -------------
+LAGS_DEG               = list(range(0, 360, 30))   # [0, 30, …, 330]
+COVERAGE_MODE          = "paired"                  # pair grids → max coverage
+SPARSITY_FILTER        = "gridwise_qc"
+PHASE_RESIDUALISE      = "cosine"                  # only option supported
+WEIGHTED_CORRELATION   = True
+MIN_DWELL_BINS         = 25
+MIN_SHARED_LOCS        = 5
+N_PEAKS_FREE           = 1                         # for free-peak control
+N_PERMUTATIONS         = 1000
+RUN_PERMUTATIONS       = True
+RANDOM_SEED            = 42
+N_JOBS                 = -1
+# A-priori per-ROI predicted lags (FIXED-lag analysis) ---------------
+# ACC: action / planning lookahead.  HC: current location / place.
+ROI_PREDICTED_LAGS_DEG = {
+    "ACC":         (30, 60),
+    "HC_anterior": (0,),
+    "HC_mid":      (0, 330),
+}
+
+# Statistical thresholds ---------------------------------------------
+ALPHA = 0.05
+
+# Plotting -----------------------------------------------------------
+N_EXAMPLE_CELLS_PER_ROI         = 5         # top-N rate-map example PDFs
+                                            # per (ROI, predicted-lag)
+EXAMPLE_MIN_VALID_LOCATIONS     = 4         # accept if mean rate map has
+                                            # ≥ this many finite locations
+EXAMPLE_FOCUS_ROIS              = ["ACC", "HC_anterior", "HC_mid"]
+DPI                              = 300
+CM                               = 1 / 2.54
+FONT_TICK, FONT_AXIS, FONT_BIG   = 9, 10, 11
+
+# z-MNI gradient analysis (ACC) --------------------------------------
+ZMNI_GRADIENT_ROI               = "ACC"
+ZMNI_GRADIENT_SUBSET_LAGS_DEG   = (0, 30, 60)   # "early-future" lags
+ZMNI_GRADIENT_TOP_K_PER_SUBJECT = 1               # per subject per lag
+
+# Colour scheme (CLAUDE.md project-wide convention)
+ROI_COLOURS = {
+    "EC":              era_brewer.era_brew("Showgirl2", n=7)[0],
+    "medialOFC":       era_brewer.era_brew("Showgirl2", n=7)[1],
+    "ACC":             era_brewer.era_brew("Showgirl2", n=7)[2],
+    "HC_anterior":     era_brewer.era_brew("Showgirl2", n=7)[3],
+    "HC_mid":          era_brewer.era_brew("Showgirl2", n=7)[4],
+    "Parahippocampal": era_brewer.era_brew("Showgirl2", n=7)[5],
+    "PCC":             era_brewer.era_brew("Showgirl2", n=7)[6],
+}
+LOCATION_COLOURS = {
+    1: "#0a607a", 2: "#7eb1c4", 3: "#b6d4e0",
+    4: "#175e62", 5: "#5b9b8d", 6: "#c8e0d0",
+    7: "#0e3d3a", 8: "#3d8b7d", 9: "#a7d9b2",
+}
 
 
-def load_config(path):
-    with open(path, "r") as f:
-        cfg = json.load(f)
-    # validation
-    assert cfg["cell_set"] in ("rsa", "all_in_roi_table")
-    assert cfg["coverage_mode"] in ("per_grid", "paired")
-    assert cfg["sparsity_filter"] in (None, "gridwise_qc")
-    assert cfg["n_peaks"] >= 1
-    assert cfg["min_dwell_bins"] >= 1
-    assert cfg["min_shared_locs"] >= 2
-    pr = cfg.get("phase_residualise")
-    assert pr in (None, "cosine", "cosine_2h", "categorical"), \
-        f"phase_residualise must be one of None / cosine / cosine_2h / categorical, got {pr!r}"
-    fl = cfg.get("fixed_lags")
-    if fl is not None:
-        assert isinstance(fl, list) and all(isinstance(x, int) for x in fl), \
-            "fixed_lags must be a list of int bin offsets"
-    gr = cfg.get("goal_relative_locs")
-    assert gr in (None, False, "toroidal_mod3", "manhattan_distance"), \
-        f"goal_relative_locs must be None / 'toroidal_mod3' / 'manhattan_distance', got {gr!r}"
-    assert cfg.get("config_residualise") in (None, False, True), \
-        "config_residualise must be bool"
-    assert cfg.get("time_residualise") in (None, False, True), \
-        "time_residualise must be bool"
-    assert cfg.get("run_residualise") in (None, False, True), \
-        "run_residualise must be bool"
-    return cfg
-
-
-def build_payloads_for_subject(sub_str, cfg, neuron_ids_keep=None):
-    """Load one subject and build per-cell payloads.
-    Returns list of (payload, neuron_id) and the cell-registry rows.
-    """
-    data_raw = mc.analyse.helpers_human_cells.load_norm_data(
-        DATA_DIR, [sub_str],
-        res_data=(cfg["trials"] == "residualised"),
-    )
-    if not data_raw:
-        return []
-    data = mc.analyse.helpers_human_cells.filter_data(
-        data_raw, int(sub_str), cfg["trials"],
-    )
-    sub_dict = data[f"sub-{sub_str}"]
-    norm_neurons = sub_dict["normalised_neurons"]
-    payloads = []
-    for nid in norm_neurons:
-        if neuron_ids_keep is not None and nid not in neuron_ids_keep:
-            continue
-        try:
-            p = fsp.build_cell_payload(
-                sub_data=sub_dict,
-                neuron_id=nid,
-                neurons_df=norm_neurons[nid],
-                locs_df=sub_dict["locations"],
-                beh=sub_dict["beh"],
-                trials_label=cfg["trials"],
-                coverage_mode=cfg["coverage_mode"],
-                sparsity_filter=cfg["sparsity_filter"],
-                phase_residualise=cfg.get("phase_residualise"),
-                goal_relative_locs=cfg.get("goal_relative_locs"),
-                config_residualise=bool(cfg.get("config_residualise")),
-                time_residualise=bool(cfg.get("time_residualise")),
-                run_residualise=bool(cfg.get("run_residualise")),
-            )
-        except Exception as exc:
-            print(f"  [{nid}] payload build failed: {exc!r}")
-            p = None
-        payloads.append((nid, p))
-    return payloads
-
-
-def compute_subject(sub_str, cfg, cells_df):
-    """Process all kept cells for one subject, returning a list of result rows."""
-    sub_int = int(sub_str)
-    # restrict to neuron_ids that map to RSA-kept cells (by cell_idx)
-    kept_cell_idx = set(cells_df.loc[cells_df["subject_int"] == sub_int, "cell_idx"].tolist())
-    # we only know neuron_ids after loading the subject; pass cell-idx filter as None
-    # and prune by mapping label -> cell_idx after construction.
-
-    payloads = build_payloads_for_subject(sub_str, cfg, neuron_ids_keep=None)
-
-    rows = []
-    for nid, payload in payloads:
-        _, cell_idx = cs.parse_neuron_label(nid)
-        if cell_idx is None or cell_idx not in kept_cell_idx:
-            continue
-        roi_row = cells_df[(cells_df["subject_int"] == sub_int) &
-                           (cells_df["cell_idx"] == cell_idx)].iloc[0]
-        if payload is None:
-            rows.append({
-                "neuron_id":    nid,
-                "subject_id":   sub_str,
-                "subject_int":  sub_int,
-                "cell_idx":     cell_idx,
-                "roi":          roi_row["roi"],
-                "MNI_x":        roi_row["MNI_x"],
-                "MNI_y":        roi_row["MNI_y"],
-                "MNI_z":        roi_row["MNI_z"],
-                "peak_r":               np.nan,
-                "peak_shift_plurality": np.nan,
-                "n_grids_used":         0,
-                "mean_shared_locs_at_peak": np.nan,
-                "fold_shifts_json":     "",
-                "fold_rs_json":         "",
-                "shift_curve_full_json": "",
-                "note":                 "payload_none",
-            })
-            continue
-        try:
-            out = fsp.run_one_cell(payload, cfg)
-        except Exception as exc:
-            print(f"  [{nid}] compute failed: {exc!r}")
-            out = None
-        if out is None:
-            note = "compute_failed"
-            row_out = {"peak_r": np.nan, "peak_shift_plurality": np.nan,
-                       "n_grids_used": 0, "mean_shared_locs_at_peak": np.nan,
-                       "fold_shifts": [], "fold_rs": [], "shift_curve_full": []}
-        else:
-            note = "ok"
-            row_out = out
-        perm_rs = row_out.get("perm_peak_rs", []) or []
-        fl_mean = row_out.get("fixed_lag_r_mean", np.nan)
-        fl_per  = row_out.get("fixed_lag_per_lag_r", [])
-        fl_lags = row_out.get("fixed_lag_lags", [])
-        fl_perm = row_out.get("fixed_lag_perm_means", []) or []
-        rows.append({
-            "neuron_id":    nid,
-            "subject_id":   sub_str,
-            "subject_int":  sub_int,
-            "cell_idx":     cell_idx,
-            "roi":          roi_row["roi"],
-            "MNI_x":        roi_row["MNI_x"],
-            "MNI_y":        roi_row["MNI_y"],
-            "MNI_z":        roi_row["MNI_z"],
-            "peak_r":                  row_out["peak_r"],
-            "peak_shift_plurality":    row_out["peak_shift_plurality"],
-            "n_grids_used":            row_out["n_grids_used"],
-            "mean_shared_locs_at_peak": row_out["mean_shared_locs_at_peak"],
-            "fold_shifts_json":        json.dumps(row_out.get("fold_shifts", [])),
-            "fold_rs_json":            json.dumps(_finite_nested(row_out.get("fold_rs", []))),
-            "shift_curve_full_json":   json.dumps(_finite_list(row_out.get("shift_curve_full", []))),
-            "perm_peak_rs_json":       json.dumps(_finite_list(perm_rs)),
-            "n_permutations_done":     int(len(perm_rs)),
-            "fixed_lag_r_mean":        float(fl_mean) if (fl_mean is not None and np.isfinite(fl_mean)) else np.nan,
-            "fixed_lag_lags_json":     json.dumps(list(fl_lags)) if fl_lags else "",
-            "fixed_lag_per_lag_r_json": json.dumps(_finite_list(fl_per)) if fl_per else "",
-            "fixed_lag_perm_means_json": json.dumps(_finite_list(fl_perm)) if fl_perm else "",
-            "note":                    note,
-        })
-    return rows
-
-
+# ====================================================================
+# Helpers — IO / aggregation
+# ====================================================================
 def _finite_list(xs):
-    return [float(x) if (x is not None and np.isfinite(x)) else None for x in xs]
+    return [float(x) if (x is not None and np.isfinite(x)) else None
+            for x in xs]
 
 
 def _finite_nested(xss):
     return [_finite_list(xs) for xs in xss]
 
 
-def run(cfg_path):
-    cfg = load_config(cfg_path)
-    np.random.seed(cfg["random_seed"])
-
-    run_tag = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + "_" + cfg["analysis_name"]
-    out_dir = Path(OUT_BASE) / run_tag
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # snapshot the config
-    shutil.copy(cfg_path, out_dir / "config.json")
-
-    # cell registry
-    cells_df = cs.load_cells(
-        cell_set=cfg["cell_set"],
-        subjects=cfg["subjects"],
-        rois_keep=cfg["rois_keep"],
-    )
-    cells_df.to_csv(out_dir / "cells_used.csv", index=False)
-    subjects = sorted(cells_df["subject_id"].unique())
-    print(f"[{run_tag}]")
-    print(f"  cell_set={cfg['cell_set']}  → {len(cells_df)} cells across {len(subjects)} subjects")
-    print(f"  out_dir = {out_dir}")
-
-    # dispatch
-    all_rows = []
-    t_total = time.time()
-    if cfg["n_jobs"] in (None, 0, 1):
-        for sub_str in subjects:
-            t0 = time.time()
-            rows = compute_subject(sub_str, cfg, cells_df)
-            all_rows.extend(rows)
-            print(f"  sub-{sub_str}: {len(rows)} cells in {time.time() - t0:.1f}s")
-    else:
-        from joblib import Parallel, delayed
-        print(f"  joblib n_jobs={cfg['n_jobs']}")
-        results = Parallel(n_jobs=cfg["n_jobs"], backend="loky", verbose=5)(
-            delayed(compute_subject)(sub_str, cfg, cells_df)
-            for sub_str in subjects
-        )
-        for rows in results:
-            all_rows.extend(rows)
-    print(f"  total compute time: {time.time() - t_total:.1f}s")
-
-    per_cell = pd.DataFrame(all_rows)
-
-    # ── per-cell p_perm + per-ROI BH-FDR ─────────────────────────────────
-    if cfg.get("run_permutations", False) and cfg.get("n_permutations", 0) > 0:
-        per_cell = _add_p_perm(per_cell)
-        per_cell = _add_q_bh_per_roi(per_cell)
-        print(f"  added p_perm + q_BH_within_roi")
-        if cfg.get("fixed_lags"):
-            per_cell = _add_fixed_lag_p_perm(per_cell)
-            print(f"  added fixed_lag_p_perm + fixed_lag_q_BH_within_roi")
-
-    per_cell.to_csv(out_dir / "per_cell.csv", index=False)
-    print(f"  saved per_cell.csv ({len(per_cell)} rows)")
-
-    # ── subset binomial-per-ROI analysis ────────────────────────────────
-    if cfg.get("run_permutations", False):
-        try:
-            subset_df = _run_subset_binomials(per_cell, cfg, out_dir)
-            print(f"  ran subset binomials → {len(subset_df)} ROI×subset rows")
-        except Exception as exc:
-            print(f"  subset binomial failed: {exc!r}")
-
-    # plots
-    try:
-        sp.plot_all(per_cell, out_dir, cfg)
-    except Exception as exc:
-        print(f"  plotting failed: {exc!r}")
-
-    # changelog
-    _append_changelog(out_dir, cfg, per_cell, run_tag)
-    return per_cell, out_dir
-
-
-def _add_p_perm(df):
-    """Per-cell one-sided p = (k+1)/(M+1) with k = #perms >= observed."""
-    p_perm = np.full(len(df), np.nan, dtype=float)
-    for i, row in df.iterrows():
-        try:
-            perms = json.loads(row.get("perm_peak_rs_json", "[]") or "[]")
-        except (json.JSONDecodeError, TypeError):
-            perms = []
-        perms = [p for p in perms if p is not None and np.isfinite(p)]
-        obs = row["peak_r"]
-        if not perms or not np.isfinite(obs):
-            continue
-        k = sum(1 for p in perms if p >= obs)
-        p_perm[i] = (k + 1) / (len(perms) + 1)
-    df = df.copy()
-    df["p_perm"] = p_perm
-    return df
-
-
-def _bh_fdr(pvals):
-    p = np.asarray(pvals, float)
-    m = int(np.sum(~np.isnan(p)))
-    adj = np.full_like(p, np.nan, dtype=float)
-    if m == 0:
-        return adj
-    order = np.argsort(np.where(np.isnan(p), np.inf, p))
-    ranks = np.arange(1, len(p) + 1, dtype=float)
-    p_ord = p[order]
-    with np.errstate(invalid="ignore"):
-        running = np.minimum.accumulate((m / ranks[order]) * p_ord[::-1])[::-1]
-    adj[order] = np.clip(running, 0, 1)
-    return adj
-
-
-def _add_q_bh_per_roi(df, alpha=0.05):
-    """BH-FDR within each ROI's cell pool."""
-    df = df.copy()
-    df["q_BH_within_roi"] = np.nan
-    for roi, grp in df.groupby("roi"):
-        q = _bh_fdr(grp["p_perm"].to_numpy())
-        df.loc[grp.index, "q_BH_within_roi"] = q
-    df["sig_FDR_within_roi"] = df["q_BH_within_roi"] < alpha
-    return df
-
-
-def _add_fixed_lag_p_perm(df, alpha=0.05):
-    """Per-cell p_perm + BH-FDR for the fixed-lag metric."""
-    df = df.copy()
-    p_perm = np.full(len(df), np.nan, dtype=float)
-    for i, row in df.iterrows():
-        try:
-            perms = json.loads(row.get("fixed_lag_perm_means_json", "[]") or "[]")
-        except (json.JSONDecodeError, TypeError):
-            perms = []
-        perms = [p for p in perms if p is not None and np.isfinite(p)]
-        obs = row.get("fixed_lag_r_mean", np.nan)
-        if not perms or not np.isfinite(obs):
-            continue
-        k = sum(1 for p in perms if p >= obs)
-        p_perm[i] = (k + 1) / (len(perms) + 1)
-    df["fixed_lag_p_perm"] = p_perm
-    df["fixed_lag_q_BH_within_roi"] = np.nan
-    for roi, grp in df.groupby("roi"):
-        q = _bh_fdr(grp["fixed_lag_p_perm"].to_numpy())
-        df.loc[grp.index, "fixed_lag_q_BH_within_roi"] = q
-    df["fixed_lag_sig_FDR_within_roi"] = df["fixed_lag_q_BH_within_roi"] < alpha
-    return df
-
-
-def _load_encoding_significance(enc_csv, model_name, alpha=0.05):
-    """Return DataFrame [neuron_id, <model>_p, <model>_sig]."""
-    enc = pd.read_csv(enc_csv)
-    sub = enc[enc["model"] == model_name][["neuron", "p_perm"]].copy()
-    sub.columns = ["neuron_id", f"{model_name}_p_perm"]
-    sub[f"{model_name}_sig"] = sub[f"{model_name}_p_perm"] < alpha
-    return sub
-
-
-def _run_subset_binomials(per_cell, cfg, out_dir, alpha=0.05):
-    """Per-ROI binomial test of fraction(p_perm<alpha) on multiple
-    pre-specified subsets. BH-FDR across the (subset×ROI) family.
-    """
-    from scipy.stats import binomtest
-    enc_csv = cfg.get("encoding_results_csv",
-        "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/"
-        "derivatives/group/encoding_analysis_simple/2026-06-05_17-58-57/"
-        "encoding_results.csv")
-    df = per_cell.copy()
-    if Path(enc_csv).is_file():
-        for m in ("state", "dsr"):
-            try:
-                aux = _load_encoding_significance(enc_csv, m, alpha=alpha)
-                df = df.merge(aux, on="neuron_id", how="left")
-            except Exception as exc:
-                print(f"  [subset] couldn't load encoding '{m}': {exc!r}")
-    subsets = {
-        "all":       np.ones(len(df), dtype=bool),
-        "state_NS":  ~df.get("state_sig", pd.Series([False] * len(df))).fillna(False).to_numpy(),
-        "DSR_sig":    df.get("dsr_sig",   pd.Series([False] * len(df))).fillna(False).to_numpy(),
+def _settings_dict():
+    """Snapshot of every SETTINGS constant — saved alongside outputs."""
+    return {
+        "analysis_name": ANALYSIS_NAME,
+        "cell_set": CELL_SET, "subjects": SUBJECTS, "rois_keep": ROIS_KEEP,
+        "trials": TRIALS,
+        "lags_deg": LAGS_DEG,
+        "coverage_mode": COVERAGE_MODE, "sparsity_filter": SPARSITY_FILTER,
+        "phase_residualise": PHASE_RESIDUALISE,
+        "weighted_correlation": WEIGHTED_CORRELATION,
+        "min_dwell_bins": MIN_DWELL_BINS, "min_shared_locs": MIN_SHARED_LOCS,
+        "n_peaks_free": N_PEAKS_FREE,
+        "n_permutations": N_PERMUTATIONS, "run_permutations": RUN_PERMUTATIONS,
+        "random_seed": RANDOM_SEED, "n_jobs": N_JOBS,
+        "roi_predicted_lags_deg": {k: list(v) for k, v in
+                                    ROI_PREDICTED_LAGS_DEG.items()},
+        "alpha": ALPHA,
     }
-    rows = []
-    for label, mask in subsets.items():
-        sub = df[mask & df["p_perm"].notna()]
-        for roi, g in sub.groupby("roi"):
-            n = len(g); k = int((g["p_perm"] < alpha).sum())
-            if n == 0:
+
+
+def _cfg_for_module(roi):
+    """Build the per-cell `cfg` dict passed to `fsp.analyse_one_cell`."""
+    return {
+        "roi": roi,
+        "roi_predicted_lags_deg": ROI_PREDICTED_LAGS_DEG,
+        "lags_deg":               LAGS_DEG,
+        "n_peaks":                N_PEAKS_FREE,
+        "min_dwell_bins":         MIN_DWELL_BINS,
+        "min_shared_locs":        MIN_SHARED_LOCS,
+        "weighted_correlation":   WEIGHTED_CORRELATION,
+        "n_loc":                  9,
+        "n_permutations":         N_PERMUTATIONS,
+        "run_permutations":       RUN_PERMUTATIONS,
+        "random_seed":            RANDOM_SEED,
+    }
+
+
+def _row_from_result(out, neuron_id, sub_str, sub_int, cell_idx, roi_row):
+    """Flatten one cell's compute output into a CSV row."""
+    if out is None:
+        return {
+            "neuron_id":   neuron_id, "subject_id": sub_str,
+            "subject_int": sub_int, "cell_idx": cell_idx,
+            "roi": roi_row["roi"],
+            "MNI_x": roi_row["MNI_x"], "MNI_y": roi_row["MNI_y"],
+            "MNI_z": roi_row["MNI_z"],
+            "note": "compute_failed",
+        }
+    # FIXED-lag block (may be absent if ROI has no a-priori lag).
+    fixed_lags = out.get("fixed_fixed_lags_deg") or []
+    fixed_r_mean      = out.get("fixed_fixed_lag_r_mean", np.nan)
+    fixed_per_lag     = out.get("fixed_fixed_lag_per_lag_r", [])
+    per_lag_all_lags  = out.get("fixed_per_lag_r_all_lags",
+                                  out.get("free_consistency_curve_full", []))
+    fixed_perm_means  = out.get("fixed_perm_r_means", [])
+    fixed_perm_per_lag = out.get("fixed_perm_per_lag_r", [])
+
+    # FREE-peak block.
+    free_peak_r           = out.get("free_peak_r", np.nan)
+    free_peak_lag         = out.get("free_peak_lag_plurality", np.nan)
+    free_fold_lags        = out.get("free_fold_lags", [])
+    free_fold_rs          = out.get("free_fold_rs", [])
+    free_perm             = out.get("free_perm_peak_rs", [])
+    free_n_groups         = out.get("free_n_groups_used", 0)
+    free_shared           = out.get("free_mean_shared_locs_at_peak", np.nan)
+    free_curve            = out.get("free_consistency_curve_full", [])
+
+    return {
+        "neuron_id":   neuron_id, "subject_id": sub_str,
+        "subject_int": sub_int, "cell_idx": cell_idx,
+        "roi": roi_row["roi"],
+        "MNI_x": roi_row["MNI_x"], "MNI_y": roi_row["MNI_y"],
+        "MNI_z": roi_row["MNI_z"],
+        # free-peak control
+        "free_peak_r":           float(free_peak_r) if np.isfinite(free_peak_r) else np.nan,
+        "free_peak_lag":         int(free_peak_lag) if (isinstance(free_peak_lag, (int, np.integer))
+                                                          or (np.isfinite(free_peak_lag) if isinstance(free_peak_lag, float) else False)) else np.nan,
+        "free_n_groups_used":    int(free_n_groups),
+        "free_mean_shared_locs": float(free_shared) if np.isfinite(free_shared) else np.nan,
+        "free_fold_lags_json":   json.dumps(free_fold_lags),
+        "free_fold_rs_json":     json.dumps(_finite_nested(free_fold_rs)),
+        "free_curve_json":       json.dumps(_finite_list(free_curve)),
+        "free_perm_peak_rs_json":json.dumps(_finite_list(free_perm)),
+        # fixed-lag (a-priori per ROI)
+        "fixed_lags_deg_used":   json.dumps(list(fixed_lags)),
+        "fixed_lag_r_mean":      float(fixed_r_mean) if np.isfinite(fixed_r_mean) else np.nan,
+        "fixed_per_lag_r_json":  json.dumps(_finite_list(fixed_per_lag)),
+        "fixed_lag_perm_means_json": json.dumps(_finite_list(fixed_perm_means)),
+        "fixed_lag_perm_per_lag_json": json.dumps(_finite_nested(fixed_perm_per_lag)),
+        # per-lag full sweep (every cell, every lag) — needed for ROI×lag overview
+        "per_lag_r_all_lags_json": json.dumps(_finite_list(per_lag_all_lags)),
+        # paired-grid-config groupings (for the "paired_grid_configs" plot)
+        "paired_config_groups_json": json.dumps(out.get("paired_config_groups", [])),
+        "note": "ok",
+    }
+
+
+def _perm_p(observed, perms, alternative="greater"):
+    """One-sided perm p with the standard (k+1)/(M+1) adjustment."""
+    perms = [p for p in (perms or []) if p is not None and np.isfinite(p)]
+    if not perms or not np.isfinite(observed):
+        return np.nan
+    if alternative == "greater":
+        k = sum(1 for p in perms if p >= observed)
+    else:
+        k = sum(1 for p in perms if p <= observed)
+    return (k + 1) / (len(perms) + 1)
+
+
+def _add_perm_p_columns(df):
+    """Add per-cell perm p-values for both fixed-lag and free-peak metrics."""
+    df = df.copy()
+    p_fixed, p_free = [], []
+    for _, row in df.iterrows():
+        try:
+            free_perm = json.loads(row.get("free_perm_peak_rs_json", "[]") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            free_perm = []
+        p_free.append(_perm_p(row.get("free_peak_r"), free_perm))
+        try:
+            fx_perm = json.loads(row.get("fixed_lag_perm_means_json", "[]") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            fx_perm = []
+        p_fixed.append(_perm_p(row.get("fixed_lag_r_mean"), fx_perm))
+    df["p_perm_free"]  = p_free
+    df["p_perm_fixed"] = p_fixed
+    return df
+
+
+# ====================================================================
+# Per-subject compute
+# ====================================================================
+def _build_payloads_for_subject(sub_str):
+    data_raw = mc.analyse.helpers_human_cells.load_norm_data(
+        DATA_DIR, [sub_str], res_data=(TRIALS == "residualised"),
+    )
+    if not data_raw:
+        return None, None
+    data = mc.analyse.helpers_human_cells.filter_data(
+        data_raw, int(sub_str), TRIALS,
+    )
+    sub_dict = data[f"sub-{sub_str}"]
+    return sub_dict, sub_dict["normalised_neurons"]
+
+
+def _build_all_payloads(subjects, cells_df):
+    """Load each subject's data ONCE, build payloads for every cell.
+
+    Returns a flat list of dicts:
+        { neuron_id, sub_str, sub_int, cell_idx, roi_row, payload, cfg }
+    Subject data is discarded after its payloads are built, so peak
+    memory is one subject at a time.
+    """
+    tasks = []
+    for sub_str in subjects:
+        sub_int = int(sub_str)
+        kept_cell_idx = set(cells_df.loc[cells_df["subject_int"] == sub_int,
+                                          "cell_idx"].tolist())
+        if not kept_cell_idx:
+            continue
+        t_sub = time.time()
+        sub_dict, norm_neurons = _build_payloads_for_subject(sub_str)
+        if sub_dict is None:
+            print(f"  sub-{sub_str}: SKIPPED (load failed)")
+            continue
+        sub_tasks = []
+        for nid in norm_neurons:
+            _, cell_idx = cs.parse_neuron_label(nid)
+            if cell_idx is None or cell_idx not in kept_cell_idx:
                 continue
-            p_binom = binomtest(k, n, p=alpha, alternative="greater").pvalue
-            rows.append({"subset": label, "roi": roi, "n": n, "k": k,
-                         "frac": k / n, "p_binom": p_binom})
+            roi_row = cells_df[
+                (cells_df["subject_int"] == sub_int)
+                & (cells_df["cell_idx"]   == cell_idx)
+            ].iloc[0].to_dict()
+            roi = roi_row["roi"]
+            try:
+                payload = fsp.prepare_cell_data(
+                    subject_data=sub_dict, neuron_id=nid,
+                    neurons_df=norm_neurons[nid],
+                    locations_df=sub_dict["locations"],
+                    beh=sub_dict["beh"],
+                    coverage_mode=COVERAGE_MODE,
+                    sparsity_filter=SPARSITY_FILTER,
+                    phase_residualise_basis=PHASE_RESIDUALISE,
+                )
+            except Exception as exc:
+                print(f"  [{nid}] prepare_cell_data failed: {exc!r}")
+                payload = None
+            sub_tasks.append({
+                "neuron_id": nid,
+                "sub_str":   sub_str,
+                "sub_int":   sub_int,
+                "cell_idx":  cell_idx,
+                "roi_row":   roi_row,
+                "payload":   payload,
+                "cfg":       _cfg_for_module(roi),
+            })
+        # free subject dict before moving on
+        del sub_dict, norm_neurons
+        print(f"  sub-{sub_str}: {len(sub_tasks)} payloads built "
+              f"in {time.time() - t_sub:.1f}s")
+        tasks.extend(sub_tasks)
+    return tasks
+
+
+def _run_one_task(task):
+    """Compute one cell. Picklable for joblib (loky backend)."""
+    nid     = task["neuron_id"]
+    payload = task["payload"]
+    cfg     = task["cfg"]
+    if payload is None:
+        out = None
+    else:
+        try:
+            out = fsp.analyse_one_cell(payload, cfg)
+        except Exception as exc:
+            print(f"  [{nid}] analyse_one_cell failed: {exc!r}")
+            out = None
+    return _row_from_result(
+        out, nid, task["sub_str"], task["sub_int"],
+        task["cell_idx"], task["roi_row"],
+    )
+
+
+# ====================================================================
+# Per-ROI statistical tests
+# ====================================================================
+#
+# THREE TESTS, RUN PER ROI ON THE SET OF CELLS IN THAT ROI:
+#   TEST 1 — MEAN_R_VS_0:
+#       One-sample t-test: across cells in the ROI, is the *cross-
+#       validated consistency r at the predicted lag* greater than 0?
+#       (For ROIs without a predicted lag the test falls back to the
+#       free-peak r, which is itself an unbiased control.)
+#   TEST 2 — TARGET_VS_OTHER_LAGS:
+#       Within each cell, compare r at the predicted lag(s) against the
+#       mean r at the OTHER lags. One-sided paired t-test of that
+#       per-cell difference across cells.
+#   TEST 3 — PERM_SIG_FRACTION:
+#       Per cell we computed a permutation p-value (observed r vs null
+#       from circular shifts of the location series). Test if the
+#       *fraction of cells with p_perm < α* exceeds chance (binomial,
+#       one-sided greater, baseline = α).
+#
+# FDR scope:
+#   Each test family is BH-FDR corrected ACROSS THE ROIs REPORTED IN
+#   THIS TABLE — i.e. one FDR family per test, k = n_rois_reported. The
+#   FDR-adjusted p is in the column ending in `_p_fdr`. Cross-test
+#   correction is NOT applied (the three tests are reported jointly as
+#   converging evidence, not as a single significance claim).
+# ====================================================================
+def _per_roi_stats(df):
+    rows = []
+    for roi, g in df.groupby("roi"):
+        rec = {"roi": roi, "n_cells": int(len(g))}
+        target_lags = ROI_PREDICTED_LAGS_DEG.get(roi, None)
+        # TEST 1 — mean r vs 0 ----------------------------------------
+        if target_lags is not None:
+            r_vals = g["fixed_lag_r_mean"].to_numpy(dtype=float)
+            rec["analysis_kind"]   = "fixed_lag"
+            rec["target_lags_deg"] = list(target_lags)
+        else:
+            r_vals = g["free_peak_r"].to_numpy(dtype=float)
+            rec["analysis_kind"]   = "free_peak"
+            rec["target_lags_deg"] = None
+        a = fsp.ttest_mean_r_vs_zero(r_vals)
+        rec.update({
+            "test1_meanR_n":      a["n"],
+            "test1_meanR_mean":   a["mean"],
+            "test1_meanR_t":      a["t"],
+            "test1_meanR_p_unc":  a["p"],
+        })
+        # TEST 2 — predicted lag vs other lags within cell ------------
+        if target_lags is not None:
+            curves = []
+            for _, row in g.iterrows():
+                try:
+                    c = json.loads(row.get("per_lag_r_all_lags_json", "[]") or "[]")
+                except (json.JSONDecodeError, TypeError):
+                    c = []
+                if len(c) == len(LAGS_DEG):
+                    curves.append([np.nan if v is None else float(v) for v in c])
+            if curves:
+                b = fsp.within_cell_lag_vs_others(
+                    np.asarray(curves), LAGS_DEG, target_lags,
+                )
+            else:
+                b = {"t": np.nan, "p": np.nan, "n": 0,
+                     "mean_target": np.nan, "mean_others": np.nan,
+                     "mean_diff": np.nan}
+        else:
+            b = {"t": np.nan, "p": np.nan, "n": 0,
+                 "mean_target": np.nan, "mean_others": np.nan,
+                 "mean_diff": np.nan}
+        rec.update({
+            "test2_targetVsOther_n":              b["n"],
+            "test2_targetVsOther_mean_target":    b.get("mean_target", np.nan),
+            "test2_targetVsOther_mean_others":    b.get("mean_others", np.nan),
+            "test2_targetVsOther_mean_diff":      b.get("mean_diff",   np.nan),
+            "test2_targetVsOther_t":              b["t"],
+            "test2_targetVsOther_p_unc":          b["p"],
+        })
+        # TEST 3 — binomial on per-cell perm-p < ALPHA ---------------
+        p_col = "p_perm_fixed" if target_lags is not None else "p_perm_free"
+        c = fsp.binomial_sig_fraction(g[p_col].to_numpy(dtype=float),
+                                        alpha=ALPHA)
+        rec.update({
+            "test3_permSig_k":         c["k"],
+            "test3_permSig_n":         c["n"],
+            "test3_permSig_frac":      c["frac"],
+            "test3_permSig_p_unc":     c["p_binom"],
+        })
+        rows.append(rec)
     out = pd.DataFrame(rows)
-    if not out.empty:
-        out["q_BH_family"] = _bh_fdr(out["p_binom"].to_numpy())
-        out["sig_FDR"] = out["q_BH_family"] < alpha
-    out.to_csv(Path(out_dir) / "subset_binomial.csv", index=False)
+    # BH-FDR within each test family, scope = all ROIs in this table
+    for p_col, q_col in [
+        ("test1_meanR_p_unc",         "test1_meanR_p_fdr"),
+        ("test2_targetVsOther_p_unc", "test2_targetVsOther_p_fdr"),
+        ("test3_permSig_p_unc",       "test3_permSig_p_fdr"),
+    ]:
+        out[q_col] = fsp.bh_fdr(out[p_col].to_numpy(dtype=float))
     return out
 
 
-def _append_changelog(out_dir, cfg, df, run_tag):
-    changelog_path = Path(DATA_DIR) / "group" / "spatial_peaks_simple" / "CHANGELOG.md"
-    changelog_path.parent.mkdir(parents=True, exist_ok=True)
-    n_ok = int((df["note"] == "ok").sum())
-    n_total = len(df)
-    by_roi = df[df["note"] == "ok"].groupby("roi")["peak_r"].agg(["count", "mean"])
-    summary_lines = [f"  - {r}: n={int(c)}, mean peak_r={m:+.3f}"
-                     for r, (c, m) in by_roi.iterrows()]
-    entry = "\n".join([
-        f"## {run_tag}",
-        f"- analysis_name: {cfg['analysis_name']}",
-        f"- cell_set: {cfg['cell_set']}, trials: {cfg['trials']}, "
-        f"coverage_mode: {cfg['coverage_mode']}, n_peaks: {cfg['n_peaks']}",
-        f"- n_cells: {n_ok} ok / {n_total} attempted",
-        "- per-ROI peak_r:",
-        *summary_lines,
-        "",
-    ])
-    if changelog_path.exists():
-        prev = changelog_path.read_text()
+def _per_roi_lag_table(df):
+    """Per-(ROI, lag) summary of the cross-validated consistency r.
+
+    For every ROI × every lag we report:
+        n_cells (with finite r at that lag),
+        mean(r), SEM(r),
+        one-sample t-stat & p (H1: mean > 0, uncorrected),
+        BH-FDR-adjusted p, SCOPE = all (ROI × lag) cells in this table.
+    """
+    rois = sorted(df["roi"].dropna().unique().tolist())
+    n_lags = len(LAGS_DEG)
+    rows = []
+    for roi in rois:
+        g = df[df["roi"] == roi]
+        curves = []
+        for _, row in g.iterrows():
+            try:
+                c = json.loads(row.get("per_lag_r_all_lags_json", "[]") or "[]")
+            except (json.JSONDecodeError, TypeError):
+                c = []
+            if len(c) == n_lags:
+                curves.append([np.nan if v is None else float(v) for v in c])
+        curves = np.asarray(curves) if curves else np.empty((0, n_lags))
+        is_target = {l: (l in ROI_PREDICTED_LAGS_DEG.get(roi, ()))
+                     for l in LAGS_DEG}
+        for li, lag in enumerate(LAGS_DEG):
+            r = curves[:, li] if curves.size else np.array([])
+            r = r[np.isfinite(r)]
+            if r.size >= 2:
+                tt = stats.ttest_1samp(r, 0.0, alternative="greater")
+                t_, p_ = float(tt.statistic), float(tt.pvalue)
+                m_, s_ = float(r.mean()), float(r.std(ddof=1) / np.sqrt(r.size))
+            else:
+                t_, p_, m_, s_ = (np.nan, np.nan,
+                                    float(r.mean()) if r.size else np.nan, np.nan)
+            rows.append({
+                "roi": roi, "lag_deg": lag,
+                "is_predicted_lag": bool(is_target[lag]),
+                "n_cells": int(r.size),
+                "mean_r": m_, "sem_r": s_,
+                "t_vs_0": t_, "p_unc": p_,
+            })
+    out = pd.DataFrame(rows)
+    out["p_fdr"] = fsp.bh_fdr(out["p_unc"].to_numpy(dtype=float))
+    return out
+
+
+# ====================================================================
+# Plots — all surface, intentionally inline + factored for clarity
+# ====================================================================
+def _stars_from_q(q):
+    if not np.isfinite(q): return ""
+    return "***" if q < .001 else "**" if q < .01 else "*" if q < .05 else ""
+
+
+def _set_rc():
+    plt.rcParams.update({
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Arial", "DejaVu Sans"],
+        "font.size": FONT_TICK,
+        "pdf.fonttype": 42, "ps.fonttype": 42,
+        "axes.spines.top": False, "axes.spines.right": False,
+    })
+
+
+def _save(fig, save_stem):
+    fig.savefig(save_stem + ".pdf", dpi=DPI, bbox_inches="tight")
+    fig.savefig(save_stem + ".png", dpi=DPI, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_roi_x_lag_overview(per_cell, roi_stats, save_stem):
+    """Heatmap: rows = ROIs, cols = lags; colour = per-(ROI, lag) one-sample
+    t-stat of CV r vs 0. Stars marked for the a-priori predicted lag(s) of
+    each ROI (BH-FDR across the predicted-lag tests in `roi_stats`)."""
+    _set_rc()
+    rois = sorted(per_cell["roi"].dropna().unique().tolist())
+    n_lags = len(LAGS_DEG)
+    T = np.full((len(rois), n_lags), np.nan)
+    for ri, roi in enumerate(rois):
+        g = per_cell[per_cell["roi"] == roi]
+        curves = []
+        for _, row in g.iterrows():
+            try:
+                c = json.loads(row.get("per_lag_r_all_lags_json", "[]") or "[]")
+            except (json.JSONDecodeError, TypeError):
+                c = []
+            if len(c) == n_lags:
+                curves.append([np.nan if v is None else float(v) for v in c])
+        if not curves: continue
+        curves = np.asarray(curves)
+        for li in range(n_lags):
+            r = curves[:, li]
+            r = r[np.isfinite(r)]
+            if r.size >= 2:
+                T[ri, li] = float(stats.ttest_1samp(r, 0.0,
+                                                      alternative="greater").statistic)
+
+    vmax = float(np.nanmax(np.abs(T))) if np.isfinite(T).any() else 1.0
+    fig, ax = plt.subplots(figsize=(14 * CM, 6 * CM), constrained_layout=True)
+    im = ax.imshow(T, cmap="RdBu_r", vmin=-vmax, vmax=vmax, aspect="auto")
+    # mark predicted lags + add FDR stars per ROI (TEST 1 q-val)
+    q_lookup = dict(zip(roi_stats["roi"], roi_stats["test1_meanR_p_fdr"]))
+    for ri, roi in enumerate(rois):
+        target_lags = ROI_PREDICTED_LAGS_DEG.get(roi, ())
+        for fl in target_lags:
+            if fl in LAGS_DEG:
+                ci = LAGS_DEG.index(fl)
+                ax.add_patch(plt.Rectangle((ci - 0.5, ri - 0.5), 1, 1,
+                                            fill=False, edgecolor="black",
+                                            lw=1.4))
+        star = _stars_from_q(q_lookup.get(roi, np.nan))
+        if star:
+            # put star on the FIRST predicted lag (if any)
+            if target_lags and target_lags[0] in LAGS_DEG:
+                ci = LAGS_DEG.index(target_lags[0])
+                col = "white" if abs(T[ri, ci]) > vmax * 0.55 else "black"
+                ax.text(ci, ri, star, ha="center", va="center",
+                        fontsize=FONT_BIG + 1, fontweight="bold",
+                        color=col, zorder=5)
+    ax.set_xticks(range(n_lags))
+    ax.set_xticklabels([str(l) for l in LAGS_DEG], fontsize=FONT_TICK)
+    ax.set_yticks(range(len(rois)))
+    ax.set_yticklabels(rois, fontsize=FONT_TICK)
+    ax.set_xlabel("lag (°)", fontsize=FONT_AXIS)
+    ax.set_title("ROI × lag — per-cell CV r t-stat vs 0", fontsize=FONT_BIG)
+    cb = fig.colorbar(im, ax=ax, fraction=0.06, pad=0.04)
+    cb.set_label("t (one-sided > 0)", fontsize=FONT_TICK)
+    cb.ax.tick_params(labelsize=FONT_TICK)
+    _save(fig, save_stem)
+
+
+def plot_fixed_vs_free_comparison(per_cell, save_stem):
+    """For each ROI in EXAMPLE_FOCUS_ROIS:
+        box+jitter of (fixed-lag r) vs (free-peak r) across cells.
+        Paired t-test annotation.
+    """
+    _set_rc()
+    rois = [r for r in EXAMPLE_FOCUS_ROIS if r in per_cell["roi"].unique()]
+    if not rois: return
+    fig, axes = plt.subplots(1, len(rois), figsize=(4.5 * CM * len(rois), 5 * CM),
+                              constrained_layout=True, squeeze=False)
+    axes = axes[0]
+    for ax, roi in zip(axes, rois):
+        g = per_cell[per_cell["roi"] == roi].copy()
+        fx = g["fixed_lag_r_mean"].to_numpy(dtype=float)
+        fr = g["free_peak_r"].to_numpy(dtype=float)
+        m  = np.isfinite(fx) & np.isfinite(fr)
+        fx, fr = fx[m], fr[m]
+        # paired t-test
+        if fx.size >= 2:
+            try:
+                res = stats.ttest_rel(fx, fr)
+                t, p = float(res.statistic), float(res.pvalue)
+            except Exception:
+                t, p = np.nan, np.nan
+        else:
+            t, p = np.nan, np.nan
+        c = ROI_COLOURS.get(roi, "#888")
+        bp = ax.boxplot([fx, fr], positions=[1, 2], widths=0.55,
+                         showfliers=False, patch_artist=True,
+                         medianprops=dict(color="black", lw=0.8))
+        for patch in bp["boxes"]:
+            patch.set_facecolor(c); patch.set_alpha(0.55)
+            patch.set_edgecolor("black")
+        rng = np.random.default_rng(42)
+        for i, vals in enumerate([fx, fr]):
+            ax.scatter(np.full(vals.size, i + 1)
+                        + 0.08 * rng.standard_normal(vals.size),
+                       vals, s=6, color="black", alpha=0.4, zorder=3)
+        ax.axhline(0, color="gray", ls="--", lw=0.5)
+        ax.set_xticks([1, 2])
+        ax.set_xticklabels(["fixed lag", "free peak"], fontsize=FONT_TICK)
+        ax.set_ylabel("CV consistency r", fontsize=FONT_AXIS)
+        ax.set_title(f"{roi}\n n = {fx.size}\n"
+                     f"paired t = {t:+.2f}, p = {p:.3g}",
+                     fontsize=FONT_TICK)
+        ax.tick_params(axis="both", labelsize=FONT_TICK, length=2, pad=1)
+    fig.suptitle("Fixed-lag (a-priori) vs free-peak (cell-picked) — "
+                 "predicted ROIs", fontsize=FONT_BIG)
+    _save(fig, save_stem)
+
+
+def _select_example_cells(per_cell, roi, n_want=N_EXAMPLE_CELLS_PER_ROI,
+                          coverage_min=EXAMPLE_MIN_VALID_LOCATIONS):
+    """Pick high-r, high-spatial-coverage cells from one ROI for the rate-
+    map example PDFs. Requires the cell to have n ≥ `coverage_min` valid
+    locations on its mean rate map at the predicted lag (or at the peak
+    lag if no predicted lag)."""
+    g = per_cell[per_cell["roi"] == roi].copy()
+    if g.empty: return []
+    if roi in ROI_PREDICTED_LAGS_DEG:
+        g = g.dropna(subset=["fixed_lag_r_mean"])
+        g = g.sort_values("fixed_lag_r_mean", ascending=False)
     else:
-        prev = "# spatial_peaks_simple changelog\n\n"
-    changelog_path.write_text(prev + entry + "\n")
+        g = g.dropna(subset=["free_peak_r"])
+        g = g.sort_values("free_peak_r", ascending=False)
+    return g.head(n_want * 3).to_dict("records")   # head extra; we drop on coverage
+
+
+def _rate_maps_for_cell(neuron_id, sub_str, lag_deg):
+    """Re-compute the per-grid-group rate maps for one cell at one lag,
+    just for plotting. Returns (rate_maps (n_loc, n_groups),
+    dwell_maps, paired_config_groups, group_n_reps)."""
+    sub_dict, norm_neurons = _build_payloads_for_subject(sub_str)
+    if sub_dict is None or neuron_id not in norm_neurons:
+        return None
+    payload = fsp.prepare_cell_data(
+        subject_data=sub_dict, neuron_id=neuron_id,
+        neurons_df=norm_neurons[neuron_id],
+        locations_df=sub_dict["locations"], beh=sub_dict["beh"],
+        coverage_mode=COVERAGE_MODE, sparsity_filter=SPARSITY_FILTER,
+        phase_residualise_basis=PHASE_RESIDUALISE,
+    )
+    if payload is None: return None
+    fr_maps, dwell_maps, _, groups = fsp.consistency_per_lag(
+        payload["neurons"], payload["locations"], payload["grid_group_idx"],
+        lags_deg=[int(lag_deg)],
+        min_dwell=MIN_DWELL_BINS, min_shared_locs=MIN_SHARED_LOCS,
+        weighted=WEIGHTED_CORRELATION, n_loc=9,
+    )
+    # group_n_reps: how many reps were in each grid group
+    grp_arr = payload["grid_group_idx"]
+    n_reps_per_group = [int((grp_arr == g).sum()) for g in groups]
+    return {
+        "fr_maps":   fr_maps[0],
+        "dwell":     dwell_maps[0],
+        "groups":    list(groups),
+        "n_reps":    n_reps_per_group,
+        "paired_config_groups": payload.get("paired_config_groups", []),
+    }
+
+
+def _plot_one_cell_rate_maps(cell_row, lag_deg, save_stem, label_extra=""):
+    """One PDF for one cell: a row of rate-map heatmaps, one per grid
+    group (= per CV split if coverage_mode='paired'). Also annotates which
+    original configs are paired in each group (top of each panel)."""
+    _set_rc()
+    info = _rate_maps_for_cell(cell_row["neuron_id"],
+                                str(cell_row["subject_id"]),
+                                lag_deg=lag_deg)
+    if info is None or info["fr_maps"].shape[1] < 1:
+        return
+    n_panels = info["fr_maps"].shape[1] + 1   # +1 for mean
+    fig, axes = plt.subplots(1, n_panels, figsize=(2.6 * CM * n_panels,
+                                                      3.2 * CM),
+                              constrained_layout=True, squeeze=False)
+    axes = axes[0]
+    # shared vmin/vmax for visual comparison across panels
+    all_vals = info["fr_maps"][np.isfinite(info["fr_maps"])]
+    vmin = float(np.nanpercentile(all_vals, 5))  if all_vals.size else 0.0
+    vmax = float(np.nanpercentile(all_vals, 95)) if all_vals.size else 1.0
+    cmap = "coolwarm"
+    paired = info["paired_config_groups"] or [[g] for g in info["groups"]]
+    for gi, ax in enumerate(axes[:-1]):
+        rm = info["fr_maps"][:, gi].reshape(3, 3)
+        ax.imshow(rm, cmap=cmap, vmin=vmin, vmax=vmax)
+        ax.set_xticks([]); ax.set_yticks([])
+        cfgs = paired[gi] if gi < len(paired) else [info["groups"][gi]]
+        ax.set_title(f"grp {gi+1}\ncfgs {cfgs}\nn reps {info['n_reps'][gi]}",
+                     fontsize=FONT_TICK)
+    # mean panel
+    ax = axes[-1]
+    mean_rm = np.nanmean(info["fr_maps"], axis=1).reshape(3, 3)
+    im = ax.imshow(mean_rm, cmap=cmap, vmin=vmin, vmax=vmax)
+    ax.set_xticks([]); ax.set_yticks([])
+    ax.set_title("mean", fontsize=FONT_TICK)
+    cb = fig.colorbar(im, ax=axes[-1], fraction=0.07, pad=0.04)
+    cb.ax.tick_params(labelsize=FONT_TICK)
+    fig.suptitle(
+        f"{cell_row['neuron_id']}  [{cell_row['roi']}]  lag = {lag_deg}°"
+        + (f"  {label_extra}" if label_extra else ""),
+        fontsize=FONT_TICK,
+    )
+    _save(fig, save_stem)
+
+
+# ====================================================================
+# Per-test result figures
+# ====================================================================
+def _rois_for_stats(roi_stats):
+    """Return ROIs in the order present in roi_stats (sorted)."""
+    return sorted(roi_stats["roi"].dropna().unique().tolist())
+
+
+def plot_test1_mean_r_histograms(per_cell, roi_stats, save_stem):
+    """TEST 1 — population shift of CV r.
+
+    One subplot per ROI: histogram of the cell-level r (fixed-lag r where
+    a predicted lag exists, free-peak r otherwise). Perm-significant cells
+    (p_perm < α) overlaid as a darker bin colour. Annotates t / p / p_fdr.
+    """
+    _set_rc()
+    rois = _rois_for_stats(roi_stats)
+    n = len(rois)
+    n_cols = min(n, 4)
+    n_rows = int(np.ceil(n / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols,
+                              figsize=(4.0 * CM * n_cols, 3.6 * CM * n_rows),
+                              constrained_layout=True, squeeze=False)
+    axes_flat = axes.ravel()
+    for ax in axes_flat[n:]:
+        ax.axis("off")
+    for ax, roi in zip(axes_flat, rois):
+        g = per_cell[per_cell["roi"] == roi]
+        kind = roi_stats.loc[roi_stats["roi"] == roi, "analysis_kind"].iloc[0]
+        if kind == "fixed_lag":
+            r_col, p_col = "fixed_lag_r_mean", "p_perm_fixed"
+            xlab = "CV r at predicted lag"
+        else:
+            r_col, p_col = "free_peak_r", "p_perm_free"
+            xlab = "CV r at free peak"
+        r = g[r_col].to_numpy(dtype=float)
+        p = g[p_col].to_numpy(dtype=float)
+        m = np.isfinite(r)
+        r, p = r[m], p[m]
+        sig = np.isfinite(p) & (p < ALPHA)
+
+        col = ROI_COLOURS.get(roi, "#888")
+        # bin range covering both populations
+        if r.size:
+            lo, hi = float(np.nanmin(r)), float(np.nanmax(r))
+            pad = max(0.02, 0.05 * (hi - lo))
+            bins = np.linspace(lo - pad, hi + pad, 21)
+            ax.hist(r, bins=bins, color=col, alpha=0.45, edgecolor="white",
+                    linewidth=0.4, label=f"all (n={r.size})")
+            if sig.any():
+                ax.hist(r[sig], bins=bins, color=col, alpha=1.0,
+                        edgecolor="black", linewidth=0.4,
+                        label=f"perm-sig (n={int(sig.sum())})")
+        ax.axvline(0.0, color="black", lw=0.6, ls="--")
+        rs = roi_stats[roi_stats["roi"] == roi].iloc[0]
+        t_ = rs["test1_meanR_t"]
+        p_ = rs["test1_meanR_p_unc"]
+        q_ = rs["test1_meanR_p_fdr"]
+        ax.set_title(
+            f"{roi}\n t = {t_:+.2f}   p = {p_:.3g}\n p_FDR = {q_:.3g}",
+            fontsize=FONT_TICK,
+        )
+        ax.set_xlabel(xlab, fontsize=FONT_TICK)
+        ax.set_ylabel("# cells",       fontsize=FONT_TICK)
+        ax.tick_params(axis="both", labelsize=FONT_TICK, length=2, pad=1)
+        ax.legend(fontsize=FONT_TICK - 1, frameon=False, loc="upper left")
+    fig.suptitle(
+        "TEST 1 — population shift of CV r away from 0\n"
+        "(one-sample t-test, one-sided > 0; FDR across "
+        f"{len(rois)} ROIs)",
+        fontsize=FONT_BIG,
+    )
+    _save(fig, save_stem)
+
+
+def plot_test2_target_vs_others_lines(per_cell, roi_stats, save_stem):
+    """TEST 2 — per-(ROI) line plot of mean r ± SEM across all lags,
+    predicted lag(s) highlighted in dark green. Each cell contributes one
+    full curve to the average. Annotates within-cell paired t (target vs
+    others) and its FDR-corrected p.
+    """
+    _set_rc()
+    rois = _rois_for_stats(roi_stats)
+    rois_with_target = [r for r in rois if ROI_PREDICTED_LAGS_DEG.get(r)]
+    rois_show = rois_with_target or rois
+    n = len(rois_show)
+    n_cols = min(n, 4)
+    n_rows = int(np.ceil(n / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols,
+                              figsize=(4.4 * CM * n_cols, 3.6 * CM * n_rows),
+                              constrained_layout=True, squeeze=False)
+    axes_flat = axes.ravel()
+    for ax in axes_flat[n:]:
+        ax.axis("off")
+    n_lags = len(LAGS_DEG)
+    x = np.asarray(LAGS_DEG)
+    for ax, roi in zip(axes_flat, rois_show):
+        g = per_cell[per_cell["roi"] == roi]
+        curves = []
+        for _, row in g.iterrows():
+            try:
+                c = json.loads(row.get("per_lag_r_all_lags_json", "[]") or "[]")
+            except (json.JSONDecodeError, TypeError):
+                c = []
+            if len(c) == n_lags:
+                curves.append([np.nan if v is None else float(v) for v in c])
+        col = ROI_COLOURS.get(roi, "#888")
+        if curves:
+            curves = np.asarray(curves)
+            m = np.nanmean(curves, axis=0)
+            s = np.nanstd(curves, axis=0, ddof=1) / np.sqrt(
+                np.maximum(np.isfinite(curves).sum(axis=0), 1)
+            )
+            ax.fill_between(x, m - s, m + s, color=col, alpha=0.25,
+                            linewidth=0)
+            ax.plot(x, m, color=col, lw=1.6, marker="o", ms=2.5,
+                    label=f"n = {curves.shape[0]} cells")
+        ax.axhline(0.0, color="black", lw=0.5, ls="--")
+        for tl in ROI_PREDICTED_LAGS_DEG.get(roi, ()):
+            ax.axvline(tl, color="#0e3d3a", lw=0.9, ls=":", alpha=0.7)
+        rs = roi_stats[roi_stats["roi"] == roi].iloc[0]
+        t_ = rs["test2_targetVsOther_t"]
+        p_ = rs["test2_targetVsOther_p_unc"]
+        q_ = rs["test2_targetVsOther_p_fdr"]
+        ax.set_title(
+            f"{roi}   target = {list(ROI_PREDICTED_LAGS_DEG.get(roi, ()))}°\n"
+            f"paired t = {t_:+.2f}   p = {p_:.3g}\n p_FDR = {q_:.3g}",
+            fontsize=FONT_TICK,
+        )
+        ax.set_xlabel("lag (°)", fontsize=FONT_TICK)
+        ax.set_ylabel("mean CV r", fontsize=FONT_TICK)
+        ax.set_xticks(LAGS_DEG[::2])
+        ax.tick_params(axis="both", labelsize=FONT_TICK, length=2, pad=1)
+        ax.legend(fontsize=FONT_TICK - 1, frameon=False, loc="best")
+    fig.suptitle(
+        "TEST 2 — within-cell predicted-lag r > other-lags r\n"
+        "(paired t-test, one-sided greater; "
+        f"FDR across {sum(1 for r in rois if ROI_PREDICTED_LAGS_DEG.get(r))} "
+        "predicted-lag ROIs)",
+        fontsize=FONT_BIG,
+    )
+    _save(fig, save_stem)
+
+
+def plot_test3_perm_sig_fraction_bars(per_cell, roi_stats, save_stem):
+    """TEST 3 — per-ROI fraction of cells with p_perm < α.
+
+    Bars: fraction. Horizontal line: chance = α. Stars: BH-FDR-significant.
+    """
+    _set_rc()
+    rois = _rois_for_stats(roi_stats)
+    fracs, ks, ns, qs = [], [], [], []
+    for roi in rois:
+        rs = roi_stats[roi_stats["roi"] == roi].iloc[0]
+        fracs.append(float(rs["test3_permSig_frac"]) if np.isfinite(rs["test3_permSig_frac"]) else np.nan)
+        ks.append(int(rs["test3_permSig_k"]) if np.isfinite(rs["test3_permSig_k"]) else 0)
+        ns.append(int(rs["test3_permSig_n"]) if np.isfinite(rs["test3_permSig_n"]) else 0)
+        qs.append(float(rs["test3_permSig_p_fdr"]) if np.isfinite(rs["test3_permSig_p_fdr"]) else np.nan)
+
+    fig, ax = plt.subplots(figsize=(9 * CM, 5.5 * CM), constrained_layout=True)
+    xs = np.arange(len(rois))
+    bar_cols = [ROI_COLOURS.get(r, "#888") for r in rois]
+    ax.bar(xs, fracs, color=bar_cols, edgecolor="black", linewidth=0.5, width=0.7)
+    ax.axhline(ALPHA, color="black", lw=0.7, ls="--",
+               label=f"chance = α = {ALPHA}")
+    for xi, (frac, k, n, q) in enumerate(zip(fracs, ks, ns, qs)):
+        if not np.isfinite(frac):
+            continue
+        ax.text(xi, frac + 0.005, f"{k}/{n}",
+                ha="center", va="bottom", fontsize=FONT_TICK - 1)
+        s = _stars_from_q(q)
+        if s:
+            ax.text(xi, frac + 0.03, s, ha="center", va="bottom",
+                    fontsize=FONT_BIG + 1, fontweight="bold")
+    ax.set_xticks(xs)
+    ax.set_xticklabels(rois, rotation=35, ha="right", fontsize=FONT_TICK)
+    ax.set_ylabel(f"frac. cells with p_perm < {ALPHA}", fontsize=FONT_AXIS)
+    ax.set_title(
+        "TEST 3 — fraction of cells exceeding the permutation null\n"
+        f"(binomial vs chance = α; FDR across {len(rois)} ROIs)",
+        fontsize=FONT_TICK,
+    )
+    ax.legend(fontsize=FONT_TICK - 1, frameon=False, loc="upper right")
+    ax.tick_params(axis="y", labelsize=FONT_TICK, length=2, pad=1)
+    _save(fig, save_stem)
+
+
+def plot_roi_x_lag_table_heatmap(roi_x_lag, save_stem):
+    """Companion to TEST 2 / overview: heatmap of mean r per (ROI, lag),
+    with BH-FDR-significant cells starred (FDR across the FULL table)."""
+    _set_rc()
+    rois = sorted(roi_x_lag["roi"].unique().tolist())
+    n_lags = len(LAGS_DEG)
+    M = np.full((len(rois), n_lags), np.nan)
+    Q = np.full((len(rois), n_lags), np.nan)
+    for ri, roi in enumerate(rois):
+        sub = roi_x_lag[roi_x_lag["roi"] == roi]
+        for _, row in sub.iterrows():
+            li = LAGS_DEG.index(int(row["lag_deg"]))
+            M[ri, li] = row["mean_r"]
+            Q[ri, li] = row["p_fdr"]
+    vmax = float(np.nanmax(np.abs(M))) if np.isfinite(M).any() else 0.05
+    fig, ax = plt.subplots(figsize=(14 * CM, 6 * CM), constrained_layout=True)
+    im = ax.imshow(M, cmap="RdBu_r", vmin=-vmax, vmax=vmax, aspect="auto")
+    # outline predicted lags
+    for ri, roi in enumerate(rois):
+        for tl in ROI_PREDICTED_LAGS_DEG.get(roi, ()):
+            if tl in LAGS_DEG:
+                ci = LAGS_DEG.index(tl)
+                ax.add_patch(plt.Rectangle((ci - 0.5, ri - 0.5), 1, 1,
+                                            fill=False, edgecolor="black",
+                                            lw=1.4))
+    # FDR stars per (ROI, lag)
+    for ri in range(len(rois)):
+        for li in range(n_lags):
+            q = Q[ri, li]
+            if not np.isfinite(q): continue
+            s = _stars_from_q(q)
+            if not s: continue
+            col = "white" if abs(M[ri, li]) > vmax * 0.55 else "black"
+            ax.text(li, ri, s, ha="center", va="center",
+                    fontsize=FONT_TICK, fontweight="bold", color=col)
+    ax.set_xticks(range(n_lags))
+    ax.set_xticklabels([str(l) for l in LAGS_DEG], fontsize=FONT_TICK)
+    ax.set_yticks(range(len(rois)))
+    ax.set_yticklabels(rois, fontsize=FONT_TICK)
+    ax.set_xlabel("lag (°)", fontsize=FONT_AXIS)
+    ax.set_title(
+        "ROI × lag overview — mean CV r per (ROI, lag)\n"
+        "(stars: BH-FDR across the full ROI × lag table)",
+        fontsize=FONT_TICK,
+    )
+    cb = fig.colorbar(im, ax=ax, fraction=0.05, pad=0.04)
+    cb.set_label("mean r", fontsize=FONT_TICK)
+    cb.ax.tick_params(labelsize=FONT_TICK)
+    _save(fig, save_stem)
+
+
+# ====================================================================
+# ACC z-MNI gradient across lags
+# ====================================================================
+def _per_subject_lag_z_matrix(per_cell, roi, lags, top_k=1):
+    """For each subject in `roi`, pick the top-k cells by per-lag r at
+    each lag; return mean MNI_z per (subject, lag).
+
+    Returns matrix of shape (n_subjects, n_lags) and the subject ids.
+    Subjects with NO cells in this ROI are dropped.
+    """
+    g = per_cell[per_cell["roi"] == roi].copy()
+    if g.empty:
+        return np.empty((0, len(lags))), []
+    g["_per_lag"] = g["per_lag_r_all_lags_json"].apply(
+        lambda s: json.loads(s) if isinstance(s, str) and s else []
+    )
+    lag_to_idx = {l: LAGS_DEG.index(l) for l in lags}
+    subjects = sorted(g["subject_id"].unique().tolist())
+    Z = np.full((len(subjects), len(lags)), np.nan)
+    for si, sub in enumerate(subjects):
+        gs = g[g["subject_id"] == sub]
+        for li, lag in enumerate(lags):
+            ix = lag_to_idx[lag]
+            rs, zs = [], []
+            for _, row in gs.iterrows():
+                vec = row["_per_lag"]
+                if len(vec) != len(LAGS_DEG):
+                    continue
+                v = vec[ix]
+                if v is None or not np.isfinite(v):
+                    continue
+                if not np.isfinite(row.get("MNI_z", np.nan)):
+                    continue
+                rs.append(float(v))
+                zs.append(float(row["MNI_z"]))
+            if not rs:
+                continue
+            order = np.argsort(rs)[::-1]
+            picks = order[:top_k]
+            Z[si, li] = float(np.mean([zs[k] for k in picks]))
+    return Z, subjects
+
+
+def _linear_trend_test(Z, lag_positions):
+    """Per-subject OLS slope of z against lag position. One-sample t-test
+    that mean slope ≠ 0. Returns dict(n, slope_mean, t, p_two)."""
+    x = np.asarray(lag_positions, dtype=float)
+    slopes = []
+    for row in Z:
+        m = np.isfinite(row)
+        if m.sum() < 2:
+            continue
+        b, _ = np.polyfit(x[m], row[m], 1), None
+        slopes.append(float(b[0]))
+    slopes = np.asarray(slopes, dtype=float)
+    if slopes.size < 2:
+        return {"n": int(slopes.size), "slope_mean": np.nan,
+                "t": np.nan, "p_two": np.nan}
+    res = stats.ttest_1samp(slopes, 0.0)
+    return {"n": int(slopes.size), "slope_mean": float(slopes.mean()),
+            "t": float(res.statistic), "p_two": float(res.pvalue)}
+
+
+def plot_zmni_gradient(per_cell, save_stem):
+    """Two-panel z-MNI gradient for ACC neurons across lags.
+    LEFT  — predicted-lag subset ZMNI_GRADIENT_SUBSET_LAGS_DEG (e.g. 0/30/60)
+    RIGHT — all lags in LAGS_DEG
+    Each panel: per-subject grey lines + across-subject mean ± SEM + the
+    fitted linear trend; annotates t / p of the per-subject slope test.
+    """
+    _set_rc()
+    roi = ZMNI_GRADIENT_ROI
+    K   = ZMNI_GRADIENT_TOP_K_PER_SUBJECT
+    fig, axes = plt.subplots(1, 2, figsize=(15 * CM, 6 * CM),
+                              constrained_layout=True)
+    panels = [
+        ("subset",  list(ZMNI_GRADIENT_SUBSET_LAGS_DEG)),
+        ("all",     list(LAGS_DEG)),
+    ]
+    for ax, (kind, lags) in zip(axes, panels):
+        Z, subjects = _per_subject_lag_z_matrix(per_cell, roi, lags, top_k=K)
+        if Z.size == 0 or Z.shape[0] == 0:
+            ax.text(0.5, 0.5, f"no {roi} cells", ha="center", va="center")
+            ax.axis("off"); continue
+        x = np.asarray(lags, dtype=float)
+        # per-subject lines (grey)
+        for row in Z:
+            m = np.isfinite(row)
+            if m.sum() < 2: continue
+            ax.plot(x[m], row[m], color="lightgray", lw=0.8, alpha=0.6)
+        # group mean ± SEM
+        mean = np.nanmean(Z, axis=0)
+        sem  = np.nanstd(Z, axis=0, ddof=1) / np.sqrt(
+            np.maximum(np.isfinite(Z).sum(axis=0), 1)
+        )
+        col = ROI_COLOURS.get(roi, "darkred")
+        ax.fill_between(x, mean - sem, mean + sem, color=col, alpha=0.25,
+                        linewidth=0)
+        ax.errorbar(x, mean, yerr=sem, marker="o", lw=1.8, capsize=3,
+                    color=col, label=f"{roi}: n = {Z.shape[0]} subj")
+        # linear trend fit + test
+        finite_mean = np.isfinite(mean)
+        if finite_mean.sum() >= 2:
+            b1, b0 = np.polyfit(x[finite_mean], mean[finite_mean], 1)
+            xs_dense = np.linspace(x.min(), x.max(), 100)
+            ax.plot(xs_dense, b0 + b1 * xs_dense, color="#0e3d3a", lw=1.2,
+                    ls="--", label=f"trend slope = {b1:+.3f} mm/°")
+        trend = _linear_trend_test(Z, x)
+        ax.axhline(np.nanmean(Z), color="gray", lw=0.4, ls=":")
+        ax.set_xlabel("lag (°)", fontsize=FONT_AXIS)
+        ax.set_ylabel("MNI z (mm)", fontsize=FONT_AXIS)
+        title_kind = ("predicted-lag subset" if kind == "subset"
+                       else "all lags")
+        ax.set_title(
+            f"{roi} z-MNI gradient — {title_kind}\n"
+            f"per-subj slope t = {trend['t']:+.2f}  "
+            f"p = {trend['p_two']:.3g}  (n = {trend['n']} subj)",
+            fontsize=FONT_TICK,
+        )
+        ax.set_xticks(lags)
+        ax.tick_params(axis="both", labelsize=FONT_TICK, length=2, pad=1)
+        ax.legend(fontsize=FONT_TICK - 1, frameon=False, loc="best")
+    fig.suptitle(
+        f"{roi} — z-MNI projection of top-{K} cells per subject per lag",
+        fontsize=FONT_BIG,
+    )
+    _save(fig, save_stem)
+
+
+def _rank_cells_by_lag(per_cell, roi, lag_deg):
+    """Sort cells in `roi` by per-cell consistency r at `lag_deg` (descending)."""
+    g = per_cell[per_cell["roi"] == roi].copy()
+    if g.empty:
+        return g
+    ix = LAGS_DEG.index(int(lag_deg))
+    rs = []
+    for _, row in g.iterrows():
+        try:
+            c = json.loads(row.get("per_lag_r_all_lags_json", "[]") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            c = []
+        rs.append(float(c[ix]) if (len(c) == len(LAGS_DEG) and c[ix] is not None
+                                     and np.isfinite(c[ix])) else np.nan)
+    g["_r_at_lag"] = rs
+    g = g.dropna(subset=["_r_at_lag"])
+    return g.sort_values("_r_at_lag", ascending=False)
+
+
+def plot_rate_map_examples(per_cell, out_root):
+    """Top-N rate-map PDFs per (ROI, predicted-lag) for the focus ROIs.
+
+    Writes to:  <out_root>/rate_map_examples/<ROI>/lag<deg>/<rank>_<id>.pdf
+    Ranking: per-cell observed consistency r at THAT lag (not averaged across
+    predicted lags), with a coverage filter of `EXAMPLE_MIN_VALID_LOCATIONS`
+    finite locations on the cell's mean rate map at that lag.
+    """
+    base = Path(out_root) / "rate_map_examples"
+    base.mkdir(parents=True, exist_ok=True)
+    for roi in EXAMPLE_FOCUS_ROIS:
+        target_lags = ROI_PREDICTED_LAGS_DEG.get(roi, ())
+        if not target_lags:
+            continue
+        for lag in target_lags:
+            lag_dir = base / roi / f"lag{int(lag):03d}"
+            lag_dir.mkdir(parents=True, exist_ok=True)
+            ranked = _rank_cells_by_lag(per_cell, roi, lag)
+            saved, tried = 0, 0
+            for _, cell_row in ranked.iterrows():
+                if saved >= N_EXAMPLE_CELLS_PER_ROI:
+                    break
+                tried += 1
+                # cap how many we try (saves I/O)
+                if tried > N_EXAMPLE_CELLS_PER_ROI * 6:
+                    break
+                try:
+                    info = _rate_maps_for_cell(cell_row["neuron_id"],
+                                                str(cell_row["subject_id"]),
+                                                lag_deg=int(lag))
+                except Exception as exc:
+                    print(f"    [{cell_row['neuron_id']}] rate-map failed: {exc!r}")
+                    continue
+                if info is None or info["fr_maps"].shape[1] < 1:
+                    continue
+                # coverage check on the MEAN rate map
+                mean_rm = np.nanmean(info["fr_maps"], axis=1)
+                if np.isfinite(mean_rm).sum() < EXAMPLE_MIN_VALID_LOCATIONS:
+                    continue
+                stem = lag_dir / (
+                    f"{saved+1:02d}_sub-{cell_row['subject_id']}"
+                    f"_{cell_row['neuron_id'][:30]}"
+                )
+                r_at_lag = cell_row.get("_r_at_lag", float("nan"))
+                try:
+                    _plot_one_cell_rate_maps(
+                        cell_row, int(lag), str(stem),
+                        label_extra=f"r@{int(lag)}° = {r_at_lag:+.3f}",
+                    )
+                except Exception as exc:
+                    print(f"    [{cell_row['neuron_id']}] plot failed: {exc!r}")
+                    continue
+                saved += 1
+            print(f"  rate-map examples — {roi} @ lag {int(lag)}°: "
+                  f"saved {saved} PDFs → {lag_dir}")
+
+
+# ====================================================================
+# Runner
+# ====================================================================
+def run():
+    np.random.seed(RANDOM_SEED)
+    run_tag = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + "_" + ANALYSIS_NAME
+    out_dir = Path(OUT_BASE) / run_tag
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # snapshot settings
+    with open(out_dir / "settings.json", "w") as f:
+        json.dump(_settings_dict(), f, indent=2)
+
+    # cell registry
+    cells_df = cs.load_cells(cell_set=CELL_SET, subjects=SUBJECTS,
+                              rois_keep=ROIS_KEEP)
+    cells_df.to_csv(out_dir / "cells_used.csv", index=False)
+    subjects = sorted(cells_df["subject_id"].unique())
+    print(f"[{run_tag}]")
+    print(f"  cell_set={CELL_SET}  → {len(cells_df)} cells across "
+          f"{len(subjects)} subjects")
+    print(f"  out_dir = {out_dir}")
+
+    # ---- Stage 1: load + build payloads serially per subject -----------
+    print(f"\n[1/2] Building cell payloads (sequential per subject)")
+    t_build = time.time()
+    tasks = _build_all_payloads(subjects, cells_df)
+    print(f"  built {len(tasks)} cell payloads in {time.time() - t_build:.1f}s\n")
+
+    # ---- Stage 2: dispatch compute per cell with progress reporting ---
+    print(f"[2/2] Computing CV + {N_PERMUTATIONS} perms per cell  "
+          f"(n_jobs={N_JOBS})")
+    t0 = time.time()
+    all_rows = []
+    n_done = 0
+    n_total = len(tasks)
+    log_every = max(1, n_total // 25)   # ~25 progress prints over the run
+
+    if N_JOBS in (None, 0, 1):
+        for task in tasks:
+            t_cell = time.time()
+            all_rows.append(_run_one_task(task))
+            n_done += 1
+            if n_done % log_every == 0 or n_done == n_total:
+                elapsed = time.time() - t0
+                avg = elapsed / n_done
+                eta = avg * (n_total - n_done)
+                print(f"  [{n_done:4d}/{n_total}]  "
+                      f"sub-{task['sub_str']} {task['neuron_id'][:30]:<30}  "
+                      f"+{time.time() - t_cell:5.1f}s   "
+                      f"elapsed {elapsed:6.1f}s   ETA {eta:6.1f}s")
+    else:
+        from joblib import Parallel, delayed
+        # `return_as='generator_unordered'` streams results as workers
+        # complete them, so we can print live progress. Falls back to
+        # plain list collection on older joblib.
+        # batch_size=1 streams results as workers complete each cell
+        # (rather than waiting for joblib's auto-batched chunks).
+        try:
+            results_iter = Parallel(
+                n_jobs=N_JOBS, backend="loky", verbose=0,
+                batch_size=1, return_as="generator_unordered",
+            )(delayed(_run_one_task)(t) for t in tasks)
+        except TypeError:
+            results_iter = Parallel(
+                n_jobs=N_JOBS, backend="loky", verbose=5,
+                batch_size=1,
+            )(delayed(_run_one_task)(t) for t in tasks)
+        for row in results_iter:
+            all_rows.append(row)
+            n_done += 1
+            if n_done % log_every == 0 or n_done == n_total:
+                elapsed = time.time() - t0
+                avg = elapsed / n_done
+                eta = avg * (n_total - n_done)
+                print(f"  [{n_done:4d}/{n_total}]  "
+                      f"elapsed {elapsed:6.1f}s  "
+                      f"avg/cell {avg:5.2f}s  "
+                      f"ETA {eta:6.1f}s")
+    print(f"  total compute time: {time.time() - t0:.1f}s")
+
+    per_cell = pd.DataFrame(all_rows)
+    per_cell = _add_perm_p_columns(per_cell)
+    per_cell.to_csv(out_dir / "per_cell.csv", index=False)
+    print(f"  saved per_cell.csv ({len(per_cell)} rows)")
+
+    # per-ROI stats
+    roi_stats = _per_roi_stats(per_cell)
+    roi_stats.to_csv(out_dir / "per_roi_stats.csv", index=False)
+    print("  saved per_roi_stats.csv")
+    print()
+    print("  TEST 1  mean_r_vs_0       : one-sample t (1-sided > 0) on")
+    print("                              per-cell CV r at predicted lag.")
+    print("  TEST 2  target_vs_other   : paired t (1-sided > 0) on per-cell")
+    print("                              (r_predicted_lag − mean r_other_lags).")
+    print("  TEST 3  perm_sig_fraction : binomial test that fraction(p_perm < α)")
+    print(f"                              exceeds α={ALPHA}.")
+    print("  FDR scope = ROIs in this table (n_rois) for each test family.")
+    print()
+    print(roi_stats[[
+        "roi", "n_cells", "analysis_kind",
+        "test1_meanR_t",      "test1_meanR_p_unc",         "test1_meanR_p_fdr",
+        "test2_targetVsOther_t",
+        "test2_targetVsOther_p_unc", "test2_targetVsOther_p_fdr",
+        "test3_permSig_k", "test3_permSig_n",
+        "test3_permSig_p_unc",       "test3_permSig_p_fdr",
+    ]].round(4).to_string(index=False))
+
+    # per-(ROI, lag) table — written + FDR-corrected across the full table
+    roi_x_lag = _per_roi_lag_table(per_cell)
+    roi_x_lag.to_csv(out_dir / "per_roi_lag_table.csv", index=False)
+    print("\n  saved per_roi_lag_table.csv (ROI × lag, FDR across full table)")
+
+    # plots
+    plot_test1_mean_r_histograms(per_cell, roi_stats,
+                                   str(out_dir / "test1_meanR_histograms"))
+    plot_test2_target_vs_others_lines(per_cell, roi_stats,
+                                        str(out_dir / "test2_targetVsOther_lines"))
+    plot_test3_perm_sig_fraction_bars(per_cell, roi_stats,
+                                        str(out_dir / "test3_permSig_bars"))
+    plot_roi_x_lag_table_heatmap(roi_x_lag,
+                                   str(out_dir / "roi_x_lag_meanR_heatmap"))
+    plot_roi_x_lag_overview(per_cell, roi_stats,
+                              str(out_dir / "roi_x_lag_tstat_overview"))
+    plot_fixed_vs_free_comparison(per_cell,
+                                    str(out_dir / "fixed_vs_free_comparison"))
+    plot_zmni_gradient(per_cell, str(out_dir / "zMNI_gradient_ACC"))
+    plot_rate_map_examples(per_cell, out_dir)
+
+    return per_cell, roi_stats, out_dir
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--config", "-c", default=DEFAULT_CONFIG,
-                    help="Path to JSON config (default: scripts/configs/spatial_peaks_default.json)")
-    args = ap.parse_args()
-    run(args.config)
+    run()

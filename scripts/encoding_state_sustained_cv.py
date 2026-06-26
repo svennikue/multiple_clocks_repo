@@ -98,14 +98,15 @@ RELOAD_OLD_RESULTS = '2026-06-25_14-38-13'
 
 # RSA companion analysis — provides the 4th column of fig 11 (state RSA).
 # Change the date here when re-running with a new RSA run.
-RSA_STATE_RUN_DATE = '2026-06-25_17-00-02'
+RSA_STATE_RUN_DATE = '2026-06-26_11-30-30-final-State'
 RSA_STATE_RUN_DIR  = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/'
                        'ephys_humans/derivatives/group/DSR_RSA_simple_ROI/'
                        f'{RSA_STATE_RUN_DATE}')
-RSA_TEST_VARIANT = 'between_tasks_z'   # all-correct-repeats averaged per
+RSA_TEST_VARIANT = 'split_halves_z'   # all-correct-repeats averaged per
                                         # config, z-scored per neuron,
                                         # between-task-config cells only.
 RSA_SUB_MODEL    = 'state'
+COMBO_MODEL_NAME = 'ctrl_dsrFULL'
 
 N_BINS_PER_TRIAL = 360
 N_STATES = 4
@@ -1416,7 +1417,8 @@ def _load_rsa_state_per_roi(rois):
         return np.full(n, np.nan), np.full(n, np.nan), np.full(n, np.nan)
     df = pd.read_csv(csv)
     sub = df[(df['test'] == RSA_TEST_VARIANT)
-              & (df['sub_model'] == RSA_SUB_MODEL)].copy()
+              & (df['sub_model'] == RSA_SUB_MODEL)
+              & (df['combo'] == COMBO_MODEL_NAME)].copy()
     by_roi = sub.set_index('roi')
     t   = np.array([float(by_roi.loc[r, 't'])       if r in by_roi.index else np.nan
                     for r in rois])

@@ -23,11 +23,17 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 from matplotlib import pyplot as plt
-import mc
-import mc.plotting.dsr_figures as dsr_figs   # shared rodent/human pub figures
+sys.path.insert(0, '/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_clocks_repo')
+
+REPLOT_PUB_FIG3_ONLY = os.environ.get('RSA_REPLOT_PUB_FIG3_ONLY', '0') == '1'
+if REPLOT_PUB_FIG3_ONLY:
+    mc = None
+    dsr_figs = None
+else:
+    import mc
+    import mc.plotting.dsr_figures as dsr_figs   # shared rodent/human pub figures
 from collections import Counter
 # import pdb; pdb.set_trace()
-sys.path.insert(0, '/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_clocks_repo')
 
 # import pdb; pdb.set_trace()
 
@@ -40,6 +46,16 @@ OUT_BASE     = os.path.join(DATA_DIR, 'group', 'DSR_RSA_simple_ROI')
 # just re-render the overview plots from the saved
 # results_summary*.csv files in OUT_BASE/<RELOAD_RUN>/.  None = run fresh.
 RELOAD_RUN = None  #'2026-05-26_17-54-23' 
+
+# Lightweight publication-figure refresh. Set
+# RSA_REPLOT_PUB_FIG3_ONLY=1 to read the saved run configs below and rewrite
+# only OUT_BASE/<run>/pub_figures/fig3_human_model_schematics.{pdf,jpg}.
+# This deliberately does not load neurons, build data RDMs, or run RSA.
+REPLOT_PUB_FIG3_RUNS = [
+    '2026-06-26_11-30-30-final-State',
+    '2026-06-22_16-17-15-final-DSR',
+]
+REPLOT_PUB_FIG3_MATRIX_CM = 2.0
 
 # import pdb; pdb.set_trace()
 configs = [
@@ -55,7 +71,7 @@ N_PHASES = 3
 states           = ['A', 'B', 'C', 'D']
 RESOLUTIONx = 1
 PLOT_FIGS = False
-N_PERMUTATIONS = 500 # None #1000 # 500 # None or 300
+N_PERMUTATIONS = 1000 # None #1000 # 500 # None or 300
 SPLIT_UNCV_BUTTONS = True
 
 # Phase-based masking. Phase of a condition at position pos inside a config is
@@ -78,7 +94,7 @@ PHASE_MASK_MODE = 'full'
 #     firing rate that's predicted by a continuous phase basis, more
 #     conservative.
 # Options: None / 'cosine' / 'cosine_2h' / 'categorical'.
-PHASE_RESIDUALISE = None # 'cosine' # None
+PHASE_RESIDUALISE = 'cosine' # None
 
 # Per-cell repeat-correct residualisation. Loads the per-cell-residualised
 # files produced by scripts/residualise_data_by_repeat.py (regressing each
@@ -94,7 +110,7 @@ RESIDUALISE_REPEATS = False
 # modes and produce comparison heatmaps of the combo betas side-by-side per
 # ROI. Cheap; uses the model + data RDMs already built. Does not change the
 # primary results.
-RUN_PHASE_MODE_COMPARISON = True
+RUN_PHASE_MODE_COMPARISON = False
 
 # Smoke test: if True, residualise every data RDM and every non-phase model
 # RDM against the phase model RDM at the 1-D upper-tri vector level, BEFORE
@@ -123,7 +139,7 @@ if PHASE_RESIDUALISE is not None and RUN_PHASE_MODE_COMPARISON:
 # Phase regressor pruning from combos happens below, after `combo_models`
 # is defined (see "Phase-residualisation combo pruning" block).
 
-PLOT_GLASSBRAINS = False
+PLOT_GLASSBRAINS = True
 # ── Models / combos to evaluate per ROI this round ────────────────────
 # All model RDMs are built each run (cheap). These lists only restrict the
 # *expensive* per-ROI evaluation + permutation step.
@@ -168,7 +184,7 @@ assert all(len(set(sm)) == len(sm) for sm in combo_models.values()), \
 # ── Phase-residualisation combo pruning ────────────────────────────────
 # When phase is removed at the data level, the 'phase' RDM regressor adds
 # no signal and just clutters the combo output. Drop it from every combo.
-if PHASE_RESIDUALISE is not None:
+if (not REPLOT_PUB_FIG3_ONLY) and PHASE_RESIDUALISE is not None:
     _stripped = 0
     for _name, _subs in list(combo_models.items()):
         if 'phase' in _subs:
@@ -179,8 +195,9 @@ if PHASE_RESIDUALISE is not None:
               f"dropped 'phase' from {_stripped} combo(s)' sub-model lists "
               f"(redundant after data-level residualisation).")
 
-print(f"Base models evaluated this run ({len(models)}): {models}")
-print(f"Combos evaluated this run     ({len(combo_models)}): {list(combo_models.keys())}")
+if not REPLOT_PUB_FIG3_ONLY:
+    print(f"Base models evaluated this run ({len(models)}): {models}")
+    print(f"Combos evaluated this run     ({len(combo_models)}): {list(combo_models.keys())}")
 
 
 # ── Multiple-comparison correction (confirmatory family) ─────────────
@@ -215,8 +232,8 @@ FDR_TEST      = 'split_halves_z'    # primary variant. Data RDM is built
 # `dsr_old` beta is highly correlated with the primary combo (the two
 # differ only by the `state` regressor). This keeps the FDR family
 # consistent with the publication panel (encoding_publication_panels.py).
-FDR_COMBOS    = ['fdr_dsrInformed']         # DSR_informed (lags 1,2) + bttn + location + L2 + state
-FDR_SUBMODELS = ['dsr_fmri_informed']       # pre-registered: lags 1,2, motivated by independent fMRI prior
+FDR_COMBOS    = ['ctrl_dsrFULL', 'ctrl_dsrFULL_phase', 'ctrl_dsrFULL_state-phase']         # DSR_informed (lags 1,2) + bttn + location + L2 + state
+FDR_SUBMODELS = ['state']       # pre-registered: lags 1,2, motivated by independent fMRI prior
 FDR_ALPHA     = 0.05
 
 
@@ -289,10 +306,13 @@ def _load_roi_table(path, roi_col):
     return df.set_index(['subject', 'cell idx'])
 
 
-ROI_TABLE = _load_roi_table(ROI_TABLE_PATH, ROI_LABEL_COLUMN)
-print(f"Loaded ROI table with {len(ROI_TABLE)} cells "
-      f"({ROI_TABLE[ROI_LABEL_COLUMN].nunique()} distinct ROIs) from "
-      f"{ROI_TABLE_PATH}  [column: {ROI_LABEL_COLUMN}]")
+if REPLOT_PUB_FIG3_ONLY:
+    ROI_TABLE = None
+else:
+    ROI_TABLE = _load_roi_table(ROI_TABLE_PATH, ROI_LABEL_COLUMN)
+    print(f"Loaded ROI table with {len(ROI_TABLE)} cells "
+          f"({ROI_TABLE[ROI_LABEL_COLUMN].nunique()} distinct ROIs) from "
+          f"{ROI_TABLE_PATH}  [column: {ROI_LABEL_COLUMN}]")
 # the ROI_LABEL_COLUMN column indicates the correct ROI to take.
 
 
@@ -700,6 +720,386 @@ def evaluate_combo_safe(stacked, data_vec, sub_models, label=''):
     return t_full, beta_full, p_full
 
 
+STATE_FIG3_COLORS = {
+    'A': '#F15A29',
+    'B': '#F7931E',
+    'C': '#C7C6E2',
+    'D': '#6B60AA',
+}
+PHASE_FIG3_COLORS = {
+    'early': '#FCDDE3',
+    'middle': '#D7657F',
+    'late': '#5C1027',
+}
+LOCATION_FIG3_COLORS = {
+    1: '#0a607a', 2: '#7eb1c4', 3: '#b6d4e0',
+    4: '#175e62', 5: '#5b9b8d', 6: '#c8e0d0',
+    7: '#0e3d3a', 8: '#3d8b7d', 9: '#a7d9b2',
+}
+BUTTON_FIG3_COLORS = {
+    'stay': '#b8b2a7',
+    'up': '#477998',
+    'right': '#f2a65a',
+    'down': '#8f5d46',
+    'left': '#4f772d',
+}
+DSR_LAG_FIG3_COLORS = [
+    '#fff7bc', '#fee391', '#fec44f', '#fe9929',
+    '#ec7014', '#cc4c02', '#993404', '#662506',
+    '#58151c', '#4a1019', '#3a0b15', '#2b0610',
+]
+MODEL_FIG3_LABELS = {
+    'dsr_fmri': 'DSR\nfull',
+    'dsr_fmri_fut': 'DSR\nfuture only',
+    'dsr_fmri_informed': 'DSR\ninformed',
+    'state': 'Abstract\nstate',
+    'state_phase': 'State x\nphase',
+    'phase': 'Subgoal\nphase',
+    'location': 'Physical\nlocation',
+    'l2_norm': 'Grid L2\nlocation',
+    'reward_path': 'Reward\npath',
+    'repeat_counter': 'Repeat\ncounter',
+    'bttn_curr': 'Current\naction',
+    'bttn_next': 'Next\naction',
+    'midnight': 'DSR\ncurrent only',
+    'uncover': 'Uncover\nscreen',
+}
+
+
+def _fig3_grid_rc(loc_id):
+    loc = int(loc_id)
+    if loc < 1 or loc > 9:
+        raise ValueError(f"location must be in 1..9, got {loc_id!r}")
+    return divmod(loc - 1, 3)
+
+
+def _fig3_grid_loc(row, col):
+    row = int(np.clip(row, 0, 2))
+    col = int(np.clip(col, 0, 2))
+    return row * 3 + col + 1
+
+
+def _fig3_one_step_towards(start_loc, target_loc):
+    """One Manhattan step on the 3x3 grid, for schematic paths only."""
+    sr, sc = _fig3_grid_rc(start_loc)
+    tr, tc = _fig3_grid_rc(target_loc)
+    if sr != tr:
+        sr += int(np.sign(tr - sr))
+    elif sc != tc:
+        sc += int(np.sign(tc - sc))
+    return _fig3_grid_loc(sr, sc)
+
+
+def _fig3_example_locations(task_config_str, n_phases=3):
+    """Build one deterministic example path through a task configuration.
+
+    The saved RSA runs do not store the subject-pooled mode trajectory used for
+    the original schematic. For a pure model schematic we instead use the same
+    example task for every panel and show three schematic phase bins per state:
+    previous reward location -> one grid step towards target -> target reward.
+    """
+    rewards = [int(x) for x in str(task_config_str).split('-')]
+    if len(rewards) != 4:
+        raise ValueError(f"expected four reward locations, got {task_config_str!r}")
+    locs = []
+    for state_i, target in enumerate(rewards):
+        start = rewards[state_i - 1]
+        mid = _fig3_one_step_towards(start, target)
+        phase_locs = [start, mid, target]
+        if n_phases != 3:
+            phase_locs = np.linspace(start, target, n_phases).round().astype(int).tolist()
+        locs.extend(phase_locs[:n_phases])
+    return np.asarray(locs, dtype=int)
+
+
+def _fig3_button_labels(locs, offset=1):
+    labels = []
+    n = len(locs)
+    for i, loc in enumerate(locs):
+        here_r, here_c = _fig3_grid_rc(loc)
+        next_r, next_c = _fig3_grid_rc(locs[(i + offset) % n])
+        dr, dc = next_r - here_r, next_c - here_c
+        if dr == 0 and dc == 0:
+            labels.append('stay')
+        elif abs(dc) >= abs(dr):
+            labels.append('right' if dc > 0 else 'left')
+        else:
+            labels.append('down' if dr > 0 else 'up')
+    return labels
+
+
+def _fig3_active_spec(model_name, task_config_str, run_config):
+    n_phases = int(run_config.get('N_PHASES', N_PHASES))
+    state_names = list(run_config.get('states', states))
+    locs = _fig3_example_locations(task_config_str, n_phases=n_phases)
+    n_cond = len(locs)
+    state_idx = np.repeat(np.arange(len(state_names)), n_phases)
+    phase_idx = np.tile(np.arange(n_phases), len(state_names))
+    phase_names = ['early', 'middle', 'late'][:n_phases]
+
+    title = MODEL_FIG3_LABELS.get(model_name, model_name.replace('_', '\n'))
+
+    if model_name in ('dsr_fmri', 'dsr_fmri_lag0123456789'):
+        return {'kind': 'dsr', 'title': title, 'lags': list(range(n_cond)),
+                'locs': locs}
+    if model_name == 'dsr_fmri_fut':
+        return {'kind': 'dsr', 'title': title, 'lags': list(range(1, n_cond)),
+                'locs': locs}
+    if model_name == 'dsr_fmri_informed':
+        return {'kind': 'dsr', 'title': title, 'lags': [1, 2], 'locs': locs}
+    if model_name == 'dsr_fmri_lag01':
+        return {'kind': 'dsr', 'title': title, 'lags': [0, 1], 'locs': locs}
+    if model_name == 'dsr_fmri_lag012':
+        return {'kind': 'dsr', 'title': title, 'lags': [0, 1, 2], 'locs': locs}
+    if model_name == 'dsr_fmri_lag0123':
+        return {'kind': 'dsr', 'title': title, 'lags': [0, 1, 2, 3], 'locs': locs}
+    if model_name in ('dsr_fmri_123', 'dsr_fmri_fut_123'):
+        return {'kind': 'dsr', 'title': title, 'lags': [1, 2, 3], 'locs': locs}
+    if model_name == 'dsr_fmri_345':
+        return {'kind': 'dsr', 'title': title, 'lags': [3, 4, 5], 'locs': locs}
+    if model_name == 'midnight':
+        return {'kind': 'dsr', 'title': title, 'lags': [0], 'locs': locs}
+
+    if model_name == 'state':
+        rows = state_names
+        active = state_idx
+        colors = [STATE_FIG3_COLORS[s] for s in rows]
+        return {'kind': 'active', 'title': title, 'rows': rows, 'active': active,
+                'colors': colors, 'ylabel': 'state'}
+    if model_name == 'phase':
+        rows = phase_names
+        active = phase_idx
+        colors = [PHASE_FIG3_COLORS[p] for p in rows]
+        return {'kind': 'active', 'title': title, 'rows': rows, 'active': active,
+                'colors': colors, 'ylabel': 'phase'}
+    if model_name == 'state_phase':
+        rows = [f"{s}-{p[0]}" for s in state_names for p in phase_names]
+        active = state_idx * n_phases + phase_idx
+        colors = [PHASE_FIG3_COLORS[p] for _s in state_names for p in phase_names]
+        return {'kind': 'active', 'title': title, 'rows': rows, 'active': active,
+                'colors': colors, 'ylabel': 'state x phase'}
+    if model_name == 'location':
+        rows = [str(i) for i in range(1, 10)]
+        active = locs - 1
+        colors = [LOCATION_FIG3_COLORS[i] for i in range(1, 10)]
+        return {'kind': 'active', 'title': title, 'rows': rows, 'active': active,
+                'colors': colors, 'ylabel': 'grid loc'}
+    if model_name == 'l2_norm':
+        mat = np.stack([l2_norm_row_for_loc(loc) for loc in locs], axis=1)
+        return {'kind': 'continuous', 'title': title, 'matrix': mat,
+                'rows': [str(i) for i in range(1, 10)],
+                'ylabel': 'grid loc', 'cmap': 'YlGnBu_r'}
+    if model_name == 'reward_path':
+        active = (phase_idx == n_phases - 1).astype(int)
+        return {'kind': 'active', 'title': title, 'rows': ['path', 'reward'],
+                'active': active, 'colors': ['#d9d9d9', '#a6611a'],
+                'ylabel': 'event'}
+    if model_name == 'repeat_counter':
+        rows = [f"rep {i + 1}" for i in range(len(state_names))]
+        active = state_idx
+        colors = ['#f6e8c3', '#dfc27d', '#bf812d', '#8c510a'][:len(rows)]
+        return {'kind': 'active', 'title': title, 'rows': rows, 'active': active,
+                'colors': colors, 'ylabel': 'repeat'}
+    if model_name == 'uncover':
+        active = (phase_idx == 0).astype(int)
+        return {'kind': 'active', 'title': title, 'rows': ['hidden', 'uncover'],
+                'active': active, 'colors': ['#e6e6e6', '#2166ac'],
+                'ylabel': 'screen'}
+    if model_name in ('bttn_curr', 'bttn_next', 'bttn_prev'):
+        offset = {'bttn_prev': -1, 'bttn_curr': 1, 'bttn_next': 2}[model_name]
+        labels = ['stay', 'up', 'right', 'down', 'left']
+        active_labels = _fig3_button_labels(locs, offset=offset)
+        active = np.asarray([labels.index(x) for x in active_labels], dtype=int)
+        colors = [BUTTON_FIG3_COLORS[x] for x in labels]
+        return {'kind': 'active', 'title': title, 'rows': labels, 'active': active,
+                'colors': colors, 'ylabel': 'button'}
+
+    rows = [model_name]
+    return {'kind': 'active', 'title': title, 'rows': rows,
+            'active': np.zeros(n_cond, dtype=int), 'colors': ['#969696'],
+            'ylabel': 'feature'}
+
+
+def _fig3_model_order(run_config):
+    preferred = [
+        'dsr_fmri', 'dsr_fmri_fut', 'dsr_fmri_informed',
+        'state', 'state_phase', 'phase',
+        'location', 'l2_norm', 'reward_path', 'repeat_counter',
+        'bttn_curr', 'bttn_next', 'uncover',
+    ]
+    legacy_dsr_panels = {
+        'dsr', 'dsr_old', 'dsr_old_now_next', 'location_old',
+        'midnight',  # old "DSR current only" schematic; not shown for fMRI DSR.
+    }
+    raw = []
+    for sub_models in run_config.get('combo_models', {}).values():
+        raw.extend(sub_models)
+    raw.extend(run_config.get('models', []))
+    raw = [m for m in raw if m not in legacy_dsr_panels]
+
+    seen = set()
+    ordered = []
+    for model_name in preferred + raw:
+        if model_name in raw and model_name not in seen:
+            ordered.append(model_name)
+            seen.add(model_name)
+    return ordered
+
+
+def _fig3_set_common_axis(ax, n_cols, row_labels, ylabel):
+    ax.set_xlim(-0.5, n_cols - 0.5)
+    ax.set_ylim(len(row_labels) - 0.5, -0.5)
+    x_ticks = np.arange(1, n_cols, 3)
+    ax.set_xticks(x_ticks)
+    ax.set_xticklabels(states[:len(x_ticks)], fontsize=9, fontname='Arial')
+    ax.set_xlabel('task state', fontsize=9, fontname='Arial', labelpad=1)
+    ax.set_ylabel(ylabel, fontsize=9, fontname='Arial', labelpad=1)
+
+    if len(row_labels) <= 9:
+        ytick_idx = np.arange(len(row_labels))
+    else:
+        ytick_idx = np.linspace(0, len(row_labels) - 1, 5).round().astype(int)
+    ax.set_yticks(ytick_idx)
+    ax.set_yticklabels([row_labels[i] for i in ytick_idx],
+                       fontsize=9, fontname='Arial')
+    ax.set_xticks(np.arange(-0.5, n_cols, 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, len(row_labels), 1), minor=True)
+    ax.grid(which='minor', color='white', linewidth=0.5)
+    ax.tick_params(axis='both', which='major', length=2, pad=1)
+    ax.tick_params(axis='both', which='minor', length=0)
+    for spine in ax.spines.values():
+        spine.set_linewidth(0.7)
+        spine.set_color('#333333')
+
+
+def _fig3_draw_active(ax, spec):
+    import matplotlib.colors as mcolors
+
+    active = np.asarray(spec['active'], dtype=int)
+    row_labels = list(spec['rows'])
+    n_rows, n_cols = len(row_labels), len(active)
+    off_rgb = np.array([0.965, 0.965, 0.965, 1.0])
+    img = np.tile(off_rgb, (n_rows, n_cols, 1))
+    for col_i, row_i in enumerate(active):
+        if 0 <= row_i < n_rows:
+            rgba = mcolors.to_rgba(spec['colors'][row_i])
+            img[row_i, col_i, :] = rgba
+    ax.imshow(img, interpolation='nearest', aspect='auto')
+    _fig3_set_common_axis(ax, n_cols, row_labels, spec.get('ylabel', 'feature'))
+
+
+def _fig3_draw_continuous(ax, spec):
+    mat = np.asarray(spec['matrix'], dtype=float)
+    ax.imshow(mat, interpolation='nearest', aspect='auto',
+              cmap=spec.get('cmap', 'Greys'))
+    _fig3_set_common_axis(ax, mat.shape[1], list(spec['rows']),
+                          spec.get('ylabel', 'feature'))
+
+
+def _fig3_draw_dsr(ax, spec):
+    from matplotlib.patches import Rectangle
+
+    locs = np.asarray(spec['locs'], dtype=int)
+    lags = list(spec['lags'])
+    n_cols = len(locs)
+    for row_i, lag in enumerate(lags):
+        lag_color = DSR_LAG_FIG3_COLORS[min(lag, len(DSR_LAG_FIG3_COLORS) - 1)]
+        for col_i in range(n_cols):
+            future_loc = int(locs[(col_i + lag) % n_cols])
+            ax.add_patch(Rectangle((col_i - 0.5, row_i - 0.5), 1.0, 1.0,
+                                   facecolor=lag_color, edgecolor='white',
+                                   linewidth=0.5))
+            ax.add_patch(Rectangle((col_i - 0.25, row_i - 0.25), 0.5, 0.5,
+                                   facecolor=LOCATION_FIG3_COLORS[future_loc],
+                                   edgecolor='none'))
+    labels = ['now' if lag == 0 else f'+{lag}' for lag in lags]
+    _fig3_set_common_axis(ax, n_cols, labels, 'future lag')
+
+
+def _save_pub_fig3_model_schematics(run_dir, run_config,
+                                    task_config_str=None,
+                                    matrix_cm=REPLOT_PUB_FIG3_MATRIX_CM,
+                                    max_cols=4):
+    """Save human RSA fig3 model schematics from a saved run configuration."""
+    task_config_str = task_config_str or run_config.get('configs', configs)[0]
+    model_order = _fig3_model_order(run_config)
+    specs = [_fig3_active_spec(m, task_config_str, run_config)
+             for m in model_order]
+
+    matrix_in = matrix_cm / 2.54
+    left_label_in = 0.54
+    right_gap_in = 0.28
+    bottom_label_in = 0.38
+    top_title_in = 0.42
+    panel_w = left_label_in + matrix_in + right_gap_in
+    panel_h = bottom_label_in + matrix_in + top_title_in
+    n_cols = min(max_cols, max(1, len(specs)))
+    n_rows = int(np.ceil(len(specs) / n_cols))
+    fig_w = n_cols * panel_w
+    fig_h = n_rows * panel_h
+
+    figs_dir = os.path.join(run_dir, 'pub_figures')
+    os.makedirs(figs_dir, exist_ok=True)
+    save_stem = os.path.join(figs_dir, 'fig3_human_model_schematics')
+
+    with plt.rc_context({
+        'font.family': 'Arial',
+        'font.size': 9,
+        'axes.titlesize': 11,
+        'axes.labelsize': 9,
+        'xtick.labelsize': 9,
+        'ytick.labelsize': 9,
+        'pdf.fonttype': 42,
+        'ps.fonttype': 42,
+    }):
+        fig = plt.figure(figsize=(fig_w, fig_h), constrained_layout=False)
+        for panel_i, spec in enumerate(specs):
+            row_i = panel_i // n_cols
+            col_i = panel_i % n_cols
+            x0 = col_i * panel_w + left_label_in
+            y0 = fig_h - (row_i + 1) * panel_h + bottom_label_in
+            ax = fig.add_axes([
+                x0 / fig_w, y0 / fig_h,
+                matrix_in / fig_w, matrix_in / fig_h,
+            ])
+            if spec['kind'] == 'dsr':
+                _fig3_draw_dsr(ax, spec)
+            elif spec['kind'] == 'continuous':
+                _fig3_draw_continuous(ax, spec)
+            else:
+                _fig3_draw_active(ax, spec)
+            ax.set_title(spec['title'], fontsize=11, fontname='Arial',
+                         fontweight='normal', pad=4)
+
+        fig.savefig(save_stem + '.pdf', dpi=300)
+        fig.savefig(save_stem + '.jpg', dpi=300)
+        plt.close(fig)
+
+    print(f"[pub fig] wrote {save_stem}.pdf/.jpg "
+          f"({len(specs)} models, task {task_config_str}, "
+          f"{matrix_cm:g} cm matrices).")
+
+
+def _replot_saved_pub_fig3_only():
+    for run_name in REPLOT_PUB_FIG3_RUNS:
+        run_dir = os.path.join(OUT_BASE, run_name)
+        cfg_path = os.path.join(run_dir, 'config.json')
+        if not os.path.exists(cfg_path):
+            raise FileNotFoundError(f"saved RSA run config not found: {cfg_path}")
+        with open(cfg_path, 'r') as f:
+            run_config = json.load(f)
+        _save_pub_fig3_model_schematics(
+            run_dir=run_dir,
+            run_config=run_config,
+            task_config_str=run_config.get('configs', configs)[0],
+        )
+
+
+if REPLOT_PUB_FIG3_ONLY:
+    _replot_saved_pub_fig3_only()
+    sys.exit(0)
+
+
 with open(os.path.join(DATA_DIR, 'all_sessions_dsrRSA_grouping_summary.json'), 'r') as f:
     config_summary = json.load(f)
 SUBJECTS = list(config_summary.keys())
@@ -934,7 +1334,7 @@ if RELOAD_RUN is None:
     # Applied to data ONLY (not models). Each cell's mean firing rate is
     # preserved; the within-state phase tuning component is subtracted.
     if PHASE_RESIDUALISE:
-        from mc.analyse.future_spatial_peaks import _residualise_phase
+        from mc.analyse.future_spatial_peaks import phase_residualise as _residualise_phase
         n_cells_total = 0
         for sub_str, sub_pack in SUBJECT_DATA.items():
             neurons = sub_pack[f"sub-{sub_str}"]['normalised_neurons']
@@ -1999,16 +2399,19 @@ if RELOAD_RUN is None:
                 save_stem=os.path.join(figs_dir,
                                        f'fig2_human_{roi_name}_{PHASE_MASK_MODE}'))
 
-            # Fig 3 schematics: one example config from the mode trajectory.
-            ex_config_str = configs[0]
-            ex_walked = np.asarray(mode_locs_all[ex_config_str], dtype=int) - 1   # 0-indexed
-            ex_walked = np.clip(ex_walked, 0, 8)
-            ex_config_tuple = tuple(int(x) for x in ex_config_str.split('-'))
-            dsr_figs.pub_figure_model_schematics(
-                walked_path=ex_walked, task_config=ex_config_tuple,
-                no_phase_neurons=N_PHASES,
-                recday_label=f'human cells / config {ex_config_str}',
-                save_stem=os.path.join(figs_dir, 'fig3_human_model_schematics'))
+            # Fig 3 schematics: one deterministic example task, with one
+            # panel for every model used by the current saved/run config.
+            _save_pub_fig3_model_schematics(
+                run_dir=OUT_DIR,
+                run_config={
+                    'models': models,
+                    'combo_models': combo_models,
+                    'configs': configs,
+                    'N_PHASES': N_PHASES,
+                    'states': states,
+                },
+                task_config_str=configs[0],
+            )
 
         # import pdb; pdb.set_trace()
         print("Computing RSA...")

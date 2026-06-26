@@ -123,6 +123,55 @@ OUTPUT_ROOT = os.path.join(DATA_DIR_EPHYS, "cell_mask_overlap")
 
 
 # =============================================================================
+# GRADIENT OVERLAP (separate figure)
+#
+# Mirrors figure 1c of the manuscript draft: per-condition mPFC blobs in
+# yellow→dark-red along the future-lag gradient, with overlapping cells
+# drawn in the ACC era_brewer colour.
+# =============================================================================
+GRADIENT_TSTAT_DIR = (
+    "/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/"
+    "group/Main_Results_fMRI/"
+    "RSA_which-fut-isin-DSR_glmbase_all-paths-fixed_stickrews_split-buttons_"
+    "smooth5_palm_masked_p0_01"
+)
+GRADIENT_TSTAT_MAPS = {  # display name → filename inside GRADIENT_TSTAT_DIR
+    "current": "CURR_QUARTER-split_quarters_DSR_masked_vox_tstat_c1.nii.gz",
+    "next":    "NEXT_QUARTER-split_quarters_DSR_masked_vox_tstat_c1.nii.gz",
+    "next+2":  "NEXT2_QUARTER-split_quarters_DSR_masked_vox_tstat_c1.nii.gz",
+    "next+3":  "NEXT3_QUARTER-split_quarters_DSR_masked_vox_tstat_c1.nii.gz",
+}
+# Per-condition voxel-wise t threshold. The figure-1c look comes from
+# slightly different cuts per map (the high-t bright-yellow blob is
+# sharper, the dark-red blob a bit looser). Tune these to taste.
+GRADIENT_TSTAT_THRESHOLDS = {
+    "current": 3.10,   # roughly p99
+    "next":    3.50,   # roughly p99
+    "next+2":  2.70,   # roughly p99
+    "next+3":  2.40,   # roughly p99
+}
+# Yellow → dark-red ramp matching figure 1c (curr = bright yellow at the
+# anterior tip, next+3 = dark red posterior).
+GRADIENT_COLOURS = {
+    "current": "#FCE300",   # bright yellow
+    "next":    "#FF8C00",   # orange
+    "next+2":  "#D2691E",   # dark orange
+    "next+3":  "#8B0000",   # dark red
+}
+# Restrict the rendering to medial-view L+R, which is the panel the user
+# asked for.
+GRADIENT_VIEW              = "medial"
+GRADIENT_HEMIS             = ("lh", "rh")
+GRADIENT_OVERLAY_ALPHA     = 0.70
+# Cell dot scales — smaller than the main-effect plot so individual cells
+# show up among the ~50 that overlap.
+GRADIENT_CELL_SCALE_IN     = 0.45
+GRADIENT_CELL_SCALE_OUT    = 0.20
+GRADIENT_BRAIN_SIZE        = (1200, 1000)
+GRADIENT_OUT_SUBDIR        = "gradient_blobs"
+
+
+# =============================================================================
 # MASK CONSTRUCTION
 # =============================================================================
 
