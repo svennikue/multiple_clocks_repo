@@ -26,12 +26,21 @@ Outputs (all into the same folder as `path_to_cell_table`):
 
 import os
 import re
+import sys
 import numpy as np
 import pandas as pd
 import nibabel as nib
 import matplotlib.pyplot as plt
 
 from nilearn import datasets
+
+sys.path.insert(
+    0, "/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_clocks_repo"
+)
+# Project-wide ROI palette — hardcoded source-of-truth lives in
+# mc.plotting.cell_results.SHOWGIRL2_DISCRETE (era_brewer.era_brew at n=7
+# silently interpolates / duplicates colours, so we don't use it here).
+from mc.plotting.cell_results import SHOWGIRL2_DISCRETE, roi_display
 
 
 # =============================================================================
@@ -89,6 +98,25 @@ alt_roi_order = [
     "PCC",
     "Visual",
 ]
+
+
+# Project-wide ROI colours (CLAUDE.md mapping on the canonical Showgirl2
+# discrete palette pulled from SHOWGIRL2_DISCRETE).
+ROI_COLOURS = {
+    "EC":              SHOWGIRL2_DISCRETE[0],   # dark red
+    "ACC":             SHOWGIRL2_DISCRETE[1],   # orange
+    "HC_anterior":     SHOWGIRL2_DISCRETE[2],   # tan
+    "PCC":             SHOWGIRL2_DISCRETE[3],   # pale yellow
+    "medialOFC":       SHOWGIRL2_DISCRETE[4],   # pale green
+    "Parahippocampal": SHOWGIRL2_DISCRETE[5],   # sage
+    "HC_mid":          SHOWGIRL2_DISCRETE[6],   # dark teal-green
+    # Final-roi only (collapse into alt-roi parents — share parent hue).
+    "OFC11":           SHOWGIRL2_DISCRETE[4],
+    "OFC13":           SHOWGIRL2_DISCRETE[4],
+    "ventral_ACC":     SHOWGIRL2_DISCRETE[1],
+    "medial_CC":       "#888888",
+    "Visual":          "#bdbdbd",
+}
 
 
 # =============================================================================
@@ -530,16 +558,20 @@ def make_roi_count_table(df, roi_field, order, subject_field="subject"):
                    .reset_index())
 
 
-def plot_roi_count_overview(counts_df, roi_field, title, save_path):
+def plot_roi_count_overview(counts_df, roi_field, title, save_path,
+                            colour_map=ROI_COLOURS):
     """Bar plot of cell counts per ROI; each x-label carries both the
-    cell count and the number of contributing subjects.
+    cell count and the number of contributing subjects. Bar colours come
+    from the project-wide ROI palette (`colour_map`, default ROI_COLOURS).
     Kept here as a data summary (no spatial brain plotting)."""
-    labels = [f"{r}\n(n = {n} cells; {s} subjects)"
+    labels = [f"{roi_display(r)}\n(n = {n} cells; {s} subjects)"
               for r, n, s in zip(counts_df[roi_field],
                                  counts_df["n_cells"],
                                  counts_df["n_subjects"])]
+    bar_colours = [colour_map.get(r, "#888888") for r in counts_df[roi_field]]
     plt.figure(figsize=(11, 5))
-    plt.bar(labels, counts_df["n_cells"])
+    plt.bar(labels, counts_df["n_cells"], color=bar_colours,
+            edgecolor="black", linewidth=0.4)
     plt.xticks(rotation=45, ha="right")
     plt.ylabel("Number of cells")
     plt.title(title)

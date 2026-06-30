@@ -33,6 +33,7 @@ All outputs land under
 """
 
 import os
+import sys
 import json
 
 import numpy as np
@@ -41,6 +42,15 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
 from nilearn import plotting
+
+sys.path.insert(
+    0, "/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_clocks_repo"
+)
+from mc.plotting.cell_results import (
+    plot_roi_electrodes_glassbrain,
+    plot_roi_beta_glassbrain,
+    roi_display,
+)
 
 
 # ── era_brewer (palette source) ──────────────────────────────────────
@@ -85,12 +95,45 @@ ROI_ORDER = [
     "Visual",
 ]
 
+
+# Project-wide ROI colours (CLAUDE.md mapping on the native Showgirl2
+# discrete palette). NOTE: ``era_brewer.era_brew('Showgirl2', n=7)``
+# interpolates and reorders the colours, so the canonical 7-hue palette
+# is hardcoded in ``mc.plotting.cell_results.SHOWGIRL2_DISCRETE`` and
+# pulled from there to keep all figures consistent.
+from mc.plotting.cell_results import SHOWGIRL2_DISCRETE as _SHOWGIRL2
+ROI_COLOURS = {
+    "EC":              _SHOWGIRL2[0],   # dark red
+    "ACC":             _SHOWGIRL2[1],   # orange
+    "HC_anterior":     _SHOWGIRL2[2],   # tan
+    "PCC":             _SHOWGIRL2[3],   # pale yellow
+    "medialOFC":       _SHOWGIRL2[4],   # pale green
+    "Parahippocampal": _SHOWGIRL2[5],   # sage
+    "HC_mid":          _SHOWGIRL2[6],   # dark teal-green
+    # Final-roi only (collapse into alt-roi parents — share parent hue).
+    "OFC11":           _SHOWGIRL2[4],
+    "OFC13":           _SHOWGIRL2[4],
+    "ventral_ACC":     _SHOWGIRL2[1],
+    "medial_CC":       "#888888",
+    "Visual":          "#bdbdbd",
+}
+
 # Which cell subsets to render.
 CELL_SUBSETS = ["all", "dsr_rsa"]
 
-# Which palettes to cycle (era_brewer names).
+# Which palettes to cycle (era_brewer names).  The pseudo-palette
+# ``"showgirl2_adjusted"`` is treated specially: it uses the corrected
+# Showgirl2 hex codes (from ``mc.plotting.cell_results.SHOWGIRL2_DISCRETE``)
+# and assigns each ROI its CLAUDE.md-canonical index, rather than colouring
+# ROIs in the order they happen to appear in the data. This is the
+# CORRECT mapping for publication panels — the raw "showgirl2" cycle
+# above is kept for visual comparison only.
 ERA_BREWER_PALETTES = [
-    "midnight2", "showgirl2", "nineteeneightynine", "Lover2",
+    "midnight2",
+    "showgirl2",
+    "showgirl2_adjusted",
+    "nineteeneightynine",
+    "Lover2",
 ]
 ERA_BREWER_N = 7    # 7 distinct colours per palette where possible.
 
@@ -98,6 +141,9 @@ ERA_BREWER_N = 7    # 7 distinct colours per palette where possible.
 PLOT_GLASSBRAIN_LYRZ = True
 PLOT_GLASSBRAIN_MOSAIC = True
 PLOT_MNE_BRAIN = True   # auto-skipped if MNE / pyvista aren't installed.
+# Publication-grade glass-brain using mc.plotting.cell_results helpers,
+# saved as PDF + PNG with the CLAUDE.md canonical ROI palette.
+PLOT_PUBLICATION_GLASSBRAIN = True
 
 # Marker sizing.
 MARKER_SIZE_GLASSBRAIN = 18
@@ -207,7 +253,18 @@ def _palette_colors(palette_name, n):
 
 
 def make_roi_color_map(rois, palette_name, n=ERA_BREWER_N):
-    """ROI -> hex colour mapping for the given palette."""
+    """ROI -> hex colour mapping for the given palette.
+
+    Special case: ``palette_name == 'showgirl2_adjusted'`` returns the
+    project's canonical CLAUDE.md mapping (``ROI_COLOURS`` defined at the
+    top of this script). Any ROI not in ``ROI_COLOURS`` falls back to a
+    neutral grey so it's obvious it's an off-canvas ROI.
+
+    All other palette names sample ``_palette_colors`` and assign
+    sequentially in the order ``rois`` appears.
+    """
+    if palette_name == "showgirl2_adjusted":
+        return {r: ROI_COLOURS.get(r, "#888888") for r in rois}
     colors = _palette_colors(palette_name, max(n, len(rois)))
     return {roi: colors[i % len(colors)] for i, roi in enumerate(rois)}
 
@@ -260,7 +317,7 @@ def plot_glassbrain_lyrz(df, roi_col, order, roi_colors,
         plt.Line2D([0], [0], marker="o", linestyle="", markersize=6,
                    markerfacecolor=roi_colors[r],
                    markeredgecolor=roi_colors[r],
-                   label=f"{r} (n={int((df[roi_col] == r).sum())})")
+                   label=f"{roi_display(r)} (n={int((df[roi_col] == r).sum())})")
         for r in order if (df[roi_col] == r).any()
     ]
     fig.legend(handles=handles, loc="lower center",
@@ -302,7 +359,7 @@ def plot_glassbrain_mosaic(df, roi_col, order, roi_colors,
             marker_color=roi_colors[roi],
             marker_size=MARKER_SIZE_GLASSBRAIN * 0.5,
         )
-        ax.set_title(f"{roi}  (n={len(sub)})", fontsize=10,
+        ax.set_title(f"{roi_display(roi)}  (n={len(sub)})", fontsize=10,
                      color=roi_colors[roi])
     for k in range(n, nrows * ncols):
         axes[k // ncols, k % ncols].axis("off")
@@ -477,6 +534,68 @@ def plot_mne_brain(df, roi_col, order, roi_colors,
 
 
 # =============================================================================
+# VISUALISATION 4: publication glass-brain (mc.plotting.cell_results)
+# =============================================================================
+
+def plot_publication_glassbrain(df, roi_col, order, save_stem,
+                                 title_combined, title_panels,
+                                 roi_colors=None):
+    """Wraps ``mc.plotting.cell_results.plot_roi_electrodes_glassbrain``
+    with the CLAUDE.md ROI palette and saves BOTH a combined-view PDF and
+    a per-ROI-mosaic PDF (plus PNG copies for previews).
+
+    Two outputs per call:
+      <save_stem>_combined.{pdf,png}  — all electrodes on one glass-brain
+      <save_stem>_perroi.{pdf,png}    — one mini glass-brain per ROI
+
+    A small wrapper around the canonical helper so this is the single
+    place to tweak fonts / DPI for the headline brain-coverage figure.
+    """
+    df = df[df[roi_col].isin(order)]
+    if df.empty:
+        print(f"  skip publication glass-brain: no cells in any ROI.")
+        return
+    # Build ROI -> (n, 3) MNI coords. Order follows `order` for legend
+    # stability across runs.
+    electrodes = {}
+    for roi in order:
+        sub = df[df[roi_col] == roi]
+        if sub.empty:
+            continue
+        electrodes[roi] = sub[["MNI_x", "MNI_y", "MNI_z"]].to_numpy(dtype=float)
+    if not electrodes:
+        print("  skip publication glass-brain: no ROI matches order.")
+        return
+
+    pdf_combined = save_stem + "_combined.pdf"
+    png_combined = save_stem + "_combined.png"
+    pdf_panels   = save_stem + "_perroi.pdf"
+    png_panels   = save_stem + "_perroi.png"
+
+    # Combined view — one glass-brain, all ROIs colour-coded ----------
+    fig = plot_roi_electrodes_glassbrain(
+        electrodes, save_path=pdf_combined,
+        title=title_combined, marker_size=20,
+        per_roi_panels=False, roi_colors=roi_colors,
+    )
+    if fig is not None:
+        fig.savefig(png_combined, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        print(f"  wrote {pdf_combined}  (+ PNG preview)")
+
+    # Per-ROI mosaic ---------------------------------------------------
+    fig = plot_roi_electrodes_glassbrain(
+        electrodes, save_path=pdf_panels,
+        title=title_panels, marker_size=20,
+        per_roi_panels=True, roi_colors=roi_colors,
+    )
+    if fig is not None:
+        fig.savefig(png_panels, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        print(f"  wrote {pdf_panels}  (+ PNG preview)")
+
+
+# =============================================================================
 # MAIN LOOP
 # =============================================================================
 
@@ -501,6 +620,19 @@ for subset in CELL_SUBSETS:
     if not rois:
         print(f"  no ROIs from {ROI_ORDER} present in this subset.")
         continue
+
+    # Publication glass-brain — single render per subset using CLAUDE.md
+    # canonical ROI colours (PDF for figure inclusion, PNG for preview).
+    if PLOT_PUBLICATION_GLASSBRAIN:
+        pub_stem = os.path.join(
+            subset_dir, f"publication_glassbrain_{subset}")
+        plot_publication_glassbrain(
+            df_sub, ROI_COL, rois,
+            save_stem=pub_stem,
+            title_combined=f"Electrode coverage — {subset_label}",
+            title_panels=f"Per-ROI coverage — {subset_label}",
+            roi_colors=ROI_COLOURS,
+        )
 
     for palette in ERA_BREWER_PALETTES:
         roi_colors = make_roi_color_map(rois, palette, n=ERA_BREWER_N)

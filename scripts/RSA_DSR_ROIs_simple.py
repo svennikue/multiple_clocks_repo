@@ -12,7 +12,6 @@ final analysis that i'm using for all
 
 """
 
-
 import os
 import sys
 import io
@@ -45,7 +44,19 @@ OUT_BASE     = os.path.join(DATA_DIR, 'group', 'DSR_RSA_simple_ROI')
 # '2026-05-18_16-33-05') to skip the heavy RSA + permutation loop and
 # just re-render the overview plots from the saved
 # results_summary*.csv files in OUT_BASE/<RELOAD_RUN>/.  None = run fresh.
-RELOAD_RUN = None  #'2026-05-26_17-54-23' 
+RELOAD_RUN = None # '2026-06-22_16-17-15-final-DSR'
+
+# ── Cross-run perm cache lookup ───────────────────────────────────────
+# When True, before rebuilding any ROI's permutation RDMs the script
+# scans every sibling run dir under OUT_BASE for a previously-cached
+# perm pickle with the SAME fingerprint (cells, n_perms, seed,
+# phase setting, configs, method). If found, it reuses that pickle
+# (no recomputation) and symlinks it into the current run dir so
+# downstream scripts that look for the canonical location still work.
+# `link_reused=True` means the cache is shared on disk via symlink —
+# saves ~30 MB per ROI × 7 ROIs = ~200 MB per rerun.
+REUSE_PERMS_FROM_PREVIOUS_RUNS = True
+LINK_REUSED_PERMS = True   # False → copy instead of symlink (safer on weird FS)
 
 # Lightweight publication-figure refresh. Set
 # RSA_REPLOT_PUB_FIG3_ONLY=1 to read the saved run configs below and rewrite
@@ -56,6 +67,7 @@ REPLOT_PUB_FIG3_RUNS = [
     '2026-06-22_16-17-15-final-DSR',
 ]
 REPLOT_PUB_FIG3_MATRIX_CM = 2.0
+REPLOT_PUB_FIG3_EXAMPLE_REPEAT = 8
 
 # import pdb; pdb.set_trace()
 configs = [
@@ -112,13 +124,6 @@ RESIDUALISE_REPEATS = False
 # primary results.
 RUN_PHASE_MODE_COMPARISON = False
 
-# Smoke test: if True, residualise every data RDM and every non-phase model
-# RDM against the phase model RDM at the 1-D upper-tri vector level, BEFORE
-# evaluate_model is called. Equivalent to forcing phase to be partialled out
-# of every test, regardless of whether a combo explicitly includes 'phase'.
-# Set N_PERMUTATIONS=None when using this for a fast empirical comparison.
-PHASE_RESIDUALISE_RDMS = False
-
 assert PHASE_MASK_MODE in ('full', 'within_phase', 'across_phase'), PHASE_MASK_MODE
 # Safety: phase residualisation removes phase variance at the data level, so
 # any phase-mask filter on RDM cells would be applied to data that no longer
@@ -166,20 +171,20 @@ models = [
     'reward_path',
 ]
 
-
 # Same control stack across every combo so the only thing that varies is the
 # DSR feature subset — gives a clean head-to-head DSR-variant comparison.
 # L2-norm is the negative-distance-from-current-location-to-each-of-9-grid-
 # locations regressor, mirroring the fMRI version in
 # create_fMRI_model_RDMs_on_clean_beh.py (cosine RDM, 9-feature vector).
-_CTRLS_FINAL = ['dsr_fmri', 'location', 'l2_norm', 'reward_path', 'repeat_counter']
+_CTRLS_FINAL = ['state', 'location', 'bttn_curr']
 combo_models = {
-    'ctrl_dsrFULL': _CTRLS_FINAL + ['state'],
-    'ctrl_dsrFULL_phase': _CTRLS_FINAL + ['state', 'phase'],
-    'ctrl_dsrFULL_state-phase': _CTRLS_FINAL + ['state', 'state_phase']
+    'ctrl_dsrFULL': _CTRLS_FINAL + ['dsr_fmri'],
+    'ctrl_dsrFUT': _CTRLS_FINAL + ['dsr_fmri_fut'],
+    'ctrl_dsrInformed': _CTRLS_FINAL + ['dsr_fmri_informed']
 }
 assert all(len(set(sm)) == len(sm) for sm in combo_models.values()), \
     f"Duplicate sub-model in combo_models: {combo_models}"
+
 
 # ── Phase-residualisation combo pruning ────────────────────────────────
 # When phase is removed at the data level, the 'phase' RDM regressor adds
@@ -232,8 +237,14 @@ FDR_TEST      = 'split_halves_z'    # primary variant. Data RDM is built
 # `dsr_old` beta is highly correlated with the primary combo (the two
 # differ only by the `state` regressor). This keeps the FDR family
 # consistent with the publication panel (encoding_publication_panels.py).
-FDR_COMBOS    = ['ctrl_dsrFULL', 'ctrl_dsrFULL_phase', 'ctrl_dsrFULL_state-phase']         # DSR_informed (lags 1,2) + bttn + location + L2 + state
-FDR_SUBMODELS = ['state']       # pre-registered: lags 1,2, motivated by independent fMRI prior
+
+# settings for state.
+# FDR_COMBOS    = ['ctrl_dsrFULL', 'ctrl_dsrFULL_phase', 'ctrl_dsrFULL_state-phase']         
+# FDR_SUBMODELS = ['state']       
+# settings for DSR.
+FDR_COMBOS    = ['ctrl_dsrFULL']         # DSR + bttn + location + L2 + state
+FDR_SUBMODELS = ['DSR_fmri']      
+
 FDR_ALPHA     = 0.05
 
 
@@ -779,59 +790,127 @@ def _fig3_grid_loc(row, col):
     return row * 3 + col + 1
 
 
-def _fig3_one_step_towards(start_loc, target_loc):
-    """One Manhattan step on the 3x3 grid, for schematic paths only."""
-    sr, sc = _fig3_grid_rc(start_loc)
-    tr, tc = _fig3_grid_rc(target_loc)
-    if sr != tr:
-        sr += int(np.sign(tr - sr))
-    elif sc != tc:
-        sc += int(np.sign(tc - sc))
-    return _fig3_grid_loc(sr, sc)
+FIG3_BEH_COLUMNS = [
+    'rep_correct', 't_A', 't_B', 't_C', 't_D',
+    'loc_A', 'loc_B', 'loc_C', 'loc_D',
+    'rep_overall', 'new_grid_onset', 'session_no', 'grid_no', 'correct',
+]
+FIG3_BUTTON_LABELS = {
+    'UpArrow': 'up',
+    'RightArrow': 'right',
+    'DownArrow': 'down',
+    'LeftArrow': 'left',
+    'Return': 'space',
+}
 
 
-def _fig3_example_locations(task_config_str, n_phases=3):
-    """Build one deterministic example path through a task configuration.
+def _fig3_bad_location_transitions(locs):
+    bad = []
+    locs = np.asarray(locs)
+    for i in range(len(locs) - 1):
+        r0, c0 = _fig3_grid_rc(locs[i])
+        r1, c1 = _fig3_grid_rc(locs[i + 1])
+        if abs(r0 - r1) + abs(c0 - c1) > 1:
+            bad.append((i, int(locs[i]), int(locs[i + 1])))
+    return bad
 
-    The saved RSA runs do not store the subject-pooled mode trajectory used for
-    the original schematic. For a pure model schematic we instead use the same
-    example task for every panel and show three schematic phase bins per state:
-    previous reward location -> one grid step towards target -> target reward.
+
+def _fig3_cleanup_buttons(buttons_12):
+    """Remove Return/space from action panels; keep it for uncover."""
+    raw = pd.Series([FIG3_BUTTON_LABELS.get(str(b), 'stay')
+                     for b in buttons_12], dtype=object)
+    uncover = np.where(raw.eq('space'), 'uncover', 'hidden')
+    move = raw.mask(raw.eq('space')).ffill().bfill().fillna('stay')
+    return move.to_numpy(dtype=object), uncover.astype(object)
+
+
+def _fig3_load_single_trial(task_config_str, preferred_repeat=8,
+                            n_conds=12):
+    """Load one real correct loop and downsample it for fig3 schematics.
+
+    We prefer a late repeat (default rep_correct==8), but a clean 12-bin
+    schematic must not imply non-adjacent 3x3-grid moves. If the exact repeat
+    has a coarse-bin jump after mode-downsampling, choose the closest valid
+    later repeat instead and report the selected trial in the console.
     """
-    rewards = [int(x) for x in str(task_config_str).split('-')]
-    if len(rewards) != 4:
-        raise ValueError(f"expected four reward locations, got {task_config_str!r}")
-    locs = []
-    for state_i, target in enumerate(rewards):
-        start = rewards[state_i - 1]
-        mid = _fig3_one_step_towards(start, target)
-        phase_locs = [start, mid, target]
-        if n_phases != 3:
-            phase_locs = np.linspace(start, target, n_phases).round().astype(int).tolist()
-        locs.extend(phase_locs[:n_phases])
-    return np.asarray(locs, dtype=int)
+    candidates = []
+    subj_dirs = sorted(
+        d for d in os.listdir(DATA_DIR)
+        if d.startswith('s') and d[1:].isdigit()
+    )
+    for sub_dir in subj_dirs:
+        sub = sub_dir[1:]
+        beh_dir = os.path.join(DATA_DIR, sub_dir, 'cells_and_beh')
+        beh_path = os.path.join(beh_dir, f'all_trial_times_{sub}.csv')
+        loc_path = os.path.join(beh_dir, 'locations.csv')
+        btn_path = os.path.join(beh_dir, 'button_presses.csv')
+        if not all(os.path.exists(p) for p in (beh_path, loc_path, btn_path)):
+            continue
+
+        beh = pd.read_csv(beh_path, header=None)
+        beh.columns = FIG3_BEH_COLUMNS
+        beh['config_str'] = (
+            beh[['loc_A', 'loc_B', 'loc_C', 'loc_D']]
+            .astype(int).astype(str).agg('-'.join, axis=1)
+        )
+        idxs = beh.index[(beh['config_str'] == task_config_str)
+                         & (beh['correct'] == 1)]
+        if len(idxs) == 0:
+            continue
+
+        locs_df = pd.read_csv(loc_path, header=None)
+        btn_df = pd.read_csv(btn_path, header=None)
+        for idx in idxs:
+            loc_360 = locs_df.iloc[idx].to_numpy()
+            btn_360 = btn_df.iloc[idx].to_numpy()
+            loc_12 = downsample_mode(loc_360, target_len=n_conds).astype(int)
+            btn_12 = downsample_mode(btn_360, target_len=n_conds)
+            bad = _fig3_bad_location_transitions(loc_12)
+            rep = int(beh.at[idx, 'rep_correct'])
+            score = (
+                len(bad),
+                abs(rep - int(preferred_repeat)),
+                0 if rep >= int(preferred_repeat) else 1,
+                sub,
+                int(idx),
+            )
+            candidates.append({
+                'score': score,
+                'subject': sub,
+                'trial_index': int(idx),
+                'grid_no': int(beh.at[idx, 'grid_no']),
+                'rep_correct': rep,
+                'loc_360': loc_360,
+                'button_360': btn_360,
+                'loc_12': loc_12,
+                'button_12_raw': btn_12,
+                'bad_transitions': bad,
+            })
+
+    if not candidates:
+        raise RuntimeError(
+            f"could not find any correct trial for fig3 task {task_config_str}")
+
+    chosen = sorted(candidates, key=lambda c: c['score'])[0]
+    buttons_curr, uncover = _fig3_cleanup_buttons(chosen['button_12_raw'])
+    chosen['button_curr'] = buttons_curr
+    chosen['button_next'] = np.roll(buttons_curr, -1)
+    chosen['uncover'] = uncover
+    chosen['reward'] = np.zeros(n_conds, dtype=int)
+    chosen['reward'][np.arange(0, n_conds, max(1, n_conds // len(states)))] = 1
+
+    print("[pub fig] fig3 example trial: "
+          f"sub-{chosen['subject']}, trial row {chosen['trial_index']}, "
+          f"grid {chosen['grid_no']}, rep_correct={chosen['rep_correct']}, "
+          f"config {task_config_str}, loc12={chosen['loc_12'].tolist()}, "
+          f"bad_transitions={chosen['bad_transitions']}")
+    return chosen
 
 
-def _fig3_button_labels(locs, offset=1):
-    labels = []
-    n = len(locs)
-    for i, loc in enumerate(locs):
-        here_r, here_c = _fig3_grid_rc(loc)
-        next_r, next_c = _fig3_grid_rc(locs[(i + offset) % n])
-        dr, dc = next_r - here_r, next_c - here_c
-        if dr == 0 and dc == 0:
-            labels.append('stay')
-        elif abs(dc) >= abs(dr):
-            labels.append('right' if dc > 0 else 'left')
-        else:
-            labels.append('down' if dr > 0 else 'up')
-    return labels
-
-
-def _fig3_active_spec(model_name, task_config_str, run_config):
+def _fig3_active_spec(model_name, task_config_str, run_config, example_trial):
     n_phases = int(run_config.get('N_PHASES', N_PHASES))
     state_names = list(run_config.get('states', states))
-    locs = _fig3_example_locations(task_config_str, n_phases=n_phases)
+    locs = np.asarray(example_trial['loc_12'], dtype=int)
     n_cond = len(locs)
     state_idx = np.repeat(np.arange(len(state_names)), n_phases)
     phase_idx = np.tile(np.arange(n_phases), len(state_names))
@@ -890,7 +969,7 @@ def _fig3_active_spec(model_name, task_config_str, run_config):
                 'rows': [str(i) for i in range(1, 10)],
                 'ylabel': 'grid loc', 'cmap': 'YlGnBu_r'}
     if model_name == 'reward_path':
-        active = (phase_idx == n_phases - 1).astype(int)
+        active = np.asarray(example_trial['reward'], dtype=int)
         return {'kind': 'active', 'title': title, 'rows': ['path', 'reward'],
                 'active': active, 'colors': ['#d9d9d9', '#a6611a'],
                 'ylabel': 'event'}
@@ -901,14 +980,20 @@ def _fig3_active_spec(model_name, task_config_str, run_config):
         return {'kind': 'active', 'title': title, 'rows': rows, 'active': active,
                 'colors': colors, 'ylabel': 'repeat'}
     if model_name == 'uncover':
-        active = (phase_idx == 0).astype(int)
+        labels = ['hidden', 'uncover']
+        active = np.asarray([labels.index(x) for x in example_trial['uncover']],
+                            dtype=int)
         return {'kind': 'active', 'title': title, 'rows': ['hidden', 'uncover'],
                 'active': active, 'colors': ['#e6e6e6', '#2166ac'],
                 'ylabel': 'screen'}
     if model_name in ('bttn_curr', 'bttn_next', 'bttn_prev'):
-        offset = {'bttn_prev': -1, 'bttn_curr': 1, 'bttn_next': 2}[model_name]
-        labels = ['stay', 'up', 'right', 'down', 'left']
-        active_labels = _fig3_button_labels(locs, offset=offset)
+        labels = ['up', 'right', 'down', 'left', 'stay']
+        if model_name == 'bttn_curr':
+            active_labels = example_trial['button_curr']
+        elif model_name == 'bttn_next':
+            active_labels = example_trial['button_next']
+        else:
+            active_labels = np.roll(example_trial['button_curr'], 1)
         active = np.asarray([labels.index(x) for x in active_labels], dtype=int)
         colors = [BUTTON_FIG3_COLORS[x] for x in labels]
         return {'kind': 'active', 'title': title, 'rows': labels, 'active': active,
@@ -1022,8 +1107,13 @@ def _save_pub_fig3_model_schematics(run_dir, run_config,
                                     max_cols=4):
     """Save human RSA fig3 model schematics from a saved run configuration."""
     task_config_str = task_config_str or run_config.get('configs', configs)[0]
+    example_trial = _fig3_load_single_trial(
+        task_config_str=task_config_str,
+        preferred_repeat=REPLOT_PUB_FIG3_EXAMPLE_REPEAT,
+        n_conds=int(run_config.get('N_CONDS_PER_CONF', N_CONDS_PER_CONF)),
+    )
     model_order = _fig3_model_order(run_config)
-    specs = [_fig3_active_spec(m, task_config_str, run_config)
+    specs = [_fig3_active_spec(m, task_config_str, run_config, example_trial)
              for m in model_order]
 
     matrix_in = matrix_cm / 2.54
@@ -1554,20 +1644,23 @@ if RELOAD_RUN is None:
         # set up dicts and lists to load data
         acc_neurons, locs, buttons = {}, {}, {}
         acc_neurons_all, locs_all, buttons_all = {}, {}, {}
-        perm_ACC_neurons_all, perm_ACC_neurons = {}, {}
+        # per_cell_trial_chunks accumulates the raw (n_trials, 360) firing
+        # rates for every (cell, config) — consumed by
+        # mc.analyse.rsa_perm_rdms to build / cache the permuted data RDMs.
+        # Replaces the previous inline circular-shift loop that lived inside
+        # the cell loop and rebuilt the perm population matrix N_PERMUTATIONS
+        # times per cell × config.
+        per_cell_trial_chunks = {}   # neuron_label → {'cell_id', 'per_config'}
 
         for conf in configs:
             acc_neurons[conf] = {}
-            perm_ACC_neurons[conf]= {}
             locs[conf] = {}
             buttons[conf] = {}
             buttons_all[conf] = []
             acc_neurons_all[conf] = []
-            perm_ACC_neurons_all[conf] = []
             locs_all[conf] = []
             for th in [1,2]:
                 acc_neurons[conf][th] = []
-                perm_ACC_neurons[conf][th] = []
                 locs[conf][th] = []
                 buttons[conf][th] = []
 
@@ -1674,40 +1767,22 @@ if RELOAD_RUN is None:
                         if conf_neurons_all.shape[0] == 0:
                             continue
 
-                        # Circular-shift permutation null. The shift is per-trial
-                        # and shared across runs of that trial, so the run1/run2
-                        # split below uses the same row masks as the empirical data.
-                        if N_PERMUTATIONS:
-                            rng    = np.random.default_rng()
-                            n_bins = conf_neurons_all.shape[1]
-                            for p in range(N_PERMUTATIONS):
-                                shifts = rng.integers(
-                                    0, n_bins, size=conf_neurons_all.shape[0])
-                                new_idx = (np.arange(n_bins) - shifts[:, None]) % n_bins
-                                perm_neuron = np.take_along_axis(
-                                    conf_neurons_all, new_idx, axis=1)
-
-                                perm_avg_all = np.nanmean(perm_neuron, axis=0)
-                                perm_ACC_neurons_all[conf].append(
-                                    perm_avg_all.reshape(
-                                        N_CONDS_PER_CONF,
-                                        int(360 / N_CONDS_PER_CONF)).mean(axis=1))
-
-                                for th, rmask in [(1, row_run1_mask),
-                                                  (2, row_run2_mask)]:
-                                    if not rmask.any():
-                                        # No trials in this half for this subject ×
-                                        # config — push NaN so cross-ROI averaging
-                                        # still aligns shapes downstream.
-                                        perm_ACC_neurons[conf][th].append(
-                                            np.full(N_CONDS_PER_CONF, np.nan))
-                                        continue
-                                    perm_avg = np.nanmean(
-                                        perm_neuron[rmask], axis=0)
-                                    perm_ACC_neurons[conf][th].append(
-                                        perm_avg.reshape(
-                                            N_CONDS_PER_CONF,
-                                            int(360 / N_CONDS_PER_CONF)).mean(axis=1))
+                        # Store the raw (n_trials, 360) firing rates per
+                        # (cell, config) so mc.analyse.rsa_perm_rdms can
+                        # build / cache the permuted data RDMs in one place.
+                        # The inline N_PERMUTATIONS-times shift loop that
+                        # used to live here is gone — perms are now produced
+                        # once per ROI via the central builder.
+                        if n_lab not in per_cell_trial_chunks:
+                            per_cell_trial_chunks[n_lab] = {
+                                'cell_id':    n_lab,
+                                'per_config': {},
+                            }
+                        per_cell_trial_chunks[n_lab]['per_config'][conf] = {
+                            'trials_all': conf_neurons_all,
+                            'run1_mask':  row_run1_mask.copy(),
+                            'run2_mask':  row_run2_mask.copy(),
+                        }
 
                         # Empirical means: between_tasks RDM uses all correct trials;
                         # split_halves RDM uses the run1 / run2 row masks.
@@ -2257,8 +2332,6 @@ if RELOAD_RUN is None:
         # separate add-on script (e.g. scripts/RSA_addon_analyses.py) replay
         # the phase-mask comparison, swap in extra combos, etc. without ever
         # touching the cell data again.
-        # Stored canonically BEFORE the optional PHASE_RESIDUALISE_RDMS block
-        # below so the saved arrays always reflect the unmodified pipeline.
         rdm_save_dir = os.path.join(OUT_DIR, 'rdms')
         os.makedirs(rdm_save_dir, exist_ok=True)
         _rdm_payload = {
@@ -2297,61 +2370,6 @@ if RELOAD_RUN is None:
               f"({len(_rdm_payload)} arrays)")
 
         # ── Optional smoke test: phase-residualise every RDM (data + models) ──
-        # Regress the 'phase' model RDM out of the 1-D upper-tri vector of
-        # every data RDM and every non-phase model RDM, BEFORE evaluate_model.
-        # Equivalent to forcing phase to be partialled out of every test
-        # regardless of whether the combo explicitly includes 'phase' as a
-        # column. Used to check whether the OLS phase regressor in combos is
-        # already doing this work: if betas barely move, OLS handles it; if
-        # they shift, model-level phase contamination remained.
-        if PHASE_RESIDUALISE_RDMS:
-            def _resid_against(v_in, phase_v):
-                v = np.asarray(v_in, dtype=float).copy()
-                p = np.asarray(phase_v, dtype=float)
-                fin = np.isfinite(v) & np.isfinite(p)
-                if fin.sum() < 3:
-                    return v
-                v_m = v[fin] - v[fin].mean()
-                p_centered = p.copy()
-                p_centered[fin] = p[fin] - p[fin].mean()
-                den = (p_centered[fin] ** 2).sum()
-                if den < 1e-12:
-                    return v
-                beta = (p_centered[fin] * v_m).sum() / den
-                out = v.copy()
-                out[fin] = v[fin] - beta * p_centered[fin]
-                return out
-
-            def _set0(seq, new_val):
-                try:
-                    seq[0] = new_val
-                    return seq
-                except (TypeError, IndexError):
-                    return (new_val,) + tuple(seq[1:])
-
-            if 'phase' in model_RDMs and 'phase' in model_RDMs_across:
-                print(f"  [{roi_name}] [smoke-test] PHASE_RESIDUALISE_RDMS=True — "
-                      f"regressing phase RDM out of every data + model RDM")
-                p_full   = np.asarray(model_RDMs['phase'][0],        dtype=float)
-                p_across = np.asarray(model_RDMs_across['phase'][0], dtype=float)
-                # data RDMs
-                data_RDM          = _set0(data_RDM,          _resid_against(data_RDM[0],          p_full))
-                data_RDM_z        = _set0(data_RDM_z,        _resid_against(data_RDM_z[0],        p_full))
-                data_RDM_across   = _set0(data_RDM_across,   _resid_against(data_RDM_across[0],   p_across))
-                data_RDM_across_z = _set0(data_RDM_across_z, _resid_against(data_RDM_across_z[0], p_across))
-                # model RDMs (skip 'phase' itself, which becomes ~0 by construction)
-                for _m in list(model_RDMs):
-                    if _m == 'phase':
-                        continue
-                    model_RDMs[_m]        = _set0(model_RDMs[_m],        _resid_against(model_RDMs[_m][0],        p_full))
-                for _m in list(model_RDMs_across):
-                    if _m == 'phase':
-                        continue
-                    model_RDMs_across[_m] = _set0(model_RDMs_across[_m], _resid_against(model_RDMs_across[_m][0], p_across))
-            else:
-                print(f"  [{roi_name}] [smoke-test] WARN PHASE_RESIDUALISE_RDMS=True "
-                      f"but 'phase' RDM is missing — skipping residualisation.")
-
         # ── Publication figures 2 + 3 (shared with rodent pipeline) ────────
         # Built once for the example ROI: data + per-model activations and
         # RDMs across all 8 task configurations, using the mode-path models
@@ -2731,84 +2749,137 @@ if RELOAD_RUN is None:
 
 
         if N_PERMUTATIONS:
-            for perm_i in range(N_PERMUTATIONS):
-                # print(f"\nComputing {N_PERMUTATIONS} circularly-shifted results ...")
-                start_perm = n_neurons*perm_i
-                end_perm = n_neurons*(perm_i+1)
+            # ── Cached perm-data-RDM build ──────────────────────────────────
+            # mc.analyse.rsa_perm_rdms produces the n_perms permuted data
+            # RDMs once per ROI: circular shifts per (cell, trial) → trial
+            # average → downsample → z-score per neuron → crosscorr RDM.
+            # Result is pickled at OUT_DIR/perm_data_rdms/perm_data_rdms_<ROI>.pkl
+            # with a fingerprint covering every parameter that influences
+            # the outcome (cells, n_perms, seed, phase setting, configs,
+            # method version) — a mismatching pickle triggers a rebuild.
+            #
+            # Only the z-scored variants are cached (`split_halves_z` and
+            # `between_tasks_z`). The non-z `split_halves` / `between_tasks`
+            # rows in the summary CSV keep their empirical betas but their
+            # `p_perm` columns become NaN — we no longer compute non-z
+            # permutation nulls in the main pipeline.
+            from mc.analyse.rsa_perm_rdms import (
+                load_or_build_perm_rdms,
+                fingerprint as _rsa_perm_fingerprint,
+                TEST_VARIANTS as _PERM_TEST_VARIANTS,
+            )
 
-                rows = []
-                row_labels = []
+            per_cell_trials_list = list(per_cell_trial_chunks.values())
+            _cell_ids = [c['cell_id'] for c in per_cell_trials_list]
+            perm_pkl_path = os.path.join(
+                OUT_DIR, 'perm_data_rdms',
+                f'perm_data_rdms_{roi_name}.pkl',
+            )
+            _perm_fp = _rsa_perm_fingerprint(
+                roi=roi_name,
+                cell_ids=_cell_ids,
+                n_perms=N_PERMUTATIONS,
+                seed=42,
+                phase_residualise=PHASE_RESIDUALISE,
+                residualise_repeats=RESIDUALISE_REPEATS,
+                configs=configs,
+                n_conds_per_config=N_CONDS_PER_CONF,
+                n_bins_per_trial=360,
+            )
+            # Build the cross-run search list: every sibling run dir
+            # under OUT_BASE except the current one. The matcher walks
+            # `<sibling>/perm_data_rdms/perm_data_rdms_<ROI>.pkl` and
+            # validates the fingerprint before reusing.
+            if REUSE_PERMS_FROM_PREVIOUS_RUNS:
+                _search_dirs = sorted(
+                    os.path.join(OUT_BASE, d) for d in os.listdir(OUT_BASE)
+                    if (os.path.isdir(os.path.join(OUT_BASE, d))
+                        and os.path.join(OUT_BASE, d) != OUT_DIR)
+                )
+            else:
+                _search_dirs = None
+            _, perm_data_rdms = load_or_build_perm_rdms(
+                pickle_path=perm_pkl_path,
+                per_cell_trials=per_cell_trials_list,
+                fingerprint_data=_perm_fp,
+                configs=configs,
+                n_conds_per_config=N_CONDS_PER_CONF,
+                n_bins_per_trial=360,
+                verbose=True,
+                search_dirs=_search_dirs,
+                link_reused=LINK_REUSED_PERMS,
+            )
 
-                # create the long neuron vector.
-                for task_half in [1, 2]:
-                    for config in configs:
-                        neuron_values = perm_ACC_neurons[config][task_half][start_perm:end_perm]
-                        neuron_values = np.asarray(neuron_values)
+            # ── Vectorised OLS across all perms ─────────────────────────────
+            # One solve per (test × model) — replaces the inner Python loop
+            # that used to run a separate OLS for every (perm × model × test).
+            from scipy import stats as _scipy_stats
 
-                        rows.append(neuron_values)
-                        row_labels.append((config, task_half))
+            # CLAUDE.md rule #4: the perm OLS uses the SAME function as the
+            # empirical fit — mc.analyse.my_RSA.evaluate_model_vec —
+            # called once per (test × model/combo) with the full
+            # (n_perms, n_pairs) stack of permuted data RDMs as the target.
+            # The function returns (t, beta, p) of shape (n_perms, n_feat)
+            # in one vectorised solve, identical numerical convention as
+            # the empirical evaluate_model wrapper.
+            evaluate_model_vec = mc.analyse.my_RSA.evaluate_model_vec
 
-                perm_mat = np.hstack(rows)
-                perm_data_RDM = mc.analyse.my_RSA.compute_crosscorr(perm_mat.T, plotting=False, include_diagonal=False, no_tasks=len(configs), model=f'permuted data in {roi_name}')
-
-                # z-scored ACC neurons.
-                mu = np.nanmean(perm_mat, axis=1)      # one mean per neuron
-                sd = np.nanstd(perm_mat, axis=1)       # one std per neuron
-                perm_mat_z = (perm_mat.T - mu) / sd
-                perm_data_RDM_z = mc.analyse.my_RSA.compute_crosscorr(perm_mat_z, plotting=False, include_diagonal=False, no_tasks=len(configs), model=f'permuted data in z-scored {roi_name} neurons')
-
-
-
-                row_all = []
-                row_labels_all = []
-                for config in configs:
-                    all_neuron_values = perm_ACC_neurons_all[config][start_perm:end_perm]
-                    row_all.append(all_neuron_values)
-                    row_labels_all.append(config)
-                perm_mat_all = np.hstack(row_all)
-
-                perm_data_RDM_within, perm_data_RDM_across, perm_data_RDM_full = mc.analyse.my_RSA.compute_crosscorr_within(perm_mat_all.T, plotting=False, include_diagonal=False, no_tasks=len(configs), model=f'data in {roi_name}', block_size=N_CONDS_PER_CONF)
-
-                # z-scored ACC neurons.
-                # z-scored ACC neurons.
-                mu_all = np.nanmean(perm_mat_all, axis=1)      # one mean per neuron
-                sd_all = np.nanstd(perm_mat_all, axis=1)       # one std per neuron
-                perm_mat_all_z = (perm_mat_all.T - mu_all) / sd_all
-                perm_data_RDM_within_z, perm_data_RDM_across_z, _perm_data_RDM_full_z = mc.analyse.my_RSA.compute_crosscorr_within(perm_mat_all_z, plotting=False, include_diagonal=False, no_tasks=len(configs), model=f'data in z-scored {roi_name} neurons', block_size=N_CONDS_PER_CONF)
-
-
-                perm_specs = [
-                    ('split_halves',    model_RDMs,        perm_data_RDM[0]),
-                    ('split_halves_z',  model_RDMs,        perm_data_RDM_z[0]),
-                    #('within',         model_RDMs_within, perm_data_RDM_within[0]),
-                    #('within_z',       model_RDMs_within, perm_data_RDM_within_z[0]),
-                    ('between_tasks',   model_RDMs_across, perm_data_RDM_across[0]),
-                    ('between_tasks_z', model_RDMs_across, perm_data_RDM_across_z[0]),
-                ]
-
-                for test_name, rdm_dict, data_rdm in perm_specs:
+            for test_name in tests:
+                if test_name in _PERM_TEST_VARIANTS:
+                    rdm_dict_for_test = (model_RDMs
+                                          if test_name.startswith('split_halves')
+                                          else model_RDMs_across)
+                    Y_perms_full = perm_data_rdms[test_name]    # (n_perms, n_pairs)
                     pmask = _phase_mask_for(test_name, PHASE_MASK_MODE)
-                    data_m = _apply_phase_mask(data_rdm, pmask)
+                    if pmask is not None:
+                        Y_perms = Y_perms_full[:, pmask]
+                    else:
+                        Y_perms = Y_perms_full
 
                     for m in models:
-                        beta = eval_tuple(
-                            _apply_phase_mask(rdm_dict[m][0], pmask), data_m,
-                            label=f'perm/{test_name}/{m}')[1]
-                        perm_results[test_name][m].append(beta)
+                        x_full = np.asarray(rdm_dict_for_test[m][0], dtype=float)
+                        x = x_full[pmask] if pmask is not None else x_full
+                        # SAME function as the empirical fit — see CLAUDE.md rule #4.
+                        # Y_perms is (n_perms, n_pairs); evaluate_model_vec
+                        # returns (n_perms, 1) for a single regressor.
+                        _, BETA_PERMS, _ = evaluate_model_vec(x, Y_perms)
+                        betas = np.asarray(BETA_PERMS, dtype=float).ravel()
+                        perm_results[test_name][m] = list(betas)
 
                     for combo, combo_list in combo_models.items():
-                        stacked = _apply_phase_mask(
-                            build_combo_rdm(rdm_dict, combo_list), pmask)
-                        res = evaluate_combo_safe(
-                            stacked, data_m, combo_list,
-                            label=f'perm/{test_name}/{combo}')
+                        X_full = np.stack(
+                            [np.asarray(rdm_dict_for_test[m][0], dtype=float)
+                             for m in combo_list],
+                            axis=1,
+                        )
+                        X = X_full[pmask, :] if pmask is not None else X_full
+                        T_PERMS, BETA_PERMS, P_PERMS = evaluate_model_vec(
+                            X, Y_perms)
+                        perm_results_combo[test_name][combo]['t']    = [
+                            T_PERMS[i]    for i in range(N_PERMUTATIONS)]
+                        perm_results_combo[test_name][combo]['beta'] = [
+                            BETA_PERMS[i] for i in range(N_PERMUTATIONS)]
+                        perm_results_combo[test_name][combo]['p']    = [
+                            P_PERMS[i]    for i in range(N_PERMUTATIONS)]
+                else:
+                    # Non-z test variant — perms no longer computed; fill
+                    # with NaN so downstream summary code sees an empty
+                    # perm distribution and produces NaN p_perm cleanly.
+                    nan_arr = np.array([np.nan])
+                    for m in models:
+                        perm_results[test_name][m] = [np.nan] * N_PERMUTATIONS
+                    for combo, combo_list in combo_models.items():
+                        nan_feat = np.full(len(combo_list), np.nan)
+                        perm_results_combo[test_name][combo]['t']    = [
+                            nan_feat.copy() for _ in range(N_PERMUTATIONS)]
+                        perm_results_combo[test_name][combo]['beta'] = [
+                            nan_feat.copy() for _ in range(N_PERMUTATIONS)]
+                        perm_results_combo[test_name][combo]['p']    = [
+                            nan_feat.copy() for _ in range(N_PERMUTATIONS)]
 
-                        perm_results_combo[test_name][combo]['t'].append(np.asarray(res[0], dtype=float).ravel())
-                        perm_results_combo[test_name][combo]['beta'].append(np.asarray(res[1], dtype=float).ravel())
-                        perm_results_combo[test_name][combo]['p'].append(np.asarray(res[2], dtype=float).ravel())
-
-                if (perm_i + 1) % 25 == 0 or perm_i == 0:
-                    print(f"  Permutation {perm_i + 1}/{N_PERMUTATIONS} done")
+            print(f"  [{roi_name}] perm-RDM vectorised OLS done "
+                  f"({N_PERMUTATIONS} perms × {len(models)} models + "
+                  f"{len(combo_models)} combos × {len(_PERM_TEST_VARIANTS)} z-tests)")
 
 
 
@@ -3178,6 +3249,49 @@ if not summary_combo_df.empty and _fam_cols.issubset(summary_combo_df.columns):
         os.path.join(OUT_DIR, 'results_summary_combos.csv'), index=False)
 else:
     print("\nBH-FDR: no combo results available to correct.")
+
+
+# ── BH-FDR per combo, across ROIs, for each DSR sub-model ────────────
+# Independent of the single-family confirmatory block above. For every
+# (combo × DSR sub-model) at FDR_TEST, BH-FDR the 7 ROI p_perm values
+# separately so each combo gets its own q-val per ROI. Writes
+# `confirmatory_fdr_per_combo.csv` and adds a `q_fdr_per_combo` column to
+# `results_summary_combos.csv`. Reload-friendly: requires only the saved
+# summary_combo_df to exist.
+if not summary_combo_df.empty and _fam_cols.issubset(summary_combo_df.columns):
+    _dsr_mask  = summary_combo_df['sub_model'].astype(str).str.startswith('dsr_')
+    _test_mask = summary_combo_df['test'].eq(FDR_TEST)
+    _target = summary_combo_df[_dsr_mask & _test_mask].copy()
+    summary_combo_df['q_fdr_per_combo'] = np.nan
+    per_combo_rows = []
+    if not _target.empty:
+        for (combo, submodel), grp in _target.groupby(['combo', 'sub_model'],
+                                                        sort=False):
+            qs = benjamini_hochberg(grp['p_perm'].to_numpy())
+            summary_combo_df.loc[grp.index, 'q_fdr_per_combo'] = qs
+            fam_df = grp[['roi', 'combo', 'sub_model', 'n_neurons',
+                           'beta', 't', 'p_perm']].copy()
+            fam_df['q_fdr'] = qs
+            fam_df = fam_df.sort_values('p_perm').reset_index(drop=True)
+            n_sig = int((fam_df['q_fdr'] < FDR_ALPHA).sum())
+            print(f"\n=== Per-combo BH-FDR  combo={combo}  submodel={submodel}"
+                  f"  test={FDR_TEST}  ===")
+            print(f"  {len(fam_df)} ROIs; {n_sig} significant at q < {FDR_ALPHA}")
+            with pd.option_context('display.max_rows', None,
+                                   'display.width', 160):
+                print(fam_df.round(4).to_string(index=False))
+            per_combo_rows.append(fam_df)
+        if per_combo_rows:
+            pd.concat(per_combo_rows, ignore_index=True).to_csv(
+                os.path.join(OUT_DIR, 'confirmatory_fdr_per_combo.csv'),
+                index=False)
+            print(f"\nSaved: {os.path.join(OUT_DIR, 'confirmatory_fdr_per_combo.csv')}")
+        # Re-save the combo table with the new column.
+        summary_combo_df.to_csv(
+            os.path.join(OUT_DIR, 'results_summary_combos.csv'), index=False)
+    else:
+        print("\nPer-combo BH-FDR: no DSR sub-models present in "
+              f"summary_combo_df at test={FDR_TEST!r}.")
 
 def _render_overview_plots(summary_df, summary_combo_df,
                            roi_electrode_coords, out_dir,

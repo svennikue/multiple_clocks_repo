@@ -92,7 +92,7 @@ WEIGHTED_CORRELATION   = True
 MIN_DWELL_BINS         = 25
 MIN_SHARED_LOCS        = 5
 N_PEAKS_FREE           = 1                         # for free-peak control
-N_PERMUTATIONS         = 1000
+N_PERMUTATIONS         = 10
 RUN_PERMUTATIONS       = True
 RANDOM_SEED            = 42
 N_JOBS                 = -1
@@ -708,6 +708,48 @@ def _rate_maps_for_cell(neuron_id, sub_str, lag_deg):
     }
 
 
+# def _plot_one_cell_rate_maps(cell_row, lag_deg, save_stem, label_extra=""):
+#     """One PDF for one cell: a row of rate-map heatmaps, one per grid
+#     group (= per CV split if coverage_mode='paired'). Also annotates which
+#     original configs are paired in each group (top of each panel)."""
+#     _set_rc()
+#     info = _rate_maps_for_cell(cell_row["neuron_id"],
+#                                 str(cell_row["subject_id"]),
+#                                 lag_deg=lag_deg)
+#     if info is None or info["fr_maps"].shape[1] < 1:
+#         return
+#     n_panels = info["fr_maps"].shape[1] + 1   # +1 for mean
+#     fig, axes = plt.subplots(1, n_panels, figsize=(2.6 * CM * n_panels,
+#                                                       3.2 * CM),
+#                               constrained_layout=True, squeeze=False)
+#     axes = axes[0]
+#     # shared vmin/vmax for visual comparison across panels
+#     all_vals = info["fr_maps"][np.isfinite(info["fr_maps"])]
+#     vmin = float(np.nanpercentile(all_vals, 5))  if all_vals.size else 0.0
+#     vmax = float(np.nanpercentile(all_vals, 95)) if all_vals.size else 1.0
+#     cmap = "coolwarm"
+#     paired = info["paired_config_groups"] or [[g] for g in info["groups"]]
+#     for gi, ax in enumerate(axes[:-1]):
+#         rm = info["fr_maps"][:, gi].reshape(3, 3)
+#         ax.imshow(rm, cmap=cmap, vmin=vmin, vmax=vmax)
+#         ax.set_xticks([]); ax.set_yticks([])
+#         cfgs = paired[gi] if gi < len(paired) else [info["groups"][gi]]
+#         ax.set_title(f"grp {gi+1}\ncfgs {cfgs}\nn reps {info['n_reps'][gi]}",
+#                      fontsize=FONT_TICK)
+#     # mean panel
+#     ax = axes[-1]
+#     mean_rm = np.nanmean(info["fr_maps"], axis=1).reshape(3, 3)
+#     im = ax.imshow(mean_rm, cmap=cmap, vmin=vmin, vmax=vmax)
+#     ax.set_xticks([]); ax.set_yticks([])
+#     ax.set_title("mean", fontsize=FONT_TICK)
+#     cb = fig.colorbar(im, ax=axes[-1], fraction=0.07, pad=0.04)
+#     cb.ax.tick_params(labelsize=FONT_TICK)
+#     fig.suptitle(
+#         f"{cell_row['neuron_id']}  [{cell_row['roi']}]  lag = {lag_deg}°"
+#         + (f"  {label_extra}" if label_extra else ""),
+#         fontsize=FONT_TICK,
+#     )
+#     _save(fig, save_stem)
 def _plot_one_cell_rate_maps(cell_row, lag_deg, save_stem, label_extra=""):
     """One PDF for one cell: a row of rate-map heatmaps, one per grid
     group (= per CV split if coverage_mode='paired'). Also annotates which
@@ -716,13 +758,29 @@ def _plot_one_cell_rate_maps(cell_row, lag_deg, save_stem, label_extra=""):
     info = _rate_maps_for_cell(cell_row["neuron_id"],
                                 str(cell_row["subject_id"]),
                                 lag_deg=lag_deg)
-    if info is None or info["fr_maps"].shape[1] < 1:
+
+    # double_lag_degs = np.tile(range(0,360, 30),2)
+    # ctrl_lag = np.where(double_lag_degs == lag_deg+180)[0][0]
+    if lag_deg >= 180:
+        ctrl_lag = lag_deg-180
+    else:
+        ctrl_lag = lag_deg+180
+        
+    info_ctrl = _rate_maps_for_cell(cell_row["neuron_id"],
+                                str(cell_row["subject_id"]),
+                                lag_deg=ctrl_lag)
+    
+    if info is None or info["fr_maps"].shape[1] < 1 or info_ctrl is None:
         return
+
     n_panels = info["fr_maps"].shape[1] + 1   # +1 for mean
-    fig, axes = plt.subplots(1, n_panels, figsize=(2.6 * CM * n_panels,
-                                                      3.2 * CM),
+    # add a second control lag.
+    fig, axes_all = plt.subplots(2, n_panels, figsize=(2.6 * CM * n_panels,
+                                                      2*3.2 * CM),
                               constrained_layout=True, squeeze=False)
-    axes = axes[0]
+    
+    
+    axes = axes_all[0,:]
     # shared vmin/vmax for visual comparison across panels
     all_vals = info["fr_maps"][np.isfinite(info["fr_maps"])]
     vmin = float(np.nanpercentile(all_vals, 5))  if all_vals.size else 0.0
@@ -737,20 +795,47 @@ def _plot_one_cell_rate_maps(cell_row, lag_deg, save_stem, label_extra=""):
         ax.set_title(f"grp {gi+1}\ncfgs {cfgs}\nn reps {info['n_reps'][gi]}",
                      fontsize=FONT_TICK)
     # mean panel
-    ax = axes[-1]
+    ax = axes_all[0,-1]
     mean_rm = np.nanmean(info["fr_maps"], axis=1).reshape(3, 3)
     im = ax.imshow(mean_rm, cmap=cmap, vmin=vmin, vmax=vmax)
     ax.set_xticks([]); ax.set_yticks([])
-    ax.set_title("mean", fontsize=FONT_TICK)
+    ax.set_title(f"mean lag {lag_deg}", fontsize=FONT_TICK)
     cb = fig.colorbar(im, ax=axes[-1], fraction=0.07, pad=0.04)
     cb.ax.tick_params(labelsize=FONT_TICK)
+    
+    #import pdb; pdb.set_trace()
+    # second row.
+    axes_ctrl = axes_all[1,:]
+    # shared vmin/vmax for visual comparison across panels
+    all_ctrl_vals = info_ctrl["fr_maps"][np.isfinite(info_ctrl["fr_maps"])]
+    vmin = float(np.nanpercentile(all_ctrl_vals, 5))  if all_ctrl_vals.size else 0.0
+    vmax = float(np.nanpercentile(all_ctrl_vals, 95)) if all_ctrl_vals.size else 1.0
+    cmap = "coolwarm"
+    paired = info["paired_config_groups"] or [[g] for g in info["groups"]]
+    for gi, ax in enumerate(axes_ctrl[:-1]):
+        rm_ctrl = info_ctrl["fr_maps"][:, gi].reshape(3, 3)
+        ax.imshow(rm_ctrl, cmap=cmap, vmin=vmin, vmax=vmax)
+        ax.set_xticks([]); ax.set_yticks([])
+        cfgs = paired[gi] if gi < len(paired) else [info["groups"][gi]]
+        ax.set_title(f"grp {gi+1}\ncfgs {cfgs}\nn reps {info['n_reps'][gi]}",
+                      fontsize=FONT_TICK)
+    # mean panel
+    ax = axes_all[1, -1]
+    mean_rm_ctrl = np.nanmean(info_ctrl["fr_maps"], axis=1).reshape(3, 3)
+    im = ax.imshow(mean_rm_ctrl, cmap=cmap, vmin=vmin, vmax=vmax)
+    ax.set_xticks([]); ax.set_yticks([])
+    ax.set_title(f"mean lag {ctrl_lag}", fontsize=FONT_TICK)
+    cb = fig.colorbar(im, ax=axes_ctrl[-1], fraction=0.07, pad=0.04)
+    cb.ax.tick_params(labelsize=FONT_TICK)
+    
+    
     fig.suptitle(
-        f"{cell_row['neuron_id']}  [{cell_row['roi']}]  lag = {lag_deg}°"
+        f"{cell_row['neuron_id']}  [{cell_row['roi']}]  lag = {lag_deg} \n control lag = {ctrl_lag}°"
         + (f"  {label_extra}" if label_extra else ""),
         fontsize=FONT_TICK,
     )
     _save(fig, save_stem)
-
+    
 
 # ====================================================================
 # Per-test result figures

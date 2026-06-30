@@ -997,39 +997,139 @@ def mask_RDM(lower_tri, n, labels, mask=None, binarise = False, plotting = False
     return masked_vector
 
 
+def evaluate_model_vec(X, Y):
+    """Vectorised standardised OLS — same numerical convention as
+    :func:`evaluate_model`, but accepts either a single target or a
+    stack of targets in one call.
+
+    Use this for both empirical RSA fits and permutation-null OLS so
+    the perm β distribution is on the same scale as the empirical β
+    (CLAUDE.md rule #4: same function, empirical and perm).
+
+    Parameters
+    ----------
+    X : ndarray
+        Regressor RDM(s). Shape ``(n_pairs,)`` for a single regressor,
+        or ``(n_pairs, n_features)`` for a combo design.
+    Y : ndarray
+        Target data RDM(s). Shape ``(n_pairs,)`` for one target, or
+        ``(n_targets, n_pairs)`` for a batch (e.g. permutation RDMs).
+
+    Returns
+    -------
+    t, beta, p : ndarray
+        Three arrays of matching shape. If ``Y`` was 1-D the returned
+        arrays are 1-D of length ``n_features``. If ``Y`` was 2-D the
+        returned arrays are 2-D of shape ``(n_targets, n_features)``.
+
+    Numerical convention (matches `evaluate_model`):
+      * Add an intercept column to X (`sm.add_constant`-style).
+      * Drop rows where X or Y has any NaN. Same row mask applied to
+        Y; for batched Y the mask is computed jointly across all
+        targets so the design is identical for every perm.
+      * Z-score each non-intercept X column (mean 0, std 1, ddof=0).
+      * Z-score Y row-by-row (each target separately; mean 0, std 1).
+      * Fit OLS via `np.linalg.solve` on the normal equations.
+      * t, p use df = n_finite_rows − (n_features + 1) (intercept counted).
+      * Returns only the non-intercept columns of t, beta, p.
+    """
+    # Normalise input shapes
+    X = np.atleast_2d(np.asarray(X, dtype=float))
+    if X.shape[0] == 1 and X.shape[1] > 1:
+        # Caller passed a (n_pairs,) regressor as a row vector.
+        X = X.reshape(-1, 1)
+    elif X.ndim == 2 and X.shape[1] == 1 and X.shape[0] == 1:
+        # Single scalar — degenerate.
+        X = X.reshape(-1, 1)
+    if X.ndim == 1:
+        X = X.reshape(-1, 1)
+
+    Y_raw = np.asarray(Y, dtype=float)
+    y_was_1d = Y_raw.ndim == 1
+    if y_was_1d:
+        Y = Y_raw[None, :]
+    else:
+        Y = Y_raw
+
+    n_pairs, n_feat = X.shape
+    n_targets, n_pairs_y = Y.shape
+    if n_pairs_y != n_pairs:
+        raise ValueError(f'X has {n_pairs} pairs but Y has {n_pairs_y}')
+
+    # Append intercept column (matches sm.add_constant).
+    X_aug = np.column_stack([np.ones(n_pairs, dtype=float), X])
+    n_aug = n_feat + 1
+
+    # Joint NaN-row filter — applied identically to every target row so
+    # the design X is the same across perms.
+    fin = np.isfinite(X_aug).all(axis=1) & np.isfinite(Y).all(axis=0)
+
+    NAN_OUT = np.full((n_targets, n_feat), np.nan)
+    if fin.sum() < n_aug + 1:
+        if y_was_1d:
+            return NAN_OUT[0].copy(), NAN_OUT[0].copy(), NAN_OUT[0].copy()
+        return NAN_OUT.copy(), NAN_OUT.copy(), NAN_OUT.copy()
+
+    Xk = X_aug[fin]
+    Yk = Y[:, fin]
+
+    # Z-score the non-intercept regressor columns (col 0 = intercept stays 1).
+    for i in range(1, n_aug):
+        mu = Xk[:, i].mean()
+        sd = Xk[:, i].std()
+        if sd > 0:
+            Xk[:, i] = (Xk[:, i] - mu) / sd
+        else:
+            Xk[:, i] = 0.0
+    # Z-score each Y row (each target / each perm).
+    mu_y = Yk.mean(axis=1, keepdims=True)
+    sd_y = Yk.std(axis=1, keepdims=True)
+    sd_y = np.where(sd_y > 0, sd_y, 1.0)
+    Yz = (Yk - mu_y) / sd_y
+
+    # OLS via normal equations. Detect rank deficiency.
+    XtX = Xk.T @ Xk
+    if np.linalg.matrix_rank(XtX) < n_aug:
+        if y_was_1d:
+            return NAN_OUT[0].copy(), NAN_OUT[0].copy(), NAN_OUT[0].copy()
+        return NAN_OUT.copy(), NAN_OUT.copy(), NAN_OUT.copy()
+    XtX_inv = np.linalg.inv(XtX)
+    XtY = Xk.T @ Yz.T               # (n_aug, n_targets)
+    BETA = XtX_inv @ XtY            # (n_aug, n_targets)
+
+    preds = Xk @ BETA               # (n_fin, n_targets)
+    resid = Yz.T - preds            # (n_fin, n_targets)
+    n_fin = Xk.shape[0]
+    df = max(n_fin - n_aug, 1)
+    sigma2 = (resid ** 2).sum(axis=0) / df              # (n_targets,)
+    var_diag = np.diag(XtX_inv)                          # (n_aug,)
+    se = np.sqrt(np.outer(sigma2, var_diag))             # (n_targets, n_aug)
+    BETA_T = BETA.T                                      # (n_targets, n_aug)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        T = np.where(se > 0, BETA_T / se, np.nan)
+    # two-sided parametric p from the t-distribution
+    from scipy import stats as _scipy_stats
+    P = 2 * (1 - _scipy_stats.t.cdf(np.abs(T), df=df))
+
+    # Drop the intercept column from the outputs.
+    t_out    = T[:, 1:]
+    beta_out = BETA_T[:, 1:]
+    p_out    = P[:, 1:]
+
+    if y_was_1d:
+        return t_out[0], beta_out[0], p_out[0]
+    return t_out, beta_out, p_out
+
+
 def evaluate_model(model_rdm, data_rdm):
-    # import pdb; pdb.set_trace()
+    """Thin backward-compatible wrapper around :func:`evaluate_model_vec`.
 
-    #X = sm.add_constant(model_rdm.transpose());
-    X = sm.add_constant(model_rdm);
-    
-    # first, filter out potential nans in the model part
-    nan_filter = np.isnan(X).any(axis=1)
-    filtered_X = X[~nan_filter]
-    
-    # next, normalize the regressors (but not the intercept, bc std = 0 -> division by 0!)
-    # X = model_rdm.transpose()
-    for i in range(1, filtered_X.shape[1]):
-        filtered_X[:,i] = (filtered_X[:,i] - np.nanmean(filtered_X[:,i]))/ np.nanstd(filtered_X[:,i])
-    
-    # to check if a GLM is ill-conditioned
-    # To check that you can check the “condition number” of the design matrix - 
-    # the ration between the maximum singular value (similar to eigenvalue) and the minimum singular value.. 
-    # If that ratio is close to 1, you’re good. If it’s very large (e.g. >1000), it means the matrix is ill-conditioned - 
-    # one of your regressors is close to being a linear combination of the other two.
-    # mc.analyse.analyse_MRI_behav.check_GLM_regressors(X)
-    # import pdb; pdb.set_trace()
-    
-    Y = data_rdm;
-    # also filter the data
-    filtered_Y = Y[~nan_filter]
-    # then z-score
-    filtered_Y = (filtered_Y - np.nanmean(filtered_Y))/ np.nanstd(filtered_Y)
-    
-
-    est = sm.OLS(filtered_Y, filtered_X).fit()
-    # import pdb; pdb.set_trace()
-    return est.tvalues[1:], est.params[1:], est.pvalues[1:]
+    Accepts the same arguments as the previous statsmodels-based
+    implementation and returns ``(t, beta, p)`` for the non-intercept
+    regressors. Now uses the same vectorised standardised OLS as the
+    permutation-null code path — see CLAUDE.md rule #4.
+    """
+    return evaluate_model_vec(np.asarray(model_rdm), np.asarray(data_rdm))
 
 
 

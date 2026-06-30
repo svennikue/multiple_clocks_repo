@@ -114,14 +114,56 @@ LOCATION_COLORS = (
 # CLAUDE.md. ROIs not in this dict fall back to era_brewer overflow
 # colours in _roi_color_map.
 ROI_COLORS_SHOWGIRL2 = {
+    # Canonical CLAUDE.md mapping (corrected 2026-06; previous indices for
+    # medialOFC/ACC/HC_anterior/HC_mid/PCC did not match the project spec).
     'EC':              0,
-    'medialOFC':       1,
-    'ACC':             2,
-    'HC_anterior':     3,
-    'HC_mid':          4,
+    'ACC':             1,
+    'HC_anterior':     2,
+    'PCC':             3,
+    'medialOFC':       4,
     'Parahippocampal': 5,
-    'PCC':             6,
+    'HC_mid':          6,
 }
+
+# Canonical Showgirl2 palette as returned by ``era_brewer.era_brew(
+# 'Showgirl2', n=7)`` — single source of truth for the project palette.
+# Hardcoded to (a) avoid re-importing era_brewer everywhere and (b) sit
+# next to the CLAUDE.md ROI index map so the colours can be inspected
+# at a glance.  Verified against era_brewer 2026-06-29.
+#
+# IMPORTANT: era_brewer's n=7 interpolation gives indices 3 and 6 the
+# same value (#C1DCBF), so PCC (idx 3) and HC_mid (idx 6) would visually
+# collide if rendered side by side. ``HC_mid`` is therefore promoted
+# to a darker green sampled from the higher-n gradient so the two are
+# distinguishable in figures.
+SHOWGIRL2_DISCRETE = [
+    '#B74C2D',   # 0  EC               — dark red
+    '#448363',   # 1  ACC / mPFC       — dark teal-green
+    '#CCB178',   # 2  HC_anterior      — tan
+    '#C1DCBF',   # 3  PCC              — pale green
+    '#DC673E',   # 4  medialOFC        — red (orange-red)
+    '#7BB594',   # 5  Parahippocampal  — sage
+    '#629E7E',   # 6  HC_mid           — mid-dark green
+    #                                    (override of era_brewer's idx 6
+    #                                     duplicate of idx 3, sampled
+    #                                     from era_brew('Showgirl2', n=12)
+    #                                     to stay on the same gradient)
+]
+
+
+# Display-name overrides for ROI strings used in plotting helpers.
+# The ROI *key* in the data files stays unchanged (e.g. 'ACC') — this
+# only renames the label that appears on axes, legends, titles, etc.
+# Edit here to propagate the rename everywhere that goes through the
+# shared helpers.
+ROI_DISPLAY_NAMES = {
+    'ACC': 'mPFC',
+}
+
+
+def roi_display(name):
+    """Return the display label for an ROI key, falling back to itself."""
+    return ROI_DISPLAY_NAMES.get(name, name)
 
 # Dark green used for the empirical / observed-value vertical line on
 # permutation-null histograms (matches LOCATION_COLORS[6]).
@@ -1372,23 +1414,23 @@ def plot_peaklag_3d_mesh(coords, lags, save_path, title,
 # ── Glass-brain / 3-D mesh plots of significant cells ───────────────────
 
 def _roi_color_map(rois):
-    """Stable per-ROI colour from era_brewer Showgirl2 (see CLAUDE.md).
+    """Stable per-ROI colour from the canonical Showgirl2 palette
+    (see CLAUDE.md / ``SHOWGIRL2_DISCRETE``).
 
     ROIs listed in ``ROI_COLORS_SHOWGIRL2`` use their fixed index in the
-    7-colour palette. Any ROI not in that mapping falls back to extra
-    Showgirl2 shades drawn in alphabetical order, so figures always have
-    *something* but the canonical 7 stay consistent across plots.
+    7-colour palette. ROIs outside that mapping cycle through a small
+    extra-shades list (alphabetical order for stability across runs).
     """
-    import era_brewer
     rois = [r for r in rois if r]
     known = [r for r in rois if r in ROI_COLORS_SHOWGIRL2]
     extra = sorted(r for r in rois if r not in ROI_COLORS_SHOWGIRL2)
-    n_total = max(len(ROI_COLORS_SHOWGIRL2) + len(extra), 1)
-    palette = era_brewer.era_brew('Showgirl2', n=n_total)
-    out = {r: palette[ROI_COLORS_SHOWGIRL2[r]] for r in known}
-    # Overflow indices start after the 7 canonical slots.
+    out = {r: SHOWGIRL2_DISCRETE[ROI_COLORS_SHOWGIRL2[r]] for r in known}
+    # A small overflow palette for ROIs not in the canonical 7. Distinct
+    # neutral tones so they don't clash with the 7 mapped hues.
+    extra_palette = ['#888888', '#bdbdbd', '#5C1027', '#0e3d3a',
+                     '#7eb1c4', '#3d8b7d', '#a7d9b2']
     for i, r in enumerate(extra):
-        out[r] = palette[len(ROI_COLORS_SHOWGIRL2) + i]
+        out[r] = extra_palette[i % len(extra_palette)]
     return out
 
 
@@ -1626,6 +1668,7 @@ def plot_roi_electrodes_glassbrain(
     electrodes_per_roi, save_path=None,
     title='ROI electrode locations',
     marker_size=20, per_roi_panels=True,
+    roi_colors=None,
 ):
     """Schematic glass-brain of electrode locations grouped by ROI.
 
@@ -1635,6 +1678,8 @@ def plot_roi_electrodes_glassbrain(
         ``{roi_name: (n, 3) MNI coords}``.  ROIs with zero electrodes are
         skipped silently.
     save_path : str or None
+        If the path ends in ``.pdf`` or ``.svg`` it is saved as a vector
+        figure (preferred for publication panels). PNG/JPG also supported.
     title : str
         Figure suptitle for the per-ROI panel plot, or main title for the
         combined view.
@@ -1643,6 +1688,12 @@ def plot_roi_electrodes_glassbrain(
         If True (default), draw one small glass-brain per ROI in a grid.
         If False, draw all electrodes on a single glass-brain coloured by
         ROI.
+    roi_colors : dict[str, str] or None
+        Optional override for the ROI -> colour mapping (e.g. to enforce
+        the canonical CLAUDE.md palette from a caller-side dict). When
+        None (default), falls back to :func:`_roi_color_map` which uses
+        ``ROI_COLORS_SHOWGIRL2``. Any ROI missing from the provided dict
+        is filled in from the default map.
 
     Returns
     -------
@@ -1659,7 +1710,14 @@ def plot_roi_electrodes_glassbrain(
         print("  [roi-electrodes] no electrodes to plot.")
         return None
 
-    roi_colors = _roi_color_map(coords_per_roi.keys())
+    default_colors = _roi_color_map(coords_per_roi.keys())
+    if roi_colors is None:
+        roi_colors = default_colors
+    else:
+        # Caller-supplied colours win; fall back to the default for any ROI
+        # the caller didn't list.
+        roi_colors = {r: roi_colors.get(r, default_colors[r])
+                       for r in coords_per_roi}
 
     if not per_roi_panels:
         # Single combined glass-brain.
@@ -1675,7 +1733,7 @@ def plot_roi_electrodes_glassbrain(
         handles = [
             plt.Line2D([0], [0], marker='o', linestyle='', markersize=6,
                        markerfacecolor=col, markeredgecolor=col,
-                       label=f'{r} (n={len(coords_per_roi[r])})')
+                       label=f'{roi_display(r)} (n={len(coords_per_roi[r])})')
             for r, col in roi_colors.items()
         ]
         fig.legend(handles=handles, loc='lower center',
@@ -1706,7 +1764,7 @@ def plot_roi_electrodes_glassbrain(
         display.add_markers(coords,
                             marker_color=roi_colors[roi],
                             marker_size=marker_size * 0.6)
-        ax.set_title(f'{roi} (n={len(coords)})', fontsize=9)
+        ax.set_title(f'{roi_display(roi)} (n={len(coords)})', fontsize=9)
 
     # Hide unused axes.
     for j in range(n, nrows * ncols):
@@ -3363,4 +3421,149 @@ def plot_permutation_hist_combo_grid(perm_results_combo,
 
     if suptitle:
         fig.suptitle(suptitle, fontsize=12)
+    return fig, axes
+
+
+# ── Generic ROI × lag plots (shared across per-lag encoding analyses) ──
+def _save_pdf_png(fig, save_stem, dpi=300):
+    fig.savefig(save_stem + '.pdf', dpi=dpi, bbox_inches='tight')
+    fig.savefig(save_stem + '.png', dpi=dpi, bbox_inches='tight')
+    plt.close(fig)
+
+
+def plot_roi_lag_tstat_heatmap(t_matrix, lags_deg, rois,
+                                q_matrix=None,
+                                predicted_lags_per_roi=None,
+                                save_stem=None, title=None,
+                                cm_inch=1 / 2.54,
+                                font_tick=9, font_axis=10, font_big=11):
+    """ROI × lag heatmap of one-sample t-stats with optional FDR stars.
+
+    Parameters
+    ----------
+    t_matrix : (n_rois, n_lags) array of t-stats (one-sided > 0).
+    lags_deg : list of int lags in degrees, length n_lags.
+    rois : list of str, length n_rois.
+    q_matrix : optional (n_rois, n_lags) array of BH-FDR p-values; cells with
+        q < .05/.01/.001 are starred (* / ** / ***).
+    predicted_lags_per_roi : optional dict {roi: tuple of lags}; cells at
+        predicted lags get a black outline.
+    save_stem : path stem (without extension); writes .pdf + .png.
+    """
+    plt.rcParams.update({
+        'font.family':     'sans-serif',
+        'font.sans-serif': ['Arial', 'DejaVu Sans'],
+        'font.size':       font_tick,
+        'pdf.fonttype':    42, 'ps.fonttype': 42,
+        'axes.spines.top': False, 'axes.spines.right': False,
+    })
+    T = np.asarray(t_matrix, dtype=float)
+    Q = np.asarray(q_matrix, dtype=float) if q_matrix is not None else None
+    n_rois, n_lags = T.shape
+    vmax = float(np.nanmax(np.abs(T))) if np.isfinite(T).any() else 1.0
+    fig, ax = plt.subplots(figsize=(14 * cm_inch, max(3.5, 0.55 * n_rois) * cm_inch),
+                            constrained_layout=True)
+    im = ax.imshow(T, cmap='RdBu_r', vmin=-vmax, vmax=vmax, aspect='auto')
+    # Outline predicted lags ----------------------------------------
+    if predicted_lags_per_roi:
+        for ri, roi in enumerate(rois):
+            for tl in predicted_lags_per_roi.get(roi, ()):
+                if tl in lags_deg:
+                    ci = lags_deg.index(tl)
+                    ax.add_patch(plt.Rectangle(
+                        (ci - 0.5, ri - 0.5), 1, 1,
+                        fill=False, edgecolor='black', lw=1.2))
+    # FDR stars -----------------------------------------------------
+    if Q is not None:
+        for ri in range(n_rois):
+            for ci in range(n_lags):
+                q = Q[ri, ci]
+                if not np.isfinite(q):
+                    continue
+                s = p_to_stars(q)
+                if not s:
+                    continue
+                col = 'white' if abs(T[ri, ci]) > vmax * 0.55 else 'black'
+                ax.text(ci, ri, s, ha='center', va='center',
+                        fontsize=font_tick, fontweight='bold', color=col)
+    ax.set_xticks(range(n_lags))
+    ax.set_xticklabels([str(l) for l in lags_deg], fontsize=font_tick)
+    ax.set_yticks(range(n_rois))
+    ax.set_yticklabels([roi_display(r) for r in rois], fontsize=font_tick)
+    ax.set_xlabel('lag (°)', fontsize=font_axis)
+    if title:
+        ax.set_title(title, fontsize=font_big)
+    cb = fig.colorbar(im, ax=ax, fraction=0.05, pad=0.04)
+    cb.set_label('t (one-sided > 0)', fontsize=font_tick)
+    cb.ax.tick_params(labelsize=font_tick)
+    if save_stem is not None:
+        _save_pdf_png(fig, save_stem)
+        return None
+    return fig, ax
+
+
+def plot_roi_lag_curves(curves_per_roi, lags_deg,
+                         predicted_lags_per_roi=None,
+                         roi_colours=None,
+                         save_stem=None, title=None,
+                         cm_inch=1 / 2.54,
+                         font_tick=9, font_axis=10, font_big=11):
+    """Per-ROI line plot of mean CV r ± SEM across lags.
+
+    Parameters
+    ----------
+    curves_per_roi : dict {roi: (n_cells, n_lags) array}
+    lags_deg : list of int.
+    predicted_lags_per_roi : optional dict {roi: tuple of predicted lags}
+        — drawn as dotted dark-green vertical lines on the matching subplot.
+    roi_colours : optional dict {roi: hex} — falls back to gray.
+    """
+    plt.rcParams.update({
+        'font.family':     'sans-serif',
+        'font.sans-serif': ['Arial', 'DejaVu Sans'],
+        'font.size':       font_tick,
+        'pdf.fonttype':    42, 'ps.fonttype': 42,
+        'axes.spines.top': False, 'axes.spines.right': False,
+    })
+    rois = list(curves_per_roi.keys())
+    n = len(rois)
+    n_cols = min(n, 4)
+    n_rows = int(np.ceil(n / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols,
+                              figsize=(4.4 * cm_inch * n_cols,
+                                        3.6 * cm_inch * n_rows),
+                              constrained_layout=True, squeeze=False)
+    axes_flat = axes.ravel()
+    for ax in axes_flat[n:]:
+        ax.axis('off')
+    x = np.asarray(lags_deg, dtype=float)
+    for ax, roi in zip(axes_flat, rois):
+        M = np.asarray(curves_per_roi[roi], dtype=float)
+        if M.size == 0:
+            ax.axis('off'); continue
+        m_curve = np.nanmean(M, axis=0)
+        s_curve = np.nanstd(M, axis=0, ddof=1) / np.sqrt(
+            np.maximum(np.isfinite(M).sum(axis=0), 1)
+        )
+        col = (roi_colours or {}).get(roi, '#888')
+        ax.fill_between(x, m_curve - s_curve, m_curve + s_curve,
+                        color=col, alpha=0.25, linewidth=0)
+        ax.plot(x, m_curve, color=col, lw=1.6, marker='o', ms=2.5,
+                label=f'n = {M.shape[0]}')
+        ax.axhline(0, color='black', lw=0.5, ls='--')
+        if predicted_lags_per_roi:
+            for tl in predicted_lags_per_roi.get(roi, ()):
+                ax.axvline(tl, color=OBSERVED_VALUE_COLOR, lw=0.9,
+                           ls=':', alpha=0.8)
+        ax.set_title(roi_display(roi), fontsize=font_tick)
+        ax.set_xlabel('lag (°)', fontsize=font_tick)
+        ax.set_ylabel('mean CV r', fontsize=font_tick)
+        ax.set_xticks(lags_deg[::2])
+        ax.tick_params(axis='both', labelsize=font_tick, length=2, pad=1)
+        ax.legend(fontsize=font_tick - 1, frameon=False, loc='best')
+    if title:
+        fig.suptitle(title, fontsize=font_big)
+    if save_stem is not None:
+        _save_pdf_png(fig, save_stem)
+        return None
     return fig, axes

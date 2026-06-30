@@ -78,7 +78,8 @@ GRADIENT_MASK_PATH = os.path.join(MASK_DIR, "gradient_mask_bin.nii.gz")
 # the DSR main effect if missing).
 INPUT_MASKS = {
     "DSR_main_effect": DSR_MAIN_EFFECT_MASK_PATH,
-    "gradient":        GRADIENT_MASK_PATH,
+    # (the pre-built `gradient` mask is no longer plotted here — the
+    #  new yellow→dark-red rebuild lives in the GRADIENT BLOB section.)
 }
 
 CELL_TABLE_PATH = os.path.join(
@@ -109,8 +110,9 @@ PALETTE_NAME = "Showgirl2"
 GREY_HEX = "#bdbdbd"
 MASK_OVERLAY_HEX = "#ff8c1a"   # orange used for the surface cluster shading.
 
-MNE_FOCI_SCALE_IN = 0.9        # cells inside the mask — bumped up so the
-MNE_FOCI_SCALE_OUT = 0.35      # ROI colour isn't lost among the grey backdrop.
+MNE_FOCI_SCALE_IN = 0.45       # cells inside the mask
+MNE_FOCI_SCALE_OUT = 0.45      # SAME size as `_IN`, per user request
+MNE_FOCI_JITTER_MM = 2.5       # 3-D jitter so co-located cells separate
 MNE_SURF_ALPHA = 0.30
 MNE_VIEWS_BOTH_HEMI = ("lateral", "dorsal")
 MNE_VIEWS_SOLO_HEMI = ("medial", "lateral")
@@ -141,34 +143,45 @@ GRADIENT_TSTAT_MAPS = {  # display name → filename inside GRADIENT_TSTAT_DIR
     "next+2":  "NEXT2_QUARTER-split_quarters_DSR_masked_vox_tstat_c1.nii.gz",
     "next+3":  "NEXT3_QUARTER-split_quarters_DSR_masked_vox_tstat_c1.nii.gz",
 }
-# Per-condition voxel-wise t threshold. The figure-1c look comes from
-# slightly different cuts per map (the high-t bright-yellow blob is
-# sharper, the dark-red blob a bit looser). Tune these to taste.
+# Per-condition voxel-wise t threshold for the per-map blob. The four
+# blobs are then UNIONed into a single "gradient" mask which is rendered
+# with a smooth yellow→dark-red ramp along anterior–posterior (see
+# `GRADIENT_RAMP_HEX` below). Looser thresholds = bigger union = more
+# cells overlapping.
 GRADIENT_TSTAT_THRESHOLDS = {
-    "current": 3.10,   # roughly p99
-    "next":    3.50,   # roughly p99
-    "next+2":  2.70,   # roughly p99
-    "next+3":  2.40,   # roughly p99
+    "current": 2.00,
+    "next":    2.00,
+    "next+2":  1.70,
+    "next+3":  1.50,
 }
-# Yellow → dark-red ramp matching figure 1c (curr = bright yellow at the
-# anterior tip, next+3 = dark red posterior).
-GRADIENT_COLOURS = {
-    "current": "#FCE300",   # bright yellow
-    "next":    "#FF8C00",   # orange
-    "next+2":  "#D2691E",   # dark orange
-    "next+3":  "#8B0000",   # dark red
-}
-# Restrict the rendering to medial-view L+R, which is the panel the user
-# asked for.
+# Alternative: if you already have a pre-built binary mask of the
+# gradient, point this at it and we'll skip rebuilding from the 4 maps.
+# Set to None to always rebuild from `GRADIENT_TSTAT_MAPS`.
+GRADIENT_PREBUILT_MASK     = None      # e.g. GRADIENT_MASK_PATH
+# Smooth ramp ALONG DORSAL–VENTRAL (MNI z):
+#   dorsal tip  (high z) = bright yellow  — "distant future"
+#   ventral end (low z)  = very dark red  — "next action"
+# Order is low z → high z, so first entry maps to fmin, last to fmax.
+# GRADIENT_RAMP_HEX          = ["#3D0000", "#8B0000", "#D2691E", "#FF8C00", "#FCE300"]
+GRADIENT_RAMP_HEX = ["#FCE300", "#FF8C00", "#D2691E", "#8B0000", "#3D0000"]
+# Restrict the rendering to medial-view L+R.
 GRADIENT_VIEW              = "medial"
 GRADIENT_HEMIS             = ("lh", "rh")
 GRADIENT_OVERLAY_ALPHA     = 0.70
-# Cell dot scales — smaller than the main-effect plot so individual cells
-# show up among the ~50 that overlap.
-GRADIENT_CELL_SCALE_IN     = 0.45
-GRADIENT_CELL_SCALE_OUT    = 0.20
-GRADIENT_BRAIN_SIZE        = (1200, 1000)
+# Cell dot scales — SAME size for grey and ACC dots, with a small 3D
+# jitter so co-located cells visually separate.
+GRADIENT_CELL_SCALE        = 0.35
+GRADIENT_CELL_JITTER_MM    = 2.5
+GRADIENT_BRAIN_SIZE        = (1400, 1200)
 GRADIENT_OUT_SUBDIR        = "gradient_blobs"
+
+# Coronal section for the DSR main effect / lOFC overlap.
+DSR_CORONAL_ENABLED        = True
+DSR_CORONAL_PINK_HEX       = "#BF567F"     # era_brewer Lover2 index 0 (n=5)
+DSR_CORONAL_GREY_HEX       = "#bdbdbd"
+DSR_CORONAL_MARKER_SIZE    = 90            # nilearn add_markers scale
+DSR_CORONAL_JITTER_MM      = 2.5
+DSR_CORONAL_Y_TOL_MM       = 8.0           # cells within ±this of the cut
 
 
 # =============================================================================
@@ -397,6 +410,7 @@ def plot_mne_brain_inout(df_in, df_out, roi_col, roi_colors,
                          hemi="both", views=("lateral", "medial"),
                          scale_in=MNE_FOCI_SCALE_IN,
                          scale_out=MNE_FOCI_SCALE_OUT,
+                         jitter_mm=MNE_FOCI_JITTER_MM,
                          filter_foci_by_hemi=MNE_FILTER_FOCI_BY_HEMI,
                          mask_overlay_img=None,
                          overlay_color=MASK_OVERLAY_HEX,
@@ -477,6 +491,8 @@ def plot_mne_brain_inout(df_in, df_out, roi_col, roi_colors,
             coords = coords[keep]
             if coords.shape[0] == 0:
                 return
+        coords = _jitter_coords(coords, jitter_mm,
+                                 seed=hash(name + str(hemi)) & 0xFFFF)
         for foci_h in foci_hemis:
             try:
                 brain.add_foci(
@@ -554,6 +570,327 @@ def plot_counts_summary(counts_df, save_path, title):
     fig.savefig(save_path.replace(".png", ".svg"), bbox_inches="tight")
     plt.close(fig)
     print(f"  wrote {save_path} (+ .svg)")
+
+
+# =============================================================================
+# GRADIENT-OVERLAP RENDERING
+# =============================================================================
+
+def build_gradient_union_mask(tstat_dir, file_dict, threshold_dict,
+                                prebuilt_path=None):
+    """Build a single binary union mask of the four thresholded quarter
+    blobs. If `prebuilt_path` is set and exists, that file is loaded
+    instead and the per-map step is skipped.
+    """
+    if prebuilt_path and os.path.isfile(prebuilt_path):
+        print(f"  [gradient] using pre-built mask: {prebuilt_path}")
+        return nib.load(prebuilt_path)
+
+    union_data = None
+    union_aff = None
+    union_hdr = None
+    for name, fname in file_dict.items():
+        path = os.path.join(tstat_dir, fname)
+        if not os.path.isfile(path):
+            print(f"  [gradient] missing {name!r}: {path} — skipped.")
+            continue
+        img = nib.load(path)
+        data = img.get_fdata()
+        thr = float(threshold_dict.get(name, 2.5))
+        bin_arr = (data > thr).astype(np.uint8)
+        n_vox = int(bin_arr.sum())
+        print(f"  [gradient] {name:7s} t > {thr:>4.2f}  →  {n_vox:>5d} voxels")
+        if union_data is None:
+            union_data = bin_arr.copy()
+            union_aff, union_hdr = img.affine, img.header
+        else:
+            union_data |= bin_arr
+        del data, bin_arr, img
+    if union_data is None:
+        return None
+    n_union = int(union_data.sum())
+    print(f"  [gradient] union mask = {n_union} voxels")
+    return nib.Nifti1Image(union_data.astype(np.uint8),
+                            union_aff, union_hdr)
+
+
+def acc_era_brewer_colour():
+    """ACC hue from era_brewer Showgirl2 (index 1, per CLAUDE.md)."""
+    if HAS_ERA_BREWER:
+        try:
+            colors = era_brewer.era_brew(PALETTE_NAME, n=7,
+                                           brew_type="discrete")
+            return mcolors.to_hex(colors[1])
+        except Exception as e:
+            print(f"  [era_brewer] ACC colour fallback: {e}")
+    return "#C0492C"   # fallback close to the Showgirl2 ACC orange-red
+
+
+def lofc_pink_colour():
+    """lOFC hue: era_brewer Lover2 index 0 (n=5) — the deep pink."""
+    if HAS_ERA_BREWER:
+        try:
+            colors = era_brewer.era_brew("Lover2", n=5, brew_type="discrete")
+            return mcolors.to_hex(colors[0])
+        except Exception as e:
+            print(f"  [era_brewer] lOFC pink fallback: {e}")
+    return DSR_CORONAL_PINK_HEX
+
+
+def _save_brain_image_as_pdf(png_path, pdf_path, title=None,
+                              footer=None, dpi=300):
+    """Embed an MNE-rendered PNG into a PDF page with optional title /
+    footer. The brain itself remains a raster screenshot; metadata text is
+    vector."""
+    img = plt.imread(png_path)
+    fig = plt.figure(figsize=(img.shape[1] / dpi, img.shape[0] / dpi + 0.7),
+                     dpi=dpi)
+    ax = fig.add_axes([0.0, 0.07, 1.0, 0.86])
+    ax.imshow(img)
+    ax.axis("off")
+    if title:
+        fig.suptitle(title, fontsize=11, y=0.985)
+    if footer:
+        fig.text(0.5, 0.02, footer, ha="center", va="bottom",
+                 fontsize=9, color="#333")
+    fig.savefig(pdf_path, dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _jitter_coords(coords, mm, seed=0):
+    """Add a tiny isotropic 3-D jitter so co-located cells visually separate."""
+    if coords.size == 0 or mm <= 0:
+        return coords
+    rng = np.random.default_rng(seed)
+    return coords + rng.uniform(-mm, mm, size=coords.shape)
+
+
+def plot_gradient_overlap_brain(df, union_img, hemi, view, save_stem,
+                                 acc_color, title, footer,
+                                 ramp_hex=GRADIENT_RAMP_HEX,
+                                 cell_scale=GRADIENT_CELL_SCALE,
+                                 jitter_mm=GRADIENT_CELL_JITTER_MM,
+                                 overlay_alpha=GRADIENT_OVERLAY_ALPHA,
+                                 brain_size=GRADIENT_BRAIN_SIZE):
+    """Render one medial hemisphere with the gradient blob coloured by
+    anterior–posterior MNI-y (low y → dark red, high y → bright yellow)
+    and overlay cells: grey small dots outside, ACC-coloured small dots
+    inside the union mask. Saves PNG + PDF.
+    """
+    if not HAS_MNE_BRAIN:
+        print("  [mne] not installed — skipping gradient plot.")
+        return
+    subjects_dir = _ensure_fsaverage()
+    if subjects_dir is None:
+        print("  [mne] fsaverage unavailable — skipping.")
+        return
+    if union_img is None:
+        print(f"  [mne] no union mask for {hemi}/{view} — skipping.")
+        return
+
+    try:
+        brain = Brain(
+            subject="fsaverage", hemi=hemi, surf="pial",
+            background="white", size=brain_size,
+            subjects_dir=subjects_dir, alpha=MNE_SURF_ALPHA,
+            title=None,
+        )
+    except TypeError:
+        brain = Brain(
+            subject="fsaverage", hemi=hemi, surf="pial",
+            background="white", size=brain_size,
+            subjects_dir=subjects_dir, title=None,
+        )
+        _set_brain_surface_alpha(brain, MNE_SURF_ALPHA)
+
+    # --- single overlay coloured by per-vertex DORSAL–VENTRAL (MNI z) ---
+    try:
+        from nilearn import surface as _surface
+        from matplotlib.colors import LinearSegmentedColormap
+        from nibabel.freesurfer import read_geometry
+
+        surf_path = os.path.join(
+            subjects_dir, "fsaverage", "surf", f"{hemi}.pial")
+        verts, _ = read_geometry(surf_path)        # (n_vert, 3), MNI mm
+        texture_bin = _surface.vol_to_surf(
+            union_img, surf_path, interpolation="nearest").astype(float)
+        in_mask = texture_bin >= 0.5
+        data = np.full_like(texture_bin, np.nan, dtype=float)
+        if in_mask.any():
+            data[in_mask] = verts[in_mask, 2]      # MNI z of each vertex
+            z_min = float(np.nanmin(data))
+            z_max = float(np.nanmax(data))
+            if z_max - z_min < 1e-3:
+                z_max = z_min + 1.0
+            cmap = LinearSegmentedColormap.from_list(
+                "gradient_DV", ramp_hex)            # low z → very dark red, high z → yellow
+            kwargs = dict(
+                hemi=hemi, fmin=z_min, fmid=(z_min + z_max) / 2,
+                fmax=z_max, colormap=cmap, alpha=overlay_alpha,
+                colorbar=False,
+            )
+            try:
+                brain.add_data(data, smoothing_steps=0, **kwargs)
+            except TypeError:
+                brain.add_data(data, **kwargs)
+        else:
+            print(f"  [mne] union mask has no surface vertices on {hemi}")
+    except Exception as e:
+        print(f"  [mne] surface-overlay setup failed: {e}")
+
+    # --- planters: grey for non-overlap, ACC for overlap (equal size) ---
+    coords_all = df[["MNI_x", "MNI_y", "MNI_z"]].to_numpy(dtype=float)
+    inside = voxel_inside_mask(coords_all, union_img)
+    if hemi == "lh":
+        hemi_keep = coords_all[:, 0] <= 0
+    else:
+        hemi_keep = coords_all[:, 0] >= 0
+    coords_out = coords_all[(~inside) & hemi_keep]
+    coords_in  = coords_all[(inside)  & hemi_keep]
+    print(f"  [{hemi}] cells outside={coords_out.shape[0]}  "
+          f"inside={coords_in.shape[0]}  "
+          f"(union total inside, both hemis = {int(inside.sum())})")
+    coords_out_j = _jitter_coords(coords_out, jitter_mm, seed=hash(hemi+"out") & 0xFFFF)
+    coords_in_j  = _jitter_coords(coords_in,  jitter_mm, seed=hash(hemi+"in")  & 0xFFFF)
+
+    if coords_out_j.shape[0]:
+        try:
+            brain.add_foci(coords_out_j, coords_as_verts=False, hemi=hemi,
+                            color=GREY_HEX, scale_factor=cell_scale,
+                            name="outside_gradient")
+        except Exception as e:
+            print(f"  [mne] add_foci(grey) failed: {e}")
+    if coords_in_j.shape[0]:
+        try:
+            brain.add_foci(coords_in_j, coords_as_verts=False, hemi=hemi,
+                            color=acc_color, scale_factor=cell_scale,
+                            name="inside_gradient")
+        except Exception as e:
+            print(f"  [mne] add_foci(ACC) failed: {e}")
+
+    # ---- render → PNG → embed in PDF ----------------------------------
+    try:
+        brain.show_view(view)
+        png_path = f"{save_stem}.png"
+        brain.save_image(png_path)
+        pdf_path = f"{save_stem}.pdf"
+        _save_brain_image_as_pdf(png_path, pdf_path,
+                                  title=title, footer=footer)
+        print(f"  wrote {pdf_path}")
+    except Exception as e:
+        print(f"  [mne] save {save_stem!r} failed: {e}")
+    finally:
+        try:
+            brain.close()
+        except Exception:
+            pass
+
+
+def plot_dsr_coronal_section(df, full_mask_img, lofc_mask_img, roi_col,
+                              save_stem, title,
+                              pink_hex=None,
+                              grey_hex=DSR_CORONAL_GREY_HEX,
+                              marker_size=DSR_CORONAL_MARKER_SIZE,
+                              jitter_mm=DSR_CORONAL_JITTER_MM,
+                              y_tol_mm=DSR_CORONAL_Y_TOL_MM):
+    """Coronal slice through the lOFC sub-cluster of the DSR main effect.
+
+    * Background: MNI152 anatomical (nilearn default), with the DSR main
+      effect mask shaded orange.
+    * Markers: cells within ±`y_tol_mm` mm of the lOFC centre-of-mass y.
+      lOFC cells coloured Lover2 pink; cells of other ROIs in grey.
+      Coords are jittered isotropically so co-located cells separate.
+    """
+    if lofc_mask_img is None or full_mask_img is None:
+        print("  [coronal] no lOFC sub-cluster — skipping.")
+        return
+    try:
+        from nilearn import plotting as _plotting
+    except Exception as e:
+        print(f"  [coronal] nilearn unavailable: {e}")
+        return
+    pink_hex = pink_hex or lofc_pink_colour()
+
+    # Centre-of-mass y of the lOFC sub-cluster.
+    lofc_data = lofc_mask_img.get_fdata()
+    idx = np.argwhere(lofc_data > 0)
+    if idx.size == 0:
+        print("  [coronal] empty lOFC mask — skipping.")
+        return
+    com_vox = idx.mean(axis=0)
+    com_mni = apply_affine(lofc_mask_img.affine, com_vox)
+    y_cut = float(com_mni[1])
+    print(f"  [coronal] lOFC COM (MNI) = "
+          f"({com_mni[0]:+.1f}, {com_mni[1]:+.1f}, {com_mni[2]:+.1f})  "
+          f"→ coronal slice at y = {y_cut:+.1f}")
+
+    # Cells: keep those within the slice window.
+    coords_all = df[["MNI_x", "MNI_y", "MNI_z"]].to_numpy(dtype=float)
+    near_slice = np.abs(coords_all[:, 1] - y_cut) <= float(y_tol_mm)
+    roi = df[roi_col].to_numpy()
+    in_lofc_roi = (roi == "medialOFC")
+    inside_full = voxel_inside_mask(coords_all, full_mask_img)
+
+    coords_pink = coords_all[near_slice & in_lofc_roi]
+    coords_grey = coords_all[near_slice & (~in_lofc_roi)]
+    coords_pink_j = _jitter_coords(coords_pink, jitter_mm, seed=2026)
+    coords_grey_j = _jitter_coords(coords_grey, jitter_mm, seed=2027)
+    n_pink_overlap = int((near_slice & in_lofc_roi & inside_full).sum())
+
+    fig = plt.figure(figsize=(7.5, 5.5), dpi=300)
+    display = _plotting.plot_roi(
+        full_mask_img, bg_img=None,
+        display_mode="y", cut_coords=[y_cut],
+        cmap="autumn", alpha=0.55, colorbar=False,
+        title=title, figure=fig,
+    )
+    if coords_grey_j.shape[0]:
+        display.add_markers(
+            coords_grey_j, marker_color=grey_hex,
+            marker_size=marker_size * 0.7,
+        )
+    if coords_pink_j.shape[0]:
+        display.add_markers(
+            coords_pink_j, marker_color=pink_hex,
+            marker_size=marker_size,
+        )
+    footer = (
+        f"y = {y_cut:+.1f} mm  ±{y_tol_mm:.0f} mm   |   "
+        f"medialOFC cells in slice = {coords_pink.shape[0]}, "
+        f"of which {n_pink_overlap} overlap the DSR mask"
+    )
+    fig.text(0.5, 0.02, footer, ha="center", va="bottom",
+             fontsize=9, color="#333")
+
+    pdf_path = f"{save_stem}.pdf"
+    png_path = f"{save_stem}.png"
+    fig.savefig(pdf_path, bbox_inches="tight")
+    fig.savefig(png_path, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  wrote {pdf_path}")
+
+
+def gradient_overlap_counts(df, union_img, roi_col):
+    """Long-form table of cells × ROI inside the gradient union mask."""
+    if union_img is None:
+        return pd.DataFrame()
+    coords = df[["MNI_x", "MNI_y", "MNI_z"]].to_numpy(dtype=float)
+    inside = voxel_inside_mask(coords, union_img)
+    rows = [{
+        "mask": "gradient_union", "roi": "<all>",
+        "n_inside": int(inside.sum()),
+        "n_outside": int((~inside).sum()),
+        "n_total": int(len(inside)),
+    }]
+    for roi in df[roi_col].dropna().unique():
+        sel = (df[roi_col].to_numpy() == roi)
+        rows.append({
+            "mask": "gradient_union", "roi": roi,
+            "n_inside": int((inside & sel).sum()),
+            "n_outside": int((~inside & sel).sum()),
+            "n_total": int(sel.sum()),
+        })
+    return pd.DataFrame(rows)
 
 
 # =============================================================================
@@ -675,11 +1012,91 @@ def main():
                     mask_overlay_img=masks["full"],
                 )
 
+            # ---- Coronal section through the lOFC overlap -----------
+            if DSR_CORONAL_ENABLED and mask_name == "DSR_main_effect":
+                plot_dsr_coronal_section(
+                    df_sub, masks.get("full"), masks.get("lOFC"),
+                    ROI_COL,
+                    save_stem=os.path.join(
+                        subset_dir, f"coronal_lOFC_{subset}"),
+                    title=(f"DSR main effect — lOFC coronal slice  "
+                           f"|  {subset_label}"),
+                )
+
     if all_counts_rows:
         merged = pd.concat(all_counts_rows, ignore_index=True)
         merged_path = os.path.join(run_dir, "all_counts.csv")
         merged.to_csv(merged_path, index=False)
         print(f"\nMerged counts table: {merged_path}")
+
+    # =====================================================================
+    # GRADIENT BLOB  (figure 1c style — single union mask coloured yellow
+    # → dark red along anterior–posterior, medial lh+rh views)
+    # =====================================================================
+    print("\n========== Gradient blob overlap ==========")
+    union_img = build_gradient_union_mask(
+        GRADIENT_TSTAT_DIR, GRADIENT_TSTAT_MAPS, GRADIENT_TSTAT_THRESHOLDS,
+        prebuilt_path=GRADIENT_PREBUILT_MASK,
+    )
+    if union_img is None:
+        print("  no gradient union mask built — skipping.")
+    else:
+        acc_color = acc_era_brewer_colour()
+        grad_root = os.path.join(run_dir, GRADIENT_OUT_SUBDIR)
+        os.makedirs(grad_root, exist_ok=True)
+
+        with open(os.path.join(grad_root, "gradient_settings.json"), "w") as f:
+            json.dump({
+                "tstat_thresholds":    GRADIENT_TSTAT_THRESHOLDS,
+                "ramp_hex":            GRADIENT_RAMP_HEX,
+                "acc_cell_colour":     acc_color,
+                "view":                GRADIENT_VIEW,
+                "hemis":               list(GRADIENT_HEMIS),
+                "files":               GRADIENT_TSTAT_MAPS,
+                "prebuilt_mask":       GRADIENT_PREBUILT_MASK,
+                "cell_scale":          GRADIENT_CELL_SCALE,
+                "jitter_mm":           GRADIENT_CELL_JITTER_MM,
+                "overlay_alpha":       GRADIENT_OVERLAY_ALPHA,
+            }, f, indent=2)
+
+        for subset in CELL_SUBSETS:
+            df_sub, subset_label = get_cell_subset(
+                df_all, subset, dsr_subjects)
+            n_sess, _ = sess_counts[subset]
+            subset_label = f"{subset_label}, {n_sess} sessions"
+            print(f"\n--- gradient | subset {subset} — {subset_label} ---")
+            subset_dir = os.path.join(grad_root, subset)
+            os.makedirs(subset_dir, exist_ok=True)
+            if df_sub.empty:
+                print("  no cells — skipping.")
+                continue
+
+            counts = gradient_overlap_counts(df_sub, union_img, ROI_COL)
+            counts["subset"] = subset
+            counts.to_csv(os.path.join(subset_dir, "counts.csv"),
+                          index=False)
+            print(counts.to_string(index=False))
+
+            n_overlap = int(counts.loc[counts["roi"] == "<all>", "n_inside"].iloc[0])
+            n_total   = int(counts.loc[counts["roi"] == "<all>", "n_total"].iloc[0])
+            footer = (f"cells overlapping gradient: {n_overlap}/{n_total}   "
+                       f"(t-thresholds: " +
+                       ", ".join(f"{k}>{v:.2f}"
+                                  for k, v in GRADIENT_TSTAT_THRESHOLDS.items())
+                       + ")")
+            print(f"  overlap with gradient union: {n_overlap}/{n_total}")
+
+            for h in GRADIENT_HEMIS:
+                stem = os.path.join(subset_dir,
+                                     f"gradient_overlap_{h}_{GRADIENT_VIEW}")
+                title = (f"Gradient overlap — {subset_label}   "
+                          f"({h} {GRADIENT_VIEW})")
+                plot_gradient_overlap_brain(
+                    df_sub, union_img,
+                    hemi=h, view=GRADIENT_VIEW,
+                    save_stem=stem, acc_color=acc_color,
+                    title=title, footer=footer,
+                )
 
     print(f"\nAll outputs under: {run_dir}")
 

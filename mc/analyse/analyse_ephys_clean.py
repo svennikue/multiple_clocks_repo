@@ -29,7 +29,7 @@ import mc.simulation.RDMs as RDMs
 import mc.simulation.predictions as predictions  # model_DSR + plot_without_legends
 import mc.analyse.my_RSA as my_RSA               # shared RSA helpers (human pipeline)
 import mc.plotting.figure_layout as figure_layout  # A4-aware figsize helper
-
+# import pdb; pdb.set_trace()
 
 # the four models entering the GLM (midnight deliberately excluded), in the
 # order GLM_RDMs returns them (alphabetical).
@@ -1655,7 +1655,7 @@ def pub_figure_dsr_overview(dsr_model_activation, dsr_model_rdm,
                             coefs_by_model, model_order, fdr_pvals,
                             n_tasks, n_conds_per_task=12, recday_label='',
                             save_stem=None, font_size=11,
-                            width_fracs=(0.3, 0.3, 0.4), height_in=3.6,
+                            width_fracs=(0.3, 0.3, 0.4), height_in=1.9,
                             x_axis_groups=None):
     
     """Main publication figure (3 panels):
@@ -1712,6 +1712,7 @@ def pub_figure_dsr_overview(dsr_model_activation, dsr_model_rdm,
 
         _save_fig(fig, save_stem)
         plt.show()
+        # import pdb; pdb.set_trace()
     return fig
 
 
