@@ -20,6 +20,7 @@ import math
 from collections import defaultdict
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
+from matplotlib.ticker import FuncFormatter
 import mc
 
 
@@ -1618,4 +1619,257 @@ def plot_model_rdm_correlation(
         plt.show()
 
     return fig, ax, corr
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Shared ROI × stat plotting helpers — used by encoding_state_sustained_cv
+# (figs 5/6/11) and by DSR-RSA add-on plotting. Same "feel" everywhere.
+# ─────────────────────────────────────────────────────────────────────
+def _stars(q):
+    if q is None or not np.isfinite(q):
+        return ''
+    if q < .001: return '***'
+    if q < .01:  return '**'
+    if q < .05:  return '*'
+    return ''
+
+
+def plot_roi_tstat_heatmap(
+    t_matrix, rois, col_labels, *,
+    q_matrix=None,
+    panel_groups=None,
+    cmaps=None,
+    title=None,
+    cbar_label='t vs 0',
+    fig_size_cm=(10.0, 13.0),
+    font_tick=10, font_axis=10, font_big=11,
+    save_path=None,
+):
+    """ROI × stat heatmap of t-stats, with FDR-driven bold stars in cells.
+
+    Mirrors the style of `encoding_state_sustained_cv.fig11_wilcoxon_heatmap`
+    so that DSR-RSA, sustained-state, etc. all use the same look.
+
+    Parameters
+    ----------
+    t_matrix : (n_rois, n_cols) array of t-statistics.
+    rois     : list of ROI names (length n_rois).
+    col_labels : list of column labels (length n_cols).
+    q_matrix : optional (n_rois, n_cols) of BH-FDR q-values used to draw
+        the bold stars (* < .05, ** < .01, *** < .001).
+    panel_groups : optional list of (slice_or_indices, cmap, panel_title)
+        triples to split the heatmap into multiple panels side-by-side
+        (one panel per group). When None, a single panel is drawn.
+        Example: [((0,1,2), 'RdBu_r', 'controls'), ((3,), 'PiYG_r', 'DSR')]
+    cmaps : str or list — used only if `panel_groups` is None.
+    fig_size_cm : (width_cm, height_cm) for the overall figure.
+
+    Returns the matplotlib Figure.
+    """
+    cm = 1.0 / 2.54
+    rcparams = {
+        'font.family':     'sans-serif',
+        'font.sans-serif': ['Arial', 'DejaVu Sans'],
+        'font.size':       font_tick,
+        'pdf.fonttype':    42, 'ps.fonttype': 42,
+        'axes.spines.top': False, 'axes.spines.right': False,
+    }
+    n_rows = len(rois)
+
+    if panel_groups is None:
+        panel_groups = [(slice(None), cmaps or 'RdBu_r', '')]
+
+    width_ratios = []
+    for grp in panel_groups:
+        idxs = grp[0]
+        if isinstance(idxs, slice):
+            n = len(range(*idxs.indices(t_matrix.shape[1])))
+        else:
+            n = len(list(idxs))
+        width_ratios.append(max(n, 1) * 1.0)
+
+    plt.rcParams.update(rcparams)
+    fig = plt.figure(figsize=(fig_size_cm[0] * cm, fig_size_cm[1] * cm),
+                     constrained_layout=True)
+    gs = fig.add_gridspec(1, len(panel_groups), width_ratios=width_ratios,
+                          wspace=0.10)
+
+    for pi, (idxs, cmap_name, panel_title) in enumerate(panel_groups):
+        ax = fig.add_subplot(gs[0, pi])
+        if isinstance(idxs, slice):
+            cols = list(range(*idxs.indices(t_matrix.shape[1])))
+        else:
+            cols = list(idxs)
+        sub_t = t_matrix[:, cols]
+        sub_q = q_matrix[:, cols] if q_matrix is not None else None
+        sub_labels = [col_labels[c] for c in cols]
+        if np.isfinite(sub_t).any():
+            vmax = max(1.0, float(np.nanmax(np.abs(sub_t))))
+        else:
+            vmax = 1.0
+        im = ax.imshow(sub_t, cmap=cmap_name, vmin=-vmax, vmax=vmax,
+                       aspect='auto')
+        if sub_q is not None:
+            img = ax.images[0].get_array()
+            for i in range(n_rows):
+                for j in range(len(cols)):
+                    s = _stars(sub_q[i, j])
+                    if not s:
+                        continue
+                    intensity = abs(float(img[i, j])) / max(vmax, 1e-9)
+                    col = 'white' if intensity > 0.55 else 'black'
+                    ax.text(j, i, s, ha='center', va='center',
+                            fontsize=font_big + 1, fontweight='bold',
+                            color=col, zorder=5)
+        ax.set_xticks(range(len(cols)))
+        ax.set_xticklabels(sub_labels, rotation=30, ha='right',
+                           fontsize=font_axis)
+        ax.set_yticks(range(n_rows))
+        if pi == 0:
+            ax.set_yticklabels(rois, fontsize=font_axis)
+        else:
+            ax.set_yticklabels([])
+        if panel_title:
+            ax.set_title(panel_title, fontsize=font_big, pad=2)
+        for sp in ('top', 'right'):
+            ax.spines[sp].set_visible(False)
+        ax.tick_params(axis='both', length=1.5, pad=1)
+        cb = fig.colorbar(im, ax=ax, orientation='horizontal',
+                          location='bottom', fraction=0.12, pad=0.55,
+                          shrink=0.9, aspect=5)
+        cb.set_label(cbar_label, fontsize=font_axis)
+        cb.ax.tick_params(labelsize=font_axis)
+
+    if title:
+        fig.suptitle(title, fontsize=font_big)
+    if save_path is not None:
+        for ext in ('.pdf', '.png'):
+            base = os.path.splitext(save_path)[0]
+            fig.savefig(base + ext, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+    return fig
+
+
+
+def _tick_no_trailing_zeros(x, pos):
+    if np.isclose(x, 0):
+        return '0'
+    return f'{x:g}'
+
+def plot_per_roi_stat_histograms(
+    results_df, *,
+    stat_col, stat_label,
+    roi_col='roi',
+    roi_order=None, roi_colours=None,
+    q_per_roi=None,
+    empirical_per_roi=None,
+    mark_sig_neurons=None,
+    bar_color='lightgray',
+    n_cols=4, panel_w_cm=3.0, panel_h_cm=1.5,
+    font_small=9,
+    save_path=None):
+    
+    """Per-ROI histograms of `stat_col`."""
+    mark_sig_neurons = mark_sig_neurons or {}
+    cm = 1.0 / 2.54
+    plt.rcParams.update({
+        'font.family':     'sans-serif',
+        'font.sans-serif': ['Arial', 'DejaVu Sans'],
+        'font.size':       font_small,
+        'pdf.fonttype':    42, 'ps.fonttype': 42,
+        'axes.spines.top': False, 'axes.spines.right': False,
+    })
+
+    if roi_order is None:
+        roi_order = [r for r in results_df[roi_col].unique() if pd.notna(r)]
+    else:
+        roi_order = [r for r in roi_order if (results_df[roi_col] == r).any()]
+
+    n_rois = len(roi_order)
+    if n_rois == 0:
+        return None
+
+    n_cols = min(n_cols, n_rois)
+    n_rows = int(np.ceil(n_rois / n_cols))
+    fig_w = (panel_w_cm * n_cols + 2.2) * cm
+    fig_h = (panel_h_cm * n_rows + 0.7) * cm
+
+    fig, axes = plt.subplots(
+        n_rows, n_cols, figsize=(fig_w, fig_h),
+        constrained_layout=True, squeeze=False
+    )
+
+    all_vals = results_df[stat_col].dropna().to_numpy()
+    if all_vals.size:
+        lo, hi = np.nanpercentile(all_vals, [1, 99])
+        bins = np.linspace(lo, hi, 22)
+    else:
+        bins = 20
+
+    for i, r in enumerate(roi_order):
+        ax = axes[i // n_cols, i % n_cols]
+        rdf = results_df.loc[results_df[roi_col] == r]
+        v = rdf[stat_col].dropna().to_numpy()
+
+        if v.size:
+            ax.hist(v, bins=bins, color=bar_color, edgecolor='black',
+                    linewidth=0.2, alpha=0.55)
+
+            if r in mark_sig_neurons:
+                v_sig = np.asarray(mark_sig_neurons[r], float)
+                v_sig = v_sig[np.isfinite(v_sig)]
+                if v_sig.size:
+                    col = (roi_colours or {}).get(r, '#444')
+                    ax.hist(v_sig, bins=bins, color=col,
+                            edgecolor='black', linewidth=0.2, alpha=0.95)
+
+        ax.axvline(0, color='gray', ls='--', lw=1.5)   # a) 0-line thickness
+
+        if empirical_per_roi and r in empirical_per_roi:
+            emp = empirical_per_roi[r]
+            if emp is not None and np.isfinite(emp):
+                col = (roi_colours or {}).get(r, '#444')
+                ax.axvline(float(emp), color=col, lw=2.0)  # a) empirical line thickness
+
+        title_str = r
+        if q_per_roi and r in q_per_roi:
+            s = _stars(q_per_roi[r])
+            if s:
+                title_str = f'{r} {s}'
+        ax.set_title(title_str, fontsize=font_small, pad=2)
+
+        ax.tick_params(axis='both', labelsize=font_small, length=1.5, pad=1)
+        ax.xaxis.set_major_formatter(FuncFormatter(_tick_no_trailing_zeros))  # b)
+
+        # c) only once for the whole figure if multiple rows
+        if i == 0 and n_rows == 1:
+            ax.set_ylabel('# cells / units', fontsize=font_small)
+
+        if i // n_cols == n_rows - 1:
+            ax.set_xlabel(stat_label, fontsize=font_small)
+
+        for sp in ('top', 'right'):
+            ax.spines[sp].set_visible(False)
+
+    for k in range(n_rois, n_rows * n_cols):
+        axes[k // n_cols, k % n_cols].axis('off')
+
+    if n_rows > 1:
+        fig.supylabel('# cells / units', fontsize=font_small)
+
+    # d) caption instead of legend
+    caption = 'Gray bars show the distribution; black line shows the mean; dashed gray line shows 0; colored line shows the empirical value.'
+    if mark_sig_neurons:
+        caption = 'Gray bars show the distribution; colored bars show significant cells; black line shows the mean; dashed gray line shows 0; colored line shows the empirical value.'
+
+    fig.subplots_adjust(bottom=0.5)
+    fig.text(0.5, 0.00, caption, ha='center', va='bottom', fontsize=font_small)
+
+    if save_path is not None:
+        for ext in ('.pdf', '.png'):
+            base = os.path.splitext(save_path)[0]
+            fig.savefig(base + ext, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+
+    return fig
 

@@ -90,7 +90,7 @@ def _lookup_mni(roi_table, subject, cell_idx):
     return (float(row["MNI_x"]), float(row["MNI_y"]), float(row["MNI_z"]))
 
 
-def load_cells(cell_set="rsa",
+def load_cells(cell_set="all_in_roi_table",
                subjects=None,
                data_dir=DEFAULT_DATA_DIR,
                roi_column=DEFAULT_ROI_COLUMN,
@@ -128,6 +128,11 @@ def load_cells(cell_set="rsa",
             subjects = load_rsa_subjects(data_dir=data_dir)
         subj_ints = sorted({int(s) for s in subjects})
         roi_rows = roi_table.loc[roi_table.index.get_level_values(0).isin(subj_ints)]
+    elif cell_set == "not_in_rsa":
+        if subjects is None:
+            subjects = load_rsa_subjects(data_dir=data_dir)
+        subj_ints = sorted({int(s) for s in subjects})
+        roi_rows = roi_table.loc[~roi_table.index.get_level_values(0).isin(subj_ints)]
     elif cell_set == "all_in_roi_table":
         roi_rows = roi_table
     else:

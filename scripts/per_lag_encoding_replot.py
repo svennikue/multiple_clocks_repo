@@ -74,7 +74,7 @@ from per_lag_encoding import (
 
 
 # ── Settings ──────────────────────────────────────────────────────────
-RELOAD_RUN = '2026-06-28_15-30-46'
+RELOAD_RUN = '2026-06-30_18-21-57'
 
 # EXCL_NAME also dispatches to a named-mode auto-builder when it matches
 # one of these reserved names; otherwise we fall back to the manual

@@ -3259,9 +3259,12 @@ else:
 # `results_summary_combos.csv`. Reload-friendly: requires only the saved
 # summary_combo_df to exist.
 if not summary_combo_df.empty and _fam_cols.issubset(summary_combo_df.columns):
-    _dsr_mask  = summary_combo_df['sub_model'].astype(str).str.startswith('dsr_')
+    # Per-combo BH-FDR: previously restricted to DSR sub-models. Now applied
+    # to EVERY sub-model in a combo (state / location / bttn_* / dsr_*) so
+    # that `q_fdr_per_combo` is populated across the full row set. FDR
+    # scope stays the same: 7 ROIs within each (combo × sub_model × test).
     _test_mask = summary_combo_df['test'].eq(FDR_TEST)
-    _target = summary_combo_df[_dsr_mask & _test_mask].copy()
+    _target = summary_combo_df[_test_mask].copy()
     summary_combo_df['q_fdr_per_combo'] = np.nan
     per_combo_rows = []
     if not _target.empty:

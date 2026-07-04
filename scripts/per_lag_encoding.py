@@ -103,17 +103,29 @@ from mc.plotting.cell_results import (
     p_to_stars,
 )
 
-
 # ── Settings ──────────────────────────────────────────────────────────
 DATA_DIR = '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives'
 OUT_BASE = os.path.join(DATA_DIR, 'group', 'per_lag_encoding')
+
+# Reload mode: point at a previous run directory to skip the heavy
+# CV + permutation compute and just re-run stats + plots from the
+# cached per-cell CSVs. Outputs land in a fresh timestamped dir.
+RELOAD_FROM     = None
+#RELOAD_FROM   = os.path.join(OUT_BASE, '2026-06-30_18-21-57')
+
+# Display-name overrides used in figures ONLY (data columns keep the
+# original ROI keys). Per CLAUDE.md, ACC is written as 'mPFC' in
+# manuscript figures.
+ROI_DISPLAY_NAMES = {'ACC': 'mPFC'}
+def _disp(roi):
+    return ROI_DISPLAY_NAMES.get(roi, roi)
 
 ROIS_TO_RUN = ['ACC', 'medialOFC', 'PCC', 'Parahippocampal',
                'HC_anterior', 'HC_mid', 'EC']
 
 PHASE_RESIDUALISE      = 'cosine'
 TRIALS                 = 'all_minus_explore'
-N_PERMUTATIONS         = 1000
+N_PERMUTATIONS         = 10 #1000
 N_JOBS                 = -1
 RANDOM_SEED            = 42
 ALPHA                  = 0.05
@@ -134,13 +146,32 @@ DSR_INF_LAGS_DEG  = [30, 60, 90]                        # ACC-informed subset
 
 ROI_PREDICTED_LAGS_DEG = {
     'ACC':         (30, 60),
-    'HC_anterior': (0,),
+    'HC_anterior': (0, 330),
     'HC_mid':      (0, 330),
 }
+
+# Single lags at which we want a lag-agnostic per-ROI t-test on the
+# per-cell CV r. Each lag is tested independently (no "vs other lags"
+# structure), across EVERY ROI — makes it easy to see "which ROI has a
+# signal AT lag X" without having to reason about lag sets.
+SINGLE_LAGS_FOR_TESTS = [0, 30, 60, 330]
 
 # bttn_next = button this many bins ahead. User-tuned (was 90 = one full
 # state, now 30 = one position bin).
 LAG_BINS_BTTN_NEXT = 30
+
+# Which regressors enter the partial-out design in `with_ctrl` mode.
+# Per-config intercepts are ALWAYS included (statistical glue, not a
+# model). `loc_now` is additionally gated by lag (it is only added at
+# lags != 0° to avoid being collinear with the target regressor).
+# Set to an empty set to make `with_ctrl` equivalent to `no_ctrl`.
+CONTROL_MODELS = {'state', 'bttn_curr'}
+_VALID_CONTROL_MODELS = {'state', 'bttn_curr', 'bttn_next', 'loc_now'}
+assert CONTROL_MODELS <= _VALID_CONTROL_MODELS, (
+    f"CONTROL_MODELS contains unknown entries: "
+    f"{CONTROL_MODELS - _VALID_CONTROL_MODELS}. "
+    f"Allowed: {_VALID_CONTROL_MODELS}"
+)
 
 BTTN_CODES = [0, 1, 2, 3, 99]
 N_BTTN     = len(BTTN_CODES)
@@ -398,17 +429,31 @@ def _cfg_intercepts_bin(n_cfg, train_cfg_ids):
 
 def _partial_out_controls(Y_cfg, loc_cfg, btn_cfg, train_cfg_ids,
                             include_loc_now=True):
-    """Fit y ~ state + bttn_curr + bttn_next [+ location-now] on training
+    """Fit y ~ <CONTROL_MODELS> + per-config intercepts on training
     configs, return residual Y_cfg (residuals for ALL configs). Held-out
-    is leakage-free because betas are trained without it."""
+    is leakage-free because betas are trained without it.
+
+    `include_loc_now` gates the loc_now block by lag (it is suppressed
+    at lag 0° to avoid being collinear with the target regressor). The
+    loc_now block is only added if both this flag is True AND 'loc_now'
+    is in `CONTROL_MODELS`.
+    """
     n_cfg = Y_cfg.shape[0]
-    blocks = [_state_onehot_bin(n_cfg)]
-    if include_loc_now:
+    blocks = []
+    if 'state' in CONTROL_MODELS:
+        blocks.append(_state_onehot_bin(n_cfg))
+    if 'loc_now' in CONTROL_MODELS and include_loc_now:
         blocks.append(_loc_onehot_at_lag_bin(loc_cfg, 0))
-    blocks.append(_btn_onehot_at_lag_bin(btn_cfg, 0))
-    blocks.append(_btn_onehot_at_lag_bin(btn_cfg, LAG_BINS_BTTN_NEXT))
+    if 'bttn_curr' in CONTROL_MODELS:
+        blocks.append(_btn_onehot_at_lag_bin(btn_cfg, 0))
+    if 'bttn_next' in CONTROL_MODELS:
+        blocks.append(_btn_onehot_at_lag_bin(btn_cfg, LAG_BINS_BTTN_NEXT))
     blocks.append(_cfg_intercepts_bin(n_cfg, train_cfg_ids))
-    X = np.hstack(blocks)
+    if len(blocks) == 1:
+        # only the per-config intercepts → demean per cfg, no partialling
+        X = blocks[0]
+    else:
+        X = np.hstack(blocks)
     y_full = Y_cfg.reshape(-1)
     keep = np.isfinite(y_full)
     train_mask = np.ones(X.shape[0], dtype=bool)
@@ -708,7 +753,12 @@ def per_roi_stats(df, ctrl_mode):
             rec[f'T3_k_lag{lag:03d}']     = k_sig
             rec[f'T3_p_lag{lag:03d}']     = _binom_gt_alpha(k_sig, n)
             rec[f'T4_p_lag{lag:03d}']     = _wilcoxon_perm_p(p)
-        # T2 within-cell paired predicted vs other --------------------
+        # T1a — averaged-across-predicted-lags T1 (parallels the
+        # `test1_meanR_*` test in spatial_peaks_simple: for each cell take
+        # the mean CV r over the ROI's predicted lag set, then one-sample
+        # t-test of that per-cell mean > 0 across cells). Only defined for
+        # predicted-lag ROIs.
+        # T2 — within-cell paired: predicted vs other lags.
         pred_lags = ROI_PREDICTED_LAGS_DEG.get(roi, None)
         if pred_lags:
             r_mat = np.stack([
@@ -718,6 +768,16 @@ def per_roi_stats(df, ctrl_mode):
             idx_pred  = [LAGS_DEG.index(l) for l in pred_lags]
             idx_other = [i for i in range(len(LAGS_DEG)) if i not in idx_pred]
             tgt   = np.nanmean(r_mat[:, idx_pred],  axis=1)
+            m_tgt = np.isfinite(tgt)
+            if m_tgt.sum() >= 2:
+                t1a_t, t1a_p = _ttest_gt0(tgt[m_tgt])
+                rec.update({'T1a_avgPred_t':     t1a_t,
+                            'T1a_avgPred_p':     t1a_p,
+                            'T1a_avgPred_meanR': float(tgt[m_tgt].mean()),
+                            'T1a_avgPred_n':     int(m_tgt.sum())})
+            else:
+                rec.update({'T1a_avgPred_t': np.nan, 'T1a_avgPred_p': np.nan,
+                            'T1a_avgPred_meanR': np.nan, 'T1a_avgPred_n': 0})
             other = np.nanmean(r_mat[:, idx_other], axis=1)
             diff = tgt - other
             m = np.isfinite(diff)
@@ -731,7 +791,9 @@ def per_roi_stats(df, ctrl_mode):
                 rec.update({'T2_t': np.nan, 'T2_p': np.nan,
                             'T2_meanDiff': np.nan, 'T2_n': 0})
         else:
-            rec.update({'T2_t': np.nan, 'T2_p': np.nan,
+            rec.update({'T1a_avgPred_t': np.nan, 'T1a_avgPred_p': np.nan,
+                        'T1a_avgPred_meanR': np.nan, 'T1a_avgPred_n': 0,
+                        'T2_t': np.nan, 'T2_p': np.nan,
                         'T2_meanDiff': np.nan, 'T2_n': 0})
         # T5: dsrfull and dsrinf primary tests ------------------------
         for variant in ('dsrfull', 'dsrinf'):
@@ -778,7 +840,7 @@ def per_roi_stats(df, ctrl_mode):
     for fam in (fam_t1, fam_t3, fam_t4, fam_t3_agg, fam_t4_agg, fam_t5):
         for col in fam:
             out[col + '_fdr'] = _bh_fdr(out[col].to_numpy(dtype=float))
-    for col in ('T2_p', 'T6_p'):
+    for col in ('T1a_avgPred_p', 'T2_p', 'T6_p'):
         if col in out.columns:
             out[col + '_fdr'] = _bh_fdr(out[col].to_numpy(dtype=float))
     return out
@@ -979,6 +1041,251 @@ def fig_ctrl_vs_noctrl_scatter(per_cell, save_stem):
     _save(fig, save_stem)
 
 
+def single_lag_stats(per_cell, single_lags=SINGLE_LAGS_FOR_TESTS):
+    """Per (ROI × ctrl_mode × single lag) one-sample t-test of CV r > 0,
+    plus perm-sig fraction. BH-FDR is applied within each (ctrl_mode ×
+    lag) family (across ROIs). This is the "lag-agnostic" test the user
+    asked for — no lag sets, one number per (ROI, lag).
+    """
+    rows = []
+    for ctrl in (False, True):
+        tag = 'ctrl' if ctrl else 'noctrl'
+        for roi, g in per_cell.groupby('roi'):
+            n_cells = len(g)
+            for lag in single_lags:
+                r = g[f'r_lag{lag:03d}_{tag}'].to_numpy(dtype=float)
+                p = g[f'p_lag{lag:03d}_{tag}'].to_numpy(dtype=float)
+                t_val, p_val = _ttest_gt0(r)
+                k_sig = int(np.sum(np.isfinite(p) & (p < ALPHA)))
+                rows.append({
+                    'roi': roi, 'ctrl_mode': tag, 'lag_deg': lag,
+                    'n_cells': n_cells,
+                    'mean_r': float(np.nanmean(r)),
+                    't_vs_0': t_val, 'p_unc': p_val,
+                    'k_perm_sig': k_sig,
+                    'frac_perm_sig': k_sig / n_cells if n_cells else np.nan,
+                    'p_binom': _binom_gt_alpha(k_sig, n_cells),
+                })
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    # BH-FDR within each (ctrl_mode × lag) family, across the reported ROIs.
+    out['p_fdr']       = np.nan
+    out['p_binom_fdr'] = np.nan
+    for (tag, lag), idx in out.groupby(['ctrl_mode', 'lag_deg']).indices.items():
+        idx = list(idx)
+        out.loc[idx, 'p_fdr']       = _bh_fdr(out.loc[idx, 'p_unc'].to_numpy(float))
+        out.loc[idx, 'p_binom_fdr'] = _bh_fdr(out.loc[idx, 'p_binom'].to_numpy(float))
+    return out
+
+
+def fig_per_lag_r_hist_all_rois(per_cell, single_lag_df, ctrl_mode,
+                                  fixed_lag_deg, save_stem):
+    """One page per fixed lag: histogram of per-cell CV r across each ROI,
+    annotated with the single-lag t vs 0 and its BH-FDR p. Mirrors the
+    heatmap row-by-row as histograms."""
+    _set_rc()
+    tag = 'ctrl' if ctrl_mode else 'noctrl'
+    rois = [r for r in ROIS_TO_RUN if r in per_cell['roi'].unique()]
+    n = len(rois)
+    n_cols = min(n, 4)
+    n_rows = int(np.ceil(n / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols,
+                              figsize=(3.8 * CM * n_cols, 3.0 * CM * n_rows),
+                              constrained_layout=True, squeeze=False)
+    axes_flat = axes.ravel()
+    for ax in axes_flat[n:]:
+        ax.axis('off')
+    # shared x-range across ROIs at this lag for comparability
+    all_r = per_cell[f'r_lag{fixed_lag_deg:03d}_{tag}'].to_numpy(dtype=float)
+    all_r = all_r[np.isfinite(all_r)]
+    if all_r.size:
+        lo, hi = np.nanpercentile(all_r, [1, 99])
+        bins = np.linspace(lo, hi, 22)
+    else:
+        bins = 20
+    for ax, roi in zip(axes_flat, rois):
+        g = per_cell[per_cell['roi'] == roi]
+        r = g[f'r_lag{fixed_lag_deg:03d}_{tag}'].to_numpy(dtype=float)
+        p = g[f'p_lag{fixed_lag_deg:03d}_{tag}'].to_numpy(dtype=float)
+        m = np.isfinite(r); r = r[m]; p = p[m]
+        col = ROI_COLOURS.get(roi, '#888')
+        if r.size:
+            ax.hist(r, bins=bins, color='lightgray',
+                    edgecolor='black', linewidth=0.2, alpha=0.7)
+            sig = np.isfinite(p) & (p < ALPHA)
+            if sig.any():
+                ax.hist(r[sig], bins=bins, color=col,
+                        edgecolor='black', linewidth=0.2, alpha=0.95)
+            ax.axvline(r.mean(), color='black', lw=0.8)
+        ax.axvline(0, color='gray', ls='--', lw=0.4)
+        # pull t / p / p_fdr for this (ROI, ctrl_mode, lag) from the summary
+        row = single_lag_df[
+            (single_lag_df['roi'] == roi)
+            & (single_lag_df['ctrl_mode'] == tag)
+            & (single_lag_df['lag_deg'] == fixed_lag_deg)
+        ]
+        if not row.empty:
+            rr = row.iloc[0]
+            t_ = rr['t_vs_0']; p_ = rr['p_unc']; q_ = rr['p_fdr']
+            title = (f'{_disp(roi)}\n'
+                     f't = {t_:+.2f}  p = {p_:.3g}\np_FDR = {q_:.3g}')
+        else:
+            title = _disp(roi)
+        ax.set_title(title, fontsize=FONT_TICK)
+        ax.tick_params(labelsize=FONT_TICK - 1, length=1.5, pad=1)
+        ax.set_xlabel('CV r', fontsize=FONT_TICK)
+        ax.set_ylabel('# cells', fontsize=FONT_TICK)
+    fig.suptitle(
+        f'Per-ROI CV r distribution at lag {fixed_lag_deg}°  [{tag}]\n'
+        f'(one-sample t vs 0, FDR across {n} ROIs; sig cells overlaid)',
+        fontsize=FONT_BIG,
+    )
+    _save(fig, save_stem)
+
+
+def lag_lag_correlation(per_cell, ctrl_mode):
+    """Descriptive: across cells, how correlated are the per-lag CV r
+    values? Returns a long-format DataFrame with one row per
+    (roi, lag_i, lag_j). Pearson r is computed pairwise (masking non-
+    finite entries per pair) so each entry uses the largest possible
+    common cell set. No significance testing — this is a descriptive
+    summary of how similar the per-lag single-cell curves are."""
+    tag = 'ctrl' if ctrl_mode else 'noctrl'
+    rows = []
+    for roi in sorted(per_cell['roi'].dropna().unique()):
+        g = per_cell[per_cell['roi'] == roi]
+        R = np.stack([
+            g[f'r_lag{lag:03d}_{tag}'].to_numpy(dtype=float)
+            for lag in LAGS_DEG
+        ], axis=1)   # (n_cells, n_lags)
+        for i, li in enumerate(LAGS_DEG):
+            for j, lj in enumerate(LAGS_DEG):
+                x, y = R[:, i], R[:, j]
+                m = np.isfinite(x) & np.isfinite(y)
+                n = int(m.sum())
+                if n < 3 or np.std(x[m]) < 1e-12 or np.std(y[m]) < 1e-12:
+                    r = np.nan
+                else:
+                    r = float(np.corrcoef(x[m], y[m])[0, 1])
+                rows.append({'roi': roi, 'ctrl_mode': tag,
+                             'lag_i': li, 'lag_j': lj,
+                             'pearson_r': r, 'n_cells': n})
+    return pd.DataFrame(rows)
+
+
+def fig_lag_lag_correlation_heatmap(per_cell, ctrl_mode, save_stem):
+    """One panel per ROI: heatmap of Pearson r across cells between the
+    per-cell CV r at every pair of lags. Descriptive only — diagonal = 1
+    by construction. Off-diagonal blocks near the diagonal indicate
+    smooth per-cell tuning across neighbouring lags; distant off-diagonal
+    values close to 0 indicate lag-independent per-cell fits."""
+    _set_rc()
+    tag = 'ctrl' if ctrl_mode else 'noctrl'
+    corr_df = lag_lag_correlation(per_cell, ctrl_mode)
+    rois = [r for r in ROIS_TO_RUN if r in corr_df['roi'].unique()]
+    n_lags = len(LAGS_DEG)
+    n_cols = min(len(rois), 4)
+    n_rows = int(np.ceil(len(rois) / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols,
+                              figsize=(3.6 * CM * n_cols, 3.6 * CM * n_rows),
+                              constrained_layout=True, squeeze=False)
+    axes_flat = axes.ravel()
+    for ax in axes_flat[len(rois):]:
+        ax.axis('off')
+    for ax, roi in zip(axes_flat, rois):
+        sub = corr_df[corr_df['roi'] == roi]
+        M = sub.pivot(index='lag_i', columns='lag_j', values='pearson_r')
+        M = M.reindex(index=LAGS_DEG, columns=LAGS_DEG).to_numpy()
+        im = ax.imshow(M, cmap='RdBu_r', vmin=-1, vmax=1, aspect='equal')
+        ax.set_xticks(range(n_lags))
+        ax.set_yticks(range(n_lags))
+        ax.set_xticklabels([str(l) if (l % 60 == 0) else ''
+                             for l in LAGS_DEG],
+                            fontsize=FONT_TICK - 2, rotation=45)
+        ax.set_yticklabels([str(l) if (l % 60 == 0) else ''
+                             for l in LAGS_DEG],
+                            fontsize=FONT_TICK - 2)
+        ax.set_title(roi, fontsize=FONT_TICK)
+        ax.tick_params(axis='both', length=1.5, pad=1)
+    fig.suptitle(
+        f'Across-cell Pearson r between per-cell CV r at each pair of lags  '
+        f'[{tag}]\n'
+        '(descriptive; diagonal = 1 by construction)',
+        fontsize=FONT_AXIS,
+    )
+    cbar = fig.colorbar(im, ax=axes_flat.tolist(), fraction=0.03,
+                         pad=0.02, shrink=0.7)
+    cbar.set_label('Pearson r (across cells)', fontsize=FONT_TICK)
+    cbar.ax.tick_params(labelsize=FONT_TICK - 1)
+    _save(fig, save_stem)
+
+
+def fig_test2_target_vs_others_lines(per_cell, roi_stats, ctrl_mode, save_stem):
+    """TEST 2 — per-ROI mean CV r across lags (±SEM) with predicted lag(s)
+    highlighted. Mirrors `plot_test2_target_vs_others_lines` in
+    spatial_peaks_simple. Uses display names (ACC → mPFC)."""
+    _set_rc()
+    tag = 'ctrl' if ctrl_mode else 'noctrl'
+    df_r = roi_stats[roi_stats['ctrl_mode'] == tag]
+    rois = [r for r in ROIS_TO_RUN if r in per_cell['roi'].unique()]
+    rois_with_target = [r for r in rois if ROI_PREDICTED_LAGS_DEG.get(r)]
+    rois_show = rois_with_target or rois
+    n = len(rois_show)
+    n_cols = min(n, 4)
+    n_rows = int(np.ceil(n / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols,
+                              figsize=(4.4 * CM * n_cols, 3.6 * CM * n_rows),
+                              constrained_layout=True, squeeze=False)
+    axes_flat = axes.ravel()
+    for ax in axes_flat[n:]:
+        ax.axis('off')
+    x = np.asarray(LAGS_DEG)
+    for ax, roi in zip(axes_flat, rois_show):
+        g = per_cell[per_cell['roi'] == roi]
+        curves = np.stack([
+            g[f'r_lag{lag:03d}_{tag}'].to_numpy(dtype=float) for lag in LAGS_DEG
+        ], axis=1)   # (n_cells, n_lags)
+        col = ROI_COLOURS.get(roi, '#888')
+        if curves.size:
+            m = np.nanmean(curves, axis=0)
+            s = np.nanstd(curves, axis=0, ddof=1) / np.sqrt(
+                np.maximum(np.isfinite(curves).sum(axis=0), 1)
+            )
+            ax.fill_between(x, m - s, m + s, color=col, alpha=0.25, linewidth=0)
+            ax.plot(x, m, color=col, lw=1.6, marker='o', ms=2.5)
+        ax.axhline(0.0, color='black', lw=0.5, ls='--')
+        for tl in ROI_PREDICTED_LAGS_DEG.get(roi, ()):
+            ax.axvline(tl, color=OBSERVED_GREEN, lw=0.9, ls=':', alpha=0.7)
+        rs_row = df_r[df_r['roi'] == roi]
+        if not rs_row.empty:
+            rs = rs_row.iloc[0]
+            t_ = rs.get('T2_t', np.nan)
+            p_ = rs.get('T2_p', np.nan)
+            q_ = rs.get('T2_p_fdr', np.nan)
+        else:
+            t_ = p_ = q_ = np.nan
+        target = list(ROI_PREDICTED_LAGS_DEG.get(roi, ()))
+        ax.set_title(
+            f'{_disp(roi)}   target = {target}°\n'
+            f'paired t = {t_:+.2f}   p = {p_:.3g}\n'
+            f'p_FDR = {q_:.3g}',
+            fontsize=FONT_TICK,
+        )
+        ax.set_xlabel('lag (°)', fontsize=FONT_TICK)
+        ax.set_ylabel('mean CV r', fontsize=FONT_TICK)
+        ax.set_xticks(LAGS_DEG[::2])
+        ax.tick_params(axis='both', labelsize=FONT_TICK, length=2, pad=1)
+    fig.suptitle(
+        'TEST 2 — within-cell predicted-lag r > other-lags r\n'
+        f'(paired t-test, one-sided greater; FDR across '
+        f'{sum(1 for r in rois if ROI_PREDICTED_LAGS_DEG.get(r))} '
+        f'predicted-lag ROIs)  [{tag}]',
+        fontsize=FONT_BIG,
+    )
+    _save(fig, save_stem)
+
+
 def fig_per_roi_r_hist(per_cell, ctrl_mode, save_stem):
     _set_rc()
     tag = 'ctrl' if ctrl_mode else 'noctrl'
@@ -1031,57 +1338,176 @@ def _load_cells():
     return cells
 
 
-def main():
-    np.random.seed(RANDOM_SEED)
-    run_tag = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    out_dir = os.path.join(OUT_BASE, run_tag)
+# ── Model-regressor lag-lag correlation ───────────────────────────────
+def _identity_rate(loc_series, lag_i_bins, lag_j_bins):
+    """Fraction of bins where loc_at_lag_i == loc_at_lag_j (∈ [0, 1])."""
+    li = np.roll(loc_series, -lag_i_bins)
+    lj = np.roll(loc_series, -lag_j_bins)
+    return float(np.mean(li == lj))
+
+
+def compute_lag_regressor_correlations(cells_df, out_dir):
+    """Descriptive: how correlated are the lag-shifted LOCATION regressors
+    themselves — the ones we plug into the rate-map at each lag — across
+    task configurations and across subjects?
+
+    For each subject × configuration, for every pair of lags (i, j) we
+    compute the *identity rate*: fraction of bins where the location at
+    lag_i equals the location at lag_j. This is the natural regressor
+    correlation for a categorical location series and directly indexes
+    how much one lag-regressor will absorb the variance of another in
+    the OLS partial-out.
+
+    Writes:
+      lag_regressor_correlation_long.csv  (subject, config_id, lag_i,
+                                            lag_j, identity_rate)
+      lag_regressor_correlation_mean.csv  (lag_i × lag_j mean matrix
+                                            across all subject-configs)
+    Returns the long-format DataFrame.
+    """
+    sub_list = sorted(cells_df['subject_id'].unique())
+    print(f'\n══ Lag-regressor correlation across {len(sub_list)} subjects ══')
+    rows = []
+    for sub_str in sub_list:
+        try:
+            data_raw = hh.load_norm_data(DATA_DIR, [sub_str], res_data=False)
+        except Exception as exc:
+            print(f'  sub-{sub_str} load failed: {exc}'); continue
+        if not data_raw:
+            continue
+        data = hh.filter_data(data_raw, int(sub_str), TRIALS)
+        sub_dict = data[f'sub-{sub_str}']
+        beh = sub_dict['beh'].copy().reset_index(drop=True)
+        locs = sub_dict['locations'].to_numpy(dtype=float)
+        _, _, idx_cfg, _ = np.unique(
+            beh[['loc_A', 'loc_B', 'loc_C', 'loc_D']].to_numpy(),
+            axis=0, return_index=True, return_inverse=True, return_counts=True,
+        )
+        n_cfg = len(np.unique(idx_cfg))
+        if n_cfg < 2:
+            continue
+        for c in range(n_cfg):
+            mask = idx_cfg == c
+            if not mask.any():
+                continue
+            loc_series = _mode_per_bin_int(locs[mask])
+            for i, li in enumerate(LAGS_DEG):
+                for j, lj in enumerate(LAGS_DEG):
+                    rows.append({
+                        'subject_id':    sub_str,
+                        'config_id':     int(c),
+                        'lag_i':         li,
+                        'lag_j':         lj,
+                        'identity_rate': _identity_rate(loc_series, li, lj),
+                    })
+    long = pd.DataFrame(rows)
+    if long.empty:
+        print('  no subject data loaded; skipping regressor-correlation output.')
+        return long
+    long.to_csv(
+        os.path.join(out_dir, 'lag_regressor_correlation_long.csv'),
+        index=False)
+    mean_mat = (long.groupby(['lag_i', 'lag_j'])['identity_rate']
+                    .mean().unstack())
+    mean_mat.to_csv(
+        os.path.join(out_dir, 'lag_regressor_correlation_mean.csv'))
+    n_sub = long.subject_id.nunique()
+    n_cfg = len(long.groupby(['subject_id', 'config_id']))
+    print(f'  computed {n_cfg} subject-config pairs across {n_sub} subjects.')
+    print(f'  mean identity rate off-diagonal (0-lag reference vs others):')
+    ref = mean_mat.loc[0].drop(0).round(3)
+    print(ref.to_string())
+    return long
+
+
+def fig_lag_regressor_correlation(long_df, out_dir):
+    """Two panels: (a) heatmap of mean identity rate across all subject-
+    configs; (b) violin/box of the distribution across subject-configs
+    for lag 0 vs every other lag."""
+    _set_rc()
+    if long_df.empty:
+        return
+    mean_mat = (long_df.groupby(['lag_i', 'lag_j'])['identity_rate']
+                    .mean().unstack()
+                    .reindex(index=LAGS_DEG, columns=LAGS_DEG))
+    n_lags = len(LAGS_DEG)
+
+    fig, axes = plt.subplots(1, 2, figsize=(15 * CM, 6 * CM),
+                              constrained_layout=True,
+                              gridspec_kw=dict(width_ratios=[1, 1.4]))
+    ax = axes[0]
+    im = ax.imshow(mean_mat.to_numpy(), cmap='Reds', vmin=0, vmax=1,
+                    aspect='equal')
+    ax.set_xticks(range(n_lags))
+    ax.set_yticks(range(n_lags))
+    ax.set_xticklabels([str(l) for l in LAGS_DEG],
+                        fontsize=FONT_TICK - 2, rotation=45)
+    ax.set_yticklabels([str(l) for l in LAGS_DEG], fontsize=FONT_TICK - 2)
+    ax.set_xlabel('lag j (°)', fontsize=FONT_TICK)
+    ax.set_ylabel('lag i (°)', fontsize=FONT_TICK)
+    ax.set_title('Mean identity rate\n(across subject-configs)',
+                  fontsize=FONT_TICK)
+    cb = fig.colorbar(im, ax=ax, fraction=0.045, pad=0.03)
+    cb.set_label('P(loc@i == loc@j)', fontsize=FONT_TICK - 1)
+    cb.ax.tick_params(labelsize=FONT_TICK - 2)
+    for i in range(n_lags):
+        for j in range(n_lags):
+            v = mean_mat.iat[i, j]
+            if np.isfinite(v):
+                col = 'white' if v > 0.55 else 'black'
+                ax.text(j, i, f'{v:.2f}'.lstrip('0') if v < 1 else '1',
+                        ha='center', va='center',
+                        fontsize=FONT_TICK - 4, color=col)
+
+    ax = axes[1]
+    ref = long_df[long_df['lag_i'] == 0]
+    lags_show = [l for l in LAGS_DEG if l != 0]
+    data = [ref[ref['lag_j'] == l]['identity_rate'].dropna().to_numpy()
+             for l in lags_show]
+    bp = ax.boxplot(data, positions=range(len(lags_show)), widths=0.6,
+                     showfliers=False, patch_artist=True,
+                     medianprops=dict(color='black', lw=0.9))
+    for patch in bp['boxes']:
+        patch.set_facecolor('#FCDDE3'); patch.set_edgecolor('black'); patch.set_lw(0.4)
+    rng = np.random.default_rng(42)
+    for k, d in enumerate(data):
+        if d.size == 0:
+            continue
+        ax.scatter(np.full(d.size, k) + 0.08 * rng.standard_normal(d.size),
+                    d, s=3, color='black', alpha=0.35, zorder=3)
+    ax.axhline(1/9, color='gray', ls='--', lw=0.6,
+                label='chance = 1/9 (9 locations)')
+    ax.set_xticks(range(len(lags_show)))
+    ax.set_xticklabels([str(l) for l in lags_show],
+                        fontsize=FONT_TICK - 2, rotation=45)
+    ax.set_xlabel('lag j (°)   [reference: lag i = 0°]', fontsize=FONT_TICK)
+    ax.set_ylabel('identity rate  P(loc@0 == loc@j)', fontsize=FONT_TICK)
+    ax.set_title('Distribution across subject-configs\n(one dot per config)',
+                  fontsize=FONT_TICK)
+    ax.set_ylim(0, 1)
+    ax.legend(fontsize=FONT_TICK - 2, frameon=False, loc='upper right')
+    ax.tick_params(axis='both', labelsize=FONT_TICK - 2, length=1.5, pad=1)
     fig_dir = os.path.join(out_dir, 'figures')
     os.makedirs(fig_dir, exist_ok=True)
-    print(f'Output dir: {out_dir}')
+    _save(fig, os.path.join(fig_dir, '10_lag_regressor_correlation'))
 
-    config = {
-        'run_tag':              run_tag,
-        'method':               'lag_shifted_rate_map_weighted_pearson',
-        'rois_to_run':          ROIS_TO_RUN,
-        'phase_residualise':    PHASE_RESIDUALISE,
-        'trials':               TRIALS,
-        'lags_deg':             LAGS_DEG,
-        'dsr_full_lags_deg':    DSR_FULL_LAGS_DEG,
-        'dsr_inf_lags_deg':     DSR_INF_LAGS_DEG,
-        'lag_bins_bttn_next':   LAG_BINS_BTTN_NEXT,
-        'min_dwell_bins':       MIN_DWELL_BINS,
-        'min_shared_locs':      MIN_SHARED_LOCS,
-        'weighted_correlation': WEIGHTED_CORRELATION,
-        'n_permutations':       N_PERMUTATIONS,
-        'random_seed':          RANDOM_SEED,
-        'alpha':                ALPHA,
-        'roi_predicted_lags':   {k: list(v) for k, v in
-                                   ROI_PREDICTED_LAGS_DEG.items()},
-        'controls':             ['state', 'bttn_curr', 'bttn_next',
-                                  'location_at_lag_0_when_lag!=0'],
-    }
-    with open(os.path.join(out_dir, 'config.json'), 'w') as f:
-        json.dump(config, f, indent=2)
 
-    cells = _load_cells()
-    all_dfs = []
-    for roi in ROIS_TO_RUN:
-        df = run_roi(roi, cells)
-        if df is None:
-            continue
-        df.to_csv(os.path.join(out_dir, f'per_cell_{roi}.csv'), index=False)
-        all_dfs.append(df)
-    if not all_dfs:
-        print('No results.'); return
-    per_cell = pd.concat(all_dfs, ignore_index=True)
-    per_cell.to_csv(os.path.join(out_dir, 'per_cell_ALL_ROIs.csv'), index=False)
-
+def _stats_and_plots(per_cell, out_dir, fig_dir):
+    """Recompute per-ROI stats + all figures from a pre-computed
+    per_cell DataFrame. Shared by the full-run and reload paths."""
     stats_dfs = [per_roi_stats(per_cell, ctrl_mode=False),
                  per_roi_stats(per_cell, ctrl_mode=True)]
     roi_stats = pd.concat(stats_dfs, ignore_index=True)
     roi_stats.to_csv(os.path.join(out_dir, 'per_roi_stats.csv'), index=False)
     print(f'\nSaved per_roi_stats.csv ({roi_stats.shape[0]} rows × '
           f'{roi_stats.shape[1]} cols)')
+
+    # Lag-agnostic single-lag summary (one t-test per (ROI × ctrl × lag))
+    single_lag_df = single_lag_stats(per_cell, SINGLE_LAGS_FOR_TESTS)
+    single_lag_df.to_csv(
+        os.path.join(out_dir, 'per_roi_single_lag_stats.csv'), index=False)
+    print(f'Saved per_roi_single_lag_stats.csv '
+          f'({single_lag_df.shape[0]} rows) for lags {SINGLE_LAGS_FOR_TESTS}')
 
     long_rows = []
     for ctrl in (False, True):
@@ -1115,10 +1541,116 @@ def main():
             os.path.join(fig_dir, f'03b_perm_sig_fraction_heatmap_{tag}'))
         fig_dsrfull_vs_dsrinf_scatter(per_cell, ctrl,
             os.path.join(fig_dir, f'04_dsrfull_vs_dsrinf_scatter_{tag}'))
+        fig_test2_target_vs_others_lines(per_cell, roi_stats, ctrl,
+            os.path.join(fig_dir, f'07_test2_target_vs_others_lines_{tag}'))
         fig_per_roi_r_hist(per_cell, ctrl,
             os.path.join(fig_dir, f'06_per_roi_r_hist_{tag}'))
+        # Per-fixed-lag histograms across all ROIs (one figure per lag).
+        for fl in SINGLE_LAGS_FOR_TESTS:
+            fig_per_lag_r_hist_all_rois(per_cell, single_lag_df, ctrl, fl,
+                os.path.join(fig_dir,
+                              f'08_per_lag_r_hist_all_rois_lag{fl:03d}_{tag}'))
+        # Descriptive: across-cell Pearson r between per-cell CV r at
+        # each pair of lags — one heatmap per ROI, plus a long-format CSV.
+        corr_df = lag_lag_correlation(per_cell, ctrl_mode=ctrl)
+        corr_df.to_csv(
+            os.path.join(out_dir, f'lag_lag_correlation_{tag}.csv'),
+            index=False,
+        )
+        fig_lag_lag_correlation_heatmap(per_cell, ctrl,
+            os.path.join(fig_dir, f'09_lag_lag_correlation_{tag}'))
     fig_ctrl_vs_noctrl_scatter(per_cell,
         os.path.join(fig_dir, '05_ctrl_vs_noctrl_scatter'))
+
+    return roi_stats
+
+
+def _load_reload_per_cell(reload_dir):
+    """Read per_cell_ALL_ROIs.csv from a previous run directory."""
+    csv = os.path.join(reload_dir, 'per_cell_ALL_ROIs.csv')
+    if not os.path.exists(csv):
+        raise FileNotFoundError(f'per_cell_ALL_ROIs.csv not found at {csv}')
+    df = pd.read_csv(csv)
+    print(f'  reload — loaded {len(df)} cells from {csv}')
+    return df
+
+
+def main():
+    np.random.seed(RANDOM_SEED)
+    run_tag = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    if RELOAD_FROM is not None:
+        run_tag += f'_reload_from_{os.path.basename(os.path.normpath(RELOAD_FROM))}'
+    out_dir = os.path.join(OUT_BASE, run_tag)
+    fig_dir = os.path.join(out_dir, 'figures')
+    os.makedirs(fig_dir, exist_ok=True)
+    print(f'Output dir: {out_dir}')
+
+    # ---- Reload branch: skip CV + perms, just recompute stats + plots ----
+    if RELOAD_FROM is not None:
+        with open(os.path.join(out_dir, 'config.json'), 'w') as f:
+            json.dump({'reload_from': RELOAD_FROM,
+                       'roi_predicted_lags': {k: list(v) for k, v in
+                                                ROI_PREDICTED_LAGS_DEG.items()},
+                       'roi_display_names': ROI_DISPLAY_NAMES,
+                       'lags_deg': LAGS_DEG}, f, indent=2)
+        per_cell = _load_reload_per_cell(RELOAD_FROM)
+        per_cell.to_csv(os.path.join(out_dir, 'per_cell_ALL_ROIs.csv'), index=False)
+        _stats_and_plots(per_cell, out_dir, fig_dir)
+        # Descriptive model-regressor correlation across subjects/configs.
+        # Reloads only the per-subject location data (not cells).
+        try:
+            cells = _load_cells()
+            long_reg = compute_lag_regressor_correlations(cells, out_dir)
+            fig_lag_regressor_correlation(long_reg, out_dir)
+        except Exception as exc:
+            print(f'  lag-regressor correlation skipped: {exc}')
+        print(f'\nDone (reload). Outputs in {out_dir}')
+        return
+
+    config = {
+        'run_tag':              run_tag,
+        'method':               'lag_shifted_rate_map_weighted_pearson',
+        'rois_to_run':          ROIS_TO_RUN,
+        'phase_residualise':    PHASE_RESIDUALISE,
+        'trials':               TRIALS,
+        'lags_deg':             LAGS_DEG,
+        'dsr_full_lags_deg':    DSR_FULL_LAGS_DEG,
+        'dsr_inf_lags_deg':     DSR_INF_LAGS_DEG,
+        'lag_bins_bttn_next':   LAG_BINS_BTTN_NEXT,
+        'min_dwell_bins':       MIN_DWELL_BINS,
+        'min_shared_locs':      MIN_SHARED_LOCS,
+        'weighted_correlation': WEIGHTED_CORRELATION,
+        'n_permutations':       N_PERMUTATIONS,
+        'random_seed':          RANDOM_SEED,
+        'alpha':                ALPHA,
+        'roi_predicted_lags':   {k: list(v) for k, v in
+                                   ROI_PREDICTED_LAGS_DEG.items()},
+        'controls':             sorted(CONTROL_MODELS),
+    }
+    with open(os.path.join(out_dir, 'config.json'), 'w') as f:
+        json.dump(config, f, indent=2)
+
+    cells = _load_cells()
+    all_dfs = []
+    for roi in ROIS_TO_RUN:
+        df = run_roi(roi, cells)
+        if df is None:
+            continue
+        df.to_csv(os.path.join(out_dir, f'per_cell_{roi}.csv'), index=False)
+        all_dfs.append(df)
+    if not all_dfs:
+        print('No results.'); return
+    per_cell = pd.concat(all_dfs, ignore_index=True)
+    per_cell.to_csv(os.path.join(out_dir, 'per_cell_ALL_ROIs.csv'), index=False)
+
+    _stats_and_plots(per_cell, out_dir, fig_dir)
+
+    # Descriptive model-regressor correlation across subjects/configs.
+    try:
+        long_reg = compute_lag_regressor_correlations(cells, out_dir)
+        fig_lag_regressor_correlation(long_reg, out_dir)
+    except Exception as exc:
+        print(f'  lag-regressor correlation skipped: {exc}')
 
     print(f'\nDone. Outputs in {out_dir}')
 

@@ -66,7 +66,6 @@ sys.path.insert(0, "/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_
 import mc
 import mc.analyse.cell_selection as cs
 import mc.analyse.future_spatial_peaks as fsp
-import era_brewer
 
 
 # ====================================================================
@@ -77,8 +76,16 @@ ANALYSIS_NAME   = "phase_resid_paired_fixedlag"
 DATA_DIR        = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives"
 OUT_BASE        = os.path.join(DATA_DIR, "group", "spatial_peaks_simple")
 
+# Reload mode ---------------------------------------------------------
+# Set to a previous run directory (or its per_cell.csv) to skip the
+# heavy CV + permutation compute and just re-run stats + plots from the
+# cached per-cell results. Outputs are written to a fresh `<run>_reload`
+# directory so the original is preserved.
+RELOAD_FROM     = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/spatial_peaks_simple/2026-06-26_18-47-11_phase_resid_paired_fixedlag-final/"
+# RELOAD_FROM   = None   # set to None to run the full CV + perm pipeline
+
 # Cells / data --------------------------------------------------------
-CELL_SET        = "all_in_roi_table"     # 'rsa' or 'all_in_roi_table'
+CELL_SET        = "all_in_roi_table"     # 'rsa' or 'all_in_roi_table' or 'no_rsa_cells'
 SUBJECTS        = "all"                  # 'all' or list[int]
 ROIS_KEEP       = None                   # None = all in registry
 TRIALS          = "all_minus_explore"    # passed to filter_data
@@ -100,9 +107,21 @@ N_JOBS                 = -1
 # ACC: action / planning lookahead.  HC: current location / place.
 ROI_PREDICTED_LAGS_DEG = {
     "ACC":         (30, 60),
-    "HC_anterior": (0,),
+    "HC_anterior": (0, 330),
     "HC_mid":      (0, 330),
 }
+
+# Single lags at which we run a lag-agnostic per-ROI t-test on the
+# per-cell CV r. One test per (ROI × lag) — no lag sets. Complements the
+# `predicted-lag` tests above by showing exactly where the signal sits.
+SINGLE_LAGS_FOR_TESTS = [0, 30, 60, 330]
+
+# Display-name overrides used in figure labels ONLY. Data columns keep
+# their original ROI keys. Per CLAUDE.md, 'ACC' is written as 'mPFC' in
+# manuscript figures.
+ROI_DISPLAY_NAMES = {"ACC": "mPFC"}
+def _disp(roi):
+    return ROI_DISPLAY_NAMES.get(roi, roi)
 
 # Statistical thresholds ---------------------------------------------
 ALPHA = 0.05
@@ -122,16 +141,14 @@ ZMNI_GRADIENT_ROI               = "ACC"
 ZMNI_GRADIENT_SUBSET_LAGS_DEG   = (0, 30, 60)   # "early-future" lags
 ZMNI_GRADIENT_TOP_K_PER_SUBJECT = 1               # per subject per lag
 
-# Colour scheme (CLAUDE.md project-wide convention)
-ROI_COLOURS = {
-    "EC":              era_brewer.era_brew("Showgirl2", n=7)[0],
-    "medialOFC":       era_brewer.era_brew("Showgirl2", n=7)[1],
-    "ACC":             era_brewer.era_brew("Showgirl2", n=7)[2],
-    "HC_anterior":     era_brewer.era_brew("Showgirl2", n=7)[3],
-    "HC_mid":          era_brewer.era_brew("Showgirl2", n=7)[4],
-    "Parahippocampal": era_brewer.era_brew("Showgirl2", n=7)[5],
-    "PCC":             era_brewer.era_brew("Showgirl2", n=7)[6],
-}
+# Colour scheme — canonical CLAUDE.md mapping. Source of truth is
+# `mc.plotting.cell_results.SHOWGIRL2_DISCRETE` + `ROI_COLORS_SHOWGIRL2`.
+# ACC = idx 1 = dark teal-green ("#448363").
+from mc.plotting.cell_results import (
+    SHOWGIRL2_DISCRETE as _SHOWGIRL2,
+    ROI_COLORS_SHOWGIRL2 as _ROI_IDX,
+)
+ROI_COLOURS = {r: _SHOWGIRL2[i] for r, i in _ROI_IDX.items()}
 LOCATION_COLOURS = {
     1: "#0a607a", 2: "#7eb1c4", 3: "#b6d4e0",
     4: "#175e62", 5: "#5b9b8d", 6: "#c8e0d0",
@@ -576,25 +593,19 @@ def plot_roi_x_lag_overview(per_cell, roi_stats, save_stem):
     vmax = float(np.nanmax(np.abs(T))) if np.isfinite(T).any() else 1.0
     fig, ax = plt.subplots(figsize=(14 * CM, 6 * CM), constrained_layout=True)
     im = ax.imshow(T, cmap="RdBu_r", vmin=-vmax, vmax=vmax, aspect="auto")
-    # mark predicted lags + add FDR stars per ROI (TEST 1 q-val)
+    # FDR stars per ROI (TEST 1 q-val) — no predicted-lag outline
     q_lookup = dict(zip(roi_stats["roi"], roi_stats["test1_meanR_p_fdr"]))
     for ri, roi in enumerate(rois):
-        target_lags = ROI_PREDICTED_LAGS_DEG.get(roi, ())
-        for fl in target_lags:
-            if fl in LAGS_DEG:
-                ci = LAGS_DEG.index(fl)
-                ax.add_patch(plt.Rectangle((ci - 0.5, ri - 0.5), 1, 1,
-                                            fill=False, edgecolor="black",
-                                            lw=1.4))
         star = _stars_from_q(q_lookup.get(roi, np.nan))
-        if star:
-            # put star on the FIRST predicted lag (if any)
-            if target_lags and target_lags[0] in LAGS_DEG:
-                ci = LAGS_DEG.index(target_lags[0])
-                col = "white" if abs(T[ri, ci]) > vmax * 0.55 else "black"
-                ax.text(ci, ri, star, ha="center", va="center",
-                        fontsize=FONT_BIG + 1, fontweight="bold",
-                        color=col, zorder=5)
+        if not star:
+            continue
+        target_lags = ROI_PREDICTED_LAGS_DEG.get(roi, ())
+        if target_lags and target_lags[0] in LAGS_DEG:
+            ci = LAGS_DEG.index(target_lags[0])
+            col = "white" if abs(T[ri, ci]) > vmax * 0.55 else "black"
+            ax.text(ci, ri, star, ha="center", va="center",
+                    fontsize=FONT_BIG + 1, fontweight="bold",
+                    color=col, zorder=5)
     ax.set_xticks(range(n_lags))
     ax.set_xticklabels([str(l) for l in LAGS_DEG], fontsize=FONT_TICK)
     ax.set_yticks(range(len(rois)))
@@ -926,7 +937,7 @@ def plot_test2_target_vs_others_lines(per_cell, roi_stats, save_stem):
     n_cols = min(n, 4)
     n_rows = int(np.ceil(n / n_cols))
     fig, axes = plt.subplots(n_rows, n_cols,
-                              figsize=(4.4 * CM * n_cols, 3.6 * CM * n_rows),
+                              figsize=(6 * CM * n_cols, 6 * CM * n_rows),
                               constrained_layout=True, squeeze=False)
     axes_flat = axes.ravel()
     for ax in axes_flat[n:]:
@@ -952,8 +963,7 @@ def plot_test2_target_vs_others_lines(per_cell, roi_stats, save_stem):
             )
             ax.fill_between(x, m - s, m + s, color=col, alpha=0.25,
                             linewidth=0)
-            ax.plot(x, m, color=col, lw=1.6, marker="o", ms=2.5,
-                    label=f"n = {curves.shape[0]} cells")
+            ax.plot(x, m, color=col, lw=1.6, marker="o", ms=2.5)
         ax.axhline(0.0, color="black", lw=0.5, ls="--")
         for tl in ROI_PREDICTED_LAGS_DEG.get(roi, ()):
             ax.axvline(tl, color="#0e3d3a", lw=0.9, ls=":", alpha=0.7)
@@ -970,7 +980,6 @@ def plot_test2_target_vs_others_lines(per_cell, roi_stats, save_stem):
         ax.set_ylabel("mean CV r", fontsize=FONT_TICK)
         ax.set_xticks(LAGS_DEG[::2])
         ax.tick_params(axis="both", labelsize=FONT_TICK, length=2, pad=1)
-        ax.legend(fontsize=FONT_TICK - 1, frameon=False, loc="best")
     fig.suptitle(
         "TEST 2 — within-cell predicted-lag r > other-lags r\n"
         "(paired t-test, one-sided greater; "
@@ -978,6 +987,7 @@ def plot_test2_target_vs_others_lines(per_cell, roi_stats, save_stem):
         "predicted-lag ROIs)",
         fontsize=FONT_BIG,
     )
+    # import pdb; pdb.set_trace()
     _save(fig, save_stem)
 
 
@@ -1041,14 +1051,6 @@ def plot_roi_x_lag_table_heatmap(roi_x_lag, save_stem):
     vmax = float(np.nanmax(np.abs(M))) if np.isfinite(M).any() else 0.05
     fig, ax = plt.subplots(figsize=(14 * CM, 6 * CM), constrained_layout=True)
     im = ax.imshow(M, cmap="RdBu_r", vmin=-vmax, vmax=vmax, aspect="auto")
-    # outline predicted lags
-    for ri, roi in enumerate(rois):
-        for tl in ROI_PREDICTED_LAGS_DEG.get(roi, ()):
-            if tl in LAGS_DEG:
-                ci = LAGS_DEG.index(tl)
-                ax.add_patch(plt.Rectangle((ci - 0.5, ri - 0.5), 1, 1,
-                                            fill=False, edgecolor="black",
-                                            lw=1.4))
     # FDR stars per (ROI, lag)
     for ri in range(len(rois)):
         for li in range(n_lags):
@@ -1283,8 +1285,50 @@ def plot_rate_map_examples(per_cell, out_root):
 # ====================================================================
 # Runner
 # ====================================================================
+def _reload_per_cell(reload_from):
+    """Load per-cell results from a previous run.
+
+    `reload_from` may be either a direct CSV path, or a directory in
+    which case we look (in order) for:
+        per_cell.csv           — full run output
+        per_cell_filtered.csv  — subset replot output (e.g. replot_no_rsa_cells)
+    """
+    p = Path(reload_from)
+    if p.suffix == ".csv":
+        csv = p
+    else:
+        candidates = [p / "per_cell.csv", p / "per_cell_filtered.csv"]
+        csv = next((c for c in candidates if c.exists()), candidates[0])
+    if not csv.exists():
+        raise FileNotFoundError(
+            f"No per_cell.csv or per_cell_filtered.csv found under {p}"
+        )
+    df = pd.read_csv(csv)
+    if "p_perm_fixed" not in df.columns or "p_perm_free" not in df.columns:
+        df = _add_perm_p_columns(df)
+    return df, csv.parent
+
+
 def run():
     np.random.seed(RANDOM_SEED)
+
+    # ---- Reload-only branch -------------------------------------------
+    if RELOAD_FROM is not None:
+        per_cell, src_dir = _reload_per_cell(RELOAD_FROM)
+        run_tag = (datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                   + f"_reload_from_{src_dir.name}")
+        out_dir = Path(OUT_BASE) / run_tag
+        out_dir.mkdir(parents=True, exist_ok=True)
+        with open(out_dir / "settings.json", "w") as f:
+            json.dump({**_settings_dict(),
+                       "reload_from": str(src_dir)}, f, indent=2)
+        print(f"[{run_tag}]")
+        print(f"  RELOAD mode — using per_cell from {src_dir}")
+        print(f"  {len(per_cell)} cells loaded; skipping CV + perms.")
+        print(f"  out_dir = {out_dir}")
+        per_cell.to_csv(out_dir / "per_cell.csv", index=False)
+        return _stats_and_plots(per_cell, out_dir, skip_raw_plots=True)
+
     run_tag = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + "_" + ANALYSIS_NAME
     out_dir = Path(OUT_BASE) / run_tag
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1366,6 +1410,125 @@ def run():
     per_cell.to_csv(out_dir / "per_cell.csv", index=False)
     print(f"  saved per_cell.csv ({len(per_cell)} rows)")
 
+    return _stats_and_plots(per_cell, out_dir)
+
+
+def _extract_per_cell_lag_curves(per_cell):
+    """Parse `per_lag_r_all_lags_json` into a (n_cells, n_lags) matrix
+    aligned with the current LAGS_DEG."""
+    n_lags = len(LAGS_DEG)
+    curves = np.full((len(per_cell), n_lags), np.nan)
+    for i, row in enumerate(per_cell.itertuples(index=False)):
+        try:
+            v = json.loads(getattr(row, "per_lag_r_all_lags_json", "[]") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if len(v) == n_lags:
+            curves[i] = [np.nan if x is None else float(x) for x in v]
+    return curves
+
+
+def per_roi_single_lag_stats(per_cell,
+                              single_lags=SINGLE_LAGS_FOR_TESTS):
+    """One-sample t-test of per-cell CV r > 0 at each individual lag,
+    per ROI. BH-FDR within each lag family (across ROIs). Complements
+    the predicted-lag `_per_roi_stats` — no lag sets, no averaging."""
+    curves = _extract_per_cell_lag_curves(per_cell)
+    rois_col = per_cell["roi"].to_numpy()
+    rows = []
+    for roi in sorted(np.unique(rois_col)):
+        idx = np.where(rois_col == roi)[0]
+        C = curves[idx]
+        n_cells = len(idx)
+        for lag in single_lags:
+            li = LAGS_DEG.index(lag) if lag in LAGS_DEG else None
+            if li is None:
+                continue
+            r = C[:, li]; r = r[np.isfinite(r)]
+            if r.size >= 2:
+                res = stats.ttest_1samp(r, 0.0, alternative="greater")
+                t_, p_ = float(res.statistic), float(res.pvalue)
+                m_ = float(r.mean())
+            else:
+                t_, p_, m_ = np.nan, np.nan, (float(r.mean()) if r.size else np.nan)
+            rows.append({"roi": roi, "lag_deg": lag,
+                         "n_cells_finite": int(r.size),
+                         "n_cells_total": int(n_cells),
+                         "mean_r": m_, "t_vs_0": t_, "p_unc": p_})
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    out["p_fdr"] = np.nan
+    for lag, idx in out.groupby("lag_deg").indices.items():
+        idx = list(idx)
+        out.loc[idx, "p_fdr"] = fsp.bh_fdr(
+            out.loc[idx, "p_unc"].to_numpy(dtype=float))
+    return out
+
+
+def plot_per_lag_r_hist_all_rois(per_cell, single_lag_df,
+                                   fixed_lag_deg, save_stem):
+    """One figure per fixed lag: per-ROI histogram of CV r at that lag,
+    annotated with the single-lag t vs 0 and its BH-FDR p."""
+    _set_rc()
+    curves = _extract_per_cell_lag_curves(per_cell)
+    li = LAGS_DEG.index(fixed_lag_deg)
+    r_lag = curves[:, li]
+    rois = sorted(per_cell["roi"].dropna().unique().tolist())
+    n = len(rois)
+    n_cols = min(n, 4)
+    n_rows = int(np.ceil(n / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols,
+                              figsize=(4.0 * CM * n_cols, 3.4 * CM * n_rows),
+                              constrained_layout=True, squeeze=False)
+    axes_flat = axes.ravel()
+    for ax in axes_flat[n:]:
+        ax.axis("off")
+    all_r = r_lag[np.isfinite(r_lag)]
+    if all_r.size:
+        lo, hi = np.nanpercentile(all_r, [1, 99])
+        bins = np.linspace(lo, hi, 22)
+    else:
+        bins = 20
+    rois_col = per_cell["roi"].to_numpy()
+    for ax, roi in zip(axes_flat, rois):
+        m = rois_col == roi
+        r = r_lag[m]; r = r[np.isfinite(r)]
+        col = ROI_COLOURS.get(roi, "#888")
+        if r.size:
+            ax.hist(r, bins=bins, color=col, alpha=0.55,
+                    edgecolor="black", linewidth=0.4)
+            ax.axvline(r.mean(), color="black", lw=0.8)
+        ax.axvline(0, color="gray", ls="--", lw=0.4)
+        row = single_lag_df[
+            (single_lag_df["roi"] == roi)
+            & (single_lag_df["lag_deg"] == fixed_lag_deg)
+        ]
+        if not row.empty:
+            rr = row.iloc[0]
+            title = (f'{_disp(roi)}\n'
+                     f't = {rr["t_vs_0"]:+.2f}  p = {rr["p_unc"]:.3g}\n'
+                     f'p_FDR = {rr["p_fdr"]:.3g}   n = {rr["n_cells_finite"]}')
+        else:
+            title = _disp(roi)
+        ax.set_title(title, fontsize=FONT_TICK)
+        ax.tick_params(axis="both", labelsize=FONT_TICK, length=2, pad=1)
+        ax.set_xlabel("CV r", fontsize=FONT_TICK)
+        ax.set_ylabel("# cells", fontsize=FONT_TICK)
+    fig.suptitle(
+        f'Per-ROI CV r distribution at lag {fixed_lag_deg}°\n'
+        f'(one-sample t vs 0, one-sided; FDR across {n} ROIs)',
+        fontsize=FONT_BIG,
+    )
+    _save(fig, save_stem)
+
+
+def _stats_and_plots(per_cell, out_dir, skip_raw_plots=False):
+    """Recompute per-ROI stats, ROI×lag table and all figures from a
+    pre-computed per_cell DataFrame. Shared by the full and reload paths.
+
+    `skip_raw_plots=True` (default in reload mode) skips figures that need
+    to re-load subject raw data (`plot_rate_map_examples`)."""
     # per-ROI stats
     roi_stats = _per_roi_stats(per_cell)
     roi_stats.to_csv(out_dir / "per_roi_stats.csv", index=False)
@@ -1393,6 +1556,12 @@ def run():
     roi_x_lag.to_csv(out_dir / "per_roi_lag_table.csv", index=False)
     print("\n  saved per_roi_lag_table.csv (ROI × lag, FDR across full table)")
 
+    # Lag-agnostic single-lag summary (one t-test per (ROI × lag))
+    single_lag_df = per_roi_single_lag_stats(per_cell, SINGLE_LAGS_FOR_TESTS)
+    single_lag_df.to_csv(out_dir / "per_roi_single_lag_stats.csv", index=False)
+    print(f"  saved per_roi_single_lag_stats.csv "
+          f"({single_lag_df.shape[0]} rows) for lags {SINGLE_LAGS_FOR_TESTS}")
+
     # plots
     plot_test1_mean_r_histograms(per_cell, roi_stats,
                                    str(out_dir / "test1_meanR_histograms"))
@@ -1407,7 +1576,15 @@ def run():
     plot_fixed_vs_free_comparison(per_cell,
                                     str(out_dir / "fixed_vs_free_comparison"))
     plot_zmni_gradient(per_cell, str(out_dir / "zMNI_gradient_ACC"))
-    plot_rate_map_examples(per_cell, out_dir)
+    # Per-fixed-lag histograms across all ROIs.
+    for fl in SINGLE_LAGS_FOR_TESTS:
+        plot_per_lag_r_hist_all_rois(per_cell, single_lag_df, fl,
+            str(out_dir / f"per_lag_r_hist_all_rois_lag{fl:03d}"))
+    if skip_raw_plots:
+        print("  skipped plot_rate_map_examples (raw subject data not "
+              "re-loaded in reload mode).")
+    else:
+        plot_rate_map_examples(per_cell, out_dir)
 
     return per_cell, roi_stats, out_dir
 
