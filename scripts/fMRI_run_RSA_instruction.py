@@ -21,6 +21,8 @@ import pickle
 import sys
 from datetime import date
 import json
+#import pdb; pdb.set_trace() 
+
 
 def pair_correct_tasks(data_dict, keys_list):
     """
@@ -45,7 +47,12 @@ def pair_correct_tasks(data_dict, keys_list):
             th_2.append(np.asarray(data_dict[pair_key]))
             paired_list_control.append(f"{key} with {pair_key}")
 
-    # import pdb; pdb.set_trace()       
+    # sanity check: every task-half-1 key in keys_list must have found a partner
+    n_th1_expected = sum(1 for k in keys_list if k.split('_')[0].endswith('1'))
+    assert len(paired_list_control) == n_th1_expected, (
+        f"Expected {n_th1_expected} pairs, got {len(paired_list_control)}. "
+        "Some task-half-1 keys did not find their same-execution partner in the dict."
+    )
     th_1 = np.vstack(th_1)
     th_2 = np.vstack(th_2)
     # print(paired_list_control)
@@ -72,6 +79,8 @@ with open(f"{config_path}/{config_file}", "r") as f:
 # SETTINGS
 EV_string = config.get("load_EVs_from")
 regression_version = config.get("regression_version")
+TR = config.get("TR")
+regression_version_full = f"{regression_version}-TR{TR}"
 
 today_str = date.today().strftime("%d-%m-%Y")
 name_RSA = config.get("name_of_RSA")
@@ -88,12 +97,12 @@ subjects = [f"sub-{subj_no}"]
 # Flags
 smoothing = config.get("smoothing", True)
 fwhm = config.get("fwhm", 5)
+PLOTTING = True
 
 # this should better be: what kind of searchlight_mask do you want?
 # make sure to change this in the config files!
 #load_searchlights = config.get("load_searchlights", False)
 searchlight_mask = config.get("searchlight_mask", None)
-include_diagonal = config.get("diagonal_included", True)
 
 print(f"Now running RSA based on subj GLM {regression_version} for subj {subj_no}")
 
@@ -102,19 +111,17 @@ for sub in subjects:
     data_dir = f"/Users/xpsy1114/Documents/projects/multiple_clocks/data/derivatives/{sub}"
     if os.path.isdir(data_dir):
         print("Running on laptop.")
-        # DONT FORGET TO COMMENT THIS OUT!!!!
-        # regression_version = '03-4'
-        only_load_labels = True 
+        only_load_labels = False 
     else:
         data_dir = f"/home/fs0/xpsy1114/scratch/data/derivatives/{sub}"
         only_load_labels = False
         print(f"Running on Cluster, setting {data_dir} as data directory")
       
     modelled_conditions_dir = f"{data_dir}/beh/modelled_EVs"
-    data_rdm_dir = f"{data_dir}/func/data_RDMs_glmbase_{regression_version}_{searchlight_mask}"
-    results_dir = f"{data_dir}/func/RSA_{RDM_version}_{today_str}_glmbase_{regression_version}/results" 
+    data_rdm_dir = f"{data_dir}/func/data_RDMs_glmbase_{regression_version_full}_{searchlight_mask}"
+    results_dir = f"{data_dir}/func/RSA_{RDM_version}_{today_str}_glmbase_{regression_version_full}/results"
     if smoothing == True:
-       results_dir = f"{data_dir}/func/RSA_{RDM_version}_{today_str}_glmbase_{regression_version}_smooth{fwhm}/results" 
+       results_dir = f"{data_dir}/func/RSA_{RDM_version}_{today_str}_glmbase_{regression_version_full}_smooth{fwhm}/results"
     os.makedirs(results_dir, exist_ok=True)
 
     # get a reference image to later project the results onto. This is usually
@@ -155,77 +162,103 @@ for sub in subjects:
     #
     # Step 2: loading conditions for model and data RDMs
     #
-    # loading the model EVs into dict
-    # TODO
-    # this needs to be different. Only load the DSR and the reward-DSR per configuration.
+    # Model EVs — full dict (used to build DSR / rewDSR / simple below).
     with open(f"{modelled_conditions_dir}/{sub}_modelled_EVs_{EV_string}.pkl", 'rb') as file:
         model_EVs = pickle.load(file)
-        selected_models = ['DSR', 'DSR_reward', 'simple']
-        
-    # TODO
-    # Then set up the model RDM: this will be either:
-    # simple execution: same (1) if execution was the same, different (0) if execution was differnt.
-    # DSR-like execution, rew only: assume a DSR-model starting from 'A' per configuration.
-        # compare the similarity between DSR-traces (only rewards): i.e. same reward at same future from A: + similarity
-    # DSR-like execution, paths and rewards: assume a DSR-model starting from 'A' per configuration.
-        # compare the similarity between DSR-traces: i.e. same location same lag at future: + similarity
+    selected_models = ['DSR', 'rewDSR', 'simple']
 
-
-    # loading the data EVs into dict
-    data_EVs, all_EV_keys = mc.analyse.my_RSA.load_data_EVs(data_dir, regression_version=regression_version, only_load_labels = only_load_labels)
-    
-    # TODO:
-    # change because this is now only 1 EV per task - 10 per task half, 20 across.
-    EV_keys = []        
-    for ev in sorted(all_EV_keys):
-        EV_keys.append(ev)
-    
+    # Data EVs — one PE per instruction-phase condition at this TR, per task half.
+    data_EVs, all_EV_keys = mc.analyse.my_RSA.load_data_EVs_instr_TRwise(
+        data_dir, regression_version=regression_version, TR=TR,
+        only_load_labels=only_load_labels,
+    )
+    EV_keys = sorted(all_EV_keys)
     print(f"including the following EVs in the RDMs: {EV_keys}")
-    
-    # TODO: also check if the pairing is still correct- it will have to be based, this time,
-    # on the execution (same as before), but we need to consider the instruction as well (backw forw)
+
+    # Pair task halves by same-execution (A1_forw <-> A2_backw, etc.).
     data_th1, data_th2, paired_labels = pair_correct_tasks(data_EVs, EV_keys)
-    data_concat = np.concatenate((data_th1, data_th2), axis = 0)
+    data_concat = np.concatenate((data_th1, data_th2), axis=0)
     
-    # 
-    # Step 3: compute the model and data RDMs.
-    models_concat = {}
+    #
+    # Step 3: compute the model RDMs.
+    # Labels aligned with data pairing (row -> TH1 label, col -> TH2 label).
+    th1_labels = [p.split(' with ')[0].replace('_instruction_onset', '') for p in paired_labels]
+    th2_labels = [p.split(' with ')[1].replace('_instruction_onset', '') for p in paired_labels]
+
     model_RDM_dir = {}
+
+    # DSR / rewDSR — hamming dissimilarity over A_reward strings, TH1 x TH2, full off-block.
+    for model in ['DSR', 'rewDSR']:
+        a_rew_sub = {k: v for k, v in model_EVs[model].items() if k.endswith('_A_reward')}
+        a_rew_keys = [k.replace('_instruction_onset', '_A_reward') for k in EV_keys]
+        m_th1, m_th2, _ = pair_correct_tasks(a_rew_sub, a_rew_keys)
+        model_RDM_dir[model] = mc.analyse.my_RSA.compute_hamming_instruction_RDM(m_th1, m_th2)
+
+    # Simple — {-1, +1, NaN} based on same/different execution within the same task letter.
+    model_RDM_dir['simple'] = mc.analyse.my_RSA.build_simple_instruction_RDM(th1_labels, th2_labels)
     
-    for model in model_EVs:
-        model_th1, model_th2, model_paired_labels = pair_correct_tasks(model_EVs[model], EV_keys)
-        # finally, concatenate th1 and th2 to do the cross-correlation after
-        models_concat[model] = np.concatenate((model_th1, model_th2), axis = 0)
-        model_RDM_dir[model] = mc.analyse.my_RSA.compute_hamming_distance(models_concat[model], plotting = False, include_diagonal=include_diagonal, model_name=model)
-
-
-    # compute the data RDM
+    if PLOTTING == True:
+        # Plot the three model RDMs (plotted from the stored arrays — no recomputation).
+        mc.analyse.my_RSA.plot_instruction_RDM(model_RDM_dir['simple'], th1_labels, th2_labels,
+                                               title='simple execution dissim', vmin=-1, vmax=1, save_path=f"{results_dir}_simple")
+        mc.analyse.my_RSA.plot_instruction_RDM(model_RDM_dir['DSR'], th1_labels, th2_labels,
+                                               title='DSR A_reward hamming dissim', vmin=0, vmax=1, save_path=f"{results_dir}_rewDSR")
+        mc.analyse.my_RSA.plot_instruction_RDM(model_RDM_dir['rewDSR'], th1_labels, th2_labels,
+                                               title='rewDSR A_reward hamming dissim', vmin=0, vmax=1, save_path=f"{results_dir}_DSR")
+    
+        # Optional inspection plot: cosine dissim from one random searchlight.
+        plot_example_data_RDM = config.get("plot_example_data_RDM", False)
+        if plot_example_data_RDM and not only_load_labels:
+            rng = np.random.default_rng(42)
+            sl_idx = int(rng.integers(0, len(centers)))
+            vox_ids = np.asarray(neighbors[sl_idx])
+            sl_data = data_concat[:, vox_ids]
+            n_conds = sl_data.shape[0] // 2
+            example_data_RDM = mc.analyse.my_RSA.compute_cosine_instruction_RDM(sl_data[:n_conds], sl_data[n_conds:])
+            mc.analyse.my_RSA.plot_instruction_RDM(
+                example_data_RDM, th1_labels, th2_labels,
+                title=f'example data RDM (searchlight #{sl_idx}, cosine dissim)', save_path=f"{results_dir}_data"
+            )
+    
+        plt.show(block=False)
+    
+    #
+    # Step 4: compute the data RDM per searchlight (cosine dissim, TH1 x TH2, full off-block).
+    #
+    os.makedirs(data_rdm_dir, exist_ok=True)
     if not os.path.exists(f"{data_rdm_dir}/data_RDM.npy"):
-        # TODO
-        # adjust this! this has to be a different similarity now (not across task halves)
-        data_RDMs = mc.analyse.my_RSA.get_RDM_per_searchlight(data_concat, centers, neighbors, method = 'crosscorr', include_diagonal=include_diagonal) 
-        mc.analyse.handle_MRI_files.save_data_RDM_as_nifti(data_RDMs, data_rdm_dir, "data_RDM", ref_img, centers) 
+        data_RDMs = mc.analyse.my_RSA.get_instruction_RDM_per_searchlight(data_concat, centers, neighbors)
+        mc.analyse.handle_MRI_files.save_data_RDM_as_nifti(data_RDMs, data_rdm_dir, "data_RDM", ref_img, centers)
     else:
         data_RDMs = np.load(f"{data_rdm_dir}/data_RDM.npy")
-        
+
     if smoothing == True:
         if not os.path.exists(f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}.npy"):
             path_to_save_smooth = f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}"
             print(f"now smoothing the RDM and saving it here: {path_to_save_smooth}")
-            data_RDMs = mc.analyse.handle_MRI_files.smooth_RDMs(data_RDMs, ref_img, fwhm,use_rsa_toolbox = False, path_to_save=path_to_save_smooth,centers=centers)
+            data_RDMs = mc.analyse.handle_MRI_files.smooth_RDMs(data_RDMs, ref_img, fwhm, use_rsa_toolbox=False, path_to_save=path_to_save_smooth, centers=centers)
         else:
             data_RDMs = np.load(f"{data_rdm_dir}/data_RDM_smooth_fwhm{fwhm}.npy")
 
-
-    # import pdb; pdb.set_trace()
-    # STEP 4: evaluate the model fit between model and data RDMs.
+    #
+    # Step 5: evaluate each single model against every searchlight data RDM.
+    # NaN cells in the simple model automatically drop the corresponding data
+    # cells from the OLS (see evaluate_model_vec). Both X and Y are z-scored.
     #
     RSA_results = {}
     run_single_models = config.get("run_single_models", True)
     if run_single_models == True:
         for model in selected_models:
-            RSA_results[model] = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(model_RDM_dir[model][0], d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {model}"))
-            mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=RSA_results[model], centers=centers, file_path = results_dir, file_name= f"{model}", mask=mask, number_regr = 0, ref_image_for_affine_path=ref_img)
+            model_flat = np.asarray(model_RDM_dir[model]).ravel()
+            RSA_results[model] = Parallel(n_jobs=3)(
+                delayed(mc.analyse.my_RSA.evaluate_model)(model_flat, d)
+                for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {model}")
+            )
+            mc.analyse.handle_MRI_files.save_my_RSA_results(
+                result_file=RSA_results[model], centers=centers,
+                file_path=results_dir, file_name=f"{model}",
+                mask=mask, number_regr=0, ref_image_for_affine_path=ref_img,
+            )
 
     # import pdb; pdb.set_trace()
     run_combo_models = config.get("run_combo_models", bool(config.get("combo_models")))
@@ -267,19 +300,18 @@ for sub in subjects:
     summary = {
         "subject": sub,
         "EV_string": EV_string,
-        "EV_labels_in_RDM": model_paired_labels,
         "regression_version": regression_version,
+        "TR": TR,
+        "regression_version_full": regression_version_full,
         "RDM_version": RDM_version,
+        "paired_labels": paired_labels,
         "smoothing": smoothing,
         "fwhm": fwhm,
         "searchlight_mask": searchlight_mask,
         "n_all_EVs": len(all_EV_keys),
         "n_selected_EVs": len(EV_keys),
         "models_evaluated": selected_models,
-        "diagonal is included": include_diagonal,
-        "run_combo_models": run_combo_models,
-        "combo_model_names": [c["name"] for c in config.get("combo_models", [])] if run_combo_models else [],
-        "combo_model_regs_per_combo": [c["regressors"] for c in config.get("combo_models", [])] if run_combo_models else [],
+        "run_combo_models": False,
         "data_dir": data_dir,
         "results_dir": results_dir
     }

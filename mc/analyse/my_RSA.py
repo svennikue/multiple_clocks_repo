@@ -217,6 +217,162 @@ def load_data_EVs_th(data_dir, regression_version):
     return EV_dict, list_loaded
 
 
+def compute_hamming_instruction_RDM(th1, th2):
+    """
+    Full (n1, n2) Hamming DISSIMILARITY between task-half-1 rows and task-half-2 rows.
+    RDM[i, j] = 1 - mean(th1[i] == th2[j]). No symmetrization, no diagonal dropping.
+    """
+    th1 = np.asarray(th1)
+    th2 = np.asarray(th2)
+    sim = (th1[:, None, :] == th2[None, :, :]).mean(axis=2)
+    return 1.0 - sim
+
+
+def compute_cosine_instruction_RDM(th1, th2):
+    """
+    Full (n1, n2) cosine DISSIMILARITY between task-half-1 rows and task-half-2 rows.
+    Same math as compute_crosscorr, but keeps the entire off-block (no symmetrization,
+    no diagonal dropping).
+    """
+    X1 = np.asarray(th1, dtype=float)
+    X2 = np.asarray(th2, dtype=float)
+    X1 = X1 - X1.mean(axis=1, keepdims=True)
+    X2 = X2 - X2.mean(axis=1, keepdims=True)
+    X1 /= np.sqrt(np.einsum('ij,ij->i', X1, X1))[:, None]
+    X2 /= np.sqrt(np.einsum('ij,ij->i', X2, X2))[:, None]
+    return 1.0 - X1 @ X2.T
+
+
+def build_simple_instruction_RDM(th1_labels, th2_labels):
+    """
+    Simple execution-based dissimilarity matrix, shape (n1, n2).
+      -1 if same task letter AND same execution (parity match)
+      +1 if same task letter AND different execution (parity mismatch)
+     NaN if different task letters (i.e. A vs B, etc.) -> excluded from the RSA
+
+    Labels expected to look like 'A1_backw' (may carry extra suffixes, only the
+    first two underscore-separated tokens are used). Execution parity encodes
+    "canonical (like A1_forw) vs. reversed" — computed as
+        parity = (task_half == '2') XOR (direction == 'backw').
+    """
+    def _parse(label):
+        task, direction = label.split('_')[:2]
+        letter = task[0]
+        half = task[-1]
+        parity_reverse = (half == '2') ^ (direction == 'backw')
+        return letter, parity_reverse
+
+    n1, n2 = len(th1_labels), len(th2_labels)
+    R = np.full((n1, n2), np.nan)
+    for i, l1 in enumerate(th1_labels):
+        let_i, par_i = _parse(l1)
+        for j, l2 in enumerate(th2_labels):
+            let_j, par_j = _parse(l2)
+            if let_i != let_j:
+                continue
+            R[i, j] = -1.0 if par_i == par_j else 1.0
+
+    # Balance check: within each same-letter block AND overall, non-NaN entries sum to 0.
+    total = np.nansum(R)
+    assert np.isclose(total, 0.0), (
+        f"Simple dissim RDM not balanced (grand total = {total:.4f}, expected 0)."
+    )
+    return R
+
+
+def plot_instruction_RDM(rdm, th1_labels, th2_labels, title, vmin=None, vmax=None, cmap='coolwarm', save_path=None):
+    """
+    Plot a precomputed (n1, n2) RDM. Does NOT recompute anything.
+    NaN cells are rendered transparent (over a white background) so exclusions are visible.
+    """
+    fig, ax = plt.subplots()
+    cmap_obj = plt.get_cmap(cmap).copy()
+    cmap_obj.set_bad(color='white')
+    im = ax.imshow(np.ma.masked_invalid(rdm), aspect='equal', cmap=cmap_obj, vmin=vmin, vmax=vmax)
+    ax.set_xticks(np.arange(len(th2_labels)))
+    ax.set_yticks(np.arange(len(th1_labels)))
+    ax.set_xticklabels(th2_labels, rotation=45, ha='right', fontsize=8)
+    ax.set_yticklabels(th1_labels, fontsize=8)
+    ax.set_xlabel('task half 2')
+    ax.set_ylabel('task half 1')
+    ax.set_title(title)
+    fig.colorbar(im, ax=ax)
+    fig.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, dpi=150)
+    return fig, ax
+
+
+def load_data_EVs_instr_TRwise(data_dir, regression_version, TR, only_load_labels=False):
+    """
+    Loader for per-TR instruction-phase GLMs.
+    Reads PEs from   glm_{regression_version}-TR{TR}_pt0{th}.feat/stats
+    and EV mapping   EVs_{regression_version}-TR{TR}_pt0{th}/task-to-EV.txt
+    for th in {1, 2}. Skips button/press EVs so only the instruction EVs remain.
+    """
+    EV_dict = {}
+    list_loaded = []
+    for th in [1, 2]:
+        pe_path = f"{data_dir}/func/glm_{regression_version}-TR{TR}_pt0{th}.feat/stats"
+        EV_txt  = f"{data_dir}/func/EVs_{regression_version}-TR{TR}_pt0{th}/task-to-EV.txt"
+        with open(EV_txt, 'r') as file:
+            for line in file:
+                index, name_ev = line.strip().split(' ', 1)
+                name = name_ev.replace('ev_', '')
+                if name in ['press_EV', 'up', 'down', 'left', 'right']:
+                    continue
+                EV_path = os.path.join(pe_path, f"pe{int(index)+1}.nii.gz")
+                if only_load_labels:
+                    EV_dict[name] = np.zeros((1, 1))
+                else:
+                    EV_dict[name] = np.array(nib.load(EV_path).get_fdata()).flatten()
+                list_loaded.append(name)
+    return EV_dict, list_loaded
+
+
+def get_instruction_RDM_per_searchlight(fmri_data, centers, neighbors):
+    """
+    Per-searchlight cosine dissimilarity RDM for the instruction-phase RSA.
+
+    Parameters
+    ----------
+    fmri_data : ndarray, shape (2 * n_conds, n_voxels)
+        TH1 rows stacked on TH2 rows (i.e. the ``data_concat`` from the script).
+    centers : sequence of voxel indices for each searchlight.
+    neighbors : list of arrays, one per center, giving voxel indices in the
+        searchlight neighbourhood.
+
+    Returns
+    -------
+    sl_rdms : ndarray, shape (n_centers, n_conds * n_conds)
+        Each row is a searchlight's full (TH1 x TH2) dissimilarity matrix,
+        flattened row-major with ``.ravel()``. No symmetrization, no diagonal
+        dropping — same convention as :func:`compute_cosine_instruction_RDM`.
+    """
+    centers = np.array(centers)
+    n_centers = centers.shape[0]
+    n_conds = fmri_data.shape[0] // 2
+
+    sl_rdms = np.zeros((n_centers, n_conds * n_conds))
+
+    if n_centers > 1000:
+        chunked_center = np.split(
+            np.arange(n_centers),
+            np.linspace(0, n_centers, 101, dtype=int)[1:-1],
+        )
+    else:
+        chunked_center = [np.arange(n_centers)]
+
+    for chunks in tqdm(chunked_center, desc='Calculating instruction RDMs...'):
+        for c in chunks:
+            sl_data = fmri_data[:, np.asarray(neighbors[c])]
+            th1 = sl_data[:n_conds]
+            th2 = sl_data[n_conds:]
+            sl_rdms[c, :] = compute_cosine_instruction_RDM(th1, th2).ravel()
+
+    return sl_rdms
+
+
 def get_RDM_per_searchlight(fmri_data, centers, neighbors, method = 'crosscorr', labels = None, full_mask=None, mask_pairs=None, include_diagonal=True):
     # import pdb; pdb.set_trace()
     centers = np.array(centers)
