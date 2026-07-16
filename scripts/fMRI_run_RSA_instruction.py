@@ -58,6 +58,43 @@ def pair_correct_tasks(data_dict, keys_list):
     # print(paired_list_control)
     return th_1, th_2, paired_list_control
 
+
+# Names, in canonical order, of the four channels that constitute a "literal split"
+# of rewDSR at the A_reward anchor (curr = chunk 0, next = 1, two_next = 2, three_next = 3).
+REWDSR_SPLIT_CHANNELS = ('curr_rew', 'next_rew', 'two_next_rew', 'three_next_rew')
+
+
+def slice_rewDSR_into_split_channels(model_EVs, EV_keys):
+    """
+    Build (th1, th2) matrices for curr_rew / next_rew / two_next_rew / three_next_rew
+    as 12-element chunks of rewDSR at the A_reward anchor.
+
+    Doing it this way makes the four channels a LITERAL split of rewDSR:
+      * each chunk is a 12-vec of the raw location value (e.g. [4]*12)
+      * hamming dissim then behaves the same way as on rewDSR itself
+        (match -> 0, mismatch -> 1), rather than the 9-dim one-hot version
+        stored in model_EVs['curr_rew'] etc. (which gives mismatch = 2/9).
+
+    Returns
+    -------
+    dict : {channel_name: (th1_mat, th2_mat)}
+        Each matrix has shape (n_pairs, 12).
+    """
+    rewDSR_sub = {k: v for k, v in model_EVs['rewDSR'].items() if k.endswith('_A_reward')}
+    rewDSR_keys = [k.replace('_instruction_onset', '_A_reward') for k in EV_keys]
+    th1_full, th2_full, _ = pair_correct_tasks(rewDSR_sub, rewDSR_keys)
+
+    n_pairs, n_total = th1_full.shape
+    assert n_total % 4 == 0, (
+        f"rewDSR at A_reward has {n_total} elements, not divisible by 4."
+    )
+    CHUNK = n_total // 4
+    out = {}
+    for i, name in enumerate(REWDSR_SPLIT_CHANNELS):
+        out[name] = (th1_full[:, i * CHUNK:(i + 1) * CHUNK],
+                     th2_full[:, i * CHUNK:(i + 1) * CHUNK])
+    return out
+
 #
 #
 # import pdb; pdb.set_trace() 
@@ -190,14 +227,27 @@ for sub in subjects:
 
     model_RDM_dir = {}
 
+    # If any of the four rewDSR-split channels is requested, pre-compute the
+    # sliced (th1, th2) matrices from rewDSR itself (12-vec chunks). This makes
+    # curr_rew/next_rew/two_next_rew/three_next_rew a literal split of rewDSR
+    # — same numeric encoding, same hamming behaviour (0 / 1 per chunk).
+    split_th_by_channel = {}
+    if any(m in REWDSR_SPLIT_CHANNELS for m in selected_models):
+        split_th_by_channel = slice_rewDSR_into_split_channels(model_EVs, EV_keys)
+
     # Every non-'simple' model in `selected_models` is built the same way:
-    # hamming dissim over the model's A_reward strings, TH1 x TH2, full off-block.
+    # hamming dissim over its A_reward vectors, TH1 x TH2, full off-block.
     for model in selected_models:
         if model == 'simple':
             continue
-        a_rew_sub = {k: v for k, v in model_EVs[model].items() if k.endswith('_A_reward')}
-        a_rew_keys = [k.replace('_instruction_onset', '_A_reward') for k in EV_keys]
-        m_th1, m_th2, _ = pair_correct_tasks(a_rew_sub, a_rew_keys)
+        if model in split_th_by_channel:
+            # slice of rewDSR (12-vec chunk of raw location values)
+            m_th1, m_th2 = split_th_by_channel[model]
+        else:
+            # standard path: filter model_EVs[model] to its _A_reward keys
+            a_rew_sub = {k: v for k, v in model_EVs[model].items() if k.endswith('_A_reward')}
+            a_rew_keys = [k.replace('_instruction_onset', '_A_reward') for k in EV_keys]
+            m_th1, m_th2, _ = pair_correct_tasks(a_rew_sub, a_rew_keys)
         model_RDM_dir[model] = mc.analyse.my_RSA.compute_hamming_instruction_RDM(m_th1, m_th2)
 
     # Simple — {-1, +1, NaN} based on same/different execution within the same task letter.
