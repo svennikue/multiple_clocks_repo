@@ -126,8 +126,8 @@ PUB_MODELS = [
     'state', 'A-state', 'path_rew', 'next_buttons', 'buttons_out',
     'location', 'l2_norm',
     'curr_quarter', 'next_quarter', 'next2_quarter', 'next3_quarter',
-    'DSR', 'rewDSR'
-]
+    'DSR', 'rewDSR', 'curr_rew', 'next_rew', 'two_next_rew', 'three_next_rew']
+
 PUB_FIG_WIDTH_CM   = 4.0
 PUB_FIG_HEIGHT_CM  = 4.0
 PUB_FIG_FONT_PT    = 8

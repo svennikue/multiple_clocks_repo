@@ -82,7 +82,7 @@ regression_version = config.get("regression_version")
 TR = config.get("TR")
 regression_version_full = f"{regression_version}-TR{TR}"
 
-today_str = date.today().strftime("%d-%m-%Y")
+
 name_RSA = config.get("name_of_RSA")
 RDM_version = f"{name_RSA}"
 
@@ -119,9 +119,9 @@ for sub in subjects:
       
     modelled_conditions_dir = f"{data_dir}/beh/modelled_EVs"
     data_rdm_dir = f"{data_dir}/func/data_RDMs_glmbase_{regression_version_full}_{searchlight_mask}"
-    results_dir = f"{data_dir}/func/RSA_{RDM_version}_{today_str}_glmbase_{regression_version_full}/results"
+    results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version_full}/results"
     if smoothing == True:
-       results_dir = f"{data_dir}/func/RSA_{RDM_version}_{today_str}_glmbase_{regression_version_full}_smooth{fwhm}/results"
+       results_dir = f"{data_dir}/func/RSA_{RDM_version}_glmbase_{regression_version_full}_smooth{fwhm}/results"
     os.makedirs(results_dir, exist_ok=True)
 
     # get a reference image to later project the results onto. This is usually
@@ -165,8 +165,11 @@ for sub in subjects:
     # Model EVs — full dict (used to build DSR / rewDSR / simple below).
     with open(f"{modelled_conditions_dir}/{sub}_modelled_EVs_{EV_string}.pkl", 'rb') as file:
         model_EVs = pickle.load(file)
-    selected_models = ['DSR', 'rewDSR', 'simple']
-
+    # Which models to build + evaluate. Driven by the config so we can swap
+    # between the original ['DSR', 'rewDSR', 'simple'] analysis and the new
+    # ['curr_rew', 'next_rew', 'two_next_rew', 'three_next_rew'] split_rew_DSR
+    # analysis without touching the script.
+    selected_models = config.get("selected_models", ['DSR', 'rewDSR', 'simple'])
     # Data EVs — one PE per instruction-phase condition at this TR, per task half.
     data_EVs, all_EV_keys = mc.analyse.my_RSA.load_data_EVs_instr_TRwise(
         data_dir, regression_version=regression_version, TR=TR,
@@ -187,24 +190,30 @@ for sub in subjects:
 
     model_RDM_dir = {}
 
-    # DSR / rewDSR — hamming dissimilarity over A_reward strings, TH1 x TH2, full off-block.
-    for model in ['DSR', 'rewDSR']:
+    # Every non-'simple' model in `selected_models` is built the same way:
+    # hamming dissim over the model's A_reward strings, TH1 x TH2, full off-block.
+    for model in selected_models:
+        if model == 'simple':
+            continue
         a_rew_sub = {k: v for k, v in model_EVs[model].items() if k.endswith('_A_reward')}
         a_rew_keys = [k.replace('_instruction_onset', '_A_reward') for k in EV_keys]
         m_th1, m_th2, _ = pair_correct_tasks(a_rew_sub, a_rew_keys)
         model_RDM_dir[model] = mc.analyse.my_RSA.compute_hamming_instruction_RDM(m_th1, m_th2)
 
     # Simple — {-1, +1, NaN} based on same/different execution within the same task letter.
-    model_RDM_dir['simple'] = mc.analyse.my_RSA.build_simple_instruction_RDM(th1_labels, th2_labels)
+    if 'simple' in selected_models:
+        model_RDM_dir['simple'] = mc.analyse.my_RSA.build_simple_instruction_RDM(th1_labels, th2_labels)
     
     if PLOTTING == True:
-        # Plot the three model RDMs (plotted from the stored arrays — no recomputation).
-        mc.analyse.my_RSA.plot_instruction_RDM(model_RDM_dir['simple'], th1_labels, th2_labels,
-                                               title='simple execution dissim', vmin=-1, vmax=1, save_path=f"{results_dir}_simple")
-        mc.analyse.my_RSA.plot_instruction_RDM(model_RDM_dir['DSR'], th1_labels, th2_labels,
-                                               title='DSR A_reward hamming dissim', vmin=0, vmax=1, save_path=f"{results_dir}_rewDSR")
-        mc.analyse.my_RSA.plot_instruction_RDM(model_RDM_dir['rewDSR'], th1_labels, th2_labels,
-                                               title='rewDSR A_reward hamming dissim', vmin=0, vmax=1, save_path=f"{results_dir}_DSR")
+        # Plot each selected model RDM (plotted from the stored arrays — no recomputation).
+        for model in selected_models:
+            if model == 'simple':
+                vmin, vmax, title = -1, 1, 'simple execution dissim'
+            else:
+                vmin, vmax, title = 0, 1, f'{model} A_reward hamming dissim'
+            mc.analyse.my_RSA.plot_instruction_RDM(model_RDM_dir[model], th1_labels, th2_labels,
+                                                   title=title, vmin=vmin, vmax=vmax,
+                                                   save_path=f"{results_dir}_{model}")
     
         # Optional inspection plot: cosine dissim from one random searchlight.
         plot_example_data_RDM = config.get("plot_example_data_RDM", False)
@@ -280,7 +289,12 @@ for sub in subjects:
                     else:
                         raise ValueError(f"Combo model {combo_model_name} not possible, as {missing} not computed")
   
-            stacked_model_RDMs = np.stack([model_RDM_dir[m][0] for m in models_to_combine], axis=1)
+            # Each model_RDM_dir[m] is a (n_th1, n_th2) matrix; flatten to a
+            # 1D regressor and stack so shape = (n_pairs, n_regressors).
+            stacked_model_RDMs = np.stack(
+                [np.asarray(model_RDM_dir[m]).ravel() for m in models_to_combine],
+                axis=1,
+            )
             
             # check how correlated each model is whith each other.
             # corr = np.corrcoef(stacked_model_RDMs, rowvar=False)
@@ -311,7 +325,8 @@ for sub in subjects:
         "n_all_EVs": len(all_EV_keys),
         "n_selected_EVs": len(EV_keys),
         "models_evaluated": selected_models,
-        "run_combo_models": False,
+        "run_combo_models": run_combo_models,
+        "combo_models": config.get("combo_models", []),
         "data_dir": data_dir,
         "results_dir": results_dir
     }

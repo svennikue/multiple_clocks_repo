@@ -1,11 +1,16 @@
 {
-  "name_of_RSA": "instruction_per_TR",
+  "name_of_RSA": "split_rew_DSR_per_TR",
   "load_EVs_from": "DSR_loc-fut-rews-state-dur-type",
   "regression_version": "01",
   "TR": 4,
-  "smoothing": true,
+  "smoothing": false,
   "fwhm": 5,
   "searchlight_mask": "grey_matter",
   "run_single_models": true,
-  "run_combo_models": false
+  "run_combo_models": true,
+  "selected_models": ["curr_rew", "next_rew", "two_next_rew", "three_next_rew"],
+  "combo_models": [
+    {"name": "split_rew_DSR_combo",
+     "regressors": ["curr_rew", "next_rew", "two_next_rew", "three_next_rew"]}
+  ]
 }
