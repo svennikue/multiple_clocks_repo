@@ -345,13 +345,21 @@ for sub in subjects:
                 [np.asarray(model_RDM_dir[m]).ravel() for m in models_to_combine],
                 axis=1,
             )
-            
-            # check how correlated each model is whith each other.
-            # corr = np.corrcoef(stacked_model_RDMs, rowvar=False)
-            # for i in range(len(models_to_combine)):
-            #     for j in range(i+1, len(models_to_combine)):
-            #         print(f"{models_to_combine[i]} vs {models_to_combine[j]}: r={corr[i,j]:.3f}")
-            # corr, fig, ax = mc.analyse.my_RSA.plot_model_correlations(stacked_model_RDMs, models_to_combine, conditions_masking=conditions_masking)
+
+            # How correlated are the regressors of this combo model with each other?
+            # NaN-safe pearson via pandas; then print a compact upper-triangle summary
+            # and save a heatmap alongside the results.
+            import pandas as _pd
+            corr = _pd.DataFrame(stacked_model_RDMs, columns=models_to_combine).corr().to_numpy()
+            print(f"\n[{combo_model_name}] pairwise Pearson r between regressor RDMs:")
+            for i in range(len(models_to_combine)):
+                for j in range(i + 1, len(models_to_combine)):
+                    print(f"    {models_to_combine[i]:>16s} vs {models_to_combine[j]:<16s}: r = {corr[i, j]:+.3f}")
+            mc.analyse.my_RSA.plot_model_correlations(
+                stacked_model_RDMs, models_to_combine,
+                save_path=f"{results_dir}_{combo_model_name}_regressor_corr",
+                show=True,
+            )
               
             estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs, d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name}"))
             for i, model in enumerate(models_to_combine):
