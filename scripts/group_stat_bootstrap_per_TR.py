@@ -317,17 +317,47 @@ def get_perm_max_mass(data, seed, ref_t, structure, mask4d):
 
 
 # ---- small-volume (mask) helpers -------------------------------------
-def load_mask_nifti(mask_path, expected_shape, expected_affine, tol_mm=1e-3):
-    """Load a small-volume mask NIfTI, check it matches the data grid."""
+def load_mask_nifti(mask_path, expected_shape, expected_affine,
+                     exact_tol_mm=1e-3, resample_tol_mm=2.5):
+    """Load a small-volume mask NIfTI and align it to the data grid.
+
+    * Exact affine match (within ``exact_tol_mm``): use as-is.
+    * Shape matches but affine differs by up to ``resample_tol_mm``
+      (typical qform/sform mismatch after an FSL FLIRT resample):
+      auto-resample the mask onto the data grid using nearest-neighbour
+      interpolation. Emits a warning showing the max element difference.
+    * Anything worse: raise, so the user has to align it explicitly.
+    """
     img = nib.load(mask_path)
     m = img.get_fdata() > 0
-    if m.shape != expected_shape[:3]:
-        raise ValueError(
-            f"mask {mask_path} shape {m.shape} != data shape {expected_shape[:3]}")
-    if not np.allclose(img.affine, expected_affine, atol=tol_mm):
-        raise ValueError(
-            f"mask {mask_path} affine differs from data affine; resample first.")
-    return m
+
+    if np.allclose(img.affine, expected_affine, atol=exact_tol_mm):
+        if m.shape != expected_shape[:3]:
+            raise ValueError(
+                f"mask {mask_path} shape {m.shape} != data shape "
+                f"{expected_shape[:3]}")
+        return m
+
+    diff = float(np.abs(img.affine - expected_affine).max())
+    if m.shape == expected_shape[:3] and diff <= resample_tol_mm:
+        print(f"  [mask] {os.path.basename(mask_path)}: affine differs by "
+              f"{diff:.4f} mm (shape matches). Auto-resampling to data grid "
+              f"with nearest-neighbour.")
+        from nilearn.image import resample_img
+        ref_img = nib.Nifti1Image(np.zeros(expected_shape[:3], dtype=np.uint8),
+                                    expected_affine)
+        img_bin = nib.Nifti1Image(m.astype(np.uint8), img.affine)
+        resampled = resample_img(img_bin, target_affine=ref_img.affine,
+                                   target_shape=ref_img.shape,
+                                   interpolation="nearest")
+        return resampled.get_fdata() > 0
+
+    raise ValueError(
+        f"mask {mask_path}: shape {m.shape} vs data {expected_shape[:3]}, "
+        f"affine element-wise max diff = {diff:.4f} mm. "
+        f"Resample first (flirt -in mask -ref beta_volume -applyxfm "
+        f"-usesqform -out ...)."
+    )
 
 
 def roi_mean_per_subject_per_tr(data, roi_mask):
