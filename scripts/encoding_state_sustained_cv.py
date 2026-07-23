@@ -1818,6 +1818,15 @@ def parse_args():
              "the saved CSV in that run dir. Defaults to the module-level "
              "constant RELOAD_OLD_RESULTS (set to None to force a full run).")
     parser.add_argument(
+        "--relabel-from", default=None,
+        help="Optional. Path to a fresh neurons_with_final_roi_labels.csv. "
+             "Only valid together with --load-old-results. If set, the per-cell "
+             "CSV's `roi` column is overwritten by that table's `alt_final_roi` "
+             "column (joined on subject + cell_idx), and the ROI summary + "
+             "figures are rebuilt into a NEW sibling directory "
+             "'<original>_relabelled_<timestamp>/' so the original run stays "
+             "intact. Prints a full transitions audit.")
+    parser.add_argument(
         "--gallery", action="store_true",
         help="Also build the per-cell example gallery (slow; loads raw data).")
     parser.add_argument(
@@ -2036,6 +2045,30 @@ def main():
         run_dir = _resolve_load_path(args.load_old_results)
         print(f"Loading old results from: {run_dir}")
         results = pd.read_csv(run_dir / "state_sustained_cv_results.csv")
+
+        # Optional relabel: swap the `roi` column in-memory from a fresh
+        # roi table, write into a NEW sibling directory (keeps original run
+        # canonical). See mc/analyse/roi_relabel.py for the join contract.
+        if args.relabel_from is not None:
+            from mc.analyse.roi_relabel import relabel_per_cell
+            results, _audit = relabel_per_cell(
+                results, roi_table_csv=args.relabel_from,
+                roi_col_in_table=ROI_LABEL_COLUMN)
+            ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            run_dir_out = run_dir.parent / f"{run_dir.name}_relabelled_{ts}"
+            run_dir_out.mkdir(parents=True, exist_ok=True)
+            results.to_csv(run_dir_out / "state_sustained_cv_results.csv",
+                            index=False)
+            with open(run_dir_out / "relabel_config.json", "w") as f:
+                json.dump({
+                    "reloaded_from": str(run_dir),
+                    "relabel_from": str(args.relabel_from),
+                    "roi_column_used": ROI_LABEL_COLUMN,
+                    "timestamp": ts,
+                }, f, indent=2)
+            run_dir = run_dir_out
+            print(f"Relabelled reload will write into: {run_dir}")
+
         # Re-derive the ROI summary so newly-added columns (e.g.
         # binom_p_phasic_only) appear even with old CSVs.
         roi_summary = make_roi_summary(results)

@@ -84,6 +84,16 @@ OUT_BASE        = os.path.join(DATA_DIR, "group", "spatial_peaks_simple")
 RELOAD_FROM     = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/spatial_peaks_simple/2026-06-26_18-47-11_phase_resid_paired_fixedlag-final/"
 # RELOAD_FROM   = None   # set to None to run the full CV + perm pipeline
 
+# Optional. Path to a fresh neurons_with_final_roi_labels.csv. Only used when
+# RELOAD_FROM is set; on reload the per-cell CSV's `roi` column is overwritten
+# by the fresh table's `alt_final_roi` (joined on subject + cell_idx), so we
+# can rebuild ROI stats + figures without re-running CV + perms. See
+# mc.analyse.roi_relabel.relabel_per_cell. Set to None to disable.
+RELABEL_FROM    = ("/Users/xpsy1114/Documents/projects/multiple_clocks/"
+                    "data/ephys_humans/derivatives/"
+                    "neurons_with_final_roi_labels.csv")
+# RELABEL_FROM  = None
+
 # Cells / data --------------------------------------------------------
 CELL_SET        = "all_in_roi_table"     # 'rsa' or 'all_in_roi_table' or 'no_rsa_cells'
 SUBJECTS        = "all"                  # 'all' or list[int]
@@ -1315,15 +1325,30 @@ def run():
     # ---- Reload-only branch -------------------------------------------
     if RELOAD_FROM is not None:
         per_cell, src_dir = _reload_per_cell(RELOAD_FROM)
+
+        relabel_tag = ""
+        if RELABEL_FROM is not None:
+            from mc.analyse.roi_relabel import relabel_per_cell
+            per_cell, _audit = relabel_per_cell(
+                per_cell, roi_table_csv=RELABEL_FROM,
+                roi_col_in_table="alt_final_roi",
+                subject_key_per_cell="subject_int",
+                cell_key_per_cell="cell_idx")
+            relabel_tag = "_relabelled"
+
         run_tag = (datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                   + f"_reload_from_{src_dir.name}")
+                   + f"_reload_from_{src_dir.name}{relabel_tag}")
         out_dir = Path(OUT_BASE) / run_tag
         out_dir.mkdir(parents=True, exist_ok=True)
+        settings_snap = {**_settings_dict(), "reload_from": str(src_dir)}
+        if RELABEL_FROM is not None:
+            settings_snap["relabel_from"] = str(RELABEL_FROM)
         with open(out_dir / "settings.json", "w") as f:
-            json.dump({**_settings_dict(),
-                       "reload_from": str(src_dir)}, f, indent=2)
+            json.dump(settings_snap, f, indent=2)
         print(f"[{run_tag}]")
         print(f"  RELOAD mode — using per_cell from {src_dir}")
+        if RELABEL_FROM is not None:
+            print(f"  RELABEL mode — ROI col overwritten from {RELABEL_FROM}")
         print(f"  {len(per_cell)} cells loaded; skipping CV + perms.")
         print(f"  out_dir = {out_dir}")
         per_cell.to_csv(out_dir / "per_cell.csv", index=False)
@@ -1436,7 +1461,8 @@ def per_roi_single_lag_stats(per_cell,
     curves = _extract_per_cell_lag_curves(per_cell)
     rois_col = per_cell["roi"].to_numpy()
     rows = []
-    for roi in sorted(np.unique(rois_col)):
+    valid_rois = sorted({r for r in rois_col if isinstance(r, str)})
+    for roi in valid_rois:
         idx = np.where(rois_col == roi)[0]
         C = curves[idx]
         n_cells = len(idx)

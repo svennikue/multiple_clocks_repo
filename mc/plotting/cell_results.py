@@ -125,6 +125,22 @@ ROI_COLORS_SHOWGIRL2 = {
     'HC_mid':          6,
 }
 
+# Colours that sit outside the Showgirl2 palette (for ROIs added later —
+# ``get_roi_colour`` returns these when the ROI isn't in the palette dict).
+_EXTRA_ROI_COLORS = {
+    'Precuneus': '#5C1027',    # bordeaux (added 2026-07-23)
+}
+
+
+def get_roi_colour(roi):
+    """Look up an ROI colour, falling back to the palette index if defined."""
+    idx = ROI_COLORS_SHOWGIRL2.get(roi)
+    if idx is not None:
+        return SHOWGIRL2_DISCRETE[idx]
+    if roi in _EXTRA_ROI_COLORS:
+        return _EXTRA_ROI_COLORS[roi]
+    return '#888888'
+
 # Canonical Showgirl2 palette as returned by ``era_brewer.era_brew(
 # 'Showgirl2', n=7)`` — single source of truth for the project palette.
 # Hardcoded to (a) avoid re-importing era_brewer everywhere and (b) sit

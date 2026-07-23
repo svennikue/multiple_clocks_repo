@@ -110,8 +110,17 @@ OUT_BASE = os.path.join(DATA_DIR, 'group', 'per_lag_encoding')
 # Reload mode: point at a previous run directory to skip the heavy
 # CV + permutation compute and just re-run stats + plots from the
 # cached per-cell CSVs. Outputs land in a fresh timestamped dir.
-RELOAD_FROM     = None
-#RELOAD_FROM   = os.path.join(OUT_BASE, '2026-06-30_18-21-57')
+RELOAD_FROM     = os.path.join(OUT_BASE, '2026-06-30_18-21-57')
+# RELOAD_FROM   = None
+
+# Optional. Path to a fresh neurons_with_final_roi_labels.csv. Only used
+# when RELOAD_FROM is set; on reload the per-cell CSV's `roi` column is
+# overwritten by the fresh table's `alt_final_roi` (joined on subject_id
+# + cell_idx). See mc.analyse.roi_relabel.relabel_per_cell.
+RELABEL_FROM    = ("/Users/xpsy1114/Documents/projects/multiple_clocks/"
+                    "data/ephys_humans/derivatives/"
+                    "neurons_with_final_roi_labels.csv")
+# RELABEL_FROM  = None
 
 # Display-name overrides used in figures ONLY (data columns keep the
 # original ROI keys). Per CLAUDE.md, ACC is written as 'mPFC' in
@@ -1587,13 +1596,34 @@ def main():
 
     # ---- Reload branch: skip CV + perms, just recompute stats + plots ----
     if RELOAD_FROM is not None:
+        if RELABEL_FROM is not None:
+            run_tag += '_relabelled'
+            out_dir = os.path.join(OUT_BASE, run_tag)
+            fig_dir = os.path.join(out_dir, 'figures')
+            os.makedirs(fig_dir, exist_ok=True)
+
         with open(os.path.join(out_dir, 'config.json'), 'w') as f:
             json.dump({'reload_from': RELOAD_FROM,
+                       'relabel_from': RELABEL_FROM,
                        'roi_predicted_lags': {k: list(v) for k, v in
                                                 ROI_PREDICTED_LAGS_DEG.items()},
                        'roi_display_names': ROI_DISPLAY_NAMES,
                        'lags_deg': LAGS_DEG}, f, indent=2)
         per_cell = _load_reload_per_cell(RELOAD_FROM)
+
+        if RELABEL_FROM is not None:
+            from mc.analyse.roi_relabel import relabel_per_cell
+            # `neuron` format is "SS_CC-CC-..."; the number after '_' is cell_idx.
+            per_cell = per_cell.copy()
+            per_cell['cell_idx'] = (per_cell['neuron']
+                                     .str.split('_').str[1]
+                                     .str.split('-').str[0].astype(int))
+            per_cell, _audit = relabel_per_cell(
+                per_cell, roi_table_csv=RELABEL_FROM,
+                roi_col_in_table='alt_final_roi',
+                subject_key_per_cell='subject_id',
+                cell_key_per_cell='cell_idx')
+
         per_cell.to_csv(os.path.join(out_dir, 'per_cell_ALL_ROIs.csv'), index=False)
         _stats_and_plots(per_cell, out_dir, fig_dir)
         # Descriptive model-regressor correlation across subjects/configs.

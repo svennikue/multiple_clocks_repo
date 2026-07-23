@@ -23,7 +23,6 @@ Outputs (all into the same folder as `path_to_cell_table`):
                                         brain-coverage plotting)
   - roi_count_overview_alt.png
 """
-
 import os
 import re
 import sys
@@ -52,6 +51,17 @@ path_to_cell_table = (
     "data/ephys_humans/derivatives/neurons_MNI_latest.csv"
 )
 
+# Baylor microwire coordinate updates (v2026). One CSV per subject; filenames
+# look like `YEJ-electrodes_v2026.csv`, so the 3-letter prefix matches the tail
+# of the main table's `Subject Label` (e.g. 'BY2-YEJ'). Rows with
+# Type == 'microwires' carry bundle-level MNI152 coords; the main table stores
+# per-channel labels (`mRT2bHaEa02`), so we match by stripping the trailing 2
+# digits (case-insensitively) and re-use one bundle coord for all its channels.
+path_to_microwire_updates_dir = (
+    "/Users/xpsy1114/Documents/projects/multiple_clocks/"
+    "data/ephys_humans/ABCD_pts_elecFilesForSvenja_v2026"
+)
+
 path_to_brainnetome = "/Users/xpsy1114/Documents/toolboxes/Brainnatome"
 
 brainnetome_nii = os.path.join(path_to_brainnetome, "BN_Atlas_246_1mm.nii.gz")
@@ -69,6 +79,13 @@ acc_y_cutoff = 10               # only fairly anterior cingulate counts as ACC
 # dropped (set to NaN) so downstream analyses don't try to model them.
 MIN_SUBJECTS_PER_ALT_ROI = 3
 
+# Proximity fallback: cells that no atlas rule matched are only assigned to
+# the nearest ROI centroid if the distance is <= this. Beyond this, the cell
+# stays "leftover" (and hence NaN in `alt_final_roi`). Prior versions used no
+# distance cap, which pulled thalamus, insula white matter, and other
+# clearly-out-of-ROI cells into ACC/HC/PCC by proximity even at 15-30 mm.
+PROXIMITY_MAX_DIST_MM = 5.0
+
 roi_order = [
     "EC",
     "Parahippocampal",
@@ -78,6 +95,7 @@ roi_order = [
     "ACC",
     "medial_CC",
     "PCC",
+    "Precuneus",       # Brainnetome A31 / dmPOS (dorsomedial parietal)
     "OFC11",
     "OFC13",
     "Visual",
@@ -96,6 +114,7 @@ alt_roi_order = [
     "ACC",
     "medial_CC",
     "PCC",
+    "Precuneus",
     "Visual",
 ]
 
@@ -115,6 +134,7 @@ ROI_COLOURS = {
     "OFC13":           SHOWGIRL2_DISCRETE[4],
     "ventral_ACC":     SHOWGIRL2_DISCRETE[1],
     "medial_CC":       "#888888",
+    "Precuneus":       "#5C1027",   # bordeaux — new ROI, distinct from PCC
     "Visual":          "#bdbdbd",
 }
 
@@ -142,6 +162,96 @@ def get_img(atlas_or_img):
     else:
         img = atlas_or_img
     return nib.load(img) if isinstance(img, str) else img
+
+
+# =============================================================================
+# MICROWIRE COORDINATE UPDATES (Baylor v2026)
+# =============================================================================
+
+def _bundle_key(label):
+    """Strip trailing 2 digits, lowercase — matches per-channel labels
+    (e.g. `mRT2bHaEa04`) to bundle-level labels (`mRT2bHaEa01`)."""
+    if pd.isna(label):
+        return None
+    return re.sub(r"\d{2}$", "", str(label)).lower()
+
+
+# Reliability filter: for a subject to be "reliable", the file's MNI152 column
+# must be self-consistent with (file's MNI305 column) transformed by the standard
+# Fischl MNI305 -> MNI152 matrix. Clean subjects agree within a few mm; a couple
+# of files (e.g. YEN, YFT) have a corrupted MNI152 column (wrong hemisphere,
+# tens of mm off). Cutoff chosen from the observed distribution — the clean set
+# tops out around 6 mm mean discrepancy; the broken ones sit at 14+ mm.
+MICROWIRE_MNI152_TOL_MM = 8.0
+
+
+def load_microwire_updates(folder):
+    """Scan v2026 electrode CSVs and return
+    ``(updates, reliability_df)``.
+
+    `updates`: ``{(subject_code, bundle_key): (MNI152_x, MNI152_y, MNI152_z)}``,
+    only populated for subjects whose file MNI152 passes the reliability check.
+    `subject_code` is the 3-letter filename prefix
+    (`YEJ-electrodes_v2026.csv` -> `YEJ`), which matches the tail of
+    `Subject Label` in the main table (`'BY2-YEJ'`).
+
+    `reliability_df`: per-subject DataFrame with `n_microwires`,
+    `mni152_vs_305transform_mean_mm`, `max_mm` and `reliable` (bool).
+    Subjects flagged unreliable are NOT written into `updates`; their cells
+    keep the main table's original MNI (later flagged in
+    `microwire_mni_source`).
+    """
+    updates = {}
+    reliability_rows = []
+    for fn in sorted(os.listdir(folder)):
+        if not fn.endswith("-electrodes_v2026.csv"):
+            continue
+        subj_code = fn.split("-")[0]
+        fdf = pd.read_csv(os.path.join(folder, fn))
+        micro = fdf[fdf["Type"] == "microwires"].copy()
+        if micro.empty:
+            continue
+
+        # self-consistency check on the file's own MNI152 vs its MNI305
+        chk = micro[["MNI305_x", "MNI305_y", "MNI305_z",
+                     "MNI152_x", "MNI152_y", "MNI152_z"]].dropna()
+        if chk.empty:
+            reliable = False
+            mean_d = np.nan
+            max_d = np.nan
+        else:
+            a305 = chk[["MNI305_x", "MNI305_y", "MNI305_z"]].to_numpy(float)
+            a152_file = chk[["MNI152_x", "MNI152_y", "MNI152_z"]].to_numpy(float)
+            a152_recomp = mni305_to_mni152(a305)
+            d = np.linalg.norm(a152_file - a152_recomp, axis=1)
+            mean_d = float(np.mean(d))
+            max_d = float(np.max(d))
+            reliable = mean_d <= MICROWIRE_MNI152_TOL_MM
+
+        reliability_rows.append({
+            "subject_code": subj_code,
+            "n_microwires": len(micro),
+            "mni152_vs_305transform_mean_mm": mean_d,
+            "mni152_vs_305transform_max_mm": max_d,
+            "reliable": reliable,
+        })
+
+        if not reliable:
+            continue
+
+        for _, r in micro.iterrows():
+            key = (subj_code, _bundle_key(r["Label"]))
+            try:
+                x = float(r["MNI152_x"])
+                y = float(r["MNI152_y"])
+                z = float(r["MNI152_z"])
+            except (TypeError, ValueError):
+                continue
+            if any(np.isnan(v) for v in (x, y, z)):
+                continue
+            updates[key] = (x, y, z)
+
+    return updates, pd.DataFrame(reliability_rows)
 
 
 # =============================================================================
@@ -285,20 +395,34 @@ def assign_initial_roi(row):
     if contains_any(juelich, ["hippocampus subiculum", "subiculum"]):
         return hc_label_from_y(y)
 
+    # Brainnetome (fine-grained) checks come BEFORE Harvard-Oxford coarse
+    # cingulate masks: HO's "Cingulate Gyrus, anterior division" bleeds into
+    # middle-cingulate cells that Brainnetome correctly labels as area 23
+    # (posterior cingulate). Fine-grained wins.
     if contains(brainnetome, "a14m"):
         return "ventral_ACC"
 
     if contains_any(brainnetome, ["a32sg", "a32p", "a24rv"]):
         return "ACC"
 
-    if contains(ho_cort, "cingulate gyrus, anterior division"):
-        return "ACC"
-
     if contains(brainnetome, "a23"):
         return "PCC"
 
+    if contains(ho_cort, "cingulate gyrus, anterior division"):
+        return "ACC"
+
     if contains(ho_cort, "cingulate gyrus, posterior division"):
         return "PCC"
+
+    # Precuneus (dorsomedial parietal) — a distinct medial-parietal
+    # region separate from PCC (BA23). Brainnetome A31 = medial precuneus,
+    # dmPOS = dorsomedial parieto-occipital sulcus. HO "Precuneous Cortex"
+    # is a coarser mask retained as a fallback.
+    if contains_any(brainnetome, ["a31_l", "a31_r", "dmpos_l", "dmpos_r"]):
+        return "Precuneus"
+
+    if contains(ho_cort, "precuneous cortex"):
+        return "Precuneus"
 
     if contains(brainnetome, "a11m"):
         return "OFC11"
@@ -329,8 +453,11 @@ def assign_alt_roi(row):
       1. ACC is split on the anterior-posterior axis at `acc_y_cutoff`:
          MNI_y >= cutoff stays 'ACC'; more posterior cingulate -> 'medial_CC'.
       2. OFC11, OFC13 and ventral_ACC collapse into a single 'medialOFC'.
+      3. Cells still labelled 'leftover' after the proximity cap become NaN.
     """
     roi = row["final_roi"]
+    if roi == "leftover" or pd.isna(roi):
+        return np.nan
     if roi == "ACC":
         y = row["MNI_y"]
         if pd.isna(y):
@@ -399,12 +526,28 @@ def assign_leftovers_by_roi_centroid(df_in):
         nearest_dist = float(dists[nearest_i])
         second_dist = float(dists[second_i])
 
+        # Distance cap: leave "leftover" if beyond PROXIMITY_MAX_DIST_MM.
+        if nearest_dist > PROXIMITY_MAX_DIST_MM:
+            df.loc[idx, "proximity_distance_mm"] = nearest_dist
+            df.loc[idx, "proximity_second_distance_mm"] = second_dist
+            df.loc[idx, "proximity_margin_mm"] = second_dist - nearest_dist
+            df.loc[idx, "proximity_ratio"] = (nearest_dist / second_dist
+                                                if second_dist > 0 else np.nan)
+            continue
+
         df.loc[idx, "final_roi"] = nearest_roi
         df.loc[idx, "proximity_assigned"] = True
         df.loc[idx, "proximity_distance_mm"] = nearest_dist
         df.loc[idx, "proximity_second_distance_mm"] = second_dist
         df.loc[idx, "proximity_margin_mm"] = second_dist - nearest_dist
         df.loc[idx, "proximity_ratio"] = nearest_dist / second_dist if second_dist > 0 else np.nan
+
+    n_leftover_final = int(df["final_roi"].eq("leftover").sum())
+    n_prox_assigned  = int(df["proximity_assigned"].sum())
+    n_leftover_start = int(leftover_mask.sum())
+    print(f"Proximity assignment (cap = {PROXIMITY_MAX_DIST_MM} mm): "
+          f"{n_prox_assigned}/{n_leftover_start} leftovers assigned; "
+          f"{n_leftover_final} stay leftover (will be NaN in alt_final_roi).")
 
     return df, centroids
 
@@ -447,6 +590,69 @@ if baylor_mask.sum() > 0:
     )
 
 print(f"Transformed {baylor_mask.sum()} Baylor rows from MNI305 to MNI152.")
+
+
+# =============================================================================
+# OVERWRITE BAYLOR MICROWIRE COORDS FROM v2026 ELECTRODE FILES
+# =============================================================================
+# Baylor microwire bundles have updated MNI152 coords in the v2026 electrode
+# CSVs; overwrite here so the ROI atlas lookups below see the corrected
+# positions. Non-microwire (sEEG etc.) and non-Baylor rows are untouched.
+
+mw_updates, mw_reliability = load_microwire_updates(
+    path_to_microwire_updates_dir)
+print(f"\nMicrowire electrode files scanned: {len(mw_reliability)} subjects.")
+print(f"Reliability check (file MNI152 vs Fischl-transformed file MNI305; "
+      f"cutoff = {MICROWIRE_MNI152_TOL_MM} mm mean):")
+print(mw_reliability.round(2).to_string(index=False))
+print(f"-> {len(mw_updates)} bundle coords accepted from "
+      f"{int(mw_reliability['reliable'].sum())} reliable subjects.")
+
+df["subject_code"] = (
+    df["Subject Label"].astype(str).str.strip("'\" ").str.split("-").str[-1])
+df["bundle_key"] = df["electrode label"].apply(_bundle_key)
+
+df["MNI_x_pre_microwire"] = df["MNI_x"]
+df["MNI_y_pre_microwire"] = df["MNI_y"]
+df["MNI_z_pre_microwire"] = df["MNI_z"]
+df["microwire_updated"] = False
+
+# Coord provenance for every row (audit column, per user request):
+#   'main_table_original'         -> untouched main-table value (post 305->152
+#                                    for Baylor rows).
+#   'microwire_file_MNI152'       -> overwritten with reliable microwire file.
+#   'microwire_file_unreliable'   -> Baylor row whose subject file was flagged
+#                                    unreliable; not overwritten.
+#   'no_matching_microwire_bundle'-> Baylor row whose bundle wasn't found in
+#                                    a reliable file.
+unreliable_codes = set(
+    mw_reliability.loc[~mw_reliability["reliable"], "subject_code"])
+
+df["microwire_mni_source"] = "main_table_original"
+
+for idx in df.index[baylor_mask]:
+    code = df.at[idx, "subject_code"]
+    key = (code, df.at[idx, "bundle_key"])
+    if key in mw_updates:
+        x, y, z = mw_updates[key]
+        df.at[idx, "MNI_x"] = x
+        df.at[idx, "MNI_y"] = y
+        df.at[idx, "MNI_z"] = z
+        df.at[idx, "microwire_updated"] = True
+        df.at[idx, "microwire_mni_source"] = "microwire_file_MNI152"
+    elif code in unreliable_codes:
+        df.at[idx, "microwire_mni_source"] = "microwire_file_unreliable"
+    else:
+        df.at[idx, "microwire_mni_source"] = "no_matching_microwire_bundle"
+
+n_upd = int(df["microwire_updated"].sum())
+n_upd_subj = int(df.loc[df["microwire_updated"], "subject_code"].nunique())
+print(f"\nOverwrote MNI152 coords for {n_upd} rows across {n_upd_subj} Baylor "
+      f"subjects using reliable microwire files.")
+
+src_counts = (df.loc[baylor_mask, "microwire_mni_source"]
+              .value_counts(dropna=False))
+print(f"Baylor coord-source breakdown:\n{src_counts.to_string()}")
 
 
 # =============================================================================
@@ -496,6 +702,122 @@ df_labeled["final_roi"] = df_labeled.apply(assign_initial_roi, axis=1)
 
 print("Initial ROI counts:")
 print(df_labeled["final_roi"].value_counts(dropna=False))
+
+
+# =============================================================================
+# MICROWIRE-UPDATE DIFF REPORT
+# =============================================================================
+# For every cell whose coords were overwritten from the v2026 microwire files,
+# re-run the atlas lookup + initial ROI assignment on the *pre-update* coords
+# and print a summary of which cells changed label. This is the first-run
+# sanity check requested: expected to move some hippocampal / entorhinal cells.
+
+mw_mask = df_labeled["microwire_updated"]
+if mw_mask.any():
+    print("\n=== Microwire-update diff (initial ROI, pre vs post overwrite) ===")
+
+    pre_view = df_labeled.loc[mw_mask].copy()
+    pre_view["MNI_x"] = pre_view["MNI_x_pre_microwire"]
+    pre_view["MNI_y"] = pre_view["MNI_y_pre_microwire"]
+    pre_view["MNI_z"] = pre_view["MNI_z_pre_microwire"]
+
+    pre_atlas = pre_view.apply(query_atlases, axis=1)
+    for c in pre_atlas.columns:
+        pre_view[c] = pre_atlas[c]
+    pre_view["initial_roi_pre_microwire"] = pre_view.apply(
+        assign_initial_roi, axis=1)
+
+    df_labeled["initial_roi_pre_microwire"] = np.nan
+    df_labeled.loc[mw_mask, "initial_roi_pre_microwire"] = (
+        pre_view["initial_roi_pre_microwire"].values)
+
+    post = df_labeled.loc[mw_mask, coord_cols].to_numpy(dtype=float)
+    pre = df_labeled.loc[mw_mask, ["MNI_x_pre_microwire",
+                                   "MNI_y_pre_microwire",
+                                   "MNI_z_pre_microwire"]].to_numpy(dtype=float)
+    delta = post - pre
+    shifts_mm = np.linalg.norm(delta, axis=1)
+    df_labeled["microwire_shift_mm"] = np.nan
+    df_labeled.loc[mw_mask, "microwire_shift_mm"] = shifts_mm
+
+    n_valid = int(np.sum(~np.isnan(shifts_mm)))
+    print(f"Coordinate shift (mm) for {n_valid}/{int(mw_mask.sum())} updated "
+          f"cells with valid pre coords: "
+          f"mean={np.nanmean(shifts_mm):.2f}, "
+          f"median={np.nanmedian(shifts_mm):.2f}, "
+          f"max={np.nanmax(shifts_mm):.2f}")
+    print(f"Signed component means (post - pre, mm): "
+          f"dx={np.nanmean(delta[:,0]):+.2f}, "
+          f"dy={np.nanmean(delta[:,1]):+.2f}, "
+          f"dz={np.nanmean(delta[:,2]):+.2f}   "
+          f"(non-zero -> systematic offset)")
+
+    subj_shift = (df_labeled.loc[mw_mask]
+                  .assign(dx=delta[:,0], dy=delta[:,1], dz=delta[:,2],
+                          shift_mm=shifts_mm)
+                  .groupby("subject_code")
+                  .agg(n=("shift_mm", "size"),
+                       shift_mean=("shift_mm", "mean"),
+                       shift_median=("shift_mm", "median"),
+                       shift_max=("shift_mm", "max"),
+                       dx_mean=("dx", "mean"),
+                       dy_mean=("dy", "mean"),
+                       dz_mean=("dz", "mean"))
+                  .round(2)
+                  .sort_values("shift_mean", ascending=False))
+    print("\nPer-subject microwire-vs-old shift "
+          "(large mean / large signed dy,dz -> the old coords for that "
+          "subject were likely in the wrong space, not a fine refinement):")
+    print(subj_shift.to_string())
+
+    changed_mask = (df_labeled.loc[mw_mask, "initial_roi_pre_microwire"]
+                    != df_labeled.loc[mw_mask, "final_roi"])
+    n_changed = int(changed_mask.sum())
+    print(f"{n_changed} of {int(mw_mask.sum())} updated cells changed initial "
+          f"ROI label.")
+
+    transitions = (df_labeled.loc[mw_mask]
+                   .assign(_changed=changed_mask.values)
+                   .query("_changed")
+                   .groupby(["initial_roi_pre_microwire", "final_roi"],
+                            dropna=False)
+                   .size().reset_index(name="n_cells")
+                   .sort_values("n_cells", ascending=False))
+    if not transitions.empty:
+        print("\nTransitions pooled across subjects (pre -> post):")
+        print(transitions.to_string(index=False))
+
+        # Per-subject label-change count with mean shift (to distinguish
+        # small-shift atlas-boundary flips from large-shift corrections).
+        per_subj = (df_labeled.loc[mw_mask]
+                    .assign(_changed=changed_mask.values,
+                            shift_mm=shifts_mm)
+                    .groupby("subject_code")
+                    .agg(n_updated=("_changed", "size"),
+                         n_changed_label=("_changed", "sum"),
+                         mean_shift_mm=("shift_mm", "mean"))
+                    .round(2)
+                    .sort_values("n_changed_label", ascending=False))
+        print("\nPer-subject label-change count & mean shift:")
+        print(per_subj.to_string())
+
+        # Transitions per subject for the top 3 movers (helps see e.g. YEN's
+        # broken hemisphere jump vs. YFP's normal HC/EC boundary refinements).
+        top_movers = per_subj.head(3).index.tolist()
+        for code in top_movers:
+            sub = (df_labeled.loc[mw_mask]
+                   .assign(_changed=changed_mask.values,
+                           shift_mm=shifts_mm)
+                   .query("subject_code == @code and _changed"))
+            if sub.empty:
+                continue
+            print(f"\nTop mover — {code} (n changed = {len(sub)}, "
+                  f"mean shift = {sub['shift_mm'].mean():.1f} mm):")
+            t = (sub.groupby(["initial_roi_pre_microwire", "final_roi"],
+                              dropna=False)
+                    .size().reset_index(name="n_cells")
+                    .sort_values("n_cells", ascending=False))
+            print(t.to_string(index=False))
 
 
 # =============================================================================
