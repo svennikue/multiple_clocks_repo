@@ -53,6 +53,7 @@ CANONICAL_ROI_ORDER = [
     'Parahippocampal',
     'PCC',
     'posterior_CC',
+    'Precuneus',
     'medialOFC',
     'OFC11',
     'OFC13',
@@ -116,19 +117,22 @@ LOCATION_COLORS = (
 ROI_COLORS_SHOWGIRL2 = {
     # Canonical CLAUDE.md mapping (corrected 2026-06; previous indices for
     # medialOFC/ACC/HC_anterior/HC_mid/PCC did not match the project spec).
-    'EC':              0,
-    'ACC':             1,
-    'HC_anterior':     2,
-    'PCC':             3,
-    'medialOFC':       4,
-    'Parahippocampal': 5,
-    'HC_mid':          6,
+    'EC':              0, # good dark red
+    'ACC':             1, # good dark green
+    'HC_anterior':     2, # good yellow
+    'PCC':             3, # sage green
+    'medialOFC':       4, # good orange
+    #'Parahippocampal': 5, # #7FB0CC
+    #'HC_mid':          6, # 
 }
 
 # Colours that sit outside the Showgirl2 palette (for ROIs added later —
 # ``get_roi_colour`` returns these when the ROI isn't in the palette dict).
 _EXTRA_ROI_COLORS = {
-    'Precuneus': '#5C1027',    # bordeaux (added 2026-07-23)
+    'Precuneus': '#23677E',    # blue for Precuneus
+    'Parahippocampal': '#7FB0CC',
+    'HC_mid': '#a30d6c'
+    
 }
 
 
@@ -1441,12 +1445,17 @@ def _roi_color_map(rois):
     known = [r for r in rois if r in ROI_COLORS_SHOWGIRL2]
     extra = sorted(r for r in rois if r not in ROI_COLORS_SHOWGIRL2)
     out = {r: SHOWGIRL2_DISCRETE[ROI_COLORS_SHOWGIRL2[r]] for r in known}
-    # A small overflow palette for ROIs not in the canonical 7. Distinct
-    # neutral tones so they don't clash with the 7 mapped hues.
-    extra_palette = ['#888888', '#bdbdbd', '#5C1027', '#0e3d3a',
+    # Named extras (e.g. Precuneus -> bordeaux) come from _EXTRA_ROI_COLORS;
+    # any leftover unknowns cycle through a small neutral overflow palette.
+    extra_palette = ['#888888', '#bdbdbd', '#0e3d3a',
                      '#7eb1c4', '#3d8b7d', '#a7d9b2']
-    for i, r in enumerate(extra):
-        out[r] = extra_palette[i % len(extra_palette)]
+    overflow_i = 0
+    for r in extra:
+        if r in _EXTRA_ROI_COLORS:
+            out[r] = _EXTRA_ROI_COLORS[r]
+        else:
+            out[r] = extra_palette[overflow_i % len(extra_palette)]
+            overflow_i += 1
     return out
 
 

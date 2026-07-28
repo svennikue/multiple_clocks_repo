@@ -48,9 +48,10 @@ name_RSA = config.get("name_of_RSA")
 searchlight_mask = config.get("searchlight_mask", None)
 
 
-# NOTE: change the today string into pattern completion!
-#RDM_version = f"{name_RSA}_{today_str}"
-RSA_pattern = f"{name_RSA}_*" #ignore the date string
+# Wildcard is glued directly onto name_RSA (no forced underscore) so it
+# matches both dated folders (RSA_<name>_20260701_glmbase_...) and undated
+# ones (RSA_<name>_glmbase_...).
+RSA_pattern = f"{name_RSA}*"
 
 
 for sub in subjects:

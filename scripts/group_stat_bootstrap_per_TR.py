@@ -43,10 +43,29 @@ from matplotlib import pyplot as plt
 
 
 # ---- constants ----
-MODELS = ("DSR", "rewDSR", "simple")
+#MODELS = ("DSR", "rewDSR", "simple")
+MODELS = (["rewDSR"])
 FILE_PATTERN = "cropped_masked_smooth_fwhm5_{model}_beta_std.nii"
 DIR_GLOB = "group_RSA_instruction_per_TR_glmbase_01-TR*_cropped"
 MASK_NAME = "mask_all_32_subjects.nii"
+
+# Reward-cue schedule for the fMRI instruction phase (times in seconds
+# from the start of the reward-cue period). Two passes: a first
+# 1.5-s/reward reveal (A, B, C, D, 0–6 s), then a faster 1-s/reward
+# refresh (A, B, C, D, 6–10 s). Mirrors the timing defined in
+# scripts/mc/latest_experiment/3x3_fMRI_part1.py. Used by the publication
+# footprint plot to draw a reward-schedule strip along the panel top.
+# Colours follow the CLAUDE.md state palette (A orange … D dark purple).
+REWARD_SCHEDULE = [
+    (0.0, 1.5, "A", "#F15A29"),
+    (1.5, 3.0, "B", "#F7931E"),
+    (3.0, 4.5, "C", "#C7C6E2"),
+    (4.5, 6.0, "D", "#6B60AA"),
+    (6.0, 7.0, "A", "#F15A29"),
+    (7.0, 8.0, "B", "#F7931E"),
+    (8.0, 9.0, "C", "#C7C6E2"),
+    (9.0, 10.0, "D", "#6B60AA"),
+]
 
 
 # ---- canonical ROI palette (CLAUDE.md Showgirl2 mapping, hardcoded so we
@@ -64,7 +83,7 @@ CANONICAL_ROI_COLOURS = {
     "HC_mid":          "#629E7E",   # mid-dark green
 }
 _FALLBACK_ROI_COLOURS = [
-    "#5C1027",   # bordeaux — Precuneus (or first extra)
+    "#23677E",   # CLAUDE.md blue — Precuneus (or first extra)
     "#6B60AA",   # dark purple
     "#F15A29",   # orange
     "#0e3d3a",   # dark teal
@@ -311,9 +330,13 @@ def get_cluster_mass(stat, cluster_map, n_clusters):
 
 
 def get_perm_max_mass(data, seed, ref_t, structure, mask4d):
+    """Sign-flip permutation: returns (max cluster mass, max voxel t)
+    both taken inside `mask4d`. One perm t-map, two null statistics."""
     stat = get_perm_stat(data, seed, mask4d)
     cmap, ncl = get_clusters(stat, ref_t, structure)
-    return float(np.max(get_cluster_mass(stat, cmap, ncl)))
+    max_mass = float(np.max(get_cluster_mass(stat, cmap, ncl)))
+    max_t = float(np.max(stat)) if stat.size else 0.0
+    return max_mass, max_t
 
 
 # ---- small-volume (mask) helpers -------------------------------------
@@ -425,7 +448,7 @@ def _save_all_formats(fig, save_path):
 
 
 def plot_cluster_traces(records, tr_order, ref_t, model_name, save_path,
-                        sig_thresh_1mp=0.95):
+                        sig_thresh_1mp=0.95, x_label="TR"):
     """SVC cluster-traces panel at publication size (4.5 × 3 cm, Arial).
 
     One line per top-N cluster, coloured by the ROI its peak falls in
@@ -492,7 +515,7 @@ def plot_cluster_traces(records, tr_order, ref_t, model_name, save_path,
     ax.axhline(ref_t, color="grey", lw=0.35, ls=":",
                label=f"t$_{{crit}}$ = {ref_t:.2f}")
     # single "FWE<.05" mark once, in the legend
-    ax.set_xlabel("TR", fontsize=FONT_AXIS, labelpad=1)
+    ax.set_xlabel(x_label, fontsize=FONT_AXIS, labelpad=1)
     ax.set_ylabel("mean t (cluster footprint)", fontsize=FONT_AXIS, labelpad=1)
     ax.set_xticks(xs[::2])
     ax.tick_params(labelsize=FONT_TICK)
@@ -516,8 +539,111 @@ def plot_cluster_traces(records, tr_order, ref_t, model_name, save_path,
     plt.close(fig)
 
 
+def cluster_footprint_beta(data, cluster_map, cluster_id):
+    """Return (n_subj, n_TR) mean β inside a cluster's *spatial footprint*
+    (union of voxels the cluster occupies across any TR). Used to visualise
+    the temporal profile of the effect at the voxels that actually drive
+    the cluster, without diluting by the whole mask.
+
+    `data` shape:        (n_subj, X, Y, Z, n_TR)
+    `cluster_map` shape: (X, Y, Z, n_TR) with integer cluster labels
+    """
+    footprint = (cluster_map == cluster_id).any(axis=-1)   # (X, Y, Z)
+    xs, ys, zs = np.where(footprint)
+    if xs.size == 0:
+        raise ValueError(f"cluster {cluster_id} has empty footprint")
+    return data[:, xs, ys, zs, :].mean(axis=1)             # (n_subj, n_TR)
+
+
+def plot_cluster_footprint_timecourse(subj_beta, tr_order, cluster_rec,
+                                       model_name, save_path,
+                                       x_label="EV (s)",
+                                       reward_schedule=None,
+                                       peak_marker_x=None):
+    """Publication panel: mean β inside a single cluster's spatial footprint,
+    per subject × TR, with SEM ribbon. Matches the roi-mean sage-green
+    style. Adds a reward-cue schedule strip along the top of the panel
+    (coloured segments per reward), and a black vertical line at the peak.
+
+    Parameters
+    ----------
+    subj_beta : (n_subj, n_TR) mean β inside cluster footprint.
+    tr_order  : list of EV indices (also read as seconds when 1 EV = 1 s).
+    cluster_rec : dict from cluster records (has peak_tr_idx, peak_t, etc.).
+    reward_schedule : list of (start_s, end_s, label, colour); default
+        REWARD_SCHEDULE. Set to [] to disable the strip.
+    peak_marker_x : x-position for the vertical black line at the peak
+        effect. Default: right-edge of the peak EV bin
+        (peak_tr + 1, e.g. EV 4 → 5 s).
+    """
+    if reward_schedule is None:
+        reward_schedule = REWARD_SCHEDULE
+
+    CM = 1.0 / 2.54
+    FIG_W, FIG_H = 4.5 * CM, 3.0 * CM
+    DARK_SAGE = "#3E6B4D"
+    FONT_TICK, FONT_AXIS, FONT_LABEL = 6, 7, 6
+
+    plt.rcParams.update({
+        "font.family": "Arial", "font.size": FONT_TICK,
+        "axes.linewidth": 0.5,
+        "xtick.major.width": 0.4, "ytick.major.width": 0.4,
+        "xtick.major.size": 1.6, "ytick.major.size": 1.6,
+        "xtick.major.pad": 1.5, "ytick.major.pad": 1.5,
+        "pdf.fonttype": 42, "ps.fonttype": 42,
+    })
+
+    n_subj, n_tr = subj_beta.shape
+    xs = list(tr_order)
+    mean = subj_beta.mean(axis=0)
+    sem  = subj_beta.std(axis=0, ddof=1) / np.sqrt(n_subj)
+
+    fig, ax = plt.subplots(figsize=(FIG_W, FIG_H), constrained_layout=True)
+    ax.fill_between(xs, mean - sem, mean + sem, color=DARK_SAGE, alpha=0.32,
+                    linewidth=0)
+    ax.plot(xs, mean, "-o", color=DARK_SAGE, lw=0.9, ms=1.8, mec="none", zorder=3)
+    ax.axhline(0, color="k", lw=0.35, zorder=1)
+
+    # ---- vertical black line at the peak effect ----
+    if peak_marker_x is None:
+        peak_tr = tr_order[cluster_rec["peak_tr_idx"]]
+        peak_marker_x = peak_tr + 1        # right edge of peak EV bin
+    ax.axvline(peak_marker_x, color="black", lw=0.8, zorder=4)
+
+    # ---- reward-cue schedule strip along the panel top ----
+    if reward_schedule:
+        # place the strip just above the data using axes-fraction coords
+        # (blended transform: x in data, y in axes fraction).
+        from matplotlib.transforms import blended_transform_factory
+        trans = blended_transform_factory(ax.transData, ax.transAxes)
+        strip_lo, strip_hi = 0.90, 0.98
+        for (a, b, label, col) in reward_schedule:
+            # clip to visible x-range
+            if b <= xs[0] - 0.5 or a >= xs[-1] + 0.5:
+                continue
+            ax.add_patch(plt.Rectangle((a, strip_lo), b - a, strip_hi - strip_lo,
+                                         transform=trans, facecolor=col,
+                                         edgecolor="none", alpha=0.9,
+                                         zorder=2, clip_on=False))
+            ax.text((a + b) / 2, (strip_lo + strip_hi) / 2, label,
+                    transform=trans, ha="center", va="center",
+                    fontsize=FONT_LABEL - 1, color="black", zorder=3)
+
+    ax.set_xticks(xs[::2])
+    ax.set_xlim(xs[0] - 0.5, xs[-1] + 0.5)
+    ax.set_xlabel(x_label, fontsize=FONT_AXIS, labelpad=1)
+    ax.set_ylabel("β (cluster footprint)", fontsize=FONT_AXIS, labelpad=1)
+    ax.tick_params(labelsize=FONT_TICK)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+
+    _save_all_formats(fig, save_path)
+    plt.close(fig)
+
+
 def plot_roi_mean_timecourse(roi_ts, tr_order, ref_t, clusters, mass_per_cl,
-                              p_fwe_per_cl, model_name, mask_name, save_path):
+                              p_fwe_per_cl, model_name, mask_name, save_path,
+                              x_label="TR"):
     """ROI-mean β per TR at publication size (4.5 × 3 cm, Arial).
     Dark sage line + SEM ribbon, FWE-significant TR runs shaded, tiny
     'p_FWE<.05' annotation above each sig run. Matches the SVC cluster-
@@ -570,7 +696,7 @@ def plot_roi_mean_timecourse(roi_ts, tr_order, ref_t, clusters, mass_per_cl,
 
     ax.set_xticks(xs[::2])
     ax.set_xlim(xs[0] - 0.5, xs[-1] + 0.5)
-    ax.set_xlabel("TR", fontsize=FONT_AXIS, labelpad=1)
+    ax.set_xlabel(x_label, fontsize=FONT_AXIS, labelpad=1)
     ax.set_ylabel("β (mask mean)", fontsize=FONT_AXIS, labelpad=1)
     ax.tick_params(labelsize=FONT_TICK)
     for side in ("top", "right"):
@@ -619,22 +745,29 @@ def plot_null_vs_observed(all_stats, n_perm, save_path):
 # ---- driver ----
 def _run_svc_and_roimean(model, data, tr_order, roi_mask, mask_name,
                           out_dir, affine, header, ref_t, n_perm, n_jobs,
-                          structure):
+                          structure, x_label="TR"):
     """Per-mask branch: (a) 4-D SVC cluster-mass test restricted to mask,
     (b) ROI-mean 1-D time-course cluster-mass test."""
     n_subj = data.shape[0]
     mask4d = roi_mask[..., None].astype(float)
 
-    # ---- (a) SVC 4-D cluster-mass ----
+    # ---- (a) SVC 4-D cluster-mass + voxel-FWE ----
     print(f"  [SVC 4D · {mask_name}] running {n_perm} sign-flip perms ...")
-    null_max_mass = np.asarray(
-        Parallel(n_jobs=n_jobs)(
-            delayed(get_perm_max_mass)(data, seed=i, ref_t=ref_t,
-                                        structure=structure, mask4d=mask4d)
-            for i in range(n_perm)
-        )
+    perm_out = Parallel(n_jobs=n_jobs)(
+        delayed(get_perm_max_mass)(data, seed=i, ref_t=ref_t,
+                                    structure=structure, mask4d=mask4d)
+        for i in range(n_perm)
     )
+    null_max_mass = np.asarray([m for m, _ in perm_out])
+    null_max_t    = np.asarray([t for _, t in perm_out])
     stat_map = get_stat(data) * mask4d
+    # Voxel-wise FWE: p at each voxel = fraction of perms whose max t >= observed.
+    voxel_p_fwe = np.ones_like(stat_map, dtype=np.float32)
+    in_mask = mask4d[..., 0].astype(bool)      # 3-D mask
+    for t_idx in range(stat_map.shape[-1]):
+        obs = stat_map[..., t_idx][in_mask]
+        p = np.mean(null_max_t[:, None] >= obs[None, :], axis=0).astype(np.float32)
+        voxel_p_fwe[..., t_idx][in_mask] = p
     cluster_map, n_clusters = get_clusters(stat_map, ref_t, structure)
     cluster_mass = get_cluster_mass(stat_map, cluster_map, n_clusters)
     p_map = np.zeros_like(stat_map)
@@ -652,6 +785,9 @@ def _run_svc_and_roimean(model, data, tr_order, roi_mask, mask_name,
                 "one_minus_p_FWE": one_minus_p,
                 "trace": [float(x) for x in trace], **peak}
         rec["peak_roi"] = _roi_from_mni(*rec["peak_mni"])
+        # Voxel-wise FWE at the cluster peak (a priori peak-voxel test).
+        pi, pj, pk = peak["peak_ijk"]; pt = peak["peak_tr_idx"]
+        rec["peak_voxel_p_FWE"] = float(voxel_p_fwe[pi, pj, pk, pt])
         recs.append(rec)
     recs.sort(key=lambda r: r["cluster_mass"], reverse=True)
 
@@ -662,13 +798,31 @@ def _run_svc_and_roimean(model, data, tr_order, roi_mask, mask_name,
               os.path.join(out_dir, f"{stem}_clust1minusFWEp.nii.gz"))
     nib.save(nib.Nifti1Image(cluster_map.astype(np.int32), affine, header),
               os.path.join(out_dir, f"{stem}_clusterlabels.nii.gz"))
+    # Voxel-wise FWE: raw p at every in-mask voxel.
+    nib.save(nib.Nifti1Image(voxel_p_fwe, affine, header),
+              os.path.join(out_dir, f"{stem}_voxelFWEp.nii.gz"))
+    # And the 1 - p_FWE convention to match the cluster map (threshold at 0.95).
+    nib.save(nib.Nifti1Image((1.0 - voxel_p_fwe).astype(np.float32), affine, header),
+              os.path.join(out_dir, f"{stem}_voxel1minusFWEp.nii.gz"))
     with open(os.path.join(out_dir, f"{stem}_clusters.json"), "w") as f:
         json.dump({"mask": mask_name, "TR_order": tr_order,
                     "n_subj": n_subj, "ref_t": ref_t, "n_perm": n_perm,
                     "clusters": recs}, f, indent=2)
     plot_cluster_traces(recs[:5], tr_order, ref_t,
                         f"{mask_name} · {model}",
-                        os.path.join(out_dir, f"{stem}_cluster_traces.pdf"))
+                        os.path.join(out_dir, f"{stem}_cluster_traces.pdf"),
+                        x_label=x_label)
+    # Publication-style panel: mean β inside the top cluster's spatial
+    # footprint per TR. Only the largest cluster (by mass).
+    if recs:
+        top = recs[0]
+        beta_ts = cluster_footprint_beta(data, cluster_map, top["cluster_id"])
+        plot_cluster_footprint_timecourse(
+            beta_ts, tr_order, top, f"{mask_name} · {model}",
+            os.path.join(out_dir, f"{stem}_footprint_beta.pdf"),
+            x_label=x_label)
+        np.save(os.path.join(out_dir, f"{stem}_footprint_persubj_beta.npy"),
+                 beta_ts)
 
     # ---- (b) ROI-mean 1-D over TR ----
     roi_ts = roi_mean_per_subject_per_tr(data, roi_mask)   # (n_subj, n_TR)
@@ -700,12 +854,13 @@ def _run_svc_and_roimean(model, data, tr_order, roi_mask, mask_name,
     plot_roi_mean_timecourse(roi_ts, tr_order, ref_t,
                              obs_clusters, obs_masses, p_fwe_per_cl,
                              model, mask_name,
-                             os.path.join(out_dir, f"{pd_stem}_timecourse.pdf"))
+                             os.path.join(out_dir, f"{pd_stem}_timecourse.pdf"),
+                             x_label=x_label)
 
 
 def run(root, output_dir, n_perm=10, p_thres=0.001, n_jobs=-1, models=MODELS,
         connectivity=1, top_n=5, tr_include=None, dir_glob=DIR_GLOB,
-        masks=None):
+        masks=None, x_label="TR"):
     os.makedirs(output_dir, exist_ok=True)
     with open(os.path.join(output_dir, "args.json"), "w") as f:
         json.dump({
@@ -713,7 +868,7 @@ def run(root, output_dir, n_perm=10, p_thres=0.001, n_jobs=-1, models=MODELS,
             "p_thres": p_thres, "models": list(models),
             "connectivity": connectivity, "top_n": top_n,
             "tr_include": tr_include, "dir_glob": dir_glob,
-            "masks": list(masks or []),
+            "masks": list(masks or []), "x_label": x_label,
         }, f, indent=2)
 
     tr_dirs = find_tr_dirs(root, dir_glob=dir_glob)
@@ -766,21 +921,34 @@ def run(root, output_dir, n_perm=10, p_thres=0.001, n_jobs=-1, models=MODELS,
                 roi_mask=roi_mask, mask_name=mask_name,
                 out_dir=svc_dir, affine=affine, header=mask_img.header,
                 ref_t=ref_t, n_perm=n_perm, n_jobs=n_jobs,
-                structure=structure,
+                structure=structure, x_label=x_label,
             )
 
-        # ---- null ----
+        # ---- null (cluster mass + voxel-max t) ----
         print(f"  running {n_perm} sign-flip perms (n_jobs={n_jobs}) ...")
-        null_max_mass = np.asarray(
-            Parallel(n_jobs=n_jobs)(
-                delayed(get_perm_max_mass)(data, seed=i, ref_t=ref_t,
-                                           structure=structure, mask4d=mask4d)
-                for i in range(n_perm)
-            )
+        
+        # # just for debugging
+        # for i in range(n_perm):
+        #     perm_out = get_perm_max_mass(data, seed=i, ref_t=ref_t,
+        #                            structure=structure, mask4d=mask4d)
+        
+        perm_out = Parallel(n_jobs=n_jobs)(
+            delayed(get_perm_max_mass)(data, seed=i, ref_t=ref_t,
+                                        structure=structure, mask4d=mask4d)
+            for i in range(n_perm)
         )
+        null_max_mass = np.asarray([m for m, _ in perm_out])
+        null_max_t    = np.asarray([t for _, t in perm_out])
 
         # ---- observed ----
         stat_map = get_stat(data) * mask4d
+        # voxel-wise FWE map (whole-brain family)
+        voxel_p_fwe = np.ones_like(stat_map, dtype=np.float32)
+        in_mask = mask4d[..., 0].astype(bool)
+        for t_idx in range(stat_map.shape[-1]):
+            obs = stat_map[..., t_idx][in_mask]
+            p = np.mean(null_max_t[:, None] >= obs[None, :], axis=0).astype(np.float32)
+            voxel_p_fwe[..., t_idx][in_mask] = p
         cluster_map, n_clusters = get_clusters(stat_map, ref_t, structure)
         cluster_mass = get_cluster_mass(stat_map, cluster_map, n_clusters)
 
@@ -804,6 +972,8 @@ def run(root, output_dir, n_perm=10, p_thres=0.001, n_jobs=-1, models=MODELS,
                 **peak,
             }
             rec["peak_roi"] = _roi_from_mni(*rec["peak_mni"])
+            pi, pj, pk = peak["peak_ijk"]; pt = peak["peak_tr_idx"]
+            rec["peak_voxel_p_FWE"] = float(voxel_p_fwe[pi, pj, pk, pt])
             cluster_records.append(rec)
 
         # sort by cluster mass, big first
@@ -829,6 +999,10 @@ def run(root, output_dir, n_perm=10, p_thres=0.001, n_jobs=-1, models=MODELS,
                  os.path.join(output_dir, f"group_rdm-{model}_clust1minusFWEp.nii.gz"))
         nib.save(nib.Nifti1Image(cluster_map.astype(np.int32), affine, header),
                  os.path.join(output_dir, f"group_rdm-{model}_clusterlabels.nii.gz"))
+        nib.save(nib.Nifti1Image(voxel_p_fwe, affine, header),
+                 os.path.join(output_dir, f"group_rdm-{model}_voxelFWEp.nii.gz"))
+        nib.save(nib.Nifti1Image((1.0 - voxel_p_fwe).astype(np.float32), affine, header),
+                 os.path.join(output_dir, f"group_rdm-{model}_voxel1minusFWEp.nii.gz"))
         with open(os.path.join(output_dir, f"group_rdm-{model}_clusters.json"), "w") as f:
             json.dump({
                 "TR_order": tr_order,
@@ -844,7 +1018,19 @@ def run(root, output_dir, n_perm=10, p_thres=0.001, n_jobs=-1, models=MODELS,
         plot_cluster_traces(
             top_records, tr_order, ref_t, model,
             os.path.join(output_dir, f"cluster_traces_{model}.pdf"),
+            x_label=x_label,
         )
+        # Publication-style panel for the top cluster only.
+        if top_records:
+            top = top_records[0]
+            beta_ts = cluster_footprint_beta(data, cluster_map, top["cluster_id"])
+            plot_cluster_footprint_timecourse(
+                beta_ts, tr_order, top, model,
+                os.path.join(output_dir, f"footprint_beta_{model}.pdf"),
+                x_label=x_label)
+            np.save(os.path.join(output_dir,
+                                    f"footprint_persubj_beta_{model}.npy"),
+                     beta_ts)
 
         all_stats[model] = (null_max_mass, cluster_records[:top_n])
 
@@ -863,8 +1049,8 @@ if __name__ == "__main__":
     ap.add_argument("--output_dir",
                     default="/Users/xpsy1114/Documents/projects/multiple_clocks/data/"
                             "derivatives/group/per_TR_cluster_smoke")
-    ap.add_argument("--n_perm", type=int, default=10)
-    ap.add_argument("--p_thres", type=float, default=0.001)
+    ap.add_argument("--n_perm", type=int, default=100)
+    ap.add_argument("--p_thres", type=float, default=0.01)
     ap.add_argument("--n_jobs", type=int, default=-1)
     ap.add_argument("--connectivity", type=int, default=1,
                     help="4-D binary_structure connectivity (1=face nbrs)")
@@ -891,9 +1077,14 @@ if __name__ == "__main__":
                          "Masks must match the data affine + spatial shape. "
                          "Outputs go to `<output_dir>/svc_<mask_stem>/`. "
                          "Example: --masks /path/mPFC.nii.gz /path/PFC_MTL.nii.gz")
+    ap.add_argument("--x_label", default="TR",
+                    help="Label used on the x-axis of the per-model plots. "
+                         "For an EV-based instruction analysis with 1 EV/s "
+                         "and no additional HRF delay to add, use "
+                         "'EV (s from cue onset)'.")
     args = ap.parse_args()
 
     run(root=args.root, output_dir=args.output_dir, n_perm=args.n_perm,
         p_thres=args.p_thres, n_jobs=args.n_jobs, connectivity=args.connectivity,
         models=args.models, top_n=args.top_n, tr_include=args.tr_include,
-        dir_glob=args.dir_glob, masks=args.masks)
+        dir_glob=args.dir_glob, masks=args.masks, x_label=args.x_label)

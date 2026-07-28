@@ -62,7 +62,7 @@ ALPHA = 0.05
 # 7 ROIs over which BH-FDR is applied per (combo × DSR variant) family.
 # Must match what RSA_DSR_ROIs_simple.py actually runs.
 ALL_ROIS = ['ACC', 'EC', 'Parahippocampal',
-             'HC_anterior', 'HC_mid', 'medialOFC', 'PCC']
+             'HC_anterior', 'HC_mid', 'medialOFC', 'PCC', 'Precuneus']
 
 
 # ── Build the combo dict ───────────────────────────────────────────────

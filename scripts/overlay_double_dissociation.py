@@ -26,15 +26,38 @@ from mc.plotting.cell_results import (
 )
 
 
+ROI_COLOURS = {
+    'EC':              SHOWGIRL2_DISCRETE[0],
+    'ACC':             SHOWGIRL2_DISCRETE[1],
+    'HC_anterior':     SHOWGIRL2_DISCRETE[2],
+    'PCC':             SHOWGIRL2_DISCRETE[3],
+    'medialOFC':       SHOWGIRL2_DISCRETE[4],
+    'Parahippocampal': '#7FB0CC',
+    'HC_mid':          '#a30d6c',
+    'Precuneus':       '#23677E',
+}
+
+
+
+
+#2026-07-01_10-35-40_reload_from_2026-06-26_18-47-11_phase_resid_paired_fixedlag-final
 # ---- I/O defaults ----------------------------------------------------
+# DEFAULT_PER_CELL_CSV = ("/Users/xpsy1114/Documents/projects/multiple_clocks/"
+#                         "data/ephys_humans/derivatives/group/"
+#                         "spatial_peaks_simple/"
+#                         "2026-07-23_12-28-10_reload_from_2026-07-01_07-29-33_"
+#                         "reload_from_replot_no_rsa_cells_relabelled/"
+#                         "per_cell.csv")
 DEFAULT_PER_CELL_CSV = ("/Users/xpsy1114/Documents/projects/multiple_clocks/"
                         "data/ephys_humans/derivatives/group/"
                         "spatial_peaks_simple/"
-                        "2026-07-23_12-28-10_reload_from_2026-07-01_07-29-33_"
-                        "reload_from_replot_no_rsa_cells_relabelled/"
+                        "2026-07-01_10-35-40_reload_from_2026-06-26_18-47-11_"
+                        "phase_resid_paired_fixedlag-final/"
                         "per_cell.csv")
 LAGS_DEG_BASE = list(range(0, 360, 30))    # 12 lags used in spatial_peaks
-ROIS_TO_OVERLAY = ["ACC", "HC_anterior", "HC_mid"]  # the three with predicted lags
+# ROIS_TO_OVERLAY = ["ACC", "HC_anterior", "HC_mid"]  # the three with predicted lags
+ROIS_TO_OVERLAY = ["ACC", "HC_mid"]  # the three with predicted lags
+
 
 # Publication sizing (see CLAUDE.md — subpanel ~7 cm at Arial 9-11 pt)
 CM = 1 / 2.54
@@ -47,11 +70,11 @@ def _display(roi):
 
 
 def _roi_colour(roi):
+    """Return the canonical Showgirl2 hex for `roi`, falling back to grey."""
     idx = ROI_COLORS_SHOWGIRL2.get(roi)
     if idx is None:
         return "#666"
     return SHOWGIRL2_DISCRETE[idx]
-
 
 def _load_curves(per_cell_csv, rois=ROIS_TO_OVERLAY):
     """Return {roi: array (n_cells, n_lags)} of per-cell CV r at each
@@ -103,7 +126,7 @@ def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY):
     tick_lab = [f"{L}°" for L in LAGS_DEG_BASE] + ["0°"]
 
     # ---------- Panel A: mean CV r ± SEM -------------------------------
-    fig, ax = plt.subplots(figsize=(9 * CM, 6 * CM), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(6 * CM, 4.5 * CM), constrained_layout=True)
     for roi in rois:
         C = curves[roi]
         if C.size == 0:
@@ -113,7 +136,7 @@ def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY):
              np.sqrt(np.maximum(np.isfinite(C).sum(axis=0), 1)))
         m_w = _wrap_lag(m)
         s_w = _wrap_lag(s)
-        col = _roi_colour(roi)
+        col = ROI_COLOURS[roi]
         ax.fill_between(x_wrap, m_w - s_w, m_w + s_w, color=col,
                         alpha=0.18, linewidth=0)
         ax.plot(x_wrap, m_w, "-o", color=col, lw=1.5, ms=3,
@@ -140,7 +163,7 @@ def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY):
             continue
         t, p = _tstat_gt0(C)
         t_w = _wrap_lag(t)
-        col = _roi_colour(roi)
+        col = ROI_COLOURS[roi]
         ax.plot(x_wrap, t_w, "-o", color=col, lw=1.5, ms=3,
                 label=f"{_display(roi)} (n = {C.shape[0]})")
     ax.axhline(0, color="black", lw=0.5, ls="--")

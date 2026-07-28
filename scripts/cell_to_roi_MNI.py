@@ -82,9 +82,12 @@ MIN_SUBJECTS_PER_ALT_ROI = 3
 # Proximity fallback: cells that no atlas rule matched are only assigned to
 # the nearest ROI centroid if the distance is <= this. Beyond this, the cell
 # stays "leftover" (and hence NaN in `alt_final_roi`). Prior versions used no
-# distance cap, which pulled thalamus, insula white matter, and other
-# clearly-out-of-ROI cells into ACC/HC/PCC by proximity even at 15-30 mm.
-PROXIMITY_MAX_DIST_MM = 5.0
+# distance cap (pulling thalamus / insula white matter / etc. into
+# ACC/HC/PCC at 15-30 mm) or a 5 mm cap (which excluded three site-labelled
+# microwire bundles at 7-9 mm — BY2-YEX mLF2aCa 'LACC', BY2-YFM mLF3aOFC
+# 'LOFC', UT202409 chan115 'RHC'). 10 mm keeps out the 21+ mm garbage while
+# recovering the site-labelled bundles that sit just outside atlas rules.
+PROXIMITY_MAX_DIST_MM = 10.0
 
 roi_order = [
     "EC",
@@ -134,7 +137,7 @@ ROI_COLOURS = {
     "OFC13":           SHOWGIRL2_DISCRETE[4],
     "ventral_ACC":     SHOWGIRL2_DISCRETE[1],
     "medial_CC":       "#888888",
-    "Precuneus":       "#5C1027",   # bordeaux — new ROI, distinct from PCC
+    "Precuneus":       "#23677E",   # CLAUDE.md-defined blue for Precuneus
     "Visual":          "#bdbdbd",
 }
 

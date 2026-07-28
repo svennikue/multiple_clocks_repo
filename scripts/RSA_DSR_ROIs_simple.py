@@ -83,7 +83,7 @@ N_PHASES = 3
 states           = ['A', 'B', 'C', 'D']
 RESOLUTIONx = 1
 PLOT_FIGS = False
-N_PERMUTATIONS = 1000 # None #1000 # 500 # None or 300
+N_PERMUTATIONS = 1000 # 1000 # 500 # None or 300 — None skips the perm loop (parametric p only)
 SPLIT_UNCV_BUTTONS = True
 
 # Phase-based masking. Phase of a condition at position pos inside a config is
@@ -164,8 +164,12 @@ models = [
     'dsr_fmri',           # full DSR  (control)
     'dsr_fmri_fut',       # drop lag 0 (control)
     'dsr_fmri_informed',  # lags 1,2 — pre-registered from independent fMRI prior (FDR target)
+    # State-quarter split of dsr_fmri (mirrors the fMRI split4_DSR_keys in
+    # create_fMRI_model_RDMs_on_clean_beh.py). Each quarter = 3 phases (36
+    # bins) of the rolled trajectory — one state's contribution to the plan.
+    'curr_quarter', 'next_quarter', 'next2_quarter', 'next3_quarter',
     # Confound controls + diagnostics
-    'state', 'midnight',
+    'state', 'midnight', 'bttn_prev',
     'bttn_curr', 'bttn_next', 'location', 'l2_norm',
     'phase', 'repeat_counter', 'uncover', 'state_phase',
     'reward_path',
@@ -179,8 +183,18 @@ models = [
 _CTRLS_FINAL = ['state', 'location', 'bttn_curr']
 combo_models = {
     'ctrl_dsrFULL': _CTRLS_FINAL + ['dsr_fmri'],
-    'ctrl_dsrFUT': _CTRLS_FINAL + ['dsr_fmri_fut'],
-    'ctrl_dsrInformed': _CTRLS_FINAL + ['dsr_fmri_informed']
+    #'fmri_ctrl_dsrFULL': _CTRLS_FINAL + ['dsr_fmri', 'l2_norm', 'bttn_next'],
+    #'ctrl_dsrFUT': _CTRLS_FINAL + ['dsr_fmri_fut'],
+    #'ctrl_dsrInformed': _CTRLS_FINAL + ['dsr_fmri_informed'],
+    # Quartered DSR: same controls as ctrl_dsrFULL, but the full DSR
+    # regressor is replaced by 4 non-overlapping state-quarters of the
+    # rolled trajectory. One joint OLS => per-quarter β per ROI.
+    'ctrl_dsrQUARTERS': _CTRLS_FINAL + [
+        'curr_quarter', 'next_quarter', 'next2_quarter', 'next3_quarter'],
+    'fmri_dsrQUARTERS': ['uncover', 'l2_norm', 'bttn_next', 'bttn_curr', 'bttn_prev',
+        'curr_quarter', 'next_quarter', 'next2_quarter', 'next3_quarter'],
+    'fmri_min_but_dsrQUARTERS': ['uncover', 'l2_norm','bttn_curr',
+        'curr_quarter', 'next_quarter', 'next2_quarter', 'next3_quarter'],
 }
 assert all(len(set(sm)) == len(sm) for sm in combo_models.values()), \
     f"Duplicate sub-model in combo_models: {combo_models}"
@@ -243,7 +257,7 @@ FDR_TEST      = 'split_halves_z'    # primary variant. Data RDM is built
 # FDR_SUBMODELS = ['state']       
 # settings for DSR.
 FDR_COMBOS    = ['ctrl_dsrFULL']         # DSR + bttn + location + L2 + state
-FDR_SUBMODELS = ['DSR_fmri']      
+FDR_SUBMODELS = ['dsr_fmri']       
 
 FDR_ALPHA     = 0.05
 
@@ -262,29 +276,25 @@ ROI_TABLE_PATH = os.path.join(
 ROI_LABEL_COLUMN = 'alt_final_roi' #'final_roi'
 
 # Which ROI values to analyse this run — one list per labelling column.
+# Precuneus added 2026-07-26 (Brainnetome A31 / dmPOS), matching the
+# corresponding ROI added in cell_to_roi_MNI.py. Visual and medial_CC are
+# NOT listed here: both have < 3 contributing subjects in the current
+# dataset and are NaN'd out of `alt_final_roi` by the subject-count
+# filter — including them would only produce empty rows.
 ROIS_TO_ANALYZE_BY_COLUMN = {
     'final_roi': [
         'EC', 'Parahippocampal',
         'HC_anterior', 'HC_mid',
         'ventral_ACC', 'ACC',
-        'posterior_CC',
-        'OFC11', 'OFC13', 'Visual',
+        'OFC11', 'OFC13', 'PCC', 'Precuneus',
     ],
     'alt_final_roi': [
         'ACC', 'EC', 'Parahippocampal',
         'HC_anterior', 'HC_mid',
-        'medialOFC', 'medial_CC',
-        'PCC', 'Visual',
+        'medialOFC', 'PCC', 'Precuneus',
     ],
 }
 ROIS_TO_ANALYZE = ROIS_TO_ANALYZE_BY_COLUMN[ROI_LABEL_COLUMN]
-
-# TEMPORARY OVERRIDE for ACC-only perm-histogram diagnostic run.
-# Revert to ROIS_TO_ANALYZE = ROIS_TO_ANALYZE_BY_COLUMN[ROI_LABEL_COLUMN] for the full re-run.
-ROIS_TO_ANALYZE = ['ACC', 'EC', 'Parahippocampal',
-        'HC_anterior', 'HC_mid',
-        'medialOFC', 'medial_CC',
-        'PCC', 'Visual']
 
 # ROI that gets the shared rodent-style publication figures (fig 2 + fig 3)
 # saved into ``OUT_DIR/pub_figures/``. Set to None to disable, or to another
@@ -774,6 +784,10 @@ MODEL_FIG3_LABELS = {
     'bttn_next': 'Next\naction',
     'midnight': 'DSR\ncurrent only',
     'uncover': 'Uncover\nscreen',
+    'curr_quarter':  'DSR\ncurrent state',
+    'next_quarter':  'DSR\n+1 state',
+    'next2_quarter': 'DSR\n+2 states',
+    'next3_quarter': 'DSR\n+3 states',
 }
 
 
@@ -2245,6 +2259,16 @@ if RELOAD_RUN is None:
         model_concat['dsr_fmri_345']      = model_concat['dsr_fmri'][:, _lag_cols([3, 4, 5])]
         model_concat['dsr_fmri_informed'] = model_concat['dsr_fmri'][:, _lag_cols([1, 2])]
 
+        # State-quarter split of the full DSR trajectory. 12 lags = 4 states
+        # × 3 phases per state, so each quarter is 3 consecutive lag windows
+        # (3 * LEN_STANDARDISED_PATH = 36 columns). Mirrors split4_DSR_keys
+        # in scripts/create_fMRI_model_RDMs_on_clean_beh.py.
+        _QLEN = 3 * _L
+        for _q, _name in enumerate(
+                ['curr_quarter', 'next_quarter', 'next2_quarter', 'next3_quarter']):
+            model_concat[_name] = model_concat['dsr_fmri'][:,
+                                                             _q * _QLEN:(_q + 1) * _QLEN]
+
 
         # ── Model design-matrix plots ────────────────────────────────────
         # Visualise the (conditions × features) matrix that actually feeds
@@ -2278,6 +2302,7 @@ if RELOAD_RUN is None:
             if m in ('location', 'dsr', 'dsr_fmri', 'bttn_prev', 'bttn_next', 'bttn_curr', 'uncover',
                      'dsr_fmri_lag01', 'dsr_fmri_lag012', 'dsr_fmri_lag0123',
                      'dsr_fmri_fut', 'dsr_fmri_123', 'dsr_fmri_345', 'dsr_fmri_informed',
+                     'curr_quarter', 'next_quarter', 'next2_quarter', 'next3_quarter',
                      'reward_path'):
                 model_RDMs[m] = mc.analyse.my_RSA.compute_hamming_distance(
                     model_concat[m], plotting=False, include_diagonal=False,

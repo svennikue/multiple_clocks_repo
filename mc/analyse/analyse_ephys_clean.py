@@ -40,14 +40,15 @@ REGRESSORS_TO_INCLUDE = ['clo_model', 'loc_model', 'phas_model', 'stat_model', '
 # may map to the same human-readable label so each script can use its own keys.
 MODEL_LABELS = {
     # rodent pipeline keys
-    'clo_model': 'DSR', 'dsr': 'DSR',
-    'stat_model': 'Location in Task', 'stat': 'Location in Task',
+    'clo_model': 'Action Plan', 'dsr': 'Action Plan',
+    'dsr_fmri': 'Action Plan',      # human-pipeline DSR variant, added 2026-07-26
+    'stat_model': 'Position in Seq.', 'stat': 'Position in Seq.',
     'loc_model': 'Physical Location', 'loc': 'Physical Location',
     'phas_model': 'Subgoal Progress', 'phas': 'Subgoal Progress',
     # human-cells pipeline aliases
-    'dsr_old':      'DSR',
-    'midnight':     'DSR (only current)', 'midn': 'DSR (only current)',
-    'state':        'Location in Task',
+    'dsr_old':      'Action Plan',
+    'midnight':     'Location x Phase', 'midn': 'Location x Phase',
+    'state':        'Position in Seq.',
     'location_old': 'Physical Location',
     'phase':        'Subgoal Progress',
 }
@@ -57,6 +58,7 @@ MODEL_LABELS = {
 # loc/stat/phas).
 MODEL_KINDS = {
     'clo_model':    'dsr',  'dsr':          'dsr',
+    'dsr_fmri':     'dsr',
     'dsr_old':      'dsr',
     'midnight':     'midn',
     'stat_model':   'stat', 'stat':         'stat',  'state':        'stat',
@@ -701,6 +703,66 @@ def _evaluate_dsr_variant(model_vectors, data_vector, order):
     }
 
 
+def _phase_residualise_task(neu_task, basis):
+    """Per-cell phase residualisation for one task's (n_neurons, n_trials, 360)
+    firing-rate array. Shares the residualiser used by the human single-unit
+    RSA (`mc.analyse.future_spatial_peaks.phase_residualise`, cosine basis by
+    default). Cells are residualised across their (n_trials × 360) matrix so
+    the phase basis sees every trial. Returns a new array of the same shape;
+    input is not mutated. `basis=None` returns the input unchanged.
+    """
+    if basis is None:
+        return neu_task
+    from mc.analyse.future_spatial_peaks import phase_residualise as _resid
+    out = np.empty_like(neu_task, dtype=float)
+    for c in range(neu_task.shape[0]):
+        out[c] = _resid(neu_task[c].astype(float), basis=basis)
+    return out
+
+
+def _downsample_mode_1d(x, target_len):
+    """Downsample a 1-D integer node path to `target_len` samples via mode
+    over evenly-distributed slots (no bin discarding). Mirrors
+    ``downsample_mode`` in RSA_DSR_ROIs_simple.py — slot i uses input bins
+    ``[(i*n)//target_len : ((i+1)*n)//target_len]``. Slot sizes differ by
+    at most 1 when target_len does not divide n.
+    """
+    from collections import Counter
+    x = np.asarray(x)
+    n = len(x)
+    if n == target_len:
+        return x.astype(int)
+    return np.array([
+        Counter(x[(i * n) // target_len:((i + 1) * n) // target_len])
+            .most_common(1)[0][0]
+        for i in range(target_len)
+    ], dtype=int)
+
+
+#: Downsampled bins per condition used by the human-pipeline `dsr_fmri`
+# model. Matches LEN_STANDARDISED_PATH in scripts/RSA_DSR_ROIs_simple.py.
+#: With N=12 conds this makes a (12 × 144) integer roll matrix per task.
+LEN_STANDARDISED_PATH_DSR_FMRI = 12
+
+
+def _build_dsr_fmri_task(walked_360, n_conds_per_config,
+                          len_per_bin=LEN_STANDARDISED_PATH_DSR_FMRI):
+    """Build a (n_conds_per_config × n_conds_per_config*len_per_bin) matrix
+    matching ``build_mode_path_dsr`` in RSA_DSR_ROIs_simple.py: take the
+    mode trajectory, downsample to ``n_conds × len_per_bin`` integer node
+    IDs, then for each of the ``n_conds`` rows roll the flattened vector
+    left by ``pos * len_per_bin`` so 'current' sits at the front. This
+    matrix feeds ``my_RSA.compute_hamming_distance_within``.
+
+    ``len_per_bin`` defaults to LEN_STANDARDISED_PATH_DSR_FMRI (=12), the
+    downsampled path length per condition used in the human fMRI pipeline
+    — NOT the raw-binlen (360 / N = 30) used elsewhere in this module."""
+    base = _downsample_mode_1d(walked_360,
+                                target_len=n_conds_per_config * len_per_bin)
+    return np.stack([np.roll(base, -pos * len_per_bin)
+                     for pos in range(n_conds_per_config)], axis=0)
+
+
 def _build_dsr_model_cols(locations_all, no_phase_neurons, pool_method, N, binlen):
     """Build per-task binned model matrices. ``pool_method`` picks how trials are pooled:
 
@@ -708,7 +770,8 @@ def _build_dsr_model_cols(locations_all, no_phase_neurons, pool_method, N, binle
           model per task from it.
         - ``'per_run_avg'``: build one model per trial, average across trials.
     """
-    out = {'dsr': [], 'stat': [], 'loc': [], 'phas': [], 'midn': []}
+    out = {'dsr': [], 'stat': [], 'loc': [], 'phas': [], 'midn': [],
+            'dsr_fmri': []}
     no_tasks = len(locations_all)
 
     for task_no in range(no_tasks):
@@ -738,11 +801,21 @@ def _build_dsr_model_cols(locations_all, no_phase_neurons, pool_method, N, binle
                     sums['loc']  += loc_m
                     sums['phas'] += phas_m
                     sums['midn'] += midn_m
+            # For dsr_fmri the "average per-run" pooling would smear the integer
+            # location IDs into non-integers; use the mode across runs' walks
+            # instead, matching what mode_path does.
+            walked_pool = _mode_path_360(trial_locs)
             n_trials = trial_locs.shape[0]
             per_task = {k: v / n_trials for k, v in sums.items()}
 
         else:
             raise ValueError(f"pool_method must be 'mode_path' or 'per_run_avg', got {pool_method!r}")
+
+        # dsr_fmri (Hamming-space): 12×144 integer roll matrix per task from
+        # the mode-path. Same construction as RSA_DSR_ROIs_simple.build_mode_path_dsr.
+        walked_for_fmri = walked if pool_method == 'mode_path' else walked_pool
+        dsr_fmri_task = _build_dsr_fmri_task(walked_for_fmri, N)   # len_per_bin defaults to 12
+        out['dsr_fmri'].append(dsr_fmri_task)
 
         for key, M in per_task.items():
             out[key].append(M.reshape(M.shape[0], N, binlen).mean(axis=2))
@@ -804,19 +877,25 @@ def process_one_recday(recday,
         cfg_n, loc_n, neu_n, tim_n, kind='norm',
         session_ids=sid_norm, return_metadata=True)
 
+    phase_res = config.get('phase_residualise', None)
+    combo_order = config.get('combo_order', None)   # None = full 6-model default
     dsr_by_pool = {}
     for pool_method in config['dsr_pool_methods']:
         dsr_by_pool[pool_method] = reg_across_tasks_DSR(
             cfg_np, loc_np, neu_np, tim_np, recday,
             n_conds_per_config=config['n_conds_per_config'],
             no_phase_neurons=config['number_phase_neurons'],
-            pool_method=pool_method)
+            pool_method=pool_method,
+            phase_residualise=phase_res,
+            combo_order=combo_order)
 
     # ----- Across-task-halves: uses POST-trim / PRE-pool normalised data -----
     halves = reg_across_task_halves_DSR(
         cfg_n, loc_n, neu_n, tim_n, recday, session_ids=sid_norm,
         n_conds_per_config=config['n_conds_per_config'],
-        no_phase_neurons=config['number_phase_neurons'])
+        no_phase_neurons=config['number_phase_neurons'],
+        phase_residualise=phase_res,
+        combo_order=combo_order)
 
     return {
         'recday':       recday,
@@ -871,7 +950,9 @@ def split_sessions_into_halves(task_configs, session_ids, timings_all):
 
 def reg_across_task_halves_DSR(task_configs, locations_all, neurons, timings_all,
                                mouse_recday, session_ids=None,
-                               n_conds_per_config=12, no_phase_neurons=3):
+                               n_conds_per_config=12, no_phase_neurons=3,
+                               phase_residualise=None,
+                               combo_order=None):
     """Across-task-halves split-half RSA on the normalised view.
 
     Uses the natural duplicate-config sessions as the two halves (no within-
@@ -912,6 +993,7 @@ def reg_across_task_halves_DSR(task_configs, locations_all, neurons, timings_all
         for cfg_info in qualifying:
             idxs = cfg_info[f'half{half}_indices']
             neu_concat = np.concatenate([neurons[i] for i in idxs], axis=1)   # (n_neurons, n_trials, 360)
+            neu_concat = _phase_residualise_task(neu_concat, phase_residualise)
             avg = np.nanmean(neu_concat, axis=1)                              # (n_neurons, 360)
             ds = avg.reshape(avg.shape[0], N, binlen).mean(axis=2)            # (n_neurons, N)
             cols.append(ds)
@@ -929,8 +1011,11 @@ def reg_across_task_halves_DSR(task_configs, locations_all, neurons, timings_all
         no_tasks=K, model=f'half-split {mouse_recday}')[0]
 
     def _half_models(half):
-        """Build the five model RDM-input matrices for one half: (K*N, features)."""
-        per_model = {'dsr': [], 'stat': [], 'loc': [], 'phas': [], 'midn': []}
+        """Build the six model RDM-input matrices for one half: (K*N, features).
+        dsr_fmri is stored as a (K*N, len_per_bin*N) integer matrix (Hamming);
+        the other five are cosine-space (K*N, features) rate maps."""
+        per_model = {'dsr': [], 'stat': [], 'loc': [], 'phas': [], 'midn': [],
+                      'dsr_fmri': []}
         for cfg_info in qualifying:
             idxs = cfg_info[f'half{half}_indices']
             loc_concat = np.concatenate([locations_all[i] for i in idxs], axis=0)
@@ -940,7 +1025,12 @@ def reg_across_task_halves_DSR(task_configs, locations_all, neurons, timings_all
             for key, M in [('dsr', dsr_m), ('stat', stat_m), ('loc', loc_m),
                            ('phas', phas_m), ('midn', midn_m)]:
                 per_model[key].append(M.reshape(M.shape[0], N, binlen).mean(axis=2))
-        return {k: np.hstack(v).T for k, v in per_model.items()}
+            per_model['dsr_fmri'].append(_build_dsr_fmri_task(walked, N))
+        out = {k: np.hstack(v).T for k, v in per_model.items()
+                if k != 'dsr_fmri'}
+        # dsr_fmri: stack row-wise (K*N, 144 integer node IDs)
+        out['dsr_fmri'] = np.concatenate(per_model['dsr_fmri'], axis=0)
+        return out
 
     h1_models = _half_models(1)
     h2_models = _half_models(2)
@@ -951,8 +1041,13 @@ def reg_across_task_halves_DSR(task_configs, locations_all, neurons, timings_all
         model_RDMs[k] = my_RSA.compute_crosscorr(
             m_combined, plotting=False, include_diagonal=False,
             no_tasks=K, model=k)[0]
+    # dsr_fmri uses Hamming (integer node IDs).
+    m_combined = np.vstack([h1_models['dsr_fmri'], h2_models['dsr_fmri']])
+    model_RDMs['dsr_fmri'] = my_RSA.compute_hamming_distance(
+        m_combined, plotting=False, include_diagonal=False,
+        no_tasks=K, model_name='dsr_fmri')[0]
 
-    order = ['dsr', 'stat', 'loc', 'phas', 'midn']
+    order = combo_order or ['dsr', 'dsr_fmri', 'stat', 'loc', 'phas', 'midn']
     stacked = np.stack([model_RDMs[k] for k in order], axis=1)
     t_vals, betas, p_vals = my_RSA.evaluate_model(stacked, np.asarray(data_vec))
 
@@ -991,10 +1086,21 @@ def dsr_example_recday_matrices(task_configs, locations_all, neurons, timings_al
         task_configs, locations_all, neurons, timings_all,
         n_conds_per_config=N)
 
-    # models (mode_path pooling)
+    # models (mode_path pooling). Cosine-space models (dsr, stat, loc, phas,
+    # midn) use the standard (n_features, n_tasks*N) activation + cosine RDM.
+    # dsr_fmri has a different feature space (12 × 144 integer roll matrix
+    # per task) and uses Hamming, so we build its display activation + RDM
+    # separately below.
     model_cols = _build_dsr_model_cols(locations_all, no_phase_neurons,
                                        'mode_path', N, binlen)
+    fmri_cols = model_cols.pop('dsr_fmri')     # list of (12, 144) integer matrices
     model_activations = {k: np.hstack(v) for k, v in model_cols.items()}
+
+    # dsr_fmri activation (144, n_tasks*N): stack per-task (12,144) transposes
+    # horizontally so the "conditions" axis (12 per task) sits horizontally
+    # and the "144 sequence positions" run vertically, matching the layout
+    # convention used for the other models.
+    model_activations['dsr_fmri'] = np.hstack([m.T for m in fmri_cols])
 
     # model RDMs (full square)
     def _full_rdm(matrix):
@@ -1005,7 +1111,16 @@ def dsr_example_recday_matrices(task_configs, locations_all, neurons, timings_al
         X = X / denom[:, None]
         return 1 - X @ X.T
 
-    model_rdms = {k: _full_rdm(model_activations[k]) for k in model_activations}
+    model_rdms = {k: _full_rdm(model_activations[k])
+                   for k in model_activations if k != 'dsr_fmri'}
+    # dsr_fmri RDM: full-square (n_tasks*N, n_tasks*N) Hamming.
+    fmri_stack = np.concatenate(fmri_cols, axis=0)   # (n_tasks*N, 144) int
+    M = fmri_stack.shape[0]
+    ham_full = np.zeros((M, M), dtype=float)
+    for i in range(M):
+        ham_full[i, i+1:] = np.mean(fmri_stack[i][None, :] != fmri_stack[i+1:], axis=1)
+    ham_full = ham_full + ham_full.T
+    model_rdms['dsr_fmri'] = ham_full
 
     return data_z, data_rdm, model_activations, model_rdms
 
@@ -1053,7 +1168,8 @@ def dsr_across_halves_matrices(task_configs, locations_all, neurons, timings_all
     data_rdm = data_rdm + data_rdm.T
 
     def _half_models(half):
-        out = {'dsr': [], 'stat': [], 'loc': [], 'phas': [], 'midn': []}
+        out = {'dsr': [], 'stat': [], 'loc': [], 'phas': [], 'midn': [],
+                'dsr_fmri': []}
         for q in qualifying:
             idxs = q[f'half{half}_indices']
             loc_concat = np.concatenate([locations_all[i] for i in idxs], axis=0)
@@ -1063,13 +1179,35 @@ def dsr_across_halves_matrices(task_configs, locations_all, neurons, timings_all
             for key, MM in [('dsr', dsr_m), ('stat', stat_m), ('loc', loc_m),
                             ('phas', phas_m), ('midn', midn_m)]:
                 out[key].append(MM.reshape(MM.shape[0], N, binlen).mean(axis=2))
-        return {k: np.hstack(v) for k, v in out.items()}
+            out['dsr_fmri'].append(_build_dsr_fmri_task(walked, N))
+        # Cosine-space keys collapse via hstack (n_features, K*N).
+        collapsed = {k: np.hstack(v) for k, v in out.items() if k != 'dsr_fmri'}
+        # dsr_fmri collapses via row-stack (K*N, 144 integer node IDs).
+        collapsed['dsr_fmri'] = np.concatenate(out['dsr_fmri'], axis=0)
+        return collapsed
 
     h1_models, h2_models = _half_models(1), _half_models(2)
-    model_activations = {k: np.hstack([h1_models[k], h2_models[k]]) for k in h1_models}
+    model_activations = {}
+    for k in h1_models:
+        if k == 'dsr_fmri':
+            # Display activation: transpose per-half to (144, K*N) then hstack
+            model_activations[k] = np.hstack([h1_models[k].T, h2_models[k].T])
+        else:
+            model_activations[k] = np.hstack([h1_models[k], h2_models[k]])
 
     model_rdms = {}
     for k in h1_models:
+        if k == 'dsr_fmri':
+            # dsr_fmri: pairwise Hamming between half-1 rows and half-2 rows,
+            # then symmetrise. Returns a (K*N × K*N) across-halves cross-block
+            # matching the cosine-space models' shape convention. Within-half
+            # blocks are NOT included — same "REMOVE half of the matrix"
+            # invariant as compute_crosscorr for the other models.
+            h1 = h1_models[k]; h2 = h2_models[k]     # (K*N, 144) each
+            # Pairwise Hamming: mean fraction of positions where h1[i] != h2[j].
+            H12 = np.mean(h1[:, None, :] != h2[None, :, :], axis=-1)  # (K*N, K*N)
+            model_rdms[k] = 0.5 * (H12 + H12.T)
+            continue
         m_combined = np.vstack([h1_models[k].T, h2_models[k].T])
         rdm_vec = my_RSA.compute_crosscorr(
             m_combined, plotting=False, include_diagonal=False, no_tasks=K)[0]
@@ -1107,7 +1245,9 @@ def dsr_activation_and_rdm(task_configs, locations_all, neurons, timings_all,
 
 def reg_across_tasks_DSR(task_configs, locations_all, neurons, timings_all, mouse_recday,
                          n_conds_per_config=12, no_phase_neurons=3,
-                         pool_method='mode_path', plotting=False):
+                         pool_method='mode_path', plotting=False,
+                         phase_residualise=None,
+                         combo_order=None):
     """Across-task RSA in parallel with ``scripts/RSA_DSR_ROIs_simple.py``.
 
     Uses the *normalised* recordings (360 bins/trial). Neural data is averaged
@@ -1131,6 +1271,7 @@ def reg_across_tasks_DSR(task_configs, locations_all, neurons, timings_all, mous
     data_cols = []
     for task_no in range(no_tasks):
         neu = neurons[task_no]                      # (n_neurons, n_trials, 360)
+        neu = _phase_residualise_task(neu, phase_residualise)
         avg = np.nanmean(neu, axis=1)               # (n_neurons, 360)
         ds = avg.reshape(avg.shape[0], N, binlen).mean(axis=2)   # (n_neurons, N)
         data_cols.append(ds)
@@ -1154,17 +1295,30 @@ def reg_across_tasks_DSR(task_configs, locations_all, neurons, timings_all, mous
                                        pool_method, N, binlen)
 
     model_RDM = {'across_z': {}, 'within_z': {}, 'full_z': {}}
+    HAMMING_KEYS = {'dsr_fmri'}    # Hamming instead of cosine RDM
     for key, cols in model_cols.items():
-        concat = np.concatenate(cols, axis=1).T     # (n_configs*N, features)
-        within, across, full = my_RSA.compute_crosscorr_within(
-            concat, plotting=False, include_diagonal=False,
-            no_tasks=no_tasks, model=key, block_size=N)
+        if key in HAMMING_KEYS:
+            # dsr_fmri columns are (12 × 144) integer roll matrices per task;
+            # stack row-wise to (n_configs*12, 144) and use Hamming.
+            concat = np.concatenate(cols, axis=0)   # (n_configs*N, 144)
+            within, across, full = my_RSA.compute_hamming_distance_within(
+                concat, plotting=False, include_diagonal=False,
+                no_tasks=no_tasks, model_name=key, block_size=N)
+        else:
+            concat = np.concatenate(cols, axis=1).T     # (n_configs*N, features)
+            within, across, full = my_RSA.compute_crosscorr_within(
+                concat, plotting=False, include_diagonal=False,
+                no_tasks=no_tasks, model=key, block_size=N)
         model_RDM['across_z'][key] = across[0]
         model_RDM['within_z'][key] = within[0]
         model_RDM['full_z'][key] = _upper_no_diag(full)
 
-    # --- one GLM with all five model RDMs (parallel to a my_RSA combo) -------
-    order = ['dsr', 'stat', 'loc', 'phas', 'midn']
+    # --- one GLM with the caller-specified combo -----------------------
+    # Default = the full 6-model joint (both DSR variants + 4 controls). Pass
+    # combo_order to swap in a different model set — e.g.
+    # ['dsr_fmri', 'stat', 'loc', 'phas'] to fit only dsr_fmri against 3
+    # controls (Pipeline B — no dsr, no midn).
+    order = combo_order or ['dsr', 'dsr_fmri', 'stat', 'loc', 'phas', 'midn']
     result = {
         variant: _evaluate_dsr_variant(model_RDM[variant], data_vectors[variant], order)
         for variant in ['across_z', 'within_z', 'full_z']
@@ -1247,7 +1401,7 @@ def _midnight_cmap():
 
 def _model_palette(model_order):
     """Per-model categorical colours; DSR highlighted, the rest in dark red."""
-    return [DSR_COLOUR if m in ('dsr', 'clo_model') else OTHER_COLOUR
+    return [DSR_COLOUR if m in ('dsr', 'clo_model', 'dsr_fmri') else OTHER_COLOUR
             for m in model_order]
 
 

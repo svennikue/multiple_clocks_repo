@@ -373,6 +373,51 @@ def get_instruction_RDM_per_searchlight(fmri_data, centers, neighbors):
     return sl_rdms
 
 
+def get_full_instruction_RDM_per_searchlight(fmri_data, centers, neighbors):
+    """
+    Per-searchlight cosine-dissim RDM over the FULL 2n_conds x 2n_conds matrix
+    (TH1 rows stacked on TH2 rows), returned as the strict lower triangle
+    (k=-1) flattened.
+
+    Block structure of the (2n, 2n) matrix, with TH1 first:
+        +----------------+-------------------+
+        | within-run 1   | across (TH1 x TH2)|
+        +----------------+-------------------+
+        | across^T       | within-run 2      |
+        +----------------+-------------------+
+
+    Cosine distance is symmetric, so the upper triangle carries no new
+    information. The strict lower triangle drops the diagonal (d(x, x) = 0,
+    which is pure autocorrelation), giving n_all*(n_all-1)/2 cells per
+    searchlight, where n_all = 2 * n_conds. Cell ordering follows
+    ``np.tril_indices(n_all, k=-1)``; the matching model RDM must be
+    flattened the same way.
+    """
+    centers = np.array(centers)
+    n_centers = centers.shape[0]
+    n_all = int(fmri_data.shape[0])
+    tril_i, tril_j = np.tril_indices(n_all, k=-1)
+    n_cells = tril_i.size
+
+    sl_rdms = np.zeros((n_centers, n_cells))
+
+    if n_centers > 1000:
+        chunked_center = np.split(
+            np.arange(n_centers),
+            np.linspace(0, n_centers, 101, dtype=int)[1:-1],
+        )
+    else:
+        chunked_center = [np.arange(n_centers)]
+
+    for chunks in tqdm(chunked_center, desc='Calculating FULL instruction RDMs...'):
+        for c in chunks:
+            sl_data = fmri_data[:, np.asarray(neighbors[c])]
+            R = compute_cosine_instruction_RDM(sl_data, sl_data)   # (2n, 2n) symmetric
+            sl_rdms[c, :] = R[tril_i, tril_j]
+
+    return sl_rdms
+
+
 def get_RDM_per_searchlight(fmri_data, centers, neighbors, method = 'crosscorr', labels = None, full_mask=None, mask_pairs=None, include_diagonal=True):
     # import pdb; pdb.set_trace()
     centers = np.array(centers)

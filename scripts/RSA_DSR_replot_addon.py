@@ -32,7 +32,8 @@ from mc.plotting.cell_results import SHOWGIRL2_DISCRETE
 
 # ── User settings ─────────────────────────────────────────────────────
 DATA = Path('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives')
-RSA_RUN_DIR = DATA / 'group/DSR_RSA_simple_ROI/2026-06-29_20-09-54-DSR-corrected'
+# Latest full RSA run (v2 labels, includes Precuneus).
+RSA_RUN_DIR = DATA / 'group/DSR_RSA_simple_ROI/2026-07-26_16-11-07'
 TEST_VARIANT = 'split_halves_z'
 
 # Heatmap panels: (display label, combo, sub_model)
@@ -48,7 +49,7 @@ PANELS_all = [
     ('state',           'ctrl_dsrFULL',     'state'),
     ('location',        'ctrl_dsrFULL',     'location'),
 ]
-ROI_ORDER = ['ACC', 'medialOFC', 'PCC', 'Parahippocampal',
+ROI_ORDER = ['ACC', 'medialOFC', 'PCC', 'Precuneus', 'Parahippocampal',
              'HC_anterior', 'HC_mid', 'EC']
 ROI_COLOURS = {
     'EC':              SHOWGIRL2_DISCRETE[0],
@@ -56,11 +57,13 @@ ROI_COLOURS = {
     'HC_anterior':     SHOWGIRL2_DISCRETE[2],
     'PCC':             SHOWGIRL2_DISCRETE[3],
     'medialOFC':       SHOWGIRL2_DISCRETE[4],
-    'Parahippocampal': SHOWGIRL2_DISCRETE[5],
-    'HC_mid':          SHOWGIRL2_DISCRETE[6],
+    'Parahippocampal': '#7FB0CC',
+    'HC_mid':          '#a30d6c',
+    'Precuneus':       '#23677E',
 }
 
-
+    
+    
 def main():
     df = pd.read_csv(RSA_RUN_DIR / 'results_summary_combos.csv')
     df = df[df.test == TEST_VARIANT]

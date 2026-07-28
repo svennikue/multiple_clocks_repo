@@ -38,7 +38,45 @@ OUT_BASE    = f"{DATA_FOLDER}derivatives/rodent_DSR_RSA/"
 
 NUMBER_PHASE_NEURONS = 3
 N_CONDS_PER_CONFIG   = 12       # 12 conditions / task config (matches human pipeline)
-MODEL_ORDER_DSR      = ['dsr', 'phas', 'loc', 'midn', 'stat']
+# Both DSR variants are computed for every recday:
+#   'dsr'      — rodent-native DSR (predictions.model_DSR, cosine RDM)
+#   'dsr_fmri' — human-pipeline DSR (mode-path rolled by bin, Hamming RDM;
+#                same construction as RSA_DSR_ROIs_simple.build_mode_path_dsr)
+# PIPELINE B — dsr_fmri (Hamming, fMRI-style) as the primary DSR regressor.
+# The joint GLM fits ONLY these 4 regressors: dsr_fmri + 3 rodent controls.
+# Rationale (see diagnose_dsr_vs_dsr_fmri.py output 2026-07-27_22-28-27):
+# `dsr` and `dsr_fmri` are r≈0.6 correlated, so putting them in the same
+# GLM makes them cannibalise each other's β. `dsr_fmri` survives the 4
+# control stack on its own (see diagnostic drop-in trace) — this combo is
+# the clean "dsr_fmri + controls" report.
+MODEL_ORDER_DSR      = ['dsr_fmri', 'stat', 'loc', 'phas']
+# The schematic figures (fig 1 top-panel DSR display, fig 2 model row) show
+# every model in MODEL_ORDER_DSR — dsr_fmri included, now that its display
+# activation + Hamming RDM are built alongside the cosine-space models.
+MODEL_ORDER_FIG      = list(MODEL_ORDER_DSR)
+# Whichever DSR variant is present in MODEL_ORDER_DSR is used as the "DSR"
+# panel at the top of fig 1. Pipeline A -> 'dsr'; Pipeline B -> 'dsr_fmri'.
+DSR_DISPLAY_KEY      = 'dsr_fmri' if 'dsr_fmri' in MODEL_ORDER_DSR else 'dsr'
+
+# Phase residualisation: per-cell OLS of firing rate against a within-state
+# phase basis, subtracting the phase component before RDM computation.
+#   'cosine'      — 2 basis functions (sin, cos of 2πφ). Same as the human
+#                    RSA in RSA_DSR_ROIs_simple.py. Removes the smooth
+#                    first-harmonic phase but leaves higher harmonics.
+#   'cosine_2h'   — 4 basis functions (adds sin, cos of 4πφ). Removes
+#                    first + second harmonic. This is what we use here
+#                    because the rodent `phas` model (3 von Mises tuning
+#                    curves per state, κ ≈ 3.33) has non-trivial 2nd-
+#                    harmonic content that a bare 'cosine' basis leaves
+#                    behind. In humans, the phase model is already null
+#                    after 'cosine' residualisation so this refinement
+#                    isn't needed there; the rodent phas structure is
+#                    sharper and needs the extra basis functions.
+#   'categorical' — 3 boxcar indicators (early/middle/late). Tightest
+#                    match to the 3-neuron structure of `phas`, but
+#                    departs further from the human convention.
+#   None          — no residualisation.
+PHASE_RESIDUALISE    = 'cosine_2h'
 
 EXAMPLE_RECDAY = None           # None -> pick the recday with the most neurons
 N_JOBS         = -1             # joblib: -1 = all cores, 1 = serial (for debugging)
@@ -49,6 +87,13 @@ ANALYSIS_CONFIG = {
     'n_conds_per_config':   N_CONDS_PER_CONFIG,
     'dsr_pool_methods':     ['mode_path'],
     'run_continuous':       False,   # skip slow per-trial loop; not used here
+    'phase_residualise':    PHASE_RESIDUALISE,
+    # Combo the joint GLM actually fits. Must match MODEL_ORDER_DSR so the
+    # stats aggregation, per-recday β column, and figure box-plot all use
+    # the same set of regressors. Pipeline A (rodent-native) would be
+    # ['dsr', 'stat', 'loc', 'phas', 'midn']. Pipeline B (this file) uses
+    # ['dsr_fmri', 'stat', 'loc', 'phas'] — same list as MODEL_ORDER_DSR.
+    'combo_order':          list(MODEL_ORDER_DSR),
     # The following are only consulted when run_continuous is True:
     'no_bins_per_state':    10,
     'mask_within':          True,
@@ -265,15 +310,16 @@ fz_data_act, fz_data_rdm, fz_model_acts, fz_model_rdms = (
 
 fz_coefs, fz_fdr = _coefs_and_fdr(stats_full_z)
 ae.pub_figure_dsr_overview(
-    dsr_model_activation=fz_model_acts['dsr'], dsr_model_rdm=fz_model_rdms['dsr'],
-    coefs_by_model=fz_coefs, model_order=MODEL_ORDER_DSR, fdr_pvals=fz_fdr,
+    dsr_model_activation=fz_model_acts[DSR_DISPLAY_KEY],
+    dsr_model_rdm=fz_model_rdms[DSR_DISPLAY_KEY],
+    coefs_by_model=fz_coefs, model_order=MODEL_ORDER_FIG, fdr_pvals=fz_fdr,
     n_tasks=len(cfg_ex), n_conds_per_task=N_CONDS_PER_CONFIG,
     recday_label=example_recday,
     save_stem=os.path.join(OUT_DIR, 'fig1_full_z'))
 ae.pub_figure_example_subject(
     data_activation=fz_data_act, data_rdm=fz_data_rdm,
     model_activations=fz_model_acts, model_rdms=fz_model_rdms,
-    model_order=MODEL_ORDER_DSR,
+    model_order=MODEL_ORDER_FIG,
     n_tasks=len(cfg_ex), n_conds_per_task=N_CONDS_PER_CONFIG,
     recday_label=example_recday,
     save_stem=os.path.join(OUT_DIR, 'fig2_full_z'))
@@ -301,7 +347,8 @@ if halves_mats is not None:
     # of all qualifying configs], so the display axis has 2*K_h task columns.
     K_display = 2 * K_h
     ae.pub_figure_dsr_overview(
-        dsr_model_activation=h_model_acts['dsr'], dsr_model_rdm=h_model_rdms['dsr'],
+        dsr_model_activation=h_model_acts[DSR_DISPLAY_KEY],
+        dsr_model_rdm=h_model_rdms[DSR_DISPLAY_KEY],
         coefs_by_model=h_coefs, model_order=MODEL_ORDER_DSR, fdr_pvals=h_fdr,
         n_tasks=K_display, n_conds_per_task=N_CONDS_PER_CONFIG,
         recday_label=f'{example_recday} (across-halves, K={K_h})',
@@ -310,7 +357,7 @@ if halves_mats is not None:
     ae.pub_figure_example_subject(
         data_activation=h_data_act, data_rdm=h_data_rdm,
         model_activations=h_model_acts, model_rdms=h_model_rdms,
-        model_order=MODEL_ORDER_DSR,
+        model_order=MODEL_ORDER_FIG,
         n_tasks=K_display, n_conds_per_task=N_CONDS_PER_CONFIG,
         recday_label=f'{example_recday} (across-halves, K={K_h})',
         x_axis_groups=[('run 1', K_h), ('run 2', K_h)],

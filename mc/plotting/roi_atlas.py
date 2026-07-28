@@ -227,9 +227,22 @@ def _build_roi_mask(roi, roi_label_column, brainnetome_nii, brainnetome_lut):
     if roi == "ventral_ACC":
         return _mask_from_brainnetome(["a14m"])
     if roi in ("PCC", "posterior_CC"):
+        # Brainnetome A23 first (matches the cell-assignment rule order in
+        # scripts/cell_to_roi_MNI.py). HO fallback intentionally excludes
+        # "precuneous" here — that's now its own Precuneus ROI below, so
+        # the two masks don't overlap in the glassbrain.
+        bn_mask = _mask_from_brainnetome(["a23"])
+        if bn_mask is not None and bn_mask.get_fdata().sum() > 0:
+            return bn_mask
         return _mask_from_atlas(
-            ho_cort,
-            ["cingulate gyrus, posterior division", "precuneous", "precuneus"])
+            ho_cort, ["cingulate gyrus, posterior division"])
+    if roi == "Precuneus":
+        # Brainnetome A31 (medial precuneus) + dmPOS (dorsomedial parieto-
+        # occipital sulcus); HO "Precuneous Cortex" as fallback.
+        bn_mask = _mask_from_brainnetome(["a31_l", "a31_r", "dmpos_l", "dmpos_r"])
+        if bn_mask is not None and bn_mask.get_fdata().sum() > 0:
+            return bn_mask
+        return _mask_from_atlas(ho_cort, ["precuneous cortex"])
     if roi == "medialOFC":
         from nilearn.image import new_img_like
         parts = [_mask_from_brainnetome(["a11m"]),

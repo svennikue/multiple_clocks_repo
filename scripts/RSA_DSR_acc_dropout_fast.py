@@ -61,10 +61,11 @@ from mc.analyse.my_RSA import evaluate_model_vec
 # ── User-configurable settings ───────────────────────────────────────
 REPO     = Path('/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_clocks_repo')
 DATA_DIR = Path('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives')
-# RSA_RUN_DIR = (DATA_DIR / 'group/DSR_RSA_simple_ROI/'
-#                           '2026-06-22_16-17-15-final-DSR')
+# Freshest full RSA run (2026-07-26, uses v2 ROI labels — proximity cap
+# + Brainnetome-first cingulate rules). To point at a different run just
+# swap the folder name here.
 RSA_RUN_DIR = (DATA_DIR / 'group/DSR_RSA_simple_ROI/'
-                          '2026-06-29_14-24-39')
+                          '2026-07-23_12-07-25')
 
 ROI          = 'ACC'
 TEST_VARIANT = 'between_tasks_z'    # one of 'split_halves_z', 'between_tasks_z'
