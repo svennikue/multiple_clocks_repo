@@ -119,17 +119,22 @@ RELOAD_FROM     = os.path.join(OUT_BASE, '2026-06-30_18-21-57')
 # + cell_idx). See mc.analyse.roi_relabel.relabel_per_cell.
 RELABEL_FROM    = ("/Users/xpsy1114/Documents/projects/multiple_clocks/"
                     "data/ephys_humans/derivatives/"
-                    "neurons_with_final_roi_labels.csv")
+                    "neurons_with_ROI_labels.csv")
 # RELABEL_FROM  = None
 
 # Display-name overrides used in figures ONLY (data columns keep the
-# original ROI keys). Per CLAUDE.md, ACC is written as 'mPFC' in
-# manuscript figures.
-ROI_DISPLAY_NAMES = {'ACC': 'mPFC'}
+# original ROI keys). Now that data labels are already the CLAUDE.md
+# canonical names (mPFC/mOFC/PHC/PCC), no overrides are needed and this
+# map is empty — kept for future overrides.
+ROI_DISPLAY_NAMES = {}
 def _disp(roi):
     return ROI_DISPLAY_NAMES.get(roi, roi)
 
-ROIS_TO_RUN = ['ACC', 'medialOFC', 'PCC', 'Parahippocampal',
+# Canonical ROIs from cell_to_roi_july26.py (matches CLAUDE.md palette).
+# Old-script names (`ACC`, `medialOFC`, `Parahippocampal`) are relabeled
+# to these via `neurons_with_ROI_labels.csv`.`alt_final_roi` at load time
+# (see RELABEL_FROM above and `mc.analyse.roi_relabel.relabel_per_cell`).
+ROIS_TO_RUN = ['mPFC', 'mOFC', 'PCC', 'PHC',
                'HC_anterior', 'HC_mid', 'EC']
 
 PHASE_RESIDUALISE      = 'cosine'
@@ -154,7 +159,7 @@ DSR_FULL_LAGS_DEG = [l for l in LAGS_DEG if l != 0]    # 11 "beyond-now" lags
 DSR_INF_LAGS_DEG  = [30, 60, 90]                        # ACC-informed subset
 
 ROI_PREDICTED_LAGS_DEG = {
-    'ACC':         (30, 60),
+    'mPFC':        (30, 60),
     'HC_anterior': (0, 330),
     'HC_mid':      (0, 330),
 }
@@ -192,14 +197,14 @@ DPI = 300
 CM = 1.0 / 2.54
 FONT_BIG, FONT_AXIS, FONT_TICK = 11, 10, 9
 _ROI_PAL = era_brewer.era_brew('Showgirl2', n=7)
-ROI_COLOURS = {                 # CLAUDE.md project-wide convention
-    'EC':              _ROI_PAL[0],
-    'medialOFC':       _ROI_PAL[4],
-    'ACC':             _ROI_PAL[1],
-    'HC_anterior':     _ROI_PAL[2],
-    'HC_mid':          _ROI_PAL[6],
-    'Parahippocampal': _ROI_PAL[5],
-    'PCC':             _ROI_PAL[3],
+ROI_COLOURS = {                 # matches CLAUDE.md `roi_colour_dict`
+    'EC':          _ROI_PAL[0],
+    'mPFC':        _ROI_PAL[1],
+    'HC_anterior': _ROI_PAL[2],
+    'PCC':         _ROI_PAL[3],
+    'mOFC':        _ROI_PAL[4],
+    'HC_mid':      '#a30d6c',   # magenta (CLAUDE.md override)
+    'PHC':         '#23677E',   # teal    (CLAUDE.md override)
 }
 OBSERVED_GREEN = '#0e3d3a'
 

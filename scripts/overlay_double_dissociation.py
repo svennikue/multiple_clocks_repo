@@ -6,9 +6,11 @@ dissociation: mPFC peaks at future lags (30-60°), HC_anterior/HC_mid at
 CV r > 0 per lag. Both wrap lag 0 back at the end (13 x-positions:
 0, 30, ..., 330, 0) so the circular structure is obvious.
 
-Data source: `per_cell.csv` in a spatial_peaks reload dir (default = the
-2026-07-23 RSA-excluded relabelled cohort). Uses the per-cell
-`per_lag_r_all_lags_json` column, which stores one r per lag per cell.
+For Spyder, select the result family at the top of the file with
+`CALL_RESULTS_FROM = 'per_lag'` or `'spatial_peaks'`. The per-lag encoding
+results use `per_cell_ALL_ROIs.csv` and its `r_lagXXX_{noctrl,ctrl}` columns;
+the spatial-peaks results use `per_cell.csv` and its
+`per_lag_r_all_lags_json` column.
 
 Never displays "ACC" — remapped to "mPFC" via ROI_DISPLAY_NAMES.
 """
@@ -22,22 +24,37 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, "/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_clocks_repo")
 from mc.plotting.cell_results import (
-    SHOWGIRL2_DISCRETE, ROI_COLORS_SHOWGIRL2, ROI_DISPLAY_NAMES,
+    SHOWGIRL2_DISCRETE,
 )
 
 
+# ---- Spyder call settings --------------------------------------------
+# Change this value when running the file with Spyder's "Run file" button.
+CALL_RESULTS_FROM = 'per_lag'  # 'spatial_peaks'
+CALL_PER_LAG_CTRL_MODE = 'noctrl'  # 'ctrl' is also available
+
+ROIS_TO_OVERLAY = ['mPFC', 'HC_anterior']
+
 ROI_COLOURS = {
     'EC':              SHOWGIRL2_DISCRETE[0],
-    'ACC':             SHOWGIRL2_DISCRETE[1],
-    'HC_anterior':     SHOWGIRL2_DISCRETE[2],
+    'mPFC':            SHOWGIRL2_DISCRETE[1],
+    'HC_anterior':     '#a30d6c',
     'PCC':             SHOWGIRL2_DISCRETE[3],
-    'medialOFC':       SHOWGIRL2_DISCRETE[4],
-    'Parahippocampal': '#7FB0CC',
-    'HC_mid':          '#a30d6c',
-    'Precuneus':       '#23677E',
+    'mOFC':             SHOWGIRL2_DISCRETE[4],
+    'PHC':             '#23677E',
+    'HC_mid':          SHOWGIRL2_DISCRETE[2],
 }
 
-
+# Normalize labels written by older analyses to the names used in the plot.
+ROI_NAME_MAP = {
+    'ACC': 'mPFC',
+    'mPFC': 'mPFC',
+    'medialOFC': 'mOFC',
+    'mOFC': 'mOFC',
+    'Parahippocampal': 'PHC',
+    'Parahippocampus': 'PHC',
+    'PHC': 'PHC',
+}
 
 
 #2026-07-01_10-35-40_reload_from_2026-06-26_18-47-11_phase_resid_paired_fixedlag-final
@@ -54,9 +71,17 @@ DEFAULT_PER_CELL_CSV = ("/Users/xpsy1114/Documents/projects/multiple_clocks/"
                         "2026-07-01_10-35-40_reload_from_2026-06-26_18-47-11_"
                         "phase_resid_paired_fixedlag-final/"
                         "per_cell.csv")
+DEFAULT_PER_LAG_CSV = ("/Users/xpsy1114/Documents/projects/multiple_clocks/"
+                       "data/ephys_humans/derivatives/group/"
+                       "per_lag_encoding/"
+                       "2026-07-29_15-52-36_reload_from_2026-06-30_18-21-57_"
+                       "relabelled/per_cell_ALL_ROIs.csv")
+
+
+
+
 LAGS_DEG_BASE = list(range(0, 360, 30))    # 12 lags used in spatial_peaks
-# ROIS_TO_OVERLAY = ["ACC", "HC_anterior", "HC_mid"]  # the three with predicted lags
-ROIS_TO_OVERLAY = ["ACC", "HC_mid"]  # the three with predicted lags
+
 
 
 # Publication sizing (see CLAUDE.md — subpanel ~7 cm at Arial 9-11 pt)
@@ -66,31 +91,57 @@ DPI = 300
 
 
 def _display(roi):
-    return ROI_DISPLAY_NAMES.get(roi, roi)
+    return roi
 
 
 def _roi_colour(roi):
-    """Return the canonical Showgirl2 hex for `roi`, falling back to grey."""
-    idx = ROI_COLORS_SHOWGIRL2.get(roi)
-    if idx is None:
-        return "#666"
-    return SHOWGIRL2_DISCRETE[idx]
+    """Return the requested colour for a canonical ROI name."""
+    return ROI_COLOURS.get(roi, "#666")
 
-def _load_curves(per_cell_csv, rois=ROIS_TO_OVERLAY):
-    """Return {roi: array (n_cells, n_lags)} of per-cell CV r at each
-    of the 12 lags. Cells with missing curves are dropped."""
+def _load_curves(per_cell_csv, source="spatial_peaks", ctrl_mode="noctrl",
+                 rois=ROIS_TO_OVERLAY):
+    """Return {roi: array (n_cells, n_lags)} of per-cell CV r.
+
+    The two analysis pipelines write the same conceptual result in different
+    table formats, so the source-specific parsing is kept here rather than
+    making callers know about either format.
+    """
     df = pd.read_csv(per_cell_csv)
+    if "roi" not in df:
+        raise ValueError(f"{per_cell_csv} has no 'roi' column")
+    df["roi"] = df["roi"].map(lambda roi: ROI_NAME_MAP.get(roi, roi))
+
+    if source == "spatial_peaks":
+        def curve_from_row(row):
+            try:
+                c = json.loads(row.get("per_lag_r_all_lags_json") or "[]")
+            except (json.JSONDecodeError, TypeError):
+                c = []
+            if len(c) != len(LAGS_DEG_BASE):
+                return None
+            return [np.nan if v is None else float(v) for v in c]
+    elif source == "per_lag":
+        columns = [f"r_lag{lag:03d}_{ctrl_mode}" for lag in LAGS_DEG_BASE]
+        missing = [col for col in columns if col not in df.columns]
+        if missing:
+            raise ValueError(
+                f"{per_cell_csv} is missing per-lag columns: {', '.join(missing)}"
+            )
+
+        def curve_from_row(row):
+            values = pd.to_numeric(row[columns], errors="coerce")
+            return values.to_numpy(dtype=float)
+    else:
+        raise ValueError(f"Unknown source {source!r}")
+
     out = {}
     for roi in rois:
         g = df[df["roi"] == roi]
         curves = []
         for _, row in g.iterrows():
-            try:
-                c = json.loads(row.get("per_lag_r_all_lags_json") or "[]")
-            except (json.JSONDecodeError, TypeError):
-                c = []
-            if len(c) == len(LAGS_DEG_BASE):
-                curves.append([np.nan if v is None else float(v) for v in c])
+            c = curve_from_row(row)
+            if c is not None:
+                curves.append(c)
         out[roi] = np.asarray(curves) if curves else np.empty((0, len(LAGS_DEG_BASE)))
     return out
 
@@ -117,9 +168,11 @@ def _tstat_gt0(curves):
     return t, p
 
 
-def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY):
+def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY,
+                 source="spatial_peaks", ctrl_mode="noctrl"):
     out_dir = Path(out_dir); out_dir.mkdir(parents=True, exist_ok=True)
-    curves = _load_curves(per_cell_csv, rois)
+    curves = _load_curves(per_cell_csv, source=source, ctrl_mode=ctrl_mode,
+                          rois=rois)
 
     x_wrap = np.asarray(LAGS_DEG_BASE + [360])   # 13 positions, last shown as 360°
     tick_pos = LAGS_DEG_BASE + [360]
@@ -136,7 +189,7 @@ def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY):
              np.sqrt(np.maximum(np.isfinite(C).sum(axis=0), 1)))
         m_w = _wrap_lag(m)
         s_w = _wrap_lag(s)
-        col = ROI_COLOURS[roi]
+        col = _roi_colour(roi)
         ax.fill_between(x_wrap, m_w - s_w, m_w + s_w, color=col,
                         alpha=0.18, linewidth=0)
         ax.plot(x_wrap, m_w, "-o", color=col, lw=1.5, ms=3,
@@ -163,7 +216,7 @@ def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY):
             continue
         t, p = _tstat_gt0(C)
         t_w = _wrap_lag(t)
-        col = ROI_COLOURS[roi]
+        col = _roi_colour(roi)
         ax.plot(x_wrap, t_w, "-o", color=col, lw=1.5, ms=3,
                 label=f"{_display(roi)} (n = {C.shape[0]})")
     ax.axhline(0, color="black", lw=0.5, ls="--")
@@ -204,14 +257,34 @@ def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--per-cell-csv", default=DEFAULT_PER_CELL_CSV)
+    p.add_argument("--source", choices=("spatial_peaks", "per_lag"),
+                   default=None,
+                   help="Optional override; otherwise CALL_RESULTS_FROM is used.")
+    p.add_argument("--per-cell-csv", default=None,
+                   help="Explicit per-cell CSV; overrides the source default.")
+    p.add_argument("--ctrl-mode", choices=("noctrl", "ctrl"), default=None,
+                   help="Optional override; otherwise CALL_PER_LAG_CTRL_MODE is used.")
     p.add_argument("--out-dir", default=None,
-                    help="Default: <per_cell dir>/overlay_double_dissociation/")
+                    help="Default: <per-cell dir>/overlay_double_dissociation/")
     args = p.parse_args()
-    csv = Path(args.per_cell_csv)
+    source = args.source or CALL_RESULTS_FROM
+    ctrl_mode = args.ctrl_mode or CALL_PER_LAG_CTRL_MODE
+    if source not in ("spatial_peaks", "per_lag"):
+        p.error("CALL_RESULTS_FROM must be 'per_lag' or 'spatial_peaks'")
+    if args.per_cell_csv:
+        csv = Path(args.per_cell_csv)
+    elif source == "spatial_peaks":
+        csv = Path(DEFAULT_PER_CELL_CSV)
+    else:
+        csv = Path(DEFAULT_PER_LAG_CSV)
+    if not csv.is_file():
+        p.error(f"Per-cell CSV does not exist: {csv}")
+    default_out_name = "overlay_double_dissociation"
+    if source == "per_lag":
+        default_out_name += f"_{ctrl_mode}"
     out_dir = (Path(args.out_dir) if args.out_dir
-                else csv.parent / "overlay_double_dissociation")
-    make_overlay(csv, out_dir)
+                else csv.parent / default_out_name)
+    make_overlay(csv, out_dir, source=source, ctrl_mode=ctrl_mode)
 
 
 if __name__ == "__main__":

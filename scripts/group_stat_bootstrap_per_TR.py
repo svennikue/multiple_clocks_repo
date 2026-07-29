@@ -555,26 +555,40 @@ def cluster_footprint_beta(data, cluster_map, cluster_id):
     return data[:, xs, ys, zs, :].mean(axis=1)             # (n_subj, n_TR)
 
 
+def _readable_text_colour(hexc):
+    """Black or white, whichever contrasts more against this patch colour."""
+    r, g, b = [int(hexc[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    lin = [c / 12.92 if c <= .04045 else ((c + .055) / 1.055) ** 2.4 for c in (r, g, b)]
+    Y = .2126 * lin[0] + .7152 * lin[1] + .0722 * lin[2]
+    return "white" if (1.05 / (Y + .05)) > ((Y + .05) / .05) else "black"
+
+
 def plot_cluster_footprint_timecourse(subj_beta, tr_order, cluster_rec,
                                        model_name, save_path,
-                                       x_label="EV (s)",
+                                       x_label="time from cue onset (s)",
                                        reward_schedule=None,
-                                       peak_marker_x=None):
+                                       peak_marker_x="none"):
     """Publication panel: mean β inside a single cluster's spatial footprint,
     per subject × TR, with SEM ribbon. Matches the roi-mean sage-green
     style. Adds a reward-cue schedule strip along the top of the panel
-    (coloured segments per reward), and a black vertical line at the peak.
+    (coloured segments per reward).
 
     Parameters
     ----------
     subj_beta : (n_subj, n_TR) mean β inside cluster footprint.
-    tr_order  : list of EV indices (also read as seconds when 1 EV = 1 s).
+    tr_order  : list of EV indices; each EV i is read as the interval
+        [i, i+1) s, so it is plotted at its bin CENTRE (i + 0.5). This is
+        what keeps the reward-schedule strip (drawn in data seconds) aligned
+        with the trace -- plotting at the bin's left edge instead shifts
+        every point 0.5 s early relative to the labelled reward segments.
     cluster_rec : dict from cluster records (has peak_tr_idx, peak_t, etc.).
     reward_schedule : list of (start_s, end_s, label, colour); default
         REWARD_SCHEDULE. Set to [] to disable the strip.
-    peak_marker_x : x-position for the vertical black line at the peak
-        effect. Default: right-edge of the peak EV bin
-        (peak_tr + 1, e.g. EV 4 → 5 s).
+    peak_marker_x : x-position (seconds) for an optional dotted reference
+        line. Default "none" draws nothing -- there is no principled default
+        peak location to mark (the previous default, right-edge-of-peak-bin,
+        was just re-stating a point already on the curve). Pass an explicit
+        float if you want a specific timepoint flagged.
     """
     if reward_schedule is None:
         reward_schedule = REWARD_SCHEDULE
@@ -594,7 +608,8 @@ def plot_cluster_footprint_timecourse(subj_beta, tr_order, cluster_rec,
     })
 
     n_subj, n_tr = subj_beta.shape
-    xs = list(tr_order)
+    tr_order = list(tr_order)
+    xs = [t + 0.5 for t in tr_order]           # bin centres, in seconds
     mean = subj_beta.mean(axis=0)
     sem  = subj_beta.std(axis=0, ddof=1) / np.sqrt(n_subj)
 
@@ -604,33 +619,42 @@ def plot_cluster_footprint_timecourse(subj_beta, tr_order, cluster_rec,
     ax.plot(xs, mean, "-o", color=DARK_SAGE, lw=0.9, ms=1.8, mec="none", zorder=3)
     ax.axhline(0, color="k", lw=0.35, zorder=1)
 
-    # ---- vertical black line at the peak effect ----
-    if peak_marker_x is None:
-        peak_tr = tr_order[cluster_rec["peak_tr_idx"]]
-        peak_marker_x = peak_tr + 1        # right edge of peak EV bin
-    ax.axvline(peak_marker_x, color="black", lw=0.8, zorder=4)
+    # ---- optional reference line (off by default -- see docstring) ----
+    if peak_marker_x not in (None, "none"):
+        ax.axvline(peak_marker_x, color="0.35", lw=0.6, ls=":", zorder=1)
+
+    ax.set_xticks(tr_order[::2])
+    ax.set_xlim(tr_order[0], tr_order[-1] + 1)
+
+    # ---- headroom for the schedule strip, so it never sits on the data ----
+    if reward_schedule:
+        dmax, dmin = float((mean + sem).max()), float((mean - sem).min())
+        pad = 0.04 * (dmax - dmin) if dmax > dmin else 0.001
+        bottom = dmin - pad
+        ax.set_ylim(bottom, bottom + (dmax - bottom) / 0.80)
 
     # ---- reward-cue schedule strip along the panel top ----
+    # x in DATA SECONDS (matches the bin-centre trace above), y in axes
+    # fraction -- a reward boundary falling mid-bin (e.g. 1.5 s, 4.5 s)
+    # correctly renders as splitting that bin rather than being rounded away.
     if reward_schedule:
-        # place the strip just above the data using axes-fraction coords
-        # (blended transform: x in data, y in axes fraction).
         from matplotlib.transforms import blended_transform_factory
         trans = blended_transform_factory(ax.transData, ax.transAxes)
-        strip_lo, strip_hi = 0.90, 0.98
+        strip_lo, strip_hi = 0.905, 0.985
+        x0, x1 = ax.get_xlim()
         for (a, b, label, col) in reward_schedule:
-            # clip to visible x-range
-            if b <= xs[0] - 0.5 or a >= xs[-1] + 0.5:
+            if b <= x0 or a >= x1:
                 continue
+            a, b = max(a, x0), min(b, x1)
             ax.add_patch(plt.Rectangle((a, strip_lo), b - a, strip_hi - strip_lo,
                                          transform=trans, facecolor=col,
-                                         edgecolor="none", alpha=0.9,
-                                         zorder=2, clip_on=False))
+                                         edgecolor="white", lw=0.3,
+                                         zorder=4, clip_on=False))
             ax.text((a + b) / 2, (strip_lo + strip_hi) / 2, label,
                     transform=trans, ha="center", va="center",
-                    fontsize=FONT_LABEL - 1, color="black", zorder=3)
+                    fontsize=FONT_LABEL - 1, color=_readable_text_colour(col),
+                    zorder=5, clip_on=False)
 
-    ax.set_xticks(xs[::2])
-    ax.set_xlim(xs[0] - 0.5, xs[-1] + 0.5)
     ax.set_xlabel(x_label, fontsize=FONT_AXIS, labelpad=1)
     ax.set_ylabel("β (cluster footprint)", fontsize=FONT_AXIS, labelpad=1)
     ax.tick_params(labelsize=FONT_TICK)

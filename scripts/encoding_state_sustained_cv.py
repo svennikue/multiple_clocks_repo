@@ -93,8 +93,18 @@ from mc.plotting.cell_results import plot_state_polar_clock, smooth_circular
 DATA_DIR = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives"
 OUT_BASE = os.path.join(DATA_DIR, "group", "encoding_state_sustained_cv")
 
-# FLAG ADDED
+# FLAG ADDED — reload a previous run's per-cell CSV instead of recomputing.
 RELOAD_OLD_RESULTS = '2026-06-25_14-38-13'
+
+# Reload-time ROI relabelling. Point at the fresh neurons ROI table (with
+# an `alt_final_roi` column) to overwrite the per-cell `roi` column on
+# reload; the ROI summary + figures are rewritten into a NEW sibling
+# directory `<original>_relabelled_<timestamp>/`. Set to None to skip.
+# Equivalent to passing `--relabel-from <path>` on the CLI.
+RELABEL_FROM = ("/Users/xpsy1114/Documents/projects/multiple_clocks/"
+                 "data/ephys_humans/derivatives/"
+                 "neurons_with_ROI_labels.csv")
+# RELABEL_FROM = None
 
 # RSA companion analysis — provides the 4th column of fig 11 (state RSA).
 # Change the date here when re-running with a new RSA run.
@@ -161,14 +171,14 @@ PHASE_COLORS   = [PHASE_COLOURS[p] for p in ['early', 'middle', 'late']]
 # project convention
 _roi_palette_src = era_brewer.era_brew("Showgirl2", n=7)
 
-ROI_COLOURS = {
-    'EC':              _roi_palette_src[0],
-    'medialOFC':       _roi_palette_src[4],
-    'ACC':             _roi_palette_src[1],
-    'HC_anterior':     _roi_palette_src[2],
-    'HC_mid':          _roi_palette_src[6],
-    'Parahippocampal': _roi_palette_src[5],
-    'PCC':             _roi_palette_src[3],
+ROI_COLOURS = {                 # matches CLAUDE.md `roi_colour_dict`
+    'EC':          _roi_palette_src[0],
+    'mPFC':        _roi_palette_src[1],
+    'HC_anterior': _roi_palette_src[2],
+    'PCC':         _roi_palette_src[3],
+    'mOFC':        _roi_palette_src[4],
+    'HC_mid':      '#a30d6c',   # magenta (CLAUDE.md override)
+    'PHC':         '#23677E',   # teal    (CLAUDE.md override)
 }
 # Location colours (3 × 3 grid, dark teal top-left → light green bottom-right).
 LOCATION_COLOURS = {
@@ -1818,14 +1828,16 @@ def parse_args():
              "the saved CSV in that run dir. Defaults to the module-level "
              "constant RELOAD_OLD_RESULTS (set to None to force a full run).")
     parser.add_argument(
-        "--relabel-from", default=None,
-        help="Optional. Path to a fresh neurons_with_final_roi_labels.csv. "
-             "Only valid together with --load-old-results. If set, the per-cell "
-             "CSV's `roi` column is overwritten by that table's `alt_final_roi` "
-             "column (joined on subject + cell_idx), and the ROI summary + "
+        "--relabel-from", default=RELABEL_FROM,
+        help="Optional. Path to a fresh neurons_with_ROI_labels.csv. "
+             "Defaults to the module-level constant RELABEL_FROM (set to "
+             "None there to skip). Only valid together with "
+             "--load-old-results. If set, the per-cell CSV's `roi` column "
+             "is overwritten by that table's `alt_final_roi` column "
+             "(joined on subject + cell_idx), and the ROI summary + "
              "figures are rebuilt into a NEW sibling directory "
-             "'<original>_relabelled_<timestamp>/' so the original run stays "
-             "intact. Prints a full transitions audit.")
+             "'<original>_relabelled_<timestamp>/' so the original run "
+             "stays intact. Prints a full transitions audit.")
     parser.add_argument(
         "--gallery", action="store_true",
         help="Also build the per-cell example gallery (slow; loads raw data).")

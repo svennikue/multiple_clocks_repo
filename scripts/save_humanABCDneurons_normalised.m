@@ -5,7 +5,7 @@
 
 clear all
 do_plot = false;  % toggle plotting
-
+ElecAtlasProbProjRaw
 source_dir = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
 if ~exist(source_dir, 'dir')
     source_dir = '/ceph/behrens/svenja/human_ABCD_ephys'
