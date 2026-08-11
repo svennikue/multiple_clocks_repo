@@ -63,6 +63,14 @@ SEED = 0
 RUN_LOSO = True
 K_VALUES = [50, 100, 200]         # top-k voxels selected on n-1 subjects
 
+# Error band on the figures. These answer different questions -- see the
+# plot_panel docstring before choosing.
+#   'sem'  precision of the group mean (matches the t-test: t = mean/SEM)
+#   'sd'   between-subject spread (sqrt(n) = 5.7x wider; crosses zero here)
+#   'both' faint SD outer + darker SEM inner  <- honest default
+ERROR_BAND = 'both'
+SHOW_SUBJECTS = False             # also draw all 32 individual timecourses
+
 # --- Whole-brain maps for FSLeyes ---
 WHOLE_BRAIN_MAPS = True
 WB_N_PERM = 10000                 # whole-brain FWE null; set 0 to skip that map
@@ -365,8 +373,29 @@ def readable_text_colour(hex_colour):
 
 
 def plot_panel(mean, sem, sig_trs, n_tr, save_stem,
-               second=None, fig_w_cm=4.0, fig_h_cm=3.5, font_pt=9):
+               second=None, fig_w_cm=4.0, fig_h_cm=3.5, font_pt=9,
+               sd=None, band=ERROR_BAND, subjects=None):
     """One timecourse panel at journal spec, shading `sig_trs`.
+
+    ERROR BANDS -- `band` selects which spread is drawn, and the choice is a
+    claim about what the figure is for. They are NOT interchangeable:
+
+      'sem'  +/- standard error of the mean (SD / sqrt(n)). Precision of the
+             GROUP MEAN. This is the band that corresponds to the t-test:
+             the t-statistic is literally mean/SEM, so a SEM band excluding
+             zero is the same statement as the test being significant.
+      'sd'   +/- standard deviation across subjects. BETWEEN-SUBJECT SPREAD --
+             how much individuals differ. sqrt(n) = 5.66x wider here, and it
+             legitimately crosses zero even for a strongly significant effect,
+             because plenty of individual subjects sit below zero while the
+             mean is reliably above it.
+      'both' SD as a faint outer band, SEM as the darker inner one. Honest by
+             default: shows individual variability without making the tested
+             quantity unreadable. Caption MUST name both.
+
+    A SD band crossing zero is not evidence against the effect and must not be
+    described as such -- it is a statement about individuals, not about the
+    mean. Conversely a SEM band is not a claim that subjects are consistent.
 
     Journal spec forces these choices; none of them is cosmetic:
       * EXACT canvas size, never bbox_inches='tight' -- a tight box silently
@@ -397,6 +426,9 @@ def plot_panel(mean, sem, sig_trs, n_tr, save_stem,
 
     mean = np.asarray(mean) * SCALE
     sem = np.asarray(sem) * SCALE
+    sd = None if sd is None else np.asarray(sd) * SCALE
+    if band in ('sd', 'both') and sd is None:
+        raise ValueError(f"band={band!r} needs sd=; pass the across-subject SD")
     xs = np.arange(n_tr) + 0.5                      # bin centres, in seconds
 
     fig, ax = plt.subplots(figsize=(fig_w_cm * CM, fig_h_cm * CM))
@@ -406,23 +438,43 @@ def plot_panel(mean, sem, sig_trs, n_tr, save_stem,
         ax.axvspan(k, k + 1, color=BAND, alpha=0.30, lw=0, zorder=1)
 
     ax.axhline(0, color='0.65', lw=0.4, zorder=2)
-    ax.fill_between(xs, mean - sem, mean + sem, color=DARK_SAGE, alpha=0.30,
-                    linewidth=0, zorder=3)
-    lo_vals = [(mean - sem).min()]
+
+    # Bands, widest first so the narrower one stays legible on top.
+    hi_vals, lo_vals = [], []
+    if band in ('sd', 'both'):
+        ax.fill_between(xs, mean - sd, mean + sd, color=DARK_SAGE, alpha=0.13,
+                        linewidth=0, zorder=2.5)
+        hi_vals.append((mean + sd).max()); lo_vals.append((mean - sd).min())
+    if band in ('sem', 'both'):
+        ax.fill_between(xs, mean - sem, mean + sem, color=DARK_SAGE, alpha=0.32,
+                        linewidth=0, zorder=3)
+        hi_vals.append((mean + sem).max()); lo_vals.append((mean - sem).min())
+
+    # Individual subjects, if asked for: hairlines behind everything.
+    if subjects is not None:
+        S = np.asarray(subjects) * SCALE
+        for row in S:
+            ax.plot(xs, row, '-', color=DARK_SAGE, lw=0.25, alpha=0.30,
+                    zorder=1.5)
+        hi_vals.append(S.max()); lo_vals.append(S.min())
+
     if second is not None:
         second = np.asarray(second) * SCALE
         ax.plot(xs, second, '-', color=GREY, lw=0.8, zorder=4)
-        lo_vals.append(second.min())
+        lo_vals.append(second.min()); hi_vals.append(second.max())
     ax.plot(xs, mean, '-', color=DARK_SAGE, lw=1.2, zorder=5)
 
-    dmax = float((mean + sem).max())
+    dmax = float(max(hi_vals))
     dmin = float(min(lo_vals))
     pad = 0.06 * (dmax - dmin) if dmax > dmin else 0.001
     ax.set_ylim(dmin - pad, dmax + pad)
     ax.set_xlim(0, n_tr)
     ax.set_xticks([t for t in range(0, n_tr + 1, 4) if t < n_tr])
+    # Tick step adapts: an SD band spans ~6x an SEM band, and a step of 2
+    # would put ~12 labels on a 3.5 cm axis.
     yl, yh = ax.get_ylim()
-    ax.set_yticks([v for v in range(-20, 21, 2) if yl < v < yh])
+    step = next(s for s in (2, 5, 10, 20, 50) if (yh - yl) / s <= 5)
+    ax.set_yticks([v for v in range(-100, 101, step) if yl < v < yh])
 
     trans = blended_transform_factory(ax.transData, ax.transAxes)
     strip_lo, strip_hi = 1.04, 1.25                 # ~one 9 pt line tall
@@ -444,6 +496,22 @@ def plot_panel(mean, sem, sig_trs, n_tr, save_stem,
     ax.tick_params(labelsize=FS)
     for side in ('top', 'right'):
         ax.spines[side].set_visible(False)
+
+    # An SD band widens the y-range, so tick labels can gain a character
+    # ('-10' vs '-2') and push the y-label off the fixed canvas. Canvas size is
+    # non-negotiable, so grow the left margin (shrinking the axes) until the
+    # label fits.
+    fig.canvas.draw()
+    r0 = fig.canvas.get_renderer()
+    for _ in range(6):
+        need = -min([ax.yaxis.label.get_window_extent(r0).x0]
+                    + [t.get_window_extent(r0).x0
+                       for t in ax.get_yticklabels() if t.get_text()])
+        if need <= 0.5:
+            break
+        left = ax.get_position().x0 + (need + 1.0) / fig.bbox.width
+        fig.subplots_adjust(left=min(left, 0.60))
+        fig.canvas.draw()
 
     for ext in ('png', 'pdf', 'svg'):
         fig.savefig(f"{save_stem}.{ext}", dpi=600)   # exact canvas
@@ -583,14 +651,18 @@ def main():
     
         plot_panel(pk.mean(0), pk.std(0, ddof=1) / np.sqrt(n_subj),
                    svc['sig_TRs'], n_tr, os.path.join(OUTPUT_DIR, f"{tag}_svc"),
-                   second=D[:, sphere, :].mean(1).mean(0))
+                   second=D[:, sphere, :].mean(1).mean(0),
+                   sd=pk.std(0, ddof=1), band=ERROR_BAND,
+                   subjects=pk if SHOW_SUBJECTS else None)
     
         if RUN_LOSO:
             kk = str(min(K_VALUES))
             h = loso_curves[kk]
             plot_panel(h.mean(0), h.std(0, ddof=1) / np.sqrt(n_subj),
                        loso[kk]['sig_TRs'], n_tr,
-                       os.path.join(OUTPUT_DIR, f"{tag}_loso_k{kk}"))
+                       os.path.join(OUTPUT_DIR, f"{tag}_loso_k{kk}"),
+                       sd=h.std(0, ddof=1), band=ERROR_BAND,
+                       subjects=h if SHOW_SUBJECTS else None)
     
         # ---- whole-brain maps ----
         map_info = {}
@@ -608,6 +680,7 @@ def main():
             peak_voxel_timecourse=dict(
                 mean=[float(v) for v in pk.mean(0)],
                 sem=[float(v) for v in pk.std(0, ddof=1) / np.sqrt(n_subj)],
+                sd=[float(v) for v in pk.std(0, ddof=1)],
                 sphere6mm_mean=[float(v) for v in D[:, sphere, :].mean(1).mean(0)]),
             whole_mask_mean=[float(v) for v in D.mean(1).mean(0)],
         )

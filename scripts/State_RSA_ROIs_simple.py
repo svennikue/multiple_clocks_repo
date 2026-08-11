@@ -106,11 +106,11 @@ FDR_SUBMODEL  = 'state'
 # ROI list (verbatim from the DSR script's alt_final_roi family).
 ROI_LABEL_COLUMN = 'alt_final_roi'
 ROI_ORDER = [
-    'ACC', 'medial_CC',
+    'mPFC', 'medial_CC',
     'HC_anterior', 'HC_mid',
-    'EC', 'Parahippocampal',
+    'EC', 'PHC',
     'PCC',
-    'medialOFC',
+    'mOFC',
     'Visual',
 ]
 # 'Visual' is excluded from the BH-FDR family (sanity-check ROI only).
@@ -124,7 +124,7 @@ PLOT_FIGS = True     # set True to render F1-F4 inline at the end
 # ── ROI mapping (same shape as DSR script) ────────────────────────────
 # ══════════════════════════════════════════════════════════════════════
 
-ROI_TABLE_PATH = os.path.join(DATA_DIR, 'neurons_with_final_roi_labels.csv')
+ROI_TABLE_PATH = os.path.join(DATA_DIR, 'neurons_with_ROI_labels.csv')
 
 
 def parse_neuron_label(label):
@@ -139,6 +139,9 @@ def parse_neuron_label(label):
 
 def _load_roi_table(path, roi_col):
     df = pd.read_csv(path)
+    for ax in ('x', 'y', 'z'):
+        if f'MNI_{ax}_final' in df.columns:
+            df[f'MNI_{ax}'] = df[f'MNI_{ax}_final']
     needed = ['subject', 'cell idx', roi_col,
               'MNI_x', 'MNI_y', 'MNI_z', 'electrode label']
     missing = [c for c in needed if c not in df.columns]
@@ -1295,8 +1298,8 @@ def _run_branch_dsr_style(branch, subjects, cfg_idx_per_sub, n_cfg,
     results_rows = []
     nulls = {}
     rois = [r for r in ROI_ORDER
-            if r in ('ACC', 'HC_anterior', 'HC_mid', 'EC',
-                      'Parahippocampal', 'PCC', 'medialOFC')]
+            if r in ('mPFC', 'HC_anterior', 'HC_mid', 'EC',
+                      'PHC', 'PCC', 'mOFC')]
 
     for roi_name in rois:
         # Containers (DSR convention).

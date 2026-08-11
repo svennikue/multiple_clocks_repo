@@ -61,7 +61,7 @@ TUNED_FRAC_THRESHOLD = 1.0 / 3.0
 N_JOBS = -1
 
 # ROI labelling (same convention as encoding_analysis_simple.py).
-ROI_TABLE_PATH = os.path.join(DATA_DIR, 'neurons_with_final_roi_labels.csv')
+ROI_TABLE_PATH = os.path.join(DATA_DIR, 'neurons_with_ROI_labels.csv')
 ROI_LABEL_COLUMN = 'alt_final_roi'
 TARGET_ROIS = None   # e.g. ['EC', 'HC_anterior', 'ACC']; None = all ROIs
 
@@ -132,6 +132,9 @@ def parse_neuron_label(label):
 
 def load_roi_table(path, roi_col):
     df = pd.read_csv(path)
+    for ax in ('x', 'y', 'z'):
+        if f'MNI_{ax}_final' in df.columns:
+            df[f'MNI_{ax}'] = df[f'MNI_{ax}_final']
     needed = ['subject', 'cell idx', roi_col,
               'MNI_x', 'MNI_y', 'MNI_z', 'electrode label']
     missing = [c for c in needed if c not in df.columns]

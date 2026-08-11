@@ -70,7 +70,7 @@ CRITERIA = [
 ]
 
 # ROI label table (matches the rest of the pipeline).
-ROI_TABLE_PATH = os.path.join(DATA_DIR, 'neurons_with_final_roi_labels.csv')
+ROI_TABLE_PATH = os.path.join(DATA_DIR, 'neurons_with_ROI_labels.csv')
 ROI_LABEL_COLUMN = 'alt_final_roi'
 
 N_JOBS = -1

@@ -78,7 +78,7 @@ DATA_DIR = (
     "/Users/xpsy1114/Documents/projects/multiple_clocks/"
     "data/ephys_humans/derivatives"
 )
-CELL_TABLE_PATH = os.path.join(DATA_DIR, "neurons_with_final_roi_labels.csv")
+CELL_TABLE_PATH = os.path.join(DATA_DIR, "neurons_with_ROI_labels.csv")
 DSR_JSON_PATH = os.path.join(
     DATA_DIR, "all_sessions_dsrRSA_grouping_summary.json")
 
@@ -87,11 +87,11 @@ ROI_COL = "alt_final_roi"
 # Canonical display order. ROIs absent from the data (e.g. dropped by the
 # <3-subject filter in cell_to_roi_MNI.py) just get skipped.
 ROI_ORDER = [
-    "ACC", "medial_CC",
+    "mPFC", "medial_CC",
     "HC_anterior", "HC_mid",
-    "EC", "Parahippocampal",
+    "EC", "PHC",
     "PCC",
-    "medialOFC",
+    "mOFC",
     "Visual",
 ]
 
@@ -103,19 +103,15 @@ ROI_ORDER = [
 # pulled from there to keep all figures consistent.
 from mc.plotting.cell_results import SHOWGIRL2_DISCRETE as _SHOWGIRL2
 ROI_COLOURS = {
-    "EC":              _SHOWGIRL2[0],   # dark red
-    "ACC":             _SHOWGIRL2[1],   # orange
-    "HC_anterior":     _SHOWGIRL2[2],   # tan
-    "PCC":             _SHOWGIRL2[3],   # pale yellow
-    "medialOFC":       _SHOWGIRL2[4],   # pale green
-    "Parahippocampal": _SHOWGIRL2[5],   # sage
-    "HC_mid":          _SHOWGIRL2[6],   # dark teal-green
-    # Final-roi only (collapse into alt-roi parents — share parent hue).
-    "OFC11":           _SHOWGIRL2[4],
-    "OFC13":           _SHOWGIRL2[4],
-    "ventral_ACC":     _SHOWGIRL2[1],
-    "medial_CC":       "#888888",
-    "Visual":          "#bdbdbd",
+    "EC":          _SHOWGIRL2[0],   # dark red
+    "mPFC":        _SHOWGIRL2[1],   # teal-green
+    "HC_mid":      _SHOWGIRL2[2],   # tan
+    "PCC":         _SHOWGIRL2[3],   # pale green
+    "mOFC":        _SHOWGIRL2[4],   # orange-red
+    "HC_anterior": "#a30d6c",       # magenta (CLAUDE.md override)
+    "PHC":         "#23677E",       # teal    (CLAUDE.md override)
+    "medial_CC":   "#888888",
+    "Visual":      "#bdbdbd",
 }
 
 # Which cell subsets to render.
@@ -192,6 +188,9 @@ FALLBACK_PALETTES = {
 
 print(f"Loading cell table: {CELL_TABLE_PATH}")
 DF_ALL = pd.read_csv(CELL_TABLE_PATH)
+for _ax in ('x', 'y', 'z'):
+    if f'MNI_{_ax}_final' in DF_ALL.columns:
+        DF_ALL[f'MNI_{_ax}'] = DF_ALL[f'MNI_{_ax}_final']
 print(f"  {len(DF_ALL)} cells; "
       f"{DF_ALL['subject'].nunique()} subjects; "
       f"ROI column = {ROI_COL!r}")

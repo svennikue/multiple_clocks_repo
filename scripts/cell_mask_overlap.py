@@ -83,7 +83,7 @@ INPUT_MASKS = {
 }
 
 CELL_TABLE_PATH = os.path.join(
-    DATA_DIR_EPHYS, "neurons_with_final_roi_labels.csv")
+    DATA_DIR_EPHYS, "neurons_with_ROI_labels.csv")
 DSR_JSON_PATH = os.path.join(
     DATA_DIR_EPHYS, "all_sessions_dsrRSA_grouping_summary.json")
 
@@ -98,11 +98,11 @@ MIN_CLUSTER_VOXELS = 50
 
 ROI_COL = "alt_final_roi"
 ROI_ORDER = [
-    "ACC", "medial_CC",
+    "mPFC", "medial_CC",
     "HC_anterior", "HC_mid",
-    "EC", "Parahippocampal",
+    "EC", "PHC",
     "PCC",
-    "medialOFC",
+    "mOFC",
     "Visual",
 ]
 
@@ -828,7 +828,7 @@ def plot_dsr_coronal_section(df, full_mask_img, lofc_mask_img, roi_col,
     coords_all = df[["MNI_x", "MNI_y", "MNI_z"]].to_numpy(dtype=float)
     near_slice = np.abs(coords_all[:, 1] - y_cut) <= float(y_tol_mm)
     roi = df[roi_col].to_numpy()
-    in_lofc_roi = (roi == "medialOFC")
+    in_lofc_roi = (roi == "mOFC")
     inside_full = voxel_inside_mask(coords_all, full_mask_img)
 
     coords_pink = coords_all[near_slice & in_lofc_roi]
@@ -917,6 +917,9 @@ def main():
     # Load cells + DSR subject list (shared across all input masks).
     print(f"\nLoading cell table: {CELL_TABLE_PATH}")
     df_all = pd.read_csv(CELL_TABLE_PATH)
+    for _ax in ('x', 'y', 'z'):
+        if f'MNI_{_ax}_final' in df_all.columns:
+            df_all[f'MNI_{_ax}'] = df_all[f'MNI_{_ax}_final']
     df_all = df_all.dropna(subset=[ROI_COL, "MNI_x", "MNI_y", "MNI_z"])
     df_all = df_all[df_all[ROI_COL].isin(ROI_ORDER)].copy()
     print(f"  {len(df_all)} cells with usable ROI + MNI coords.")
@@ -973,10 +976,10 @@ def main():
                              & (counts["roi"] == roi)]
                 return None if row.empty else int(row.iloc[0]["n_inside"])
             print(f"\n  Headline counts (mask={mask_name}, subset={subset}):")
-            print(f"    ACC cells in ACC sub-cluster   : "
-                  f"{_ix('ACC', 'ACC')}")
-            print(f"    medialOFC cells in lOFC sub-cl.: "
-                  f"{_ix('lOFC', 'medialOFC')}")
+            print(f"    mPFC cells in ACC sub-cluster  : "
+                  f"{_ix('ACC', 'mPFC')}")
+            print(f"    mOFC cells in lOFC sub-cluster : "
+                  f"{_ix('lOFC', 'mOFC')}")
             print(f"    all cells in full mask         : "
                   f"{_ix('full', '<all>')}")
 

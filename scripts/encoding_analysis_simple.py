@@ -201,7 +201,7 @@ PUB_MODELS = ['dsr', 'dsr_only_fut', 'state']
 # scripts/cell_to_roi_MNI.py.  Rows are matched to neuron labels via
 # (subject, cell_idx) parsed from the label `{sub:02d}_{cell_idx:02d}-...`.
 ROI_TABLE_PATH = os.path.join(
-    DATA_DIR, 'neurons_with_final_roi_labels.csv'
+    DATA_DIR, 'neurons_with_ROI_labels.csv'
 )
 
 # Which ROI-label column of that table to use:
@@ -394,6 +394,9 @@ def parse_neuron_label(label):
 def _load_roi_table(path, roi_col):
     """Load the MNI-based ROI table and index it by (subject, cell idx)."""
     df = pd.read_csv(path)
+    for ax in ('x', 'y', 'z'):
+        if f'MNI_{ax}_final' in df.columns:
+            df[f'MNI_{ax}'] = df[f'MNI_{ax}_final']
     needed = ['subject', 'cell idx', roi_col,
               'MNI_x', 'MNI_y', 'MNI_z', 'electrode label']
     missing = [c for c in needed if c not in df.columns]
@@ -1497,7 +1500,7 @@ from mc.plotting.cell_results import (
 # actually present in `results_df`.  None -> every ROI in the data.
 PUB_TOP_CELL_TARGETS_SPEC = {
     'dsr':   None,
-    'state': ['EC', 'medialOFC'],
+    'state': ['EC', 'mOFC'],
 }
 PUB_TOP_N = 5
 

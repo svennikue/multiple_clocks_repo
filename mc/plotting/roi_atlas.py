@@ -208,8 +208,16 @@ def _build_roi_mask(roi, roi_label_column, brainnetome_nii, brainnetome_lut):
 
     if roi == "EC":
         return _mask_from_atlas(juelich, ["entorhinal"])
-    if roi == "Parahippocampal":
+    if roi in ("PHC", "Parahippocampal"):
         return _mask_from_atlas(ho_cort, ["parahippocampal"])
+    if roi == "mPFC":
+        # Current (July 2026) ROI assignment: Brainnetome medial PFC
+        # parcels, matching ``scripts/cell_to_roi_july26.py``.  Keep ACC
+        # below as the historical, Harvard--Oxford-based definition.
+        bn_mask = _mask_from_brainnetome(["a32", "a24", "a10m", "a9m"])
+        if bn_mask is not None and bn_mask.get_fdata().sum() > 0:
+            return bn_mask
+        return _acc_alt_mask("anterior")
     if roi == "HC_anterior":
         return _hc_mask("anterior")
     if roi in ("HC_mid", "HC_posterior"):
@@ -243,7 +251,7 @@ def _build_roi_mask(roi, roi_label_column, brainnetome_nii, brainnetome_lut):
         if bn_mask is not None and bn_mask.get_fdata().sum() > 0:
             return bn_mask
         return _mask_from_atlas(ho_cort, ["precuneous cortex"])
-    if roi == "medialOFC":
+    if roi in ("mOFC", "medialOFC"):
         from nilearn.image import new_img_like
         parts = [_mask_from_brainnetome(["a11m"]),
                  _mask_from_brainnetome(["a13"]),

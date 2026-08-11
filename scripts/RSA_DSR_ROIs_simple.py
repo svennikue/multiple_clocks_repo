@@ -23,6 +23,7 @@ import pandas as pd
 from scipy import stats
 from matplotlib import pyplot as plt
 sys.path.insert(0, '/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_clocks_repo')
+import era_brewer
 
 REPLOT_PUB_FIG3_ONLY = os.environ.get('RSA_REPLOT_PUB_FIG3_ONLY', '0') == '1'
 if REPLOT_PUB_FIG3_ONLY:
@@ -33,18 +34,48 @@ else:
     import mc.plotting.dsr_figures as dsr_figs   # shared rodent/human pub figures
 from collections import Counter
 # import pdb; pdb.set_trace()
-
 # import pdb; pdb.set_trace()
 
 # ── Settings ──────────────────────────────────────────────────────────
 DATA_DIR     = '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives'
 OUT_BASE     = os.path.join(DATA_DIR, 'group', 'DSR_RSA_simple_ROI')
 
+# Canonical ROI colours used by the RSA ROI figures. The atlas/table labels
+# remain unchanged below because they are also used for ROI mask lookup.
+_ROI_PAL = era_brewer.era_brew('Showgirl2', n=7)
+ROI_COLOURS = {
+    'EC':          _ROI_PAL[0],
+    'mOFC':        _ROI_PAL[4],
+    'mPFC':        _ROI_PAL[1],
+    'HC_anterior': '#a30d6c',
+    'HC_mid':      _ROI_PAL[2],
+    'PHC':         '#23677E',
+    'PCC':         _ROI_PAL[3],
+}
+
+# The ROI table and atlas retain their historical labels, but all analysis
+# outputs (tables, plots, titles, and filenames) use these canonical names.
+ROI_DISPLAY_NAMES = {
+    'ACC': 'mPFC',
+    'medialOFC': 'mOFC',
+    'medial OFC': 'mOFC',
+    'Parahippocampal': 'PHC',
+    'Parahippocampus': 'PHC',
+}
+def _canonical_roi_name(roi):
+    """Return the project-wide ROI label used in analysis outputs."""
+    return ROI_DISPLAY_NAMES.get(roi, roi)
+
+
+def _atlas_roi_name(roi):
+    """Table column uses canonical names directly — identity passthrough."""
+    return roi
+
 # Reload mode: set to the run tag of a previous run (e.g.
 # '2026-05-18_16-33-05') to skip the heavy RSA + permutation loop and
 # just re-render the overview plots from the saved
 # results_summary*.csv files in OUT_BASE/<RELOAD_RUN>/.  None = run fresh.
-RELOAD_RUN = None # '2026-06-22_16-17-15-final-DSR'
+RELOAD_RUN = '2026-07-30_15-58-51-fixed_cells-fixed_perms' #'2026-07-30_15-58-51-fixed_cells-fixed_perms' #None #'2026-07-30_11-11-36' #'2026-06-22_16-17-15-final-DSR' #
 
 # ── Cross-run perm cache lookup ───────────────────────────────────────
 # When True, before rebuilding any ROI's permutation RDMs the script
@@ -55,7 +86,7 @@ RELOAD_RUN = None # '2026-06-22_16-17-15-final-DSR'
 # downstream scripts that look for the canonical location still work.
 # `link_reused=True` means the cache is shared on disk via symlink —
 # saves ~30 MB per ROI × 7 ROIs = ~200 MB per rerun.
-REUSE_PERMS_FROM_PREVIOUS_RUNS = True
+REUSE_PERMS_FROM_PREVIOUS_RUNS = True #False
 LINK_REUSED_PERMS = True   # False → copy instead of symlink (safer on weird FS)
 
 # Lightweight publication-figure refresh. Set
@@ -84,6 +115,16 @@ states           = ['A', 'B', 'C', 'D']
 RESOLUTIONx = 1
 PLOT_FIGS = False
 N_PERMUTATIONS = 1000 # 1000 # 500 # None or 300 — None skips the perm loop (parametric p only)
+
+# Null-construction mode for the permutation loop. See
+# `mc.analyse.rsa_perm_rdms.SHUFFLE_MODES` for the full list.
+#   'shift'          — LEGACY.  Per-trial circular shift only. Preserves
+#                      per-cell per-config firing preferences, which
+#                      inflates the DSR null (see `publication_md/method.md`).
+#   'shift_and_swap' — RECOMMENDED (default).  Circular shift + per-cell
+#                      trial-to-config re-assignment.  Zero-centred null
+#                      for every regressor (DSR, state, location, bttn).
+SHUFFLE_MODE = 'shift_and_swap'
 SPLIT_UNCV_BUTTONS = True
 
 # Phase-based masking. Phase of a condition at position pos inside a config is
@@ -180,21 +221,23 @@ models = [
 # L2-norm is the negative-distance-from-current-location-to-each-of-9-grid-
 # locations regressor, mirroring the fMRI version in
 # create_fMRI_model_RDMs_on_clean_beh.py (cosine RDM, 9-feature vector).
-_CTRLS_FINAL = ['state', 'location', 'bttn_curr']
+_CTRLS_FINAL = ['location', 'bttn_curr', 'bttn_next', 'l2_norm']
 combo_models = {
-    'ctrl_dsrFULL': _CTRLS_FINAL + ['dsr_fmri'],
-    #'fmri_ctrl_dsrFULL': _CTRLS_FINAL + ['dsr_fmri', 'l2_norm', 'bttn_next'],
-    #'ctrl_dsrFUT': _CTRLS_FINAL + ['dsr_fmri_fut'],
-    #'ctrl_dsrInformed': _CTRLS_FINAL + ['dsr_fmri_informed'],
+    'ctrl_fMRI_dsrFULL': _CTRLS_FINAL + ['dsr_fmri'],
+    'ctrl_fMRI-state_dsrFULL': _CTRLS_FINAL + ['state', 'dsr_fmri'],
+    'ctrl_dsrFUT': _CTRLS_FINAL + ['dsr_fmri_fut']
+    # 'fmri_ctrl_dsrFULL': _CTRLS_FINAL + ['dsr_fmri', 'l2_norm', 'bttn_next'],
+    # 'ctrl_dsrFUT': _CTRLS_FINAL + ['dsr_fmri_fut'],
+    # 'ctrl_dsrInformed': _CTRLS_FINAL + ['dsr_fmri_informed'],
     # Quartered DSR: same controls as ctrl_dsrFULL, but the full DSR
     # regressor is replaced by 4 non-overlapping state-quarters of the
     # rolled trajectory. One joint OLS => per-quarter β per ROI.
-    'ctrl_dsrQUARTERS': _CTRLS_FINAL + [
-        'curr_quarter', 'next_quarter', 'next2_quarter', 'next3_quarter'],
-    'fmri_dsrQUARTERS': ['uncover', 'l2_norm', 'bttn_next', 'bttn_curr', 'bttn_prev',
-        'curr_quarter', 'next_quarter', 'next2_quarter', 'next3_quarter'],
-    'fmri_min_but_dsrQUARTERS': ['uncover', 'l2_norm','bttn_curr',
-        'curr_quarter', 'next_quarter', 'next2_quarter', 'next3_quarter'],
+    # 'ctrl_dsrQUARTERS': _CTRLS_FINAL + [
+    #     'curr_quarter', 'next_quarter', 'next2_quarter', 'next3_quarter'],
+    # 'fmri_dsrQUARTERS': ['uncover', 'l2_norm', 'bttn_next', 'bttn_curr', 'bttn_prev',
+    #     'curr_quarter', 'next_quarter', 'next2_quarter', 'next3_quarter'],
+    # 'fmri_min_but_dsrQUARTERS': ['uncover', 'l2_norm','bttn_curr',
+    #     'curr_quarter', 'next_quarter', 'next2_quarter', 'next3_quarter'],
 }
 assert all(len(set(sm)) == len(sm) for sm in combo_models.values()), \
     f"Duplicate sub-model in combo_models: {combo_models}"
@@ -256,17 +299,18 @@ FDR_TEST      = 'split_halves_z'    # primary variant. Data RDM is built
 # FDR_COMBOS    = ['ctrl_dsrFULL', 'ctrl_dsrFULL_phase', 'ctrl_dsrFULL_state-phase']         
 # FDR_SUBMODELS = ['state']       
 # settings for DSR.
-FDR_COMBOS    = ['ctrl_dsrFULL']         # DSR + bttn + location + L2 + state
+FDR_COMBOS    = ['ctrl_fMRI_dsrFULL', 'ctrl_fMRI-state_dsrFULL', 'ctrl_dsrFUT']         # DSR + bttn + location + L2 + state
 FDR_SUBMODELS = ['dsr_fmri']       
 
 FDR_ALPHA     = 0.05
+MIN_RSA_SUBJECTS = 3   # drop ROIs with fewer RSA-eligible subjects than this
 
 
 # import pdb; pdb.set_trace()
 # ── ROI assignment from MNI-based table (cell_to_roi_MNI.py output) ───
 # Each neuron is matched by (subject, cell_idx) parsed from its label.
 ROI_TABLE_PATH = os.path.join(
-    DATA_DIR, 'neurons_with_final_roi_labels.csv'
+    DATA_DIR, 'neurons_with_ROI_labels.csv'
 )
 
 # Which ROI-label column of that table to use:
@@ -289,17 +333,20 @@ ROIS_TO_ANALYZE_BY_COLUMN = {
         'OFC11', 'OFC13', 'PCC', 'Precuneus',
     ],
     'alt_final_roi': [
-        'ACC', 'EC', 'Parahippocampal',
+        'EC', 'mPFC', 'mOFC',
         'HC_anterior', 'HC_mid',
-        'medialOFC', 'PCC', 'Precuneus',
+        'PCC',
     ],
 }
-ROIS_TO_ANALYZE = ROIS_TO_ANALYZE_BY_COLUMN[ROI_LABEL_COLUMN]
+ROIS_TO_ANALYZE = [
+    _canonical_roi_name(roi)
+    for roi in ROIS_TO_ANALYZE_BY_COLUMN[ROI_LABEL_COLUMN]
+]
 
 # ROI that gets the shared rodent-style publication figures (fig 2 + fig 3)
 # saved into ``OUT_DIR/pub_figures/``. Set to None to disable, or to another
 # ROI name from ROIS_TO_ANALYZE to pick a different reference ROI.
-EXAMPLE_ROI_FOR_FIGS = 'ACC'
+EXAMPLE_ROI_FOR_FIGS = 'mPFC'
 
 
 def parse_neuron_label(label):
@@ -314,6 +361,13 @@ def parse_neuron_label(label):
 
 def _load_roi_table(path, roi_col):
     df = pd.read_csv(path)
+    # Prefer the corrected final coordinates; fall back to original MNI_x/y/z
+    # for tables that pre-date the july26 pipeline.
+    for ax in ('x', 'y', 'z'):
+        final_col = f'MNI_{ax}_final'
+        orig_col  = f'MNI_{ax}'
+        if final_col in df.columns:
+            df[orig_col] = df[final_col]
     needed = ['subject', 'cell idx', roi_col,
               'MNI_x', 'MNI_y', 'MNI_z', 'electrode label']
     missing = [c for c in needed if c not in df.columns]
@@ -365,11 +419,38 @@ def get_neuron_mni(label):
 
 def _make_roi_predicate(target_roi):
     def pred(label):
-        return get_neuron_roi(label) == target_roi
+        return get_neuron_roi(label) == _atlas_roi_name(target_roi)
     return pred
 
 
 ROI_RULES = {roi: _make_roi_predicate(roi) for roi in ROIS_TO_ANALYZE}
+
+# ── Dynamic ROI filtering by RSA-subject count ────────────────────────
+# After building the initial ROI_RULES from ROIS_TO_ANALYZE_BY_COLUMN,
+# count how many unique RSA-eligible subjects have ≥1 cell in each ROI.
+# Any ROI below MIN_RSA_SUBJECTS is dropped from both ROIS_TO_ANALYZE and
+# ROI_RULES before any data are processed.  This runs even in RELOAD_RUN
+# mode so that re-plotted figures also respect the threshold.
+_grouping_json_path = os.path.join(DATA_DIR, 'all_sessions_dsrRSA_grouping_summary.json')
+if os.path.exists(_grouping_json_path) and ROI_TABLE is not None:
+    with open(_grouping_json_path) as _jf:
+        _rsa_subj_ids = set(int(s) for s in json.load(_jf).keys())
+    _rsa_roi_tbl = ROI_TABLE.reset_index()
+    _rsa_roi_tbl = _rsa_roi_tbl[_rsa_roi_tbl['subject'].isin(_rsa_subj_ids)]
+    _rsa_subj_counts = (
+        _rsa_roi_tbl.groupby(ROI_LABEL_COLUMN)['subject'].nunique()
+    )
+    _rois_ok = set(_rsa_subj_counts[_rsa_subj_counts >= MIN_RSA_SUBJECTS].index)
+    _dropped_rois = [r for r in ROIS_TO_ANALYZE if r not in _rois_ok]
+    ROIS_TO_ANALYZE = [r for r in ROIS_TO_ANALYZE if r in _rois_ok]
+    if _dropped_rois:
+        print(f"[RSA filter] Dropped ROIs with < {MIN_RSA_SUBJECTS} RSA subjects "
+              f"(out of {len(_rsa_subj_ids)} total): {_dropped_rois}")
+    print(f"[RSA filter] ROI subject counts among RSA subjects:\n"
+          + "\n".join(f"  {roi}: {_rsa_subj_counts.get(roi, 0)}"
+                      for roi in list(_rois_ok) + _dropped_rois))
+    print(f"[RSA filter] Final ROIs to analyze: {ROIS_TO_ANALYZE}")
+    ROI_RULES = {roi: _make_roi_predicate(roi) for roi in ROIS_TO_ANALYZE}
 
 
 def reward_locations_for_config(config_str):
@@ -1234,6 +1315,7 @@ else:
         'states':               states,
         'RESOLUTIONx':          RESOLUTIONx,
         'N_PERMUTATIONS':       N_PERMUTATIONS,
+        'SHUFFLE_MODE':         SHUFFLE_MODE,
         'models':               models,
         'combo_models':         combo_models,
         'roi_label_column':     ROI_LABEL_COLUMN,
@@ -2810,6 +2892,7 @@ if RELOAD_RUN is None:
                 configs=configs,
                 n_conds_per_config=N_CONDS_PER_CONF,
                 n_bins_per_trial=360,
+                shuffle_mode=SHUFFLE_MODE,
             )
             # Build the cross-run search list: every sibling run dir
             # under OUT_BASE except the current one. The matcher walks
@@ -3144,7 +3227,7 @@ if RELOAD_RUN is None:
             plot_roi_model_heatmap(
                 df,
                 models=list(models_for_cols),
-                rois=CANONICAL_ROI_ORDER,
+                rois=ROIS_TO_ANALYZE,
                 value_col='beta', annot_col='p_param', sig_col='p_param',
                 n_col='n_neurons', alpha=0.05,
                 value_label='empirical beta (no permutation)',
@@ -3192,9 +3275,26 @@ else:
     summary_df = pd.read_csv(os.path.join(OUT_DIR, 'results_summary.csv'))
     summary_combo_df = pd.read_csv(
         os.path.join(OUT_DIR, 'results_summary_combos.csv'))
+    # Older saved runs used ACC / medialOFC / Parahippocampal in their
+    # summary tables. Rename them on reload so re-rendered outputs match
+    # fresh runs.
+    for df in (summary_df, summary_combo_df):
+        if 'roi' in df:
+            df['roi'] = df['roi'].map(_canonical_roi_name)
+    summary_df.to_csv(os.path.join(OUT_DIR, 'results_summary.csv'), index=False)
+    summary_combo_df.to_csv(
+        os.path.join(OUT_DIR, 'results_summary_combos.csv'), index=False)
+    # Restrict to ROIs that passed the MIN_RSA_SUBJECTS filter so that
+    # re-rendered figures and FDR corrections are consistent with a fresh run.
+    if 'roi' in summary_df.columns:
+        summary_df = summary_df[summary_df['roi'].isin(ROIS_TO_ANALYZE)]
+    if 'roi' in summary_combo_df.columns:
+        summary_combo_df = summary_combo_df[
+            summary_combo_df['roi'].isin(ROIS_TO_ANALYZE)]
     coords_csv = os.path.join(OUT_DIR, 'roi_electrode_coords.csv')
     if os.path.exists(coords_csv):
         ec_df = pd.read_csv(coords_csv)
+        ec_df['roi'] = ec_df['roi'].map(_canonical_roi_name)
         roi_electrode_coords = {
             roi: {(int(r['subject']), int(r['cell_idx'])):
                   (float(r['MNI_x']), float(r['MNI_y']), float(r['MNI_z']))
@@ -3205,7 +3305,8 @@ else:
         # Fall back to deriving electrode positions from the ROI table.
         roi_electrode_coords = {}
         for roi in ROI_RULES:
-            sub_tbl = ROI_TABLE[ROI_TABLE[ROI_LABEL_COLUMN] == roi]
+            atlas_roi = _atlas_roi_name(roi)
+            sub_tbl = ROI_TABLE[ROI_TABLE[ROI_LABEL_COLUMN] == atlas_roi]
             roi_electrode_coords[roi] = {
                 (int(s), int(c)): (float(row['MNI_x']),
                                    float(row['MNI_y']),
@@ -3357,7 +3458,7 @@ def _render_overview_plots(summary_df, summary_combo_df,
             fig_h, ax_h = plot_roi_model_heatmap(
                 sub_df_base,
                 models=CANONICAL_RSA_MODEL_ORDER,
-                rois=CANONICAL_ROI_ORDER,
+                rois=ROIS_TO_ANALYZE,
                 value_col='beta', annot_col='p_perm', sig_col='p_perm',
                 n_col='n_neurons', alpha=0.05,
                 value_label='empirical beta',
@@ -3385,7 +3486,7 @@ def _render_overview_plots(summary_df, summary_combo_df,
             fig_hc, ax_hc = plot_roi_model_heatmap(
                 sub_df,
                 models=sub_models,
-                rois=CANONICAL_ROI_ORDER,
+                rois=ROIS_TO_ANALYZE,
                 value_col='beta', annot_col='p_perm', sig_col='p_perm',
                 n_col='n_neurons', alpha=0.05,
                 value_label='empirical beta',
@@ -3400,6 +3501,7 @@ def _render_overview_plots(summary_df, summary_combo_df,
 
     # ROI electrode schematic
     if PLOT_GLASSBRAINS == True:
+        #import pdb; pdb.set_trace()
         from mc.plotting.cell_results import (
             plot_roi_electrodes_glassbrain, plot_roi_beta_glassbrain,
         )
@@ -3414,6 +3516,7 @@ def _render_overview_plots(summary_df, summary_combo_df,
                 save_path=os.path.join(out_dir, 'roi_electrodes_glassbrain.png'),
                 title='ROI electrode locations (one panel per ROI)',
                 per_roi_panels=True,
+                roi_colors=ROI_COLOURS,
             )
             plot_roi_electrodes_glassbrain(
                 electrodes_per_roi,
@@ -3421,6 +3524,7 @@ def _render_overview_plots(summary_df, summary_combo_df,
                     out_dir, 'roi_electrodes_glassbrain_combined.png'),
                 title='ROI electrode locations (all ROIs combined)',
                 per_roi_panels=False,
+                roi_colors=ROI_COLOURS,
             )
         else:
             print("No electrode coordinates collected — skipping ROI glass-brain.")
@@ -3432,6 +3536,62 @@ def _render_overview_plots(summary_df, summary_combo_df,
         # combo variants are inspected via the heatmaps only.
         rois_with_cells = sorted(electrodes_per_roi)
         if rois_with_cells and not summary_combo_df.empty:
+            # t-vals
+            glassbrain_tval_dir = os.path.join(out_dir, 'roi_t-vals_glassbrains')
+            os.makedirs(glassbrain_tval_dir, exist_ok=True)
+            sub_t = summary_combo_df[summary_combo_df['test'] == heatmap_test]
+            for combo_key in FDR_COMBOS:
+                if combo_key not in combo_models:
+                    print(f"{combo_key} is not saved in {combo_models}")
+                    import pdb; pdb.set_trace()
+                    continue
+                sub_models = combo_models[combo_key]
+                for sm in sub_models:
+                    print(f"Now plotting t-val glassbrain for {sm} in {combo_key}")
+                    rows = sub_t[(sub_t['combo'] == combo_key)
+                                 & (sub_t['sub_model'] == sm)]
+                    if rows.empty:
+                        print("rows were empty")
+                        continue
+                    # The new ROI table and atlas helper both use canonical
+                    # labels (mPFC, mOFC, PHC, ...).
+                    t_vals = {_atlas_roi_name(roi): beta for roi, beta in zip(rows['roi'], rows['t'])}
+                    if 'q_fdr_per_combo' not in rows.columns:
+                        raise ValueError(
+                            'Glassbrain significance outlines require '
+                            'q_fdr_per_combo; run the per-combo FDR step first.')
+                    qvals = {
+                        _atlas_roi_name(roi): qval
+                        for roi, qval in zip(rows['roi'],
+                                             rows['q_fdr_per_combo'])
+                    }
+                    atlas_electrodes = {
+                        _atlas_roi_name(roi): coords
+                        for roi, coords in electrodes_per_roi.items()
+                    }
+                    glassbrain_stem_t = os.path.join(
+                        glassbrain_tval_dir,
+                        f'roi_tval_glassbrain_{combo_key}_{sm}_{heatmap_test}')
+                    fig_gb = plot_roi_beta_glassbrain(
+                        roi_betas=t_vals, roi_pvals=qvals,
+                        only_rois=list(atlas_electrodes),
+                        roi_cell_coords=atlas_electrodes,
+                        roi_label_column=ROI_LABEL_COLUMN,
+                        roi_display_names=ROI_DISPLAY_NAMES,
+                        significance_label='q_FDR (per combo)',
+                        title=f'{combo_key} | {sm} t-val — {heatmap_test} (FDR family)',
+                        save_path=f'{glassbrain_stem_t}.png', is_t_val=True
+                    )
+                    print(f"saved in roi_tval_glassbrain_{combo_key}_{sm}_{heatmap_test}")
+                    # Preserve a vector version of the DSR glassbrains for
+                    # figures/manuscripts; the other regressors stay PNG-only.
+                    if fig_gb is not None and sm.startswith('dsr') or sm.startswith('location'):
+                        pdf_path = f'{glassbrain_stem_t}.pdf'
+                        fig_gb.savefig(pdf_path, bbox_inches='tight')
+                        #print(f"  [roi-glassbrain_stem_t-glassbrain] saved → {pdf_path}")
+
+                    
+            # BETA
             glassbrain_dir = os.path.join(out_dir, 'roi_beta_glassbrains')
             os.makedirs(glassbrain_dir, exist_ok=True)
             sub_t = summary_combo_df[summary_combo_df['test'] == heatmap_test]
@@ -3444,19 +3604,46 @@ def _render_overview_plots(summary_df, summary_combo_df,
                                  & (sub_t['sub_model'] == sm)]
                     if rows.empty:
                         continue
-                    betas = dict(zip(rows['roi'], rows['beta']))
-                    pvals = dict(zip(rows['roi'], rows['p_perm']))
-                    plot_roi_beta_glassbrain(
-                        roi_betas=betas, roi_pvals=pvals,
-                        only_rois=rois_with_cells,
-                        roi_cell_coords=electrodes_per_roi,
+                    # The new ROI table and atlas helper both use canonical
+                    # labels (mPFC, mOFC, PHC, ...).
+                    betas = {
+                        _atlas_roi_name(roi): beta
+                        for roi, beta in zip(rows['roi'], rows['beta'])
+                    }
+                    if 'q_fdr_per_combo' not in rows.columns:
+                        raise ValueError(
+                            'Glassbrain significance outlines require '
+                            'q_fdr_per_combo; run the per-combo FDR step first.')
+                    qvals = {
+                        _atlas_roi_name(roi): qval
+                        for roi, qval in zip(rows['roi'],
+                                             rows['q_fdr_per_combo'])
+                    }
+                    atlas_electrodes = {
+                        _atlas_roi_name(roi): coords
+                        for roi, coords in electrodes_per_roi.items()
+                    }
+                    glassbrain_stem = os.path.join(
+                        glassbrain_dir,
+                        f'roi_beta_glassbrain_{combo_key}_{sm}_{heatmap_test}')
+                    fig_gb = plot_roi_beta_glassbrain(
+                        roi_betas=betas, roi_pvals=qvals,
+                        only_rois=list(atlas_electrodes),
+                        roi_cell_coords=atlas_electrodes,
                         roi_label_column=ROI_LABEL_COLUMN,
+                        roi_display_names=ROI_DISPLAY_NAMES,
+                        significance_label='q_FDR (per combo)',
                         title=f'{combo_key} | {sm} beta — {heatmap_test} (FDR family)',
-                        save_path=os.path.join(
-                            glassbrain_dir,
-                            f'roi_beta_glassbrain_{combo_key}_{sm}_{heatmap_test}.png'),
+                        save_path=f'{glassbrain_stem}.png',
                     )
+                    # Preserve a vector version of the DSR glassbrains for
+                    # figures/manuscripts; the other regressors stay PNG-only.
+                    if fig_gb is not None and sm.startswith('dsr'):
+                        pdf_path = f'{glassbrain_stem}.pdf'
+                        fig_gb.savefig(pdf_path, bbox_inches='tight')
+                        print(f"  [roi-beta-glassbrain] saved → {pdf_path}")
                     plt.show()
+                
 
 
 # ── Cross-ROI heatmap (rows=ROI, cols=model) ─────────────────────────────
@@ -3488,3 +3675,18 @@ _render_overview_plots(
     summary_df, summary_combo_df, roi_electrode_coords, OUT_DIR,
     models=models, combo_models=combo_models, heatmap_test=HEATMAP_TEST,
 )
+
+# ── Publication-ready ROI × regressor summary figure ─────────────────
+# Delegates to `scripts/RSA_DSR_replot_addon.make_publication_figures`,
+# which is the same function the standalone re-plot uses — so a fresh
+# run and a `python RSA_DSR_replot_addon.py <run_dir>` produce identical
+# outputs. Reads results_summary_combos.csv + perm_null_draws/perm_*.pkl,
+# no recomputation. Falls back silently if the addon script is missing.
+try:
+    _scripts_dir = os.path.dirname(os.path.abspath(__file__))
+    if _scripts_dir not in sys.path:
+        sys.path.insert(0, _scripts_dir)
+    from RSA_DSR_replot_addon import make_publication_figures
+    make_publication_figures(OUT_DIR, test_variant=HEATMAP_TEST)
+except Exception as _pub_exc:
+    print(f"[pub-figs] skipped ({type(_pub_exc).__name__}: {_pub_exc})")

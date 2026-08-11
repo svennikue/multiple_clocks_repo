@@ -60,7 +60,7 @@ STATE_CV_CSV = os.path.join(
 )
 
 # ROI lookup used by the encoding pipeline (alt_final_roi -> fine-grained).
-ROI_TABLE_PATH = os.path.join(DATA_DIR, 'neurons_with_final_roi_labels.csv')
+ROI_TABLE_PATH = os.path.join(DATA_DIR, 'neurons_with_ROI_labels.csv')
 ROI_LABEL_COLUMN = 'alt_final_roi'
 
 # RSA result (used by fig5).  Set to None to skip the RSA panel for now.
@@ -77,8 +77,8 @@ FIGURES_TO_RUN = ['all']
 
 # Headline ROIs (used by figs 1, 3, 4).  ACC is primary; HC + Visual are
 # included for the dissociation context.
-HEADLINE_ROIS = ['ACC']
-CONTEXT_ROIS = ['HC_anterior', 'HC_mid', 'Visual', 'medialOFC']
+HEADLINE_ROIS = ['mPFC']
+CONTEXT_ROIS = ['HC_anterior', 'HC_mid', 'Visual', 'mOFC']
 
 # Per-figure detailed settings.
 FIG2 = dict(
@@ -86,8 +86,8 @@ FIG2 = dict(
     min_cells_per_roi=20,      # ROIs with fewer cells are flagged
     cells_per_roi_for_polar=3, # top-N polar plots per major ROI
     polar_smooth_sigma=4,
-    polar_target_rois=('ACC', 'HC_anterior', 'HC_mid',
-                       'medialOFC', 'Parahippocampal'),
+    polar_target_rois=('mPFC', 'HC_anterior', 'HC_mid',
+                       'mOFC', 'PHC'),
 )
 
 QUICK_TEST = False
@@ -395,7 +395,7 @@ def _ttest_one_sided_greater(vals):
 #  Fig 1 — ACC DSR survives motor / location-phase / state confounds
 # =====================================================================
 FIG1 = dict(
-    rois=['ACC', 'HC_posterior', 'medialOFC'],     # primary + control rows
+    rois=['mPFC', 'HC_posterior', 'mOFC'],          # primary + control rows
     motor_models=['bttn_prev', 'bttn_curr', 'bttn_next', 'uncover'],
     location_phase_models=['midnight', 'location', 'phase'],
     alpha_perm=0.05,
@@ -490,8 +490,8 @@ def run_fig1():
     )
 
     # ACC dissociation inset: DSR mean_r for state-encoders vs not.
-    if 'ACC' in target_rois:
-        acc_df = df_all[df_all['roi'] == 'ACC']
+    if 'mPFC' in target_rois:
+        acc_df = df_all[df_all['roi'] == 'mPFC']
         acc_dsr = acc_df[acc_df['model'] == 'dsr']
         state_sig = set(acc_df.loc[(acc_df['model'] == 'state')
                                    & (acc_df['p_perm']
@@ -513,9 +513,9 @@ def run_fig1():
 #  Fig 3 — Per-ROI DSR coefficient lag profile
 # =====================================================================
 FIG3 = dict(
-    rois=['ACC', 'HC_anterior', 'HC_posterior', 'Visual', 'posterior_PCC',
-          'medialOFC', 'EC', 'Parahippocampal'],
-    bold_rois=('ACC',),
+    rois=['mPFC', 'HC_anterior', 'HC_posterior', 'Visual', 'posterior_PCC',
+          'mOFC', 'EC', 'PHC'],
+    bold_rois=('mPFC',),
     p_perm_threshold=0.05,
     n_locations=9, n_phases=3, n_lags=12,
 )
@@ -606,7 +606,7 @@ def run_fig3():
 #  Fig 4 — Example DSR cells (best anchor + lag profile + actual/pred)
 # =====================================================================
 FIG4 = dict(
-    rois=['ACC'],
+    rois=['mPFC'],
     cells_per_roi=4,
     p_perm_threshold=0.05,
     n_locations=9, n_phases=3, n_lags=12,

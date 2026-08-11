@@ -1642,6 +1642,7 @@ def plot_roi_tstat_heatmap(
     title=None,
     cbar_label='t vs 0',
     fig_size_cm=(10.0, 13.0),
+    vmin=None, vmax=None,
     font_tick=10, font_axis=10, font_big=11,
     save_path=None,
 ):
@@ -1663,6 +1664,9 @@ def plot_roi_tstat_heatmap(
         Example: [((0,1,2), 'RdBu_r', 'controls'), ((3,), 'PiYG_r', 'DSR')]
     cmaps : str or list — used only if `panel_groups` is None.
     fig_size_cm : (width_cm, height_cm) for the overall figure.
+    vmin, vmax : float or None
+        Optional shared colour limits for every panel. If omitted, each
+        panel gets its own symmetric limit based on its finite values.
 
     Returns the matplotlib Figure.
     """
@@ -1703,11 +1707,20 @@ def plot_roi_tstat_heatmap(
         sub_t = t_matrix[:, cols]
         sub_q = q_matrix[:, cols] if q_matrix is not None else None
         sub_labels = [col_labels[c] for c in cols]
-        if np.isfinite(sub_t).any():
-            vmax = max(1.0, float(np.nanmax(np.abs(sub_t))))
+        if vmin is None and vmax is None:
+            if np.isfinite(sub_t).any():
+                panel_vmax = max(1.0, float(np.nanmax(np.abs(sub_t))))
+            else:
+                panel_vmax = 1.0
+            panel_vmin = -panel_vmax
         else:
-            vmax = 1.0
-        im = ax.imshow(sub_t, cmap=cmap_name, vmin=-vmax, vmax=vmax,
+            if vmin is None or vmax is None:
+                raise ValueError('vmin and vmax must be provided together')
+            panel_vmin, panel_vmax = float(vmin), float(vmax)
+            if not panel_vmin < panel_vmax:
+                raise ValueError('vmin must be smaller than vmax')
+        im = ax.imshow(sub_t, cmap=cmap_name, vmin=panel_vmin,
+                       vmax=panel_vmax,
                        aspect='auto')
         if sub_q is not None:
             img = ax.images[0].get_array()
@@ -1716,7 +1729,8 @@ def plot_roi_tstat_heatmap(
                     s = _stars(sub_q[i, j])
                     if not s:
                         continue
-                    intensity = abs(float(img[i, j])) / max(vmax, 1e-9)
+                    intensity = abs(float(img[i, j])) / max(
+                        max(abs(panel_vmin), abs(panel_vmax)), 1e-9)
                     col = 'white' if intensity > 0.55 else 'black'
                     ax.text(j, i, s, ha='center', va='center',
                             fontsize=font_big + 1, fontweight='bold',
@@ -1872,4 +1886,3 @@ def plot_per_roi_stat_histograms(
         plt.close(fig)
 
     return fig
-

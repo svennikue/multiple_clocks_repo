@@ -35,7 +35,7 @@ from skimage.measure import marching_cubes
 import pandas as pd
 import numpy as np
 
-path_to_cell_table = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/neurons_with_final_roi_labels.csv"
+path_to_cell_table = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/neurons_with_ROI_labels.csv"
 path_to_S_table = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/subj_list-MNI-coords-Sangkyu.csv"
 
 my_cells = pd.read_csv(path_to_cell_table)

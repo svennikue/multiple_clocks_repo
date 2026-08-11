@@ -62,7 +62,7 @@ RESULT_DIR = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_hum
 
 RESULT_CSV = os.path.join(RESULT_DIR, 'encoding_results.csv')
 
-TARGET_ROIS  = ['ACC', 'HC_anterior', 'HC_posterior']
+TARGET_ROIS  = ['mPFC', 'HC_anterior', 'HC_posterior']
 ALPHA_PERM   = 0.05   # p_perm threshold: model significantly > chance
 ALPHA_PAIRED = 0.05   # paired test threshold: top model > other model
 
@@ -1372,7 +1372,7 @@ DSR_COEF_NORMALIZE = 'mean'
 DSR_COEF_REFERENCE = 1.0 if DSR_COEF_NORMALIZE == 'mean' else 0.0
 
 # ROIs used as columns in the detailed histogram-grid plots.
-DSR_COEF_HISTOGRAM_ROIS = ['ACC', 'HC_anterior', 'HC_posterior']
+DSR_COEF_HISTOGRAM_ROIS = ['mPFC', 'HC_anterior', 'HC_posterior']
 
 
 def _normalize_coefs(coefs, how):
@@ -2262,9 +2262,9 @@ if _run_brain_lag or _run_gradient:
 
     ROI_TABLE_PATH = ('/Users/xpsy1114/Documents/projects/multiple_clocks/'
                       'data/ephys_humans/derivatives/'
-                      'neurons_with_final_roi_labels.csv')
-    ACC_ROI_LABELS        = ('ACC',)               # glass-brain ACC zoom
-    ACC_DV_ROI_LABELS     = ('ACC', 'ventral_ACC')  # dorsal-ventral analysis
+                      'neurons_with_ROI_labels.csv')
+    ACC_ROI_LABELS        = ('mPFC',)
+    ACC_DV_ROI_LABELS     = ('mPFC',)
     BRAIN_LAG_P_THRESHOLD = 0.05      # p_perm cutoff for the 'psig' selection
     BRAIN_JITTER_MM       = 10       # spread cells sharing an MNI coordinate
     GLASS_MARKER_SIZE     = 3         # small, so individual cells are visible
@@ -2873,7 +2873,7 @@ if _run_sparse:
     # Settings — edit to change which ROIs and how many cells per ROI.
     # Publication-figure scope: ACC only. Add other ROIs back if you also
     # want followup-style renders of those.
-    SPARSE_DSR_TARGET_ROIS = ['ACC']
+    SPARSE_DSR_TARGET_ROIS = ['mPFC']
     SPARSE_DSR_N_PER_ROI = 10
     SPARSE_DSR_N_TOP_COEFS_TO_REPORT = 5
     # Gaussian sigma (in bins) applied to the displayed neuron trace only.

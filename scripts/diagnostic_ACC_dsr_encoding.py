@@ -64,9 +64,9 @@ import mc.analyse.my_RSA as my_RSA
 # ── Settings (mirror RSA_DSR_ROIs_simple.py for the ACC ROI) ────────────
 DATA_DIR     = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/'
                 'ephys_humans/derivatives')
-ROI_TABLE_PATH = os.path.join(DATA_DIR, 'neurons_with_final_roi_labels.csv')
+ROI_TABLE_PATH = os.path.join(DATA_DIR, 'neurons_with_ROI_labels.csv')
 ROI_LABEL_COLUMN = 'alt_final_roi'
-TARGET_ROI = 'ACC'
+TARGET_ROI = 'mPFC'
 
 configs = [
     '3-7-9-5', '8-2-6-7', '1-9-5-8', '4-8-1-3',

@@ -115,24 +115,18 @@ LOCATION_COLORS = (
 # CLAUDE.md. ROIs not in this dict fall back to era_brewer overflow
 # colours in _roi_color_map.
 ROI_COLORS_SHOWGIRL2 = {
-    # Canonical CLAUDE.md mapping (corrected 2026-06; previous indices for
-    # medialOFC/ACC/HC_anterior/HC_mid/PCC did not match the project spec).
-    'EC':              0, # good dark red
-    'ACC':             1, # good dark green
-    'HC_anterior':     2, # good yellow
-    'PCC':             3, # sage green
-    'medialOFC':       4, # good orange
-    #'Parahippocampal': 5, # #7FB0CC
-    #'HC_mid':          6, # 
+    # Canonical CLAUDE.md mapping — Showgirl2 index per ROI.
+    'EC':      0,
+    'mPFC':    1,
+    'HC_mid':  2,
+    'PCC':     3,
+    'mOFC':    4,
 }
 
-# Colours that sit outside the Showgirl2 palette (for ROIs added later —
-# ``get_roi_colour`` returns these when the ROI isn't in the palette dict).
+# Colours that sit outside the Showgirl2 palette.
 _EXTRA_ROI_COLORS = {
-    'Precuneus': '#23677E',    # blue for Precuneus
-    'Parahippocampal': '#7FB0CC',
-    'HC_mid': '#a30d6c'
-    
+    'HC_anterior': '#a30d6c',   # magenta (CLAUDE.md override)
+    'PHC':         '#23677E',   # teal    (CLAUDE.md override)
 }
 
 
@@ -158,16 +152,12 @@ def get_roi_colour(roi):
 # distinguishable in figures.
 SHOWGIRL2_DISCRETE = [
     '#B74C2D',   # 0  EC               — dark red
-    '#448363',   # 1  ACC / mPFC       — dark teal-green
-    '#CCB178',   # 2  HC_anterior      — tan
+    '#448363',   # 1  mPFC             — dark teal-green
+    '#CCB178',   # 2  HC_mid           — tan
     '#C1DCBF',   # 3  PCC              — pale green
-    '#DC673E',   # 4  medialOFC        — red (orange-red)
-    '#7BB594',   # 5  Parahippocampal  — sage
-    '#629E7E',   # 6  HC_mid           — mid-dark green
-    #                                    (override of era_brewer's idx 6
-    #                                     duplicate of idx 3, sampled
-    #                                     from era_brew('Showgirl2', n=12)
-    #                                     to stay on the same gradient)
+    '#DC673E',   # 4  mOFC             — red (orange-red)
+    '#7BB594',   # 5  (unused)         — sage
+    '#629E7E',   # 6  (unused)         — mid-dark green
 ]
 
 
@@ -177,7 +167,9 @@ SHOWGIRL2_DISCRETE = [
 # Edit here to propagate the rename everywhere that goes through the
 # shared helpers.
 ROI_DISPLAY_NAMES = {
-    'ACC': 'mPFC',
+    'ACC':       'mPFC',   # backwards-compat for old result files
+    'medialOFC': 'mOFC',
+    'Parahippocampal': 'PHC',
 }
 
 
@@ -1818,8 +1810,11 @@ def plot_roi_beta_glassbrain(
     cell_sphere_radius_mm=8.0,
     sig_outline_color='black',
     sig_outline_linewidth=2.0,
+    significance_label='p_perm',
+    roi_display_names=None,
     title=None,
     save_path=None,
+    is_t_val=False
 ):
     """Glass-brain with each ROI shaded by a heatmap value.
 
@@ -1833,8 +1828,8 @@ def plot_roi_beta_glassbrain(
     roi_betas : dict[str, float]
         ROI name -> beta (heatmap value).
     roi_pvals : dict[str, float] or None
-        Optional ROI -> p-value.  ROIs with ``p < alpha_threshold`` are
-        listed in a small footer annotation.
+        Optional ROI -> significance value.  ROIs with a value below
+        ``alpha_threshold`` are outlined and listed in the footer.
     only_rois : iterable[str] or None
         Restrict plotting to these ROIs (e.g. ROIs that actually have
         cells in the recording sample).
@@ -1860,7 +1855,14 @@ def plot_roi_beta_glassbrain(
     cell_sphere_radius_mm : float or None
         Sphere radius in mm. ``None`` disables the restriction.
     sig_outline_color, sig_outline_linewidth :
-        Contour drawn around ROIs whose ``p_perm < alpha_threshold``.
+        Contour drawn around ROIs whose significance value is below
+        ``alpha_threshold``.
+    significance_label : str
+        Name of the significance value shown in the footer annotation.
+    roi_display_names : dict[str, str] or None
+        Optional labels used in the significance footer. This lets callers
+        retain atlas-specific ROI keys internally while displaying canonical
+        analysis names.
     title : str or None
     save_path : str or None
     """
@@ -1882,6 +1884,8 @@ def plot_roi_beta_glassbrain(
     if vmax is None or not np.isfinite(vmax) or vmax <= 0:
         vmax = max(abs(roi_betas[r]) for r in rois_to_plot)
         vmax = float(vmax) if vmax > 0 else 1.0
+        if is_t_val == True:
+            vmax = 5
 
     base_cmap = cm.get_cmap(cmap_name)
     norm = Normalize(vmin=-vmax, vmax=vmax)
@@ -1950,15 +1954,21 @@ def plot_roi_beta_glassbrain(
     sm.set_array([])
     cax = fig.add_axes([0.74, 0.06, 0.22, 0.022])
     cbar = fig.colorbar(sm, cax=cax, orientation='horizontal')
-    cbar.set_label('beta', fontsize=9)
-    cbar.ax.tick_params(labelsize=8)
-
+    if is_t_val == False:
+        cbar.set_label('beta', fontsize=9)
+        cbar.ax.tick_params(labelsize=8)
+    else:
+        cbar.set_label('t vs 0', fontsize=9)
+        cbar.ax.tick_params(labelsize=8)
     # Footer caption listing significant ROIs (the contour already marks
     # them on the brain; this is the legend for the outline).
     if sig_rois_drawn:
+        display_names = roi_display_names or {}
+        sig_names = [display_names.get(roi, roi_display(roi))
+                     for roi in sig_rois_drawn]
         fig.text(0.02, 0.02,
-                 f"outlined: p_perm < {alpha_threshold:g}  "
-                 f"({', '.join(sig_rois_drawn)})",
+                 f"outlined: {significance_label} < {alpha_threshold:g}  "
+                 f"({', '.join(sig_names)})",
                  fontsize=8, color='black')
 
     if save_path is not None:
@@ -3461,12 +3471,13 @@ def plot_roi_lag_tstat_heatmap(t_matrix, lags_deg, rois,
                                 predicted_lags_per_roi=None,
                                 save_stem=None, title=None,
                                 cm_inch=1 / 2.54,
-                                font_tick=9, font_axis=10, font_big=11):
+                                font_tick=9, font_axis=10, font_big=11,
+                                t_label='t (one-sided > 0)'):
     """ROI × lag heatmap of one-sample t-stats with optional FDR stars.
 
     Parameters
     ----------
-    t_matrix : (n_rois, n_lags) array of t-stats (one-sided > 0).
+    t_matrix : (n_rois, n_lags) array of t-stats.
     lags_deg : list of int lags in degrees, length n_lags.
     rois : list of str, length n_rois.
     q_matrix : optional (n_rois, n_lags) array of BH-FDR p-values; cells with
@@ -3474,6 +3485,7 @@ def plot_roi_lag_tstat_heatmap(t_matrix, lags_deg, rois,
     predicted_lags_per_roi : optional dict {roi: tuple of lags}; cells at
         predicted lags get a black outline.
     save_stem : path stem (without extension); writes .pdf + .png.
+    t_label : colorbar label describing the test used to produce t_matrix.
     """
     plt.rcParams.update({
         'font.family':     'sans-serif',
@@ -3519,7 +3531,7 @@ def plot_roi_lag_tstat_heatmap(t_matrix, lags_deg, rois,
     if title:
         ax.set_title(title, fontsize=font_big)
     cb = fig.colorbar(im, ax=ax, fraction=0.05, pad=0.04)
-    cb.set_label('t (one-sided > 0)', fontsize=font_tick)
+    cb.set_label(t_label, fontsize=font_tick)
     cb.ax.tick_params(labelsize=font_tick)
     if save_stem is not None:
         _save_pdf_png(fig, save_stem)

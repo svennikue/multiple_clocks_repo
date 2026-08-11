@@ -17,7 +17,11 @@ extraction modes (voxel / cluster_peak / cluster_com).
 - circular regression / phase / Hotelling test
 """
 
+import json
 import os
+import re
+from datetime import datetime
+
 import numpy as np
 import nibabel as nib
 import nilearn.image
@@ -122,10 +126,8 @@ DATASETS = [
         "label": "eighths (8)",
         "n_conditions": 8,
         "files": {
-            # NOTE: the 'now/current' eighth file was not in the listing you gave me.
-            # If it has a different name, edit it here.
             "now":
-                "DSR_ZEROFUT-split_eighths_DSR_except_prev_button_masked.nii.gz",
+                "LOCATION-split_eighths_DSR_except_prev_button-mask_reward-path_beta_std.nii.gz",
             "+1 fut":
                 "DSR_ONEFUT-split_eighths_DSR_except_prev_button_masked.nii.gz",
             "+2 fut":
@@ -238,7 +240,7 @@ def scale_model_to_data(model, mean_vals):
 
 
 def plot_summary(matrix, conditions, axis_label, title,
-                 main_color="black", plot_subject_lines=True):
+                 main_color="black", plot_subject_lines=True, save_path=None):
     x_positions = np.arange(len(conditions))
     mean_vals = np.mean(matrix, axis=0)
     sem_vals = np.std(matrix, axis=0, ddof=1) / np.sqrt(matrix.shape[0])
@@ -269,6 +271,9 @@ def plot_summary(matrix, conditions, axis_label, title,
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     plt.tight_layout()
+    if save_path:
+        for ext in ("pdf", "png"):
+            fig.savefig(f"{save_path}.{ext}", dpi=200, bbox_inches="tight")
     plt.show()
 
 
@@ -276,7 +281,7 @@ def plot_hypothesis_comparison(matrix, conditions, axis_label, plot_title,
                                weights_a, label_a, p_a,
                                weights_b, label_b, p_b,
                                color_a=COSINE_COLOR, color_b=TREND_COLOR,
-                               plot_subject_lines=True):
+                               plot_subject_lines=True, save_path=None):
     x_positions = np.arange(len(conditions))
     mean_vals = matrix.mean(axis=0)
     sem_vals = matrix.std(axis=0, ddof=1) / np.sqrt(matrix.shape[0])
@@ -312,6 +317,9 @@ def plot_hypothesis_comparison(matrix, conditions, axis_label, plot_title,
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     plt.tight_layout()
+    if save_path:
+        for ext in ("pdf", "png"):
+            fig.savefig(f"{save_path}.{ext}", dpi=200, bbox_inches="tight")
     plt.show()
 
 
@@ -354,6 +362,71 @@ def build_orderness_sequences(projection, conditions, n_clusters):
 # ============== ANALYSIS PER DATASET / MODE ==========
 # =====================================================
 
+def _slug(text):
+    """Filesystem-safe short label used in filenames."""
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", text).strip("_")
+
+
+def _to_serializable(obj):
+    """Recursively convert numpy scalars / arrays to plain Python types
+    so json.dump can handle them. NaN / inf are turned into None."""
+    if isinstance(obj, dict):
+        return {k: _to_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_to_serializable(v) for v in obj]
+    if isinstance(obj, np.ndarray):
+        return _to_serializable(obj.tolist())
+    if isinstance(obj, (np.floating, float)):
+        f = float(obj)
+        return None if not np.isfinite(f) else f
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.bool_,)):
+        return bool(obj)
+    return obj
+
+
+def _stats_to_markdown(stats):
+    """Render one dataset×mode stats dict as a markdown block."""
+    lines = []
+    lines.append(f"### {stats['dataset_label']} — mode: `{stats['peak_mode']}`")
+    lines.append("")
+    lines.append(f"- **n subjects used:** {stats['n_subjects_used']}")
+    lines.append(f"- **conditions ({stats['n_conditions']}):** "
+                 + ", ".join(f"`{c}`" for c in stats['conditions']))
+    lines.append(f"- **axis:** `{stats['axis']}`")
+    lines.append("")
+    lines.append("**Pairwise paired t (Bonferroni corrected):**")
+    lines.append("")
+    lines.append("| a | b | t | p_unc | p_corr |")
+    lines.append("|---|---|---|---|---|")
+    for r in stats['pairwise']:
+        def _f(x): return "n/a" if x is None else f"{x:.4f}"
+        lines.append(f"| {r['a']} | {r['b']} | {_f(r['t'])} "
+                     f"| {_f(r['p_unc'])} | {_f(r['p_corr'])} |")
+    lines.append("")
+    lt = stats['linear_trend']
+    lines.append(f"**Linear trend:** t={lt['t']}, p={lt['p']}")
+    cs = stats['cosine_directional']
+    lines.append(f"**−cosine directional:** t={cs['t']}, "
+                 f"p_one_sided={cs['p_one_sided']}")
+    hc = stats['handcrafted_trend']
+    lines.append(f"**Hand-crafted trend ({hc['label']}):** "
+                 f"t={hc['t']}, p_one_sided={hc['p_one_sided']}")
+    if stats.get('circular'):
+        c = stats['circular']
+        lines.append(f"**Circular fit (Hotelling T²):** T²={c['T2']}, "
+                     f"F={c['F']}, p={c['p']}, "
+                     f"preferred_phase={c['preferred_phase_steps']}"
+                     f"/{stats['n_conditions']}, amplitude={c['amplitude']}")
+    if stats.get('orderness'):
+        o = stats['orderness']
+        lines.append(f"**Orderness ({o['method']}):** mean={o['mean']}, "
+                     f"t={o['t']}, p={o['p']}")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def load_niftis(files_temp_order, base_dir):
     niftis = {}
     for cond, fname in files_temp_order.items():
@@ -391,7 +464,14 @@ def extract_projection(niftis, conditions, peak_mode, n_clusters, axis_idx):
     return projection
 
 
-def run_stats_and_plots(projection, conditions, dataset_label, peak_mode):
+def run_stats_and_plots(projection, conditions, dataset_label, peak_mode,
+                        save_dir=None):
+    """Compute all gradient stats + render figures.
+
+    If ``save_dir`` is provided, saves per-(dataset × mode) figures as
+    PDF+PNG and a JSON of the computed statistics into that directory.
+    Always returns the stats dict (or None if the matrix ends up empty).
+    """
     n_conditions = len(conditions)
     if n_conditions not in (4, 7, 8):
         raise ValueError("Stats configured for 4, 7 or 8 conditions only.")
@@ -405,15 +485,27 @@ def run_stats_and_plots(projection, conditions, dataset_label, peak_mode):
 
     print(f"Using {matrix.shape[0]} subjects with complete data.\n")
 
+    if matrix.shape[0] < 2:
+        print("[WARN] fewer than 2 subjects with complete data — "
+              "skipping stats and plots.")
+        return None
+
+    tag = f"{_slug(dataset_label)}__{_slug(peak_mode)}"
+
     # 1) Pairwise comparisons
     pairs = list(combinations(range(len(conditions)), 2))
     n_tests = len(pairs)
     print("Pairwise paired t-tests (Bonferroni corrected):")
+    pairwise_records = []
     for i, j in pairs:
         t_stat, p_val = ttest_rel(matrix[:, i], matrix[:, j])
         p_corr = min(p_val * n_tests, 1.0)
         print(f"  {conditions[i]} vs {conditions[j]}: "
               f"t={t_stat:.3f}, p_unc={p_val:.4f}, p_corr={p_corr:.4f}")
+        pairwise_records.append({
+            'a': conditions[i], 'b': conditions[j],
+            't': t_stat, 'p_unc': p_val, 'p_corr': p_corr,
+        })
 
     # 2) Linear trend
     x_positions = np.arange(len(conditions))
@@ -503,10 +595,13 @@ def run_stats_and_plots(projection, conditions, dataset_label, peak_mode):
             "mean_sin": mean_sin,
             "preferred_phase_steps": preferred_phase_steps,
             "amplitude": amplitude,
-            "p_circ": p_circ,
+            "T2": t2,
+            "F":  f_stat,
+            "p":  p_circ,
         }
 
     # 5) Orderness
+    orderness_stats = None
     if USE_ORDERNESS:
         sequences = build_orderness_sequences(projection, conditions, N_CLUSTERS)
         print(f"\nOrderness analysis on {sequences.shape[0]} subjects")
@@ -521,22 +616,37 @@ def run_stats_and_plots(projection, conditions, dataset_label, peak_mode):
                 raise ValueError("Unknown ORDERNESS_METHOD")
         orderness_vals = np.array(orderness_vals)
         chance = 0.5 if ORDERNESS_METHOD == "monotonic" else 0.0
-        t_ord, p_ord = ttest_1samp(orderness_vals, chance)
+        if orderness_vals.size >= 2:
+            t_ord, p_ord = ttest_1samp(orderness_vals, chance)
+            mean_ord = float(np.nanmean(orderness_vals))
+        else:
+            t_ord, p_ord, mean_ord = np.nan, np.nan, np.nan
         print(f"  method={ORDERNESS_METHOD}, "
-              f"mean={orderness_vals.mean():.3f}, "
-              f"t={t_ord:.3f}, p={p_ord:.4f}")
+              f"mean={mean_ord if np.isfinite(mean_ord) else 'nan'}, "
+              f"t={t_ord}, p={p_ord}")
+        orderness_stats = {
+            'method':      ORDERNESS_METHOD,
+            'chance':      chance,
+            'n_subjects':  int(orderness_vals.size),
+            'mean':        mean_ord,
+            't':           float(t_ord) if np.isfinite(t_ord) else np.nan,
+            'p':           float(p_ord) if np.isfinite(p_ord) else np.nan,
+        }
 
     # 6) Figures
-    main_color = "darkgreen" if p_linear < 0.05 else "black"
+    main_color = "darkgreen" if (np.isfinite(p_linear) and p_linear < 0.05) else "black"
     axis_label = f"{AXIS}-coordinate (MNI mm)"
     title_prefix = f"{dataset_label} | {peak_mode}"
 
+    fig1_path = os.path.join(save_dir, f"summary_{tag}") if save_dir else None
     plot_summary(
         matrix=matrix, conditions=conditions, axis_label=axis_label,
         title=f"{title_prefix}\nLinear trend t={t_stat_linear:.2f}, p={p_linear:.3f}",
         main_color=main_color, plot_subject_lines=PLOT_SUBJECT_LINES,
+        save_path=fig1_path,
     )
 
+    fig2_path = os.path.join(save_dir, f"hypothesis_{tag}") if save_dir else None
     plot_hypothesis_comparison(
         matrix=matrix, conditions=conditions, axis_label=axis_label,
         plot_title=f"{title_prefix} | {n_conditions}-cond hypothesis comparison",
@@ -544,6 +654,7 @@ def run_stats_and_plots(projection, conditions, dataset_label, peak_mode):
         weights_b=weights_peak, label_b="Hand-crafted trend", p_b=p_peak_one,
         color_a=COSINE_COLOR, color_b=TREND_COLOR,
         plot_subject_lines=PLOT_SUBJECT_LINES,
+        save_path=fig2_path,
     )
 
     if circular_stats is not None:
@@ -574,7 +685,7 @@ def run_stats_and_plots(projection, conditions, dataset_label, peak_mode):
         ax.set_xlabel("Condition")
         ax.set_ylabel(axis_label)
         ax.set_title(
-            f"{title_prefix}\nT² p={circular_stats['p_circ']:.4g}, "
+            f"{title_prefix}\nT² p={circular_stats['p']:.4g}, "
             f"phase={circular_stats['preferred_phase_steps']:.2f}/{n_conditions}",
             fontsize=13,
         )
@@ -583,22 +694,92 @@ def run_stats_and_plots(projection, conditions, dataset_label, peak_mode):
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
         plt.tight_layout()
+        if save_dir:
+            for ext in ("pdf", "png"):
+                fig.savefig(os.path.join(save_dir, f"circular_{tag}.{ext}"),
+                            dpi=200, bbox_inches="tight")
         plt.show()
+
+    # ── Assemble stats dict + persist per-(dataset × mode) JSON ──────
+    stats = {
+        'dataset_label':     dataset_label,
+        'peak_mode':         peak_mode,
+        'axis':              AXIS,
+        'n_conditions':      int(n_conditions),
+        'n_subjects_used':   int(matrix.shape[0]),
+        'conditions':        list(conditions),
+        'means_per_condition': means,
+        'sem_per_condition':   (matrix.std(axis=0, ddof=1)
+                                 / np.sqrt(matrix.shape[0])),
+        'per_subject_matrix':  matrix,   # (n_subj, n_cond)
+        'pairwise':            pairwise_records,
+        'linear_trend': {
+            't': t_stat_linear, 'p': p_linear,
+            'per_subject_slopes': slopes,
+        },
+        'cosine_directional': {
+            'weights': weights_cos,
+            't': t_cos, 'p_two_sided': p_cos_two, 'p_one_sided': p_cos_one,
+        },
+        'handcrafted_trend': {
+            'label':   trend_label,
+            'weights': weights_peak_raw,
+            't': t_peak, 'p_two_sided': p_peak_two, 'p_one_sided': p_peak_one,
+        },
+        'circular':  circular_stats,
+        'orderness': orderness_stats,
+    }
+    stats_ser = _to_serializable(stats)
+
+    if save_dir:
+        with open(os.path.join(save_dir, f"stats_{tag}.json"), "w") as f:
+            json.dump(stats_ser, f, indent=2)
+        print(f"  ↳ saved figures + stats to {save_dir}  (tag: {tag})")
+
+    return stats_ser
 
 
 # =====================================================
 # ===================== MAIN LOOP =====================
 # =====================================================
 
-if __name__ == "__main__":
-    for dataset in DATASETS:
+def run_pipeline(datasets, base_dir, out_dir, roi_label="", postprocess=None):
+    """Loop over datasets × peak modes, run stats, and persist everything.
+
+    ``postprocess`` (optional) is a callable ``dict[str, Nifti] -> dict[str, Nifti]``
+    invoked on the loaded niftis for each dataset, before extraction. Used
+    e.g. by the lOFC gradient wrapper to apply an ROI mask in memory.
+
+    Writes into ``out_dir``:
+      summary_<slug>.{pdf,png}         — per (dataset × mode) linear-trend plot
+      hypothesis_<slug>.{pdf,png}      — per (dataset × mode) contrast plot
+      circular_<slug>.{pdf,png}        — per (dataset × mode) circular fit (7/8 cond)
+      stats_<slug>.json                — per (dataset × mode) full stats
+      all_gradient_results.json        — aggregate list of all stats dicts
+      gradient_results.md              — human-readable markdown summary
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    all_stats = []
+    run_meta = {
+        "roi_label":            roi_label,
+        "base_dir":             base_dir,
+        "out_dir":              out_dir,
+        "timestamp":            datetime.now().isoformat(timespec="seconds"),
+        "axis":                 AXIS,
+        "peak_modes":           list(PEAK_MODES),
+        "n_clusters":           N_CLUSTERS,
+        "cluster_threshold":    CLUSTER_THRESHOLD,
+        "orderness_method":     ORDERNESS_METHOD if USE_ORDERNESS else None,
+    }
+
+    for dataset in datasets:
         label_str = dataset["label"]
         files_temp_order = dict(dataset["files"])  # copy so we can prune
 
         # Drop missing files instead of aborting the whole dataset.
         missing = [
             (cond, fn) for cond, fn in files_temp_order.items()
-            if not os.path.isfile(os.path.join(result_dir, fn))
+            if not os.path.isfile(os.path.join(base_dir, fn))
         ]
         for cond, fn in missing:
             print(f"[WARN] '{label_str}': missing file for '{cond}' "
@@ -613,7 +794,9 @@ if __name__ == "__main__":
                   f"(need 4, 7, or 8).")
             continue
 
-        niftis = load_niftis(files_temp_order, result_dir)
+        niftis = load_niftis(files_temp_order, base_dir)
+        if postprocess is not None:
+            niftis = postprocess(niftis)
 
         for peak_mode in PEAK_MODES:
             projection = extract_projection(
@@ -622,9 +805,47 @@ if __name__ == "__main__":
                 n_clusters=N_CLUSTERS,
                 axis_idx=axis_index,
             )
-            run_stats_and_plots(
+            stats = run_stats_and_plots(
                 projection=projection,
                 conditions=conditions,
                 dataset_label=label_str,
                 peak_mode=peak_mode,
+                save_dir=out_dir,
             )
+            if stats is not None:
+                all_stats.append(stats)
+
+    # Aggregate outputs
+    aggregate_path = os.path.join(out_dir, "all_gradient_results.json")
+    with open(aggregate_path, "w") as f:
+        json.dump({"run": run_meta, "results": all_stats}, f, indent=2)
+
+    md_path = os.path.join(out_dir, "gradient_results.md")
+    with open(md_path, "w") as f:
+        f.write(f"# Gradient results — {roi_label or 'run'}\n\n")
+        f.write(f"- **timestamp:** {run_meta['timestamp']}\n")
+        f.write(f"- **base_dir:** `{base_dir}`\n")
+        f.write(f"- **axis:** `{AXIS}`\n")
+        f.write(f"- **peak modes:** {', '.join(PEAK_MODES)}\n")
+        f.write(f"- **cluster threshold:** {CLUSTER_THRESHOLD}\n")
+        if USE_ORDERNESS:
+            f.write(f"- **orderness method:** {ORDERNESS_METHOD}\n")
+        f.write("\n")
+        for s in all_stats:
+            f.write(_stats_to_markdown(s))
+            f.write("\n---\n\n")
+
+    print(f"\n{'='*60}\n"
+          f"Saved {len(all_stats)} (dataset × mode) result blocks to:\n"
+          f"  {out_dir}\n"
+          f"  ↳ all_gradient_results.json\n"
+          f"  ↳ gradient_results.md\n"
+          f"{'='*60}")
+    return all_stats
+
+
+if __name__ == "__main__":
+    _ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    OUT_DIR = os.path.join(result_dir, f"gradient_results_{_ts}")
+    run_pipeline(DATASETS, base_dir=result_dir, out_dir=OUT_DIR,
+                 roi_label="mPFC")

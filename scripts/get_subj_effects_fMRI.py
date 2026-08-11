@@ -187,7 +187,7 @@ def plot_roi_effects(values_by_region, region_order, region_stats, save_stem,
     figsize = (FIG_WIDTH_CM / cm_per_in, FIG_HEIGHT_CM / cm_per_in)
 
     roi_colour_dict = { 'EC': 0,
-                       'medialOFC': 4,
+                       'mOFC': 4,
                        'ACC': 1,
                        'HC_anterior': 2,
                        'HC_mid': 6,
@@ -205,11 +205,11 @@ def plot_roi_effects(values_by_region, region_order, region_stats, save_stem,
         elif 'control' in r:
             palette.append('#3D3D3D')
             test_order.append(r)
-        elif r == 'lateral OFC':
-            palette.append(palette_others[0])
+        elif r == 'lOFC':
+            palette.append('#23677E')
             test_order.append(r)
         elif r == 'vmPFC':
-            palette.append(palette_all[roi_colour_dict['medialOFC']])
+            palette.append(palette_all[roi_colour_dict['mOFC']])
         elif r == 'mPFC':
             palette.append(palette_all[roi_colour_dict['ACC']])
             test_order.append(r)
@@ -456,8 +456,8 @@ def run_effect(name, subj_4d_path, fwep_path, tstat_path,
 # =====================================================
 roi_specs_dsr = {
     'mPFC':          {'kind': 'mask',   'path': mPFC_mask},
-    'lateral OFC':   {'kind': 'mask',   'path': lOFC_mask},
-    'FFA (control)': {'kind': 'sphere', 'center': FFA_MNI, 'radius_mm': FFA_RADIUS_MM},
+    'OFC':   {'kind': 'mask',   'path': lOFC_mask},
+    #'FFA (control)': {'kind': 'sphere', 'center': FFA_MNI, 'radius_mm': FFA_RADIUS_MM},
 }
 run_effect(
     name           = 'DSR',
@@ -475,8 +475,8 @@ run_effect(
 # =====================================================
 roi_specs_state = {
     'EC':            {'kind': 'mask',   'path': EC_mask},
-    'vmPFC':         {'kind': 'mask',   'path': vmPFC_mask},
-    'FFA (control)': {'kind': 'sphere', 'center': FFA_MNI, 'radius_mm': FFA_RADIUS_MM},
+    'mOFC':         {'kind': 'mask',   'path': vmPFC_mask},
+    #'FFA (control)': {'kind': 'sphere', 'center': FFA_MNI, 'radius_mm': FFA_RADIUS_MM},
 }
 run_effect(
     name           = 'STATE',

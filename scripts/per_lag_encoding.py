@@ -22,6 +22,33 @@ WHY THE RATE-MAP REPLACED THE BIN-LEVEL GLM
     30°/60°) and lets the same statistic be computed at every lag and
     with optional controls.
 
+RELATION TO `spatial_peaks_simple.py`
+    SAME CORE QUESTION / PREPROCESSING
+      * Both phase-residualise firing rates, build 9-location rate maps at
+        the same twelve 30° lags, use leave-one-group-out CV, score maps
+        with dwell-weighted Pearson r, and test predicted lags against zero
+        and against the other lags.
+
+    UNIQUE TO THIS PER-LAG ENCODING ANALYSIS (manuscript primary)
+      * The CV unit is ONE task configuration. Repetitions are averaged
+        within each configuration before rate maps are built.
+      * All training configurations are pooled into one dwell-weighted
+        predicted map, which is correlated with the held-out map.
+      * Requires >= 3 shared locations; permutations circularly shift the
+        held-out configuration's location series once per fold/permutation.
+      * Provides optional nuisance-control residualisation and the stacked
+        dsrfull/dsrinf models. The manuscript's main result uses `noctrl`.
+
+    UNIQUE TO FUTURE SPATIAL PEAKS (independent robustness analysis)
+      * Configurations are paired into coverage-maximising grid groups.
+        A held-out group is correlated separately with every training group
+        and those correlations are averaged (training maps are not pooled).
+      * Requires >= 5 shared locations and independently circular-shifts
+        each repetition for its permutation null.
+      * Also provides the train-selected/free-peak control and rate-map
+        example plots. It should not be described as merely the same test
+        with paired configurations: the CV estimator, QC, and null differ.
+
 CONTROL MODES
     no_ctrl    Rate maps computed from raw (phase-residualised) y.
     with_ctrl  Rate maps computed from y RESIDUALISED against
@@ -58,6 +85,11 @@ ROI-LEVEL STATS (per_roi_stats.csv):
     T5   dsrfull and dsrinf r > 0
     T6   paired: dsrinf r vs r at first predicted lag (replaces winner-curse)
 
+FISHER-Z SENSITIVITY ANALYSIS (no-control results only):
+    Alongside the original raw-r statistics, a separate set of two-sided
+    t-tests is run on Fisher-transformed, fold-averaged per-cell CV
+    correlations. Raw r remains the descriptive effect-size scale.
+
 Predicted lags per ROI (used by T2 and Fig 01 outlines):
     ACC          (30°, 60°)
     HC_anterior  (0°,)
@@ -67,6 +99,12 @@ OUTPUT under DATA_DIR/group/per_lag_encoding/<run_tag>/:
     per_cell_<ROI>.csv
     per_cell_ALL_ROIs.csv
     per_roi_stats.csv
+    per_roi_stats_fisher_z_noctrl.csv
+    per_roi_single_lag_stats_fisher_z_noctrl.csv
+    roi_lag_table_fisher_z_noctrl.csv
+    methods.md
+    results.md
+    core_results_noctrl_fisher_z.md + .csv
     roi_lag_table.csv
     config.json
     figures/*.pdf + .png   (01 t-stat heatmap, 02 curves, 03 sig-fraction bar,
@@ -122,27 +160,41 @@ RELABEL_FROM    = ("/Users/xpsy1114/Documents/projects/multiple_clocks/"
                     "neurons_with_ROI_labels.csv")
 # RELABEL_FROM  = None
 
-# Display-name overrides used in figures ONLY (data columns keep the
-# original ROI keys). Now that data labels are already the CLAUDE.md
-# canonical names (mPFC/mOFC/PHC/PCC), no overrides are needed and this
-# map is empty — kept for future overrides.
+# Canonicalize labels from older result files before statistics/plotting.
+ROI_NAME_MAP = {
+    'ACC': 'mPFC',
+    'mPFC': 'mPFC',
+    'medialOFC': 'mOFC',
+    'mOFC': 'mOFC',
+    'medial OFC': 'mOFC',
+    'Parahippocampal': 'PHC',
+    'Parahippocampus': 'PHC',
+    'PHC': 'PHC',
+}
+
+# Kept as a separate display map because it is written into config.json.
 ROI_DISPLAY_NAMES = {}
 def _disp(roi):
     return ROI_DISPLAY_NAMES.get(roi, roi)
 
+def _canonicalize_roi_names(per_cell):
+    per_cell = per_cell.copy()
+    per_cell['roi'] = per_cell['roi'].map(
+        lambda roi: ROI_NAME_MAP.get(roi, roi))
+    return per_cell
+
 # Canonical ROIs from cell_to_roi_july26.py (matches CLAUDE.md palette).
-# Old-script names (`ACC`, `medialOFC`, `Parahippocampal`) are relabeled
-# to these via `neurons_with_ROI_labels.csv`.`alt_final_roi` at load time
-# (see RELABEL_FROM above and `mc.analyse.roi_relabel.relabel_per_cell`).
+# Old-script names are canonicalized by `_canonicalize_roi_names`.
 ROIS_TO_RUN = ['mPFC', 'mOFC', 'PCC', 'PHC',
                'HC_anterior', 'HC_mid', 'EC']
 
 PHASE_RESIDUALISE      = 'cosine'
 TRIALS                 = 'all_minus_explore'
-N_PERMUTATIONS         = 10 #1000
+N_PERMUTATIONS         = 1000
 N_JOBS                 = -1
 RANDOM_SEED            = 42
 ALPHA                  = 0.05
+FISHER_Z_CLIP_EPS      = 1e-7
 
 # Rate-map QC (mirrors spatial_peaks_simple settings)
 MIN_DWELL_BINS         = 25
@@ -199,12 +251,12 @@ FONT_BIG, FONT_AXIS, FONT_TICK = 11, 10, 9
 _ROI_PAL = era_brewer.era_brew('Showgirl2', n=7)
 ROI_COLOURS = {                 # matches CLAUDE.md `roi_colour_dict`
     'EC':          _ROI_PAL[0],
-    'mPFC':        _ROI_PAL[1],
-    'HC_anterior': _ROI_PAL[2],
-    'PCC':         _ROI_PAL[3],
     'mOFC':        _ROI_PAL[4],
-    'HC_mid':      '#a30d6c',   # magenta (CLAUDE.md override)
-    'PHC':         '#23677E',   # teal    (CLAUDE.md override)
+    'mPFC':        _ROI_PAL[1],
+    'HC_anterior': '#a30d6c',
+    'HC_mid':      _ROI_PAL[2],
+    'PHC':         '#23677E',
+    'PCC':         _ROI_PAL[3],
 }
 OBSERVED_GREEN = '#0e3d3a'
 
@@ -730,6 +782,37 @@ def _ttest_gt0(x):
         return float(t), float(p2 / 2 if t > 0 else 1 - p2 / 2)
 
 
+def _fisher_z(r):
+    """Fisher-transform finite correlations, guarding against |r| == 1."""
+    r = np.asarray(r, dtype=float)
+    z = np.full(r.shape, np.nan, dtype=float)
+    m = np.isfinite(r)
+    if m.any():
+        z[m] = np.arctanh(np.clip(r[m], -1 + FISHER_Z_CLIP_EPS,
+                                    1 - FISHER_Z_CLIP_EPS))
+    return z
+
+
+def _ttest_2sided_zero(x):
+    """Two-sided one-sample t-test, returning statistic, p, and n."""
+    x = np.asarray(x, dtype=float)
+    x = x[np.isfinite(x)]
+    if x.size < 2:
+        return np.nan, np.nan, int(x.size)
+    res = stats.ttest_1samp(x, 0.0)
+    return float(res.statistic), float(res.pvalue), int(x.size)
+
+
+def _ttest_2sided_paired(x, y):
+    """Two-sided paired t-test, returning statistic, p, and complete-pair n."""
+    x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+    m = np.isfinite(x) & np.isfinite(y)
+    if m.sum() < 2:
+        return np.nan, np.nan, int(m.sum())
+    res = stats.ttest_rel(x[m], y[m])
+    return float(res.statistic), float(res.pvalue), int(m.sum())
+
+
 def _binom_gt_alpha(k, n, alpha=ALPHA):
     if n == 0:
         return np.nan
@@ -860,8 +943,93 @@ def per_roi_stats(df, ctrl_mode):
     return out
 
 
+def fisher_per_roi_stats_noctrl(df):
+    """No-control Fisher-z sensitivity statistics.
+
+    Each value entering this function is already a per-cell mean across
+    leave-one-configuration-out folds. We transform those means (rather
+    than individual folds), then use two-sided t-tests. The returned table
+    deliberately keeps the ordinary T1/T2/T5/T6 column names so it can use
+    the standard plotting code; ``meanR`` fields retain raw-r descriptives
+    and ``meanZ``/``meanDiffZ`` identify the inferential scale.
+    """
+    rows = []
+    for roi, g in df.groupby('roi'):
+        rec = {'roi': roi, 'ctrl_mode': 'noctrl', 'n_cells': len(g)}
+        z_mat = np.stack([
+            _fisher_z(g[f'r_lag{lag:03d}_noctrl'].to_numpy(dtype=float))
+            for lag in LAGS_DEG
+        ], axis=1)
+        r_mat = np.stack([
+            g[f'r_lag{lag:03d}_noctrl'].to_numpy(dtype=float)
+            for lag in LAGS_DEG
+        ], axis=1)
+        for li, lag in enumerate(LAGS_DEG):
+            z = z_mat[:, li]
+            t, p, n = _ttest_2sided_zero(z)
+            rec.update({
+                f'T1_t_lag{lag:03d}': t,
+                f'T1_p_lag{lag:03d}': p,
+                f'T1_n_lag{lag:03d}': n,
+                f'T1_meanZ_lag{lag:03d}': float(np.nanmean(z)),
+                f'T1_meanR_lag{lag:03d}': float(np.nanmean(r_mat[:, li])),
+            })
+
+        pred_lags = ROI_PREDICTED_LAGS_DEG.get(roi, None)
+        if pred_lags:
+            idx_pred = [LAGS_DEG.index(l) for l in pred_lags]
+            idx_other = [i for i in range(len(LAGS_DEG)) if i not in idx_pred]
+            tgt = np.nanmean(z_mat[:, idx_pred], axis=1)
+            other = np.nanmean(z_mat[:, idx_other], axis=1)
+            t, p, n = _ttest_2sided_zero(tgt)
+            rec.update({'T1a_avgPred_t': t, 'T1a_avgPred_p': p,
+                        'T1a_avgPred_n': n,
+                        'T1a_avgPred_meanZ': float(np.nanmean(tgt))})
+            diff = tgt - other
+            t, p, n = _ttest_2sided_paired(tgt, other)
+            rec.update({'T2_t': t, 'T2_p': p, 'T2_n': n,
+                        'T2_meanDiffZ': float(np.nanmean(diff))})
+        else:
+            rec.update({'T1a_avgPred_t': np.nan, 'T1a_avgPred_p': np.nan,
+                        'T1a_avgPred_n': 0, 'T1a_avgPred_meanZ': np.nan,
+                        'T2_t': np.nan, 'T2_p': np.nan, 'T2_n': 0,
+                        'T2_meanDiffZ': np.nan})
+
+        for variant in ('dsrfull', 'dsrinf'):
+            raw = g[f'r_{variant}_noctrl'].to_numpy(dtype=float)
+            z = _fisher_z(raw)
+            t, p, n = _ttest_2sided_zero(z)
+            rec.update({f'T5_{variant}_t': t, f'T5_{variant}_p': p,
+                        f'T5_{variant}_n': n,
+                        f'T5_{variant}_meanZ': float(np.nanmean(z)),
+                        f'T5_{variant}_meanR': float(np.nanmean(raw))})
+
+        if pred_lags:
+            z_inf = _fisher_z(g['r_dsrinf_noctrl'].to_numpy(dtype=float))
+            z_pred = _fisher_z(g[
+                f'r_lag{pred_lags[0]:03d}_noctrl'].to_numpy(dtype=float))
+            diff = z_inf - z_pred
+            t, p, n = _ttest_2sided_paired(z_inf, z_pred)
+            rec.update({'T6_t': t, 'T6_p': p, 'T6_n': n,
+                        'T6_meanDiffZ': float(np.nanmean(diff))})
+        else:
+            rec.update({'T6_t': np.nan, 'T6_p': np.nan, 'T6_n': 0,
+                        'T6_meanDiffZ': np.nan})
+        rows.append(rec)
+
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    for col in [c for c in out.columns if c.startswith('T1_p_lag')]:
+        out[col + '_fdr'] = _bh_fdr(out[col].to_numpy(dtype=float))
+    for col in ('T1a_avgPred_p', 'T2_p', 'T5_dsrfull_p', 'T5_dsrinf_p',
+                'T6_p'):
+        out[col + '_fdr'] = _bh_fdr(out[col].to_numpy(dtype=float))
+    return out
+
+
 # ── Figures ───────────────────────────────────────────────────────────
-def fig_roi_lag_heatmap(roi_stats, ctrl_mode, save_stem):
+def fig_roi_lag_heatmap(roi_stats, ctrl_mode, save_stem, fisher_z=False):
     tag = 'ctrl' if ctrl_mode else 'noctrl'
     df = roi_stats[roi_stats['ctrl_mode'] == tag]
     rois = [r for r in ROIS_TO_RUN if r in df['roi'].values]
@@ -878,27 +1046,31 @@ def fig_roi_lag_heatmap(roi_stats, ctrl_mode, save_stem):
         T, LAGS_DEG, rois, q_matrix=Q,
         predicted_lags_per_roi=ROI_PREDICTED_LAGS_DEG,
         save_stem=save_stem,
-        title=(f'Fig 3a — ROI × lag t-stat vs 0  [{tag}]\n'
-                f'Predicted lags (black outline): {pred_str}'),
+        t_label='t (two-sided)' if fisher_z else 't (one-sided > 0)',
+        title=(f'Fig 3a — ROI × lag '
+               f'{"two-sided Fisher-z t-stat" if fisher_z else "t-stat vs 0"}'
+               f'  [{tag}]\n'
+               f'Predicted lags (black outline): {pred_str}'),
     )
 
 
-def fig_roi_lag_curves(per_cell, ctrl_mode, save_stem):
+def fig_roi_lag_curves(per_cell, ctrl_mode, save_stem, fisher_z=False):
     tag = 'ctrl' if ctrl_mode else 'noctrl'
     rois = [r for r in ROIS_TO_RUN if r in per_cell['roi'].unique()]
     curves = {}
     for roi in rois:
         g = per_cell[per_cell['roi'] == roi]
-        curves[roi] = np.stack([
-            g[f'r_lag{lag:03d}_{tag}'].to_numpy(dtype=float)
-            for lag in LAGS_DEG
-        ], axis=1)
+        curves[roi] = np.stack([(
+            _fisher_z(g[f'r_lag{lag:03d}_{tag}'].to_numpy(dtype=float))
+            if fisher_z else g[f'r_lag{lag:03d}_{tag}'].to_numpy(dtype=float)
+        ) for lag in LAGS_DEG], axis=1)
     plot_roi_lag_curves(
         curves, LAGS_DEG,
         predicted_lags_per_roi=ROI_PREDICTED_LAGS_DEG,
         roi_colours=ROI_COLOURS,
         save_stem=save_stem,
-        title=f'Per-ROI mean CV r across lags  [{tag}]',
+        title=(f'Per-ROI mean {"Fisher z of fold-averaged CV r" if fisher_z else "CV r"}'
+               f' across lags  [{tag}]'),
     )
 
 
@@ -987,7 +1159,7 @@ def fig_perm_sig_fraction_heatmap(roi_stats, ctrl_mode, save_stem):
     _save(fig, save_stem)
 
 
-def fig_dsrfull_vs_dsrinf_scatter(per_cell, ctrl_mode, save_stem):
+def fig_dsrfull_vs_dsrinf_scatter(per_cell, ctrl_mode, save_stem, fisher_z=False):
     """Per-ROI scatter: dsrfull r vs dsrinf r. Replaces winner-curse Fig 4."""
     _set_rc()
     tag = 'ctrl' if ctrl_mode else 'noctrl'
@@ -1003,6 +1175,8 @@ def fig_dsrfull_vs_dsrinf_scatter(per_cell, ctrl_mode, save_stem):
         g = per_cell[per_cell['roi'] == roi]
         full = g[f'r_dsrfull_{tag}'].to_numpy(dtype=float)
         inf_ = g[f'r_dsrinf_{tag}'].to_numpy(dtype=float)
+        if fisher_z:
+            full, inf_ = _fisher_z(full), _fisher_z(inf_)
         m = np.isfinite(full) & np.isfinite(inf_)
         col = ROI_COLOURS.get(roi, '#888')
         ax.scatter(full[m], inf_[m], s=6, color=col, alpha=0.7, edgecolor='none')
@@ -1014,9 +1188,10 @@ def fig_dsrfull_vs_dsrinf_scatter(per_cell, ctrl_mode, save_stem):
         ax.axhline(0, color='gray', lw=0.3); ax.axvline(0, color='gray', lw=0.3)
         ax.set_title(roi, fontsize=FONT_TICK)
         ax.tick_params(labelsize=FONT_TICK - 1, length=1.5, pad=1)
-        ax.set_xlabel('dsr_full r', fontsize=FONT_TICK)
-        ax.set_ylabel('dsr_inf r', fontsize=FONT_TICK)
-    fig.suptitle(f'dsr_full (11 lags) vs dsr_inf (30/60/90) CV r  [{tag}]',
+        ax.set_xlabel(f'dsr_full {"Fisher z" if fisher_z else "r"}', fontsize=FONT_TICK)
+        ax.set_ylabel(f'dsr_inf {"Fisher z" if fisher_z else "r"}', fontsize=FONT_TICK)
+    fig.suptitle(f'dsr_full (11 lags) vs dsr_inf (30/60/90) '
+                 f'{"Fisher z of fold-averaged CV r" if fisher_z else "CV r"}  [{tag}]',
                  fontsize=FONT_AXIS)
     _save(fig, save_stem)
 
@@ -1093,8 +1268,220 @@ def single_lag_stats(per_cell, single_lags=SINGLE_LAGS_FOR_TESTS):
     return out
 
 
+def fisher_single_lag_stats_noctrl(per_cell, single_lags=SINGLE_LAGS_FOR_TESTS):
+    """Two-sided Fisher-z tests for the no-control fixed-lag summaries."""
+    rows = []
+    for roi, g in per_cell.groupby('roi'):
+        for lag in single_lags:
+            raw = g[f'r_lag{lag:03d}_noctrl'].to_numpy(dtype=float)
+            z = _fisher_z(raw)
+            t, p, n = _ttest_2sided_zero(z)
+            rows.append({
+                'roi': roi, 'ctrl_mode': 'noctrl', 'lag_deg': lag,
+                'n_cells': n, 'df': n - 1 if n else np.nan,
+                'mean_r': float(np.nanmean(raw)), 'mean_z': float(np.nanmean(z)),
+                't_vs_0': t, 'p_unc': p,
+            })
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    out['p_fdr'] = np.nan
+    for _, idx in out.groupby('lag_deg').indices.items():
+        idx = list(idx)
+        out.loc[idx, 'p_fdr'] = _bh_fdr(out.loc[idx, 'p_unc'].to_numpy(float))
+    return out
+
+
+# ── Automatically written analysis reports ────────────────────────────
+def _fmt_p(p):
+    if not np.isfinite(p):
+        return 'NA'
+    return '< .001' if p < 0.001 else f'= {p:.3f}'
+
+
+def _fmt_num(x, digits=3):
+    return 'NA' if not np.isfinite(x) else f'{x:.{digits}f}'
+
+
+def _core_result_rows(raw_roi_stats, fisher_roi_stats):
+    """Build the compact, requested no-control result summary table."""
+    raw = raw_roi_stats[raw_roi_stats['ctrl_mode'] == 'noctrl'].set_index('roi')
+    fisher = fisher_roi_stats.set_index('roi')
+    rows = []
+    for roi, lags in ROI_PREDICTED_LAGS_DEG.items():
+        if roi not in raw.index or roi not in fisher.index:
+            continue
+        r_raw, r_fisher = raw.loc[roi], fisher.loc[roi]
+        for lag in lags:
+            n = int(r_fisher[f'T1_n_lag{lag:03d}'])
+            n_roi = int(r_raw['n_cells'])
+            k = int(r_raw[f'T3_k_lag{lag:03d}'])
+            rows.append({
+                'result_type': 'individual_lag_vs_zero',
+                'roi': roi, 'lag_deg': lag,
+                'comparison': f'{lag}° lag vs 0',
+                'test': 'two-sided one-sample t-test on Fisher z',
+                'n': n, 'df': n - 1,
+                'mean_raw_r': r_fisher[f'T1_meanR_lag{lag:03d}'],
+                'mean_fisher_z': r_fisher[f'T1_meanZ_lag{lag:03d}'],
+                't': r_fisher[f'T1_t_lag{lag:03d}'],
+                'p_unc': r_fisher[f'T1_p_lag{lag:03d}'],
+                'p_fdr': r_fisher[f'T1_p_lag{lag:03d}_fdr'],
+                'perm_sig_cells': k,
+                'roi_cells': n_roi,
+                'perm_sig_percent': 100 * k / n_roi if n_roi else np.nan,
+                'perm_binom_p_fdr': r_raw.get(f'T3_p_lag{lag:03d}_fdr', np.nan),
+            })
+        lag_label = '/'.join(str(l) for l in lags) + '°'
+        n = int(r_fisher['T1a_avgPred_n'])
+        rows.append({
+            'result_type': 'mean_predicted_lags_vs_zero',
+            'roi': roi, 'lag_deg': np.nan,
+            'comparison': f'mean of predicted lags ({lag_label}) vs 0',
+            'test': 'two-sided one-sample t-test on Fisher z',
+            'n': n, 'df': n - 1,
+            'mean_raw_r': np.nan,
+            'mean_fisher_z': r_fisher['T1a_avgPred_meanZ'],
+            't': r_fisher['T1a_avgPred_t'],
+            'p_unc': r_fisher['T1a_avgPred_p'],
+            'p_fdr': r_fisher['T1a_avgPred_p_fdr'],
+            'perm_sig_cells': np.nan, 'roi_cells': np.nan,
+            'perm_sig_percent': np.nan, 'perm_binom_p_fdr': np.nan,
+        })
+        n = int(r_fisher['T2_n'])
+        rows.append({
+            'result_type': 'predicted_lags_vs_other_lags',
+            'roi': roi, 'lag_deg': np.nan,
+            'comparison': f'predicted lags ({lag_label}) vs all other lags',
+            'test': 'two-sided paired t-test on Fisher z',
+            'n': n, 'df': n - 1,
+            'mean_raw_r': np.nan,
+            'mean_fisher_z': r_fisher['T2_meanDiffZ'],
+            't': r_fisher['T2_t'], 'p_unc': r_fisher['T2_p'],
+            'p_fdr': r_fisher['T2_p_fdr'],
+            'perm_sig_cells': np.nan, 'roi_cells': np.nan,
+            'perm_sig_percent': np.nan, 'perm_binom_p_fdr': np.nan,
+        })
+    return pd.DataFrame(rows)
+
+
+def _write_methods_and_results(out_dir, raw_roi_stats, fisher_roi_stats):
+    """Write methods, a readable results narrative, and a core-result table."""
+    core = _core_result_rows(raw_roi_stats, fisher_roi_stats)
+    core_csv = os.path.join(out_dir, 'core_results_noctrl_fisher_z.csv')
+    core_md = os.path.join(out_dir, 'core_results_noctrl_fisher_z.md')
+    methods_md = os.path.join(out_dir, 'methods.md')
+    results_md = os.path.join(out_dir, 'results.md')
+    core.to_csv(core_csv, index=False)
+
+    methods = f"""# Methods: per-lag encoding
+
+This analysis estimates location encoding at lags from 0° to 330° in 30°
+steps. For each neuron, firing rate is averaged separately for each of the
+{N_LOC} task locations within each task configuration, yielding a lag-shifted
+rate map. A leave-one-configuration-out procedure predicts the held-out map
+from dwell-time-weighted training maps and scores prediction with a
+{'weighted' if WEIGHTED_CORRELATION else 'standard'} Pearson correlation.
+The per-cell statistic is the mean correlation across valid held-out folds.
+
+The no-control analysis uses phase-residualised firing rates without the
+additional state/button/location partial-out controls. Permutation p-values
+are obtained by circularly shifting the held-out location series, rebuilding
+the held-out rate map, and comparing the observed mean correlation with the
+permutation distribution ({N_PERMUTATIONS} permutations; alpha = {ALPHA}).
+
+For the Fisher-z sensitivity analysis, each cell's fold-averaged correlation
+is transformed as `z = arctanh(r)` (values at ±1 are clipped by
+{FISHER_Z_CLIP_EPS:g} solely to keep the transform finite). The reported
+Fisher-z tests are two-sided: individual-lag and predicted-lag-average tests
+are one-sample tests against zero; predicted-versus-other-lag tests are paired
+tests within cells. Benjamini-Hochberg FDR correction is applied across ROIs
+within each test family. Raw correlations remain the descriptive effect-size
+scale. The original raw-r, one-sided statistics and the Fisher-z sensitivity
+results are both retained in this output directory.
+"""
+    with open(methods_md, 'w') as f:
+        f.write(methods)
+
+    lag_rows = core[core['result_type'] == 'individual_lag_vs_zero']
+    summary_rows = core[core['result_type'] != 'individual_lag_vs_zero']
+    core_lines = [
+        '# Core no-control results (Fisher-z sensitivity analysis)',
+        '',
+        'Individual predicted-lag tests are two-sided one-sample t-tests of '
+        'Fisher-transformed, fold-averaged CV correlations against zero. '
+        'The permutation-significant percentage uses the original per-cell '
+        f'permutation p-values (p < {ALPHA}).',
+        '',
+        '| ROI | Lag | n | Mean raw r | t(df) | p | FDR p | Permutation-significant cells |',
+        '| --- | ---: | ---: | ---: | --- | --- | --- | --- |',
+    ]
+    for _, row in lag_rows.iterrows():
+        core_lines.append(
+            f"| {row.roi} | {int(row.lag_deg)}° | {int(row.n)} | "
+            f"{_fmt_num(row.mean_raw_r)} | t({int(row.df)}) = {_fmt_num(row.t, 2)} | "
+            f"{_fmt_p(row.p_unc)} | {_fmt_p(row.p_fdr)} | "
+            f"{int(row.perm_sig_cells)}/{int(row.roi_cells)} "
+            f"({_fmt_num(row.perm_sig_percent, 1)}%) |")
+    core_lines += [
+        '',
+        '## Predicted-lag summary and specificity tests',
+        '',
+        '| ROI | Comparison | n | t(df) | p | FDR p |',
+        '| --- | --- | ---: | --- | --- | --- |',
+    ]
+    for _, row in summary_rows.iterrows():
+        core_lines.append(
+            f"| {row.roi} | {row.comparison} ({row.test}) | {int(row.n)} | "
+            f"t({int(row.df)}) = {_fmt_num(row.t, 2)} | {_fmt_p(row.p_unc)} | "
+            f"{_fmt_p(row.p_fdr)} |")
+    with open(core_md, 'w') as f:
+        f.write('\n'.join(core_lines) + '\n')
+
+    results_lines = [
+        '# Results: per-lag encoding',
+        '',
+        'This report summarizes the requested no-control Fisher-z sensitivity '
+        'analysis. Tests use Fisher-transformed, fold-averaged per-cell CV '
+        'correlations and are two-sided; raw mean r is reported for effect-size '
+        'interpretation. FDR p-values are corrected across ROIs within the '
+        'relevant test family.',
+        '',
+    ]
+    for roi in ROI_PREDICTED_LAGS_DEG:
+        roi_lags = lag_rows[lag_rows['roi'] == roi]
+        roi_summary = summary_rows[summary_rows['roi'] == roi]
+        if roi_lags.empty:
+            continue
+        results_lines += [f'## {roi}', '']
+        for _, row in roi_lags.iterrows():
+            results_lines.append(
+                f"At {int(row.lag_deg)}°, mean raw r = {_fmt_num(row.mean_raw_r)}; "
+                f"t({int(row.df)}) = {_fmt_num(row.t, 2)}, p {_fmt_p(row.p_unc)}, "
+                f"FDR p {_fmt_p(row.p_fdr)}. {int(row.perm_sig_cells)}/"
+                f"{int(row.roi_cells)} cells ({_fmt_num(row.perm_sig_percent, 1)}%) "
+                f"were permutation-significant.")
+        for _, row in roi_summary.iterrows():
+            label = ('The predicted-lag average versus zero' if
+                     row.result_type == 'mean_predicted_lags_vs_zero' else
+                     'The paired predicted-versus-other-lags specificity test')
+            results_lines.append(
+                f"{label}: t({int(row.df)}) = {_fmt_num(row.t, 2)}, "
+                f"p {_fmt_p(row.p_unc)}, FDR p {_fmt_p(row.p_fdr)}.")
+        results_lines.append('')
+    results_lines += [
+        'The complete machine-readable core table is '
+        '[`core_results_noctrl_fisher_z.csv`](core_results_noctrl_fisher_z.csv); '
+        'the corresponding compact table is '
+        '[`core_results_noctrl_fisher_z.md`](core_results_noctrl_fisher_z.md).',
+    ]
+    with open(results_md, 'w') as f:
+        f.write('\n'.join(results_lines) + '\n')
+    return methods_md, results_md, core_md, core_csv
+
+
 def fig_per_lag_r_hist_all_rois(per_cell, single_lag_df, ctrl_mode,
-                                  fixed_lag_deg, save_stem):
+                                  fixed_lag_deg, save_stem, fisher_z=False):
     """One page per fixed lag: histogram of per-cell CV r across each ROI,
     annotated with the single-lag t vs 0 and its BH-FDR p. Mirrors the
     heatmap row-by-row as histograms."""
@@ -1112,6 +1499,8 @@ def fig_per_lag_r_hist_all_rois(per_cell, single_lag_df, ctrl_mode,
         ax.axis('off')
     # shared x-range across ROIs at this lag for comparability
     all_r = per_cell[f'r_lag{fixed_lag_deg:03d}_{tag}'].to_numpy(dtype=float)
+    if fisher_z:
+        all_r = _fisher_z(all_r)
     all_r = all_r[np.isfinite(all_r)]
     if all_r.size:
         lo, hi = np.nanpercentile(all_r, [1, 99])
@@ -1122,6 +1511,8 @@ def fig_per_lag_r_hist_all_rois(per_cell, single_lag_df, ctrl_mode,
         g = per_cell[per_cell['roi'] == roi]
         r = g[f'r_lag{fixed_lag_deg:03d}_{tag}'].to_numpy(dtype=float)
         p = g[f'p_lag{fixed_lag_deg:03d}_{tag}'].to_numpy(dtype=float)
+        if fisher_z:
+            r = _fisher_z(r)
         m = np.isfinite(r); r = r[m]; p = p[m]
         col = ROI_COLOURS.get(roi, '#888')
         if r.size:
@@ -1148,11 +1539,14 @@ def fig_per_lag_r_hist_all_rois(per_cell, single_lag_df, ctrl_mode,
             title = _disp(roi)
         ax.set_title(title, fontsize=FONT_TICK)
         ax.tick_params(labelsize=FONT_TICK - 1, length=1.5, pad=1)
-        ax.set_xlabel('CV r', fontsize=FONT_TICK)
+        ax.set_xlabel('Fisher z (fold-averaged CV r)' if fisher_z else 'CV r',
+                      fontsize=FONT_TICK)
         ax.set_ylabel('# cells', fontsize=FONT_TICK)
     fig.suptitle(
-        f'Per-ROI CV r distribution at lag {fixed_lag_deg}°  [{tag}]\n'
-        f'(one-sample t vs 0, FDR across {n} ROIs; sig cells overlaid)',
+        f'Per-ROI {"Fisher z" if fisher_z else "CV r"} distribution at lag '
+        f'{fixed_lag_deg}°  [{tag}]\n'
+        f'({"two-sided Fisher-z t-test" if fisher_z else "one-sample t vs 0"}, '
+        f'FDR across {n} ROIs; sig cells overlaid)',
         fontsize=FONT_BIG,
     )
     _save(fig, save_stem)
@@ -1235,7 +1629,8 @@ def fig_lag_lag_correlation_heatmap(per_cell, ctrl_mode, save_stem):
     _save(fig, save_stem)
 
 
-def fig_test2_target_vs_others_lines(per_cell, roi_stats, ctrl_mode, save_stem):
+def fig_test2_target_vs_others_lines(per_cell, roi_stats, ctrl_mode, save_stem,
+                                      fisher_z=False):
     """TEST 2 — per-ROI mean CV r across lags (±SEM) with predicted lag(s)
     highlighted. Mirrors `plot_test2_target_vs_others_lines` in
     spatial_peaks_simple. Uses display names (ACC → mPFC)."""
@@ -1257,9 +1652,10 @@ def fig_test2_target_vs_others_lines(per_cell, roi_stats, ctrl_mode, save_stem):
     x = np.asarray(LAGS_DEG)
     for ax, roi in zip(axes_flat, rois_show):
         g = per_cell[per_cell['roi'] == roi]
-        curves = np.stack([
-            g[f'r_lag{lag:03d}_{tag}'].to_numpy(dtype=float) for lag in LAGS_DEG
-        ], axis=1)   # (n_cells, n_lags)
+        curves = np.stack([(
+            _fisher_z(g[f'r_lag{lag:03d}_{tag}'].to_numpy(dtype=float))
+            if fisher_z else g[f'r_lag{lag:03d}_{tag}'].to_numpy(dtype=float)
+        ) for lag in LAGS_DEG], axis=1)   # (n_cells, n_lags)
         col = ROI_COLOURS.get(roi, '#888')
         if curves.size:
             m = np.nanmean(curves, axis=0)
@@ -1287,12 +1683,13 @@ def fig_test2_target_vs_others_lines(per_cell, roi_stats, ctrl_mode, save_stem):
             fontsize=FONT_TICK,
         )
         ax.set_xlabel('lag (°)', fontsize=FONT_TICK)
-        ax.set_ylabel('mean CV r', fontsize=FONT_TICK)
+        ax.set_ylabel('mean Fisher z' if fisher_z else 'mean CV r',
+                      fontsize=FONT_TICK)
         ax.set_xticks(LAGS_DEG[::2])
         ax.tick_params(axis='both', labelsize=FONT_TICK, length=2, pad=1)
     fig.suptitle(
-        'TEST 2 — within-cell predicted-lag r > other-lags r\n'
-        f'(paired t-test, one-sided greater; FDR across '
+        'TEST 2 — within-cell predicted-lag vs other-lags\n'
+        f'({"paired two-sided t-test on Fisher z" if fisher_z else "paired t-test, one-sided greater"}; FDR across '
         f'{sum(1 for r in rois if ROI_PREDICTED_LAGS_DEG.get(r))} '
         f'predicted-lag ROIs)  [{tag}]',
         fontsize=FONT_BIG,
@@ -1300,7 +1697,7 @@ def fig_test2_target_vs_others_lines(per_cell, roi_stats, ctrl_mode, save_stem):
     _save(fig, save_stem)
 
 
-def fig_per_roi_r_hist(per_cell, ctrl_mode, save_stem):
+def fig_per_roi_r_hist(per_cell, ctrl_mode, save_stem, fisher_z=False):
     _set_rc()
     tag = 'ctrl' if ctrl_mode else 'noctrl'
     rois = [r for r in ROIS_TO_RUN if r in per_cell['roi'].unique()]
@@ -1317,6 +1714,8 @@ def fig_per_roi_r_hist(per_cell, ctrl_mode, save_stem):
         lag = pred[0]
         r = g[f'r_lag{lag:03d}_{tag}'].to_numpy(dtype=float)
         p = g[f'p_lag{lag:03d}_{tag}'].to_numpy(dtype=float)
+        if fisher_z:
+            r = _fisher_z(r)
         m = np.isfinite(r); r = r[m]; p = p[m]
         col = ROI_COLOURS.get(roi, '#888')
         if r.size:
@@ -1332,9 +1731,10 @@ def fig_per_roi_r_hist(per_cell, ctrl_mode, save_stem):
         ax.axvline(0, color='gray', ls='--', lw=0.4)
         ax.set_title(f'{roi}  lag={lag}°', fontsize=FONT_TICK)
         ax.tick_params(labelsize=FONT_TICK - 1, length=1.5, pad=1)
-        ax.set_xlabel('CV r', fontsize=FONT_TICK)
+        ax.set_xlabel('Fisher z' if fisher_z else 'CV r', fontsize=FONT_TICK)
         ax.set_ylabel('# cells', fontsize=FONT_TICK)
-    fig.suptitle(f'Per-ROI CV r distribution at predicted lag  [{tag}]',
+    fig.suptitle(f'Per-ROI {"Fisher z" if fisher_z else "CV r"} distribution '
+                 f'at predicted lag  [{tag}]',
                  fontsize=FONT_AXIS)
     _save(fig, save_stem)
 
@@ -1509,6 +1909,7 @@ def fig_lag_regressor_correlation(long_df, out_dir):
 def _stats_and_plots(per_cell, out_dir, fig_dir):
     """Recompute per-ROI stats + all figures from a pre-computed
     per_cell DataFrame. Shared by the full-run and reload paths."""
+    per_cell = _canonicalize_roi_names(per_cell)
     stats_dfs = [per_roi_stats(per_cell, ctrl_mode=False),
                  per_roi_stats(per_cell, ctrl_mode=True)]
     roi_stats = pd.concat(stats_dfs, ignore_index=True)
@@ -1522,6 +1923,23 @@ def _stats_and_plots(per_cell, out_dir, fig_dir):
         os.path.join(out_dir, 'per_roi_single_lag_stats.csv'), index=False)
     print(f'Saved per_roi_single_lag_stats.csv '
           f'({single_lag_df.shape[0]} rows) for lags {SINGLE_LAGS_FOR_TESTS}')
+
+    # Sensitivity analysis requested for the no-control condition only.
+    # The original raw-r outputs above remain untouched.
+    fisher_roi_stats = fisher_per_roi_stats_noctrl(per_cell)
+    fisher_roi_stats.to_csv(
+        os.path.join(out_dir, 'per_roi_stats_fisher_z_noctrl.csv'), index=False)
+    fisher_single_lag_df = fisher_single_lag_stats_noctrl(
+        per_cell, SINGLE_LAGS_FOR_TESTS)
+    fisher_single_lag_df.to_csv(
+        os.path.join(out_dir, 'per_roi_single_lag_stats_fisher_z_noctrl.csv'),
+        index=False)
+    print('Saved Fisher-z no-control statistics (two-sided t-tests)')
+    methods_md, results_md, core_md, core_csv = _write_methods_and_results(
+        out_dir, roi_stats, fisher_roi_stats)
+    print('Saved methods, results, and core-result reports: '
+          f'{os.path.basename(methods_md)}, {os.path.basename(results_md)}, '
+          f'{os.path.basename(core_md)}, {os.path.basename(core_csv)}')
 
     long_rows = []
     for ctrl in (False, True):
@@ -1542,6 +1960,23 @@ def _stats_and_plots(per_cell, out_dir, fig_dir):
                 })
     pd.DataFrame(long_rows).to_csv(
         os.path.join(out_dir, 'roi_lag_table.csv'), index=False)
+
+    fisher_long_rows = []
+    for _, row in fisher_roi_stats.iterrows():
+        for lag in LAGS_DEG:
+            n = int(row[f'T1_n_lag{lag:03d}'])
+            fisher_long_rows.append({
+                'roi': row['roi'], 'ctrl_mode': 'noctrl', 'lag_deg': lag,
+                'mean_r': row[f'T1_meanR_lag{lag:03d}'],
+                'mean_z': row[f'T1_meanZ_lag{lag:03d}'],
+                't_vs_0': row[f'T1_t_lag{lag:03d}'],
+                'p_unc': row[f'T1_p_lag{lag:03d}'],
+                'p_fdr': row.get(f'T1_p_lag{lag:03d}_fdr', np.nan),
+                'n_cells': n, 'df': n - 1 if n else np.nan,
+                'test': 'two-sided one-sample t-test of Fisher z vs 0',
+            })
+    pd.DataFrame(fisher_long_rows).to_csv(
+        os.path.join(out_dir, 'roi_lag_table_fisher_z_noctrl.csv'), index=False)
 
     for ctrl in (False, True):
         tag = 'ctrl' if ctrl else 'noctrl'
@@ -1573,6 +2008,28 @@ def _stats_and_plots(per_cell, out_dir, fig_dir):
         )
         fig_lag_lag_correlation_heatmap(per_cell, ctrl,
             os.path.join(fig_dir, f'09_lag_lag_correlation_{tag}'))
+
+    # Figures that visualize correlation values or t-tests are recreated on
+    # the Fisher-z scale for the no-control sensitivity analysis. Permutation
+    # figures are unchanged because they do not use the parametric t-tests.
+    fig_roi_lag_heatmap(fisher_roi_stats, False,
+        os.path.join(fig_dir, '01_roi_lag_heatmap_noctrl_fisher_z'), fisher_z=True)
+    fig_roi_lag_curves(per_cell, False,
+        os.path.join(fig_dir, '02_roi_lag_curves_noctrl_fisher_z'), fisher_z=True)
+    fig_dsrfull_vs_dsrinf_scatter(per_cell, False,
+        os.path.join(fig_dir, '04_dsrfull_vs_dsrinf_scatter_noctrl_fisher_z'),
+        fisher_z=True)
+    fig_test2_target_vs_others_lines(per_cell, fisher_roi_stats, False,
+        os.path.join(fig_dir, '07_test2_target_vs_others_lines_noctrl_fisher_z'),
+        fisher_z=True)
+    fig_per_roi_r_hist(per_cell, False,
+        os.path.join(fig_dir, '06_per_roi_r_hist_noctrl_fisher_z'), fisher_z=True)
+    for fl in SINGLE_LAGS_FOR_TESTS:
+        fig_per_lag_r_hist_all_rois(
+            per_cell, fisher_single_lag_df, False, fl,
+            os.path.join(fig_dir,
+                         f'08_per_lag_r_hist_all_rois_lag{fl:03d}_noctrl_fisher_z'),
+            fisher_z=True)
     fig_ctrl_vs_noctrl_scatter(per_cell,
         os.path.join(fig_dir, '05_ctrl_vs_noctrl_scatter'))
 
@@ -1610,6 +2067,14 @@ def main():
         with open(os.path.join(out_dir, 'config.json'), 'w') as f:
             json.dump({'reload_from': RELOAD_FROM,
                        'relabel_from': RELABEL_FROM,
+                       'n_permutations': N_PERMUTATIONS,
+                       'fisher_z_sensitivity': {
+                           'enabled': True,
+                           'control_mode': 'noctrl',
+                           'transform_order': 'mean CV r across folds, then arctanh',
+                           't_test': 'two-sided',
+                           'clip_epsilon': FISHER_Z_CLIP_EPS,
+                       },
                        'roi_predicted_lags': {k: list(v) for k, v in
                                                 ROI_PREDICTED_LAGS_DEG.items()},
                        'roi_display_names': ROI_DISPLAY_NAMES,
@@ -1629,6 +2094,7 @@ def main():
                 subject_key_per_cell='subject_id',
                 cell_key_per_cell='cell_idx')
 
+        per_cell = _canonicalize_roi_names(per_cell)
         per_cell.to_csv(os.path.join(out_dir, 'per_cell_ALL_ROIs.csv'), index=False)
         _stats_and_plots(per_cell, out_dir, fig_dir)
         # Descriptive model-regressor correlation across subjects/configs.
@@ -1658,6 +2124,13 @@ def main():
         'n_permutations':       N_PERMUTATIONS,
         'random_seed':          RANDOM_SEED,
         'alpha':                ALPHA,
+        'fisher_z_sensitivity': {
+            'enabled': True,
+            'control_mode': 'noctrl',
+            'transform_order': 'mean CV r across folds, then arctanh',
+            't_test': 'two-sided',
+            'clip_epsilon': FISHER_Z_CLIP_EPS,
+        },
         'roi_predicted_lags':   {k: list(v) for k, v in
                                    ROI_PREDICTED_LAGS_DEG.items()},
         'controls':             sorted(CONTROL_MODELS),

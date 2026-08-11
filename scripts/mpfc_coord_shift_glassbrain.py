@@ -39,10 +39,10 @@ NEW_RSA_CSV = ("/Users/xpsy1114/Documents/projects/multiple_clocks/data/"
                 "ephys_humans/derivatives/group/DSR_RSA_simple_ROI/"
                 "2026-07-23_12-07-25/roi_electrode_coords.csv")
 ROI_TABLE   = ("/Users/xpsy1114/Documents/projects/multiple_clocks/data/"
-                "ephys_humans/derivatives/neurons_with_final_roi_labels.csv")
+                "ephys_humans/derivatives/neurons_with_ROI_labels.csv")
 
-ROI_KEY = "ACC"                 # internal roi key; display as "mPFC"
-DISPLAY = ROI_DISPLAY_NAMES.get(ROI_KEY, ROI_KEY)   # -> "mPFC"
+ROI_KEY = "mPFC"
+DISPLAY = ROI_DISPLAY_NAMES.get(ROI_KEY, ROI_KEY)
 
 # Colour classes ------------------------------------------------------
 COL_STAYED_OLD = "#cccccc"       # pre-shift (grey / open marker)

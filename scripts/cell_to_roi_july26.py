@@ -9,17 +9,18 @@ STEP 1 (this file): coordinate loading + provenance.
 Re-running after new source files arrive
 ----------------------------------------
 This script is fully data-driven. To incorporate corrected Baylor
-`{CODE}-electrodes_v2026.csv` files (currently missing / unreliable for
-YEL, YER, YEN, YFT — sitting in `<v2026>/incorrect/`), just move the
-corrected files into the top-level `<v2026>/` folder and re-run:
+`{CODE}-electrodes_v2026.csv` files (older/broken copies sit in
+`<v2026>/incorrect/`), just move the corrected files into the top-level
+`<v2026>/` folder and re-run:
 
     conda activate env_multiple_clocks
     python scripts/cell_to_roi_july26.py
 
 Nothing else to edit. Subject files inside subfolders (like `incorrect/`)
-are ignored — the loader only reads top-level `-electrodes_v2026.csv`.
-Once the new file passes the reliability gate (mean 152-vs-305transform
-<= 8 mm across bundles), its cells switch from
+are ignored — the loader only reads top-level `-electrodes_v2026.csv`
+(so browser-duplicated names like `YEU-electrodes_v2026[37].csv` are
+skipped too). Once the new file passes the reliability gate (mean
+152-vs-305transform <= 8 mm across bundles), its cells switch from
 `baylor_bigtable_pre2026_macro_position` /
 `baylor_v2026_bundle_305to152_unreliable_file` to the fully-verified
 `baylor_v2026_bundle_micro`.
@@ -27,11 +28,26 @@ Once the new file passes the reliability gate (mean 152-vs-305transform
 Coordinate source priority per site:
 
   Baylor
-    - v2026 CSV `microwires` bundle MNI152, matched by stripping the
-      trailing 2 channel digits of `electrode label` (mRT2bHaEa04 ->
-      mRT2bHaEa01). Reliability gate: file's MNI152 must agree with
-      file's MNI305 via the Fischl 305->152 transform to <= 8 mm mean.
+    - v2026 CSV micro-bundle MNI152, matched by stripping the trailing
+      2 channel digits of `electrode label` (mRT2bHaEa04 ->
+      mRT2bHaEa01). Two row types describe the same bundle:
+        `microwires`  — the micro bundle itself (label `mLT2bHb01`)
+        `sEEG-micro`  — contact 01 of the macro probe the bundle sits
+                        in (label `LT2bHb01`, ~3 mm shallower)
+      `microwires` is preferred; `sEEG-micro` is used only for bundles
+      that have no `microwires` row (both are keyed on the m-prefixed
+      bundle name so either can match the big table).
+      Reliability gate: file's MNI152 must agree with file's MNI305 via
+      the Fischl 305->152 transform to <= 8 mm mean.
     - If subject file is unreliable: use file MNI305 -> 152 transform.
+    - If the subject's file ships NO micro rows at all (YER), rebuild
+      each bundle from its macro probe: the micro tip sits a fixed
+      3.15 mm beyond the deepest macro contact along the insertion
+      axis. That constant is Baylor's own — it is identical in all 119
+      bundles that do have `microwires` rows — so the rebuild
+      reproduces their supplied positions to 0.25 mm median / 1.07 mm
+      max. Tagged `..._micro_reconstructed_from_macro` and left
+      `coord_verified = False` because it is inferred, not supplied.
     - If subject has no v2026 file at all: keep big-table coord
       transformed 305->152, but flag as `pre2026_macro_position`
       (systematically ~4 mm off from true micro position — Baylor
@@ -119,6 +135,14 @@ os.makedirs(roi_assignment_dir, exist_ok=True)
 # The FINAL canonical table (used by all downstream analyses)
 FINAL_TABLE_OUT = os.path.join(output_dir, "neurons_with_ROI_labels.csv")
 
+# Snapshot of the previous run of THIS script, kept so every re-run can
+# report exactly what the new source files changed (step 8 at the very
+# bottom). Point this at the archived copy, not at the live table —
+# the live one is overwritten by this script.
+REFERENCE_TABLE = os.path.join(
+    output_dir, "old_electrode_tables", "aug-09-2026",
+    "neurons_with_ROI_labels.csv")
+
 step1_out = os.path.join(roi_assignment_dir, "cells_step1_coords.csv")
 step1_utah_recon_out = os.path.join(roi_assignment_dir,
                                      "cells_step1_utah_reconstruction_log.csv")
@@ -158,24 +182,125 @@ def _bundle_key(label):
     return re.sub(r"\d{2}$", "", str(label)).lower()
 
 
-def load_baylor_v2026(folder):
-    """Return `(reliable_bundle_updates, fallback_305_updates, reliability_df)`.
+# Row types in the v2026 CSVs that describe a microwire bundle. Each
+# bundle usually appears twice: once as `microwires` (the bundle itself,
+# label `mLT2bHb01`) and once as `sEEG-micro` (contact 01 of the macro
+# probe carrying it, label `LT2bHb01`, ~3 mm shallower). Preference
+# order matters — index 0 wins.
+MICRO_TYPES = ["microwires", "sEEG-micro"]
 
-    * reliable_bundle_updates: {(subj_code, bundle_key): (x, y, z)} in MNI152
-      from subjects whose file passed the reliability check.
-    * fallback_305_updates: same shape, but coords are the file's MNI305
-      for subjects that failed the check (caller applies 305->152).
+
+def _micro_bundle_rows(d):
+    """Return one row per micro bundle, keyed on the m-prefixed bundle
+    name in a new `bundle_key` column. `microwires` rows win over
+    `sEEG-micro` rows for the same bundle; `sEEG-micro` only fills in
+    bundles that have no `microwires` row at all."""
+    micro = d[d["Type"].isin(MICRO_TYPES)].copy()
+    if micro.empty:
+        return micro
+    micro["bundle_key"] = micro["Label"].apply(_bundle_key)
+    # sEEG-micro labels lack the leading 'm' — add it so both row types
+    # land on the same key as the big table's `electrode label`.
+    is_seeg = micro["Type"].eq("sEEG-micro")
+    micro.loc[is_seeg, "bundle_key"] = "m" + micro.loc[is_seeg, "bundle_key"]
+    micro["_pref"] = micro["Type"].map({t: i for i, t in enumerate(MICRO_TYPES)})
+    return (micro.sort_values("_pref")
+                 .drop_duplicates("bundle_key", keep="first"))
+
+
+# Distance the microwire bundle protrudes beyond the deepest macro
+# contact, along the probe insertion axis. This is not a per-subject
+# measurement: in all 119 bundles across all 19 v2026 files that carry
+# `microwires` rows, the offset is exactly 3.15 mm, i.e. Baylor applies a
+# nominal Behnke-Fried protrusion rather than localising the wires
+# individually. Reconstructing a bundle from its macro probe with this
+# constant reproduces Baylor's own `microwires` row to a median of
+# 0.25 mm (max 1.07 mm) over those 113 checkable bundles.
+MICRO_PROTRUSION_MM = 3.15
+
+
+def reconstruct_micro_from_macro(d, probe, cols):
+    """Rebuild a micro-bundle position from its macro probe alone, for
+    subject files that ship no `microwires` / `sEEG-micro` rows at all
+    (YER as of 2026-08). Contact 01 is the deepest contact and
+    01 -> 02 points back out along the shaft, so the bundle sits at
+    `contact01 - MICRO_PROTRUSION_MM * unit(contact02 - contact01)`.
+
+    NB `Label` (zero-padded contact number) is the sort key — the
+    `ElectrodeID` column is mixed int/str and sorts lexicographically."""
+    pr = d[(d["ProbeName"].astype(str) == probe)
+           & (d["Type"].isin(["sEEG", "sEEG-micro"]))].sort_values("Label")
+    if len(pr) < 2:
+        return None
+    p1 = pr.iloc[0][cols].to_numpy(float)
+    p2 = pr.iloc[1][cols].to_numpy(float)
+    if np.any(np.isnan(p1)) or np.any(np.isnan(p2)):
+        return None
+    v = p2 - p1
+    if np.linalg.norm(v) == 0:
+        return None
+    return p1 - MICRO_PROTRUSION_MM * (v / np.linalg.norm(v))
+
+
+def _file_152_is_selfconsistent(d):
+    """True if the file's MNI152 column agrees with its own MNI305
+    column under the Fischl transform (same gate as the micro-bundle
+    reliability check, applied to every contact in the file)."""
+    chk = d[["MNI305_x", "MNI305_y", "MNI305_z",
+             "MNI152_x", "MNI152_y", "MNI152_z"]].dropna()
+    if chk.empty:
+        return False
+    a305 = chk[["MNI305_x", "MNI305_y", "MNI305_z"]].to_numpy(float)
+    a152 = chk[["MNI152_x", "MNI152_y", "MNI152_z"]].to_numpy(float)
+    return bool(np.mean(np.linalg.norm(a152 - mni305_to_mni152(a305), axis=1))
+                <= BAYLOR_RELIABILITY_TOL_MM)
+
+
+def load_baylor_v2026(folder):
+    """Return `(reliable, fallback_305, reconstructed, reliability_df)`.
+
+    * reliable: {(subj_code, bundle_key): (x, y, z)} in MNI152 from
+      subjects whose file passed the reliability check.
+    * fallback_305: same shape, but coords are the file's MNI305 for
+      subjects that failed the check (caller applies 305->152).
+    * reconstructed: same shape, in MNI152, for subjects whose file has
+      no micro rows at all — rebuilt from the macro probe geometry (see
+      `reconstruct_micro_from_macro`). Flagged separately downstream
+      because it is inferred, not supplied.
     """
     reliable = {}
     fallback = {}
+    reconstructed = {}
     rel_rows = []
     for fn in sorted(os.listdir(folder)):
         if not fn.endswith("-electrodes_v2026.csv"):
             continue
         subj_code = fn.split("-")[0]
         d = pd.read_csv(os.path.join(folder, fn))
-        micro = d[d["Type"] == "microwires"].copy()
+        micro = _micro_bundle_rows(d)
         if micro.empty:
+            # No micro rows shipped at all. The macro probes are still
+            # there, and Baylor's own micro positions are a fixed
+            # 3.15 mm extension of them, so rebuild every probe. Use the
+            # file's MNI152 when it is self-consistent, else rebuild in
+            # MNI305 and transform.
+            use_152 = _file_152_is_selfconsistent(d)
+            cols = (["MNI152_x", "MNI152_y", "MNI152_z"] if use_152
+                    else ["MNI305_x", "MNI305_y", "MNI305_z"])
+            n_rec = 0
+            for probe in d["ProbeName"].dropna().astype(str).unique():
+                xyz = reconstruct_micro_from_macro(d, probe, cols)
+                if xyz is None:
+                    continue
+                if not use_152:
+                    xyz = mni305_to_mni152(xyz)[0]
+                reconstructed[(subj_code, "m" + probe.lower())] = tuple(xyz)
+                n_rec += 1
+            rel_rows.append({"subject_code": subj_code, "n_bundles": 0,
+                             "n_microwires_rows": 0, "n_seegmicro_rows": 0,
+                             "n_reconstructed_probes": n_rec,
+                             "mean_mm": np.nan, "max_mm": np.nan,
+                             "reliable": False})
             continue
 
         chk = micro[["MNI305_x", "MNI305_y", "MNI305_z",
@@ -192,13 +317,16 @@ def load_baylor_v2026(folder):
             max_d = float(np.max(d152))
             is_rel = mean_d <= BAYLOR_RELIABILITY_TOL_MM
 
-        rel_rows.append({"subject_code": subj_code,
-                         "n_microwires": len(micro),
-                         "mean_mm": mean_d, "max_mm": max_d,
-                         "reliable": is_rel})
+        rel_rows.append({
+            "subject_code": subj_code,
+            "n_bundles": len(micro),
+            "n_microwires_rows": int(micro["Type"].eq("microwires").sum()),
+            "n_seegmicro_rows": int(micro["Type"].eq("sEEG-micro").sum()),
+            "n_reconstructed_probes": 0,
+            "mean_mm": mean_d, "max_mm": max_d, "reliable": is_rel})
 
         for _, r in micro.iterrows():
-            key = (subj_code, _bundle_key(r["Label"]))
+            key = (subj_code, r["bundle_key"])
             if is_rel:
                 try:
                     x, y, z = float(r["MNI152_x"]), float(r["MNI152_y"]), float(r["MNI152_z"])
@@ -216,7 +344,7 @@ def load_baylor_v2026(folder):
                     continue
                 fallback[key] = (x, y, z)
 
-    return reliable, fallback, pd.DataFrame(rel_rows)
+    return reliable, fallback, reconstructed, pd.DataFrame(rel_rows)
 
 
 # =============================================================================
@@ -440,7 +568,7 @@ print(f"  Baylor {baylor_mask.sum()} | UCLA {ucla_mask.sum()} | Utah {utah_mask.
 # =============================================================================
 
 print("\n--- Baylor v2026 CSVs ---")
-bay_reliable, bay_fallback, bay_rel_df = load_baylor_v2026(path_to_v2026)
+bay_reliable, bay_fallback, bay_reconstructed, bay_rel_df = load_baylor_v2026(path_to_v2026)
 print(f"  {len(bay_rel_df)} subject files. Reliable: "
       f"{int(bay_rel_df['reliable'].sum())} / {len(bay_rel_df)}.")
 print(bay_rel_df.round(2).to_string(index=False))
@@ -492,6 +620,19 @@ for idx in df.index[baylor_mask]:
         df.at[idx, "MNI_y_final"] = y
         df.at[idx, "MNI_z_final"] = z
         df.at[idx, "coord_source"] = "baylor_v2026_bundle_305to152_unreliable_file"
+        df.at[idx, "coord_verified"] = False
+        df.at[idx, "source_electrode"] = key[1]
+    elif key in bay_reconstructed:
+        # File shipped no micro rows; position inferred from the macro
+        # probe with Baylor's own 3.15 mm protrusion (validated to
+        # 0.25 mm median on the 113 bundles where a ground-truth
+        # `microwires` row exists). Better than the pre-2026 big-table
+        # macro position, but marked unverified because it is inferred.
+        x, y, z = bay_reconstructed[key]
+        df.at[idx, "MNI_x_final"] = x
+        df.at[idx, "MNI_y_final"] = y
+        df.at[idx, "MNI_z_final"] = z
+        df.at[idx, "coord_source"] = "baylor_v2026_micro_reconstructed_from_macro"
         df.at[idx, "coord_verified"] = False
         df.at[idx, "source_electrode"] = key[1]
     else:
@@ -848,18 +989,18 @@ def assign_atlas_roi(row):
     hs = row["_ho_sub"]
     bn = row["_bn_label"]
 
-    # 1. EC — Juelich histological entorhinal cortex, provided y >= -15.
+    # 1. EC — Juelich histological entorhinal cortex, provided y >= -18.
     #    The Juelich EC probability map has a dense core at y ~= -6 to
-    #    -12 mm (Amunts et al. 2005, Insausti et al. 1998) and a
-    #    posterior tail where the 25%-thresholded mask still fires but
-    #    the underlying voxel is at the transitional subiculum /
-    #    hippocampal body border. Restricting EC to y >= -15 mm keeps
-    #    the ROI concentrated on the anatomically well-defined
-    #    entorhinal core; more posterior EC-at-25% hits fall through to
-    #    rule 4 (Hippocampus), which — via its Juelich subiculum/CA
-    #    neighborhood extension — captures them as HC_mid.
-    if _contains_any(jl, ["entorhinal"]) and float(y) >= -15:
-        return ("EC", jl, "juelich_entorhinal_y_ge_-15")
+    #    -12 mm (Amunts et al. 2005, Insausti et al. 1998) and tails off
+    #    posteriorly at y ~= -18 to -20 mm where it transitions into the
+    #    subiculum. Cells with y < -18 whose Juelich label at 25% is
+    #    still "entorhinal" are at the far posterior EC border, where
+    #    the atlas overlaps heavily with the subicular complex — those
+    #    fall through to rule 4 (Hippocampus), which captures them as
+    #    HC via the Juelich subiculum/CA neighborhood extension. Same
+    #    -18 mm cutoff is used in the LEC/REC rescue path.
+    if _contains_any(jl, ["entorhinal"]) and float(y) >= -18:
+        return ("EC", jl, "juelich_entorhinal_y_ge_-18")
 
     # 2. mPFC — matched by EITHER
     #    (a) Brainnetome A32sg / A32p / A24cd / A24rv / A10m / A9m
@@ -1513,7 +1654,7 @@ for roi in df["atlas_roi"].dropna().unique():
     if not len(coords):
         continue
     color = ROI_COLORS.get(roi, "#000000")
-    gb.add_markers(coords, marker_color=color, marker_size=14)
+    gb.add_markers(coords, marker_color=color, marker_size=20)
 # Legend as separate patch below
 legend_handles = [Line2D([0], [0], marker="o", color="w",
                           markerfacecolor=ROI_COLORS.get(roi, "#000"),
@@ -1581,11 +1722,11 @@ for roi, (atlas_obj, patterns) in ROI_ATLAS_SPECS.items():
     rescued_mask = sub["rescue_dist_mm"].notna()
     if rescued_mask.any():
         gb.add_markers(coords[rescued_mask.to_numpy()],
-                        marker_color=color, marker_size=28)
+                        marker_color=color, marker_size=34)
     orig_mask = ~rescued_mask
     if orig_mask.any():
         gb.add_markers(coords[orig_mask.to_numpy()],
-                        marker_color=color, marker_size=14)
+                        marker_color=color, marker_size=20)
     safe = re.sub(r"[^A-Za-z0-9_-]+", "_", roi)
     fpath = os.path.join(step5_per_roi_dir, f"{safe}.png")
     fig.savefig(fpath, dpi=180, bbox_inches="tight")
@@ -1774,7 +1915,7 @@ def _master_plot(df_sub, title, save_path):
                     "MNI_z_final"]].to_numpy(float)
         if len(coords):
             gb.add_markers(coords, marker_color=ROI_COLORS.get(roi, "#000"),
-                           marker_size=14)
+                           marker_size=40)
     legend = [Line2D([0], [0], marker="o", color="w",
                       markerfacecolor=ROI_COLORS.get(r, "#000"),
                       markersize=8,
@@ -1792,12 +1933,136 @@ print(f"Saved: {step7_master_all_out}")
 subj_counts = df.groupby("atlas_roi")["subject"].nunique()
 analysis_rois = subj_counts[subj_counts >= MIN_SUBJECTS_FOR_ANALYSIS].index.tolist()
 df_analysis = df[df["atlas_roi"].isin(analysis_rois)]
+
+# `alt_final_roi` — the column name downstream analysis scripts look for
+# (`mc.analyse.roi_relabel.relabel_per_cell(..., roi_col_in_table=
+# "alt_final_roi")`). Set to the atlas ROI name when that ROI has
+# >= MIN_SUBJECTS_FOR_ANALYSIS distinct subjects; NaN otherwise, so
+# under-covered ROIs (Visual/Thalamus/Amygdala/Insula/medial_CC/PHC/
+# leftover) are automatically excluded from analyses filtering on it.
+# Defined here (not at the bottom) because the RSA-ready plot below
+# already needs it.
+_analysis_rois = set(analysis_rois)
+_analysis_rois.discard("leftover")   # never treat leftover as a real ROI
+df["alt_final_roi"] = df["atlas_roi"].where(
+    df["atlas_roi"].isin(_analysis_rois), other=np.nan)
 _master_plot(df_analysis,
              f"Analysis-ready cells (ROI with >= {MIN_SUBJECTS_FOR_ANALYSIS} "
              f"subjects; n = {len(df_analysis)})",
              step7_master_analysis_out)
+step7_master_analysis_pdf = step7_master_analysis_out.replace(".png", ".pdf")
+_master_plot(df_analysis,
+             f"Analysis-ready cells (ROI with >= {MIN_SUBJECTS_FOR_ANALYSIS} "
+             f"subjects; n = {len(df_analysis)})",
+             step7_master_analysis_pdf)
 print(f"Saved: {step7_master_analysis_out}")
+print(f"Saved: {step7_master_analysis_pdf}")
 print(f"Analysis ROIs (n_subj >= {MIN_SUBJECTS_FOR_ANALYSIS}): {analysis_rois}")
+
+
+# ---------- Overview bar chart: n_cells and n_sessions per ROI ----------
+# import pdb; pdb.set_trace() 
+per_roi_summary = (df.groupby("atlas_roi")
+                     .agg(n_cells=("subject", "size"),
+                          n_subjects=("subject", "nunique"))
+                     .sort_values("n_cells", ascending=False))
+
+roi_order = per_roi_summary.index.tolist()
+bar_colors = [ROI_COLORS.get(r, "#888888") for r in roi_order]
+
+fig_ov, axes_ov = plt.subplots(1, 2, figsize=(14, 5))
+fig_ov.suptitle("ROI overview — cells and sessions per region",
+                fontsize=12, fontweight="bold", y=1.01)
+
+x = np.arange(len(roi_order))
+
+# n_cells
+axes_ov[0].bar(x, per_roi_summary["n_cells"], color=bar_colors, edgecolor="white", linewidth=0.6)
+axes_ov[0].set_xticks(x)
+axes_ov[0].set_xticklabels(roi_order, rotation=45, ha="right", fontsize=9)
+axes_ov[0].set_ylabel("Number of cells", fontsize=10)
+axes_ov[0].set_title("Cells per ROI", fontsize=11)
+for xi, v in enumerate(per_roi_summary["n_cells"]):
+    axes_ov[0].text(xi, v + 2, str(v), ha="center", va="bottom", fontsize=8)
+axes_ov[0].axhline(0, color="black", linewidth=0.5)
+axes_ov[0].spines[["top", "right"]].set_visible(False)
+
+# n_subjects (sessions)
+axes_ov[1].bar(x, per_roi_summary["n_subjects"], color=bar_colors, edgecolor="white", linewidth=0.6)
+axes_ov[1].set_xticks(x)
+axes_ov[1].set_xticklabels(roi_order, rotation=45, ha="right", fontsize=9)
+axes_ov[1].set_ylabel("Number of sessions (subjects)", fontsize=10)
+axes_ov[1].set_title("Sessions per ROI", fontsize=11)
+axes_ov[1].axhline(MIN_SUBJECTS_FOR_ANALYSIS, color="#e74c3c",
+                    linestyle="--", linewidth=1.2,
+                    label=f"analysis threshold (n={MIN_SUBJECTS_FOR_ANALYSIS})")
+for xi, v in enumerate(per_roi_summary["n_subjects"]):
+    axes_ov[1].text(xi, v + 0.4, str(v), ha="center", va="bottom", fontsize=12)
+axes_ov[1].legend(fontsize=8, frameon=False)
+axes_ov[1].spines[["top", "right"]].set_visible(False)
+
+fig_ov.tight_layout()
+step7_overview_out = os.path.join(roi_assignment_dir, "cells_step7_overview_per_roi.png")
+fig_ov.savefig(step7_overview_out, dpi=200, bbox_inches="tight")
+plt.close("all")
+print(f"Saved: {step7_overview_out}")
+
+
+# ---------- RSA-ready brain plot (same-task subjects + RSA ROIs only) ----------
+# Shows exactly the cells that RSA_DSR_ROIs_simple.py will use:
+#   - subject in all_sessions_dsrRSA_grouping_summary.json (completed same task)
+#   - alt_final_roi ∈ {EC, mPFC, mOFC, HC_anterior, HC_mid, PCC}
+import json as _json
+_grouping_json = os.path.join(output_dir, "all_sessions_dsrRSA_grouping_summary.json")
+if os.path.exists(_grouping_json):
+    with open(_grouping_json) as _f:
+        _rsa_subjects = set(int(s) for s in _json.load(_f).keys())
+else:
+    _rsa_subjects = set(df["subject"].unique())   # fallback: no task filter
+    print(f"[warning] {_grouping_json} not found — RSA plot uses all subjects")
+
+RSA_ROIS = ["EC", "mPFC", "mOFC", "HC_anterior", "HC_mid", "PCC"]
+df_rsa = df[df["alt_final_roi"].isin(RSA_ROIS) & df["subject"].isin(_rsa_subjects)].copy()
+
+# Count per ROI for legend labels
+rsa_roi_counts = df_rsa.groupby("alt_final_roi")["subject"].agg(
+    n_cells="size", n_subjects="nunique")
+
+fig_rsa = plt.figure(figsize=(14, 5))
+gb_rsa = plot_glass_brain(
+    None, display_mode="lyrz", figure=fig_rsa,
+    title=f"RSA-ready cells — same-task subjects only "
+          f"(n = {len(df_rsa)} cells / {df_rsa['subject'].nunique()} sessions)")
+for roi in RSA_ROIS:
+    s = df_rsa[df_rsa["alt_final_roi"] == roi]
+    if not len(s):
+        continue
+    coords = s[["MNI_x_final", "MNI_y_final", "MNI_z_final"]].to_numpy(float)
+    gb_rsa.add_markers(coords, marker_color=ROI_COLORS.get(roi, "#000"),
+                       marker_size=20)
+
+legend_rsa = []
+for roi in RSA_ROIS:
+    if roi not in rsa_roi_counts.index:
+        continue
+    nc = int(rsa_roi_counts.loc[roi, "n_cells"])
+    ns = int(rsa_roi_counts.loc[roi, "n_subjects"])
+    legend_rsa.append(Line2D([0], [0], marker="o", color="w",
+                              markerfacecolor=ROI_COLORS.get(roi, "#000"),
+                              markersize=9,
+                              label=f"{roi}  n={nc} cells / {ns} sess"))
+fig_rsa.legend(handles=legend_rsa, loc="lower center", ncol=3,
+               bbox_to_anchor=(0.5, -0.05), frameon=False, fontsize=9)
+
+step7_rsa_out_png = os.path.join(roi_assignment_dir,
+                                  "cells_step7_RSA_ready_cells.png")
+step7_rsa_out_pdf = os.path.join(roi_assignment_dir,
+                                  "cells_step7_RSA_ready_cells.pdf")
+fig_rsa.savefig(step7_rsa_out_png, dpi=200, bbox_inches="tight")
+fig_rsa.savefig(step7_rsa_out_pdf, bbox_inches="tight")
+plt.close("all")
+print(f"Saved: {step7_rsa_out_png}")
+print(f"Saved: {step7_rsa_out_pdf}")
 
 
 # ---------- Old-vs-new comparison ----------
@@ -1955,16 +2220,9 @@ else:
 # derivatives/ROI_assignment/ so downstream code doesn't have to sift
 # through them.
 
-# `alt_final_roi` — the column name that downstream analysis scripts look
-# for. Set to the atlas ROI name when that ROI has >= MIN_SUBJECTS_FOR_
-# ANALYSIS distinct subjects; NaN otherwise, so under-covered ROIs
-# (Thalamus/Amygdala/Insula/Visual/medial_CC/leftover) are automatically
-# excluded from analyses that filter on this column.
-_subj_counts = df.groupby("atlas_roi")["subject"].nunique()
-_analysis_rois = set(_subj_counts[_subj_counts >= MIN_SUBJECTS_FOR_ANALYSIS].index)
-_analysis_rois.discard("leftover")   # never treat leftover as a real ROI
-df["alt_final_roi"] = df["atlas_roi"].where(
-    df["atlas_roi"].isin(_analysis_rois), other=np.nan)
+# `alt_final_roi` was already assigned in step 7 (the RSA-ready plot
+# needs it); see the comment there for the >= MIN_SUBJECTS_FOR_ANALYSIS
+# rule.
 
 FINAL_KEEP_COLS = [
     # identifiers
@@ -2060,3 +2318,125 @@ if os.path.exists(old_path_ref):
 
 print(f"\nAll audit / plots / intermediate tables: {roi_assignment_dir}")
 print(f"Canonical table for analyses:            {FINAL_TABLE_OUT}")
+
+
+# =============================================================================
+# STEP 8 — WHAT CHANGED vs THE PREVIOUS RUN OF THIS SCRIPT
+# =============================================================================
+# Diff against `REFERENCE_TABLE` (an archived copy of this script's own
+# previous output) on the SAME columns downstream analyses consume:
+# `alt_final_roi` (what `mc.analyse.roi_relabel.relabel_per_cell` reads)
+# and `MNI_*_final`. Two questions are answered:
+#   (1) how many cells landed in a different final ROI, and which?
+#   (2) did the coordinates just move a few mm (expected: better micro
+#       localisation) or jump somewhere else entirely (a red flag)?
+
+print("\n\n=========================================================")
+print(" STEP 8 — change report vs previous run")
+print("=========================================================\n")
+
+step8_diff_out = os.path.join(roi_assignment_dir,
+                              "cells_step8_change_vs_previous_run.csv")
+
+if not os.path.exists(REFERENCE_TABLE):
+    print(f"[reference table not found at {REFERENCE_TABLE} — skipping]")
+else:
+    print(f"Reference: {REFERENCE_TABLE}")
+    ref = pd.read_csv(REFERENCE_TABLE)
+
+    CELL_KEY = ["subject", "cell idx", "electrode label"]
+
+    def _cellkey(frame):
+        return frame[CELL_KEY].astype(str).agg("|".join, axis=1)
+
+    ref = ref.assign(_key=_cellkey(ref)).set_index("_key")
+    new = df.assign(_key=_cellkey(df)).set_index("_key")
+
+    shared = new.index.intersection(ref.index)
+    print(f"  {len(ref)} reference cells, {len(new)} new cells, "
+          f"{len(shared)} matched by subject|cell idx|electrode label.")
+    if len(shared) < len(new):
+        print(f"  [{len(new) - len(shared)} new cells absent from reference]")
+
+    r = ref.loc[shared]
+    n = new.loc[shared]
+
+    # ---- (1) coordinate shifts -------------------------------------
+    shift = np.linalg.norm(
+        n[["MNI_x_final", "MNI_y_final", "MNI_z_final"]].to_numpy(float)
+        - r[["MNI_x_final", "MNI_y_final", "MNI_z_final"]].to_numpy(float),
+        axis=1)
+
+    comp = pd.DataFrame({
+        "subject": n["subject"].to_numpy(),
+        "Subject Label": n["Subject Label"].to_numpy(),
+        "Recording Site": n["Recording Site"].to_numpy(),
+        "electrode label": n["electrode label"].to_numpy(),
+        "cell idx": n["cell idx"].to_numpy(),
+        "old_coord_source": r["coord_source"].to_numpy(),
+        "new_coord_source": n["coord_source"].to_numpy(),
+        "old_x": r["MNI_x_final"].to_numpy(), "new_x": n["MNI_x_final"].to_numpy(),
+        "old_y": r["MNI_y_final"].to_numpy(), "new_y": n["MNI_y_final"].to_numpy(),
+        "old_z": r["MNI_z_final"].to_numpy(), "new_z": n["MNI_z_final"].to_numpy(),
+        "coord_shift_mm": shift,
+        "old_atlas_roi": r["atlas_roi"].astype(str).to_numpy(),
+        "new_atlas_roi": n["atlas_roi"].astype(str).to_numpy(),
+        "old_alt_final_roi": r["alt_final_roi"].astype(str).to_numpy(),
+        "new_alt_final_roi": n["alt_final_roi"].astype(str).to_numpy(),
+    }, index=shared)
+
+    moved = comp[comp["coord_shift_mm"] > 0.01]
+    print(f"\n--- Coordinates ---")
+    print(f"  {len(moved)} / {len(comp)} cells moved at all.")
+    if len(moved):
+        print(f"  shift (mm): median {moved['coord_shift_mm'].median():.2f}, "
+              f"mean {moved['coord_shift_mm'].mean():.2f}, "
+              f"max {moved['coord_shift_mm'].max():.2f}")
+        print("\n  Per subject (only subjects whose coords moved):")
+        print(moved.groupby(["Subject Label", "old_coord_source",
+                             "new_coord_source"])["coord_shift_mm"]
+                   .agg(n="size", median="median", mean="mean", max="max")
+                   .round(2).to_string())
+        # Sanity flag: a corrected micro position should be a few mm, not
+        # a different structure.
+        BIG_SHIFT_MM = 10.0
+        big = moved[moved["coord_shift_mm"] > BIG_SHIFT_MM]
+        print(f"\n  Cells shifted > {BIG_SHIFT_MM} mm: {len(big)}"
+              + ("  <-- INSPECT THESE" if len(big) else "  (none — all shifts"
+                 " are small local corrections, as expected)"))
+        if len(big):
+            print(big[["Subject Label", "electrode label", "cell idx",
+                       "old_x", "old_y", "old_z", "new_x", "new_y", "new_z",
+                       "coord_shift_mm", "old_alt_final_roi",
+                       "new_alt_final_roi"]]
+                  .round(2).to_string(index=False))
+
+    # ---- (2) ROI label changes -------------------------------------
+    print(f"\n--- Final ROI (`alt_final_roi`, the column used by "
+          f"mc.analyse.roi_relabel.relabel_per_cell) ---")
+    counts = pd.DataFrame({
+        "old": comp["old_alt_final_roi"].value_counts(),
+        "new": comp["new_alt_final_roi"].value_counts(),
+    }).fillna(0).astype(int)
+    counts["delta"] = counts["new"] - counts["old"]
+    print(counts.sort_values("new", ascending=False).to_string())
+
+    changed = comp[comp["old_alt_final_roi"] != comp["new_alt_final_roi"]]
+    print(f"\n  {len(changed)} / {len(comp)} cells changed `alt_final_roi`.")
+    if len(changed):
+        print("\n  Transitions (old -> new):")
+        print(changed.groupby(["old_alt_final_roi", "new_alt_final_roi"])
+                     .agg(n_cells=("cell idx", "size"),
+                          n_subjects=("subject", "nunique"),
+                          median_shift_mm=("coord_shift_mm", "median"))
+                     .round(2)
+                     .sort_values("n_cells", ascending=False)
+                     .to_string())
+        print("\n  Per subject:")
+        print(changed.groupby("Subject Label")
+                     .agg(n_changed=("cell idx", "size"),
+                          median_shift_mm=("coord_shift_mm", "median"))
+                     .round(2).to_string())
+
+    comp.to_csv(step8_diff_out, index=False)
+    print(f"\nSaved per-cell change table: {step8_diff_out}")

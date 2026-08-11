@@ -53,9 +53,9 @@ combo_models = {'loc_dsr': ['location', 'dsr_old'],
 #   'final_roi'     -> original labelling
 #   'alt_final_roi' -> alternative labelling (ACC split by y-cutoff,
 #                      OFC11+OFC13+ventral_ACC collapsed into medialOFC)
-ROI_LABEL_COLUMN = 'final_roi'
-ACC_ROI_LABELS   = ('ACC',)   # ROI value(s) treated as ACC for this RSA
-ROI_TABLE_PATH   = os.path.join(DATA_DIR, 'neurons_with_final_roi_labels.csv')
+ROI_LABEL_COLUMN = 'alt_final_roi'
+ACC_ROI_LABELS   = ('mPFC',)
+ROI_TABLE_PATH   = os.path.join(DATA_DIR, 'neurons_with_ROI_labels.csv')
 
 
 

@@ -14,11 +14,29 @@ Pipeline per cell:
   3. Compute cross-validated spatial consistency at every lag in
      `LAGS_DEG`. Two complementary CV variants per cell:
        * fixed_lag_r — at PRE-SPECIFIED lag(s) per ROI (a-priori).
-                       ACC → 30°/60°.  HC_anterior → 0°.  HC_mid → 0°/330°.
+                       mPFC → 30°/60°. HC_anterior/mid → 0°/330°.
                        For all other ROIs we don't fix a lag (NaN).
        * free_peak_r — cell picks its own peak on training grids,
                        validated on held-out grid. ORIGINAL control.
   4. Permutation null via per-rep circular shifts of the location series.
+
+RELATION TO `per_lag_encoding.py`
+  Shared: phase residualisation, twelve lagged 9-location rate maps,
+  leave-one-group-out validation, dwell-weighted Pearson correlations, and
+  predicted-lag vs-zero / predicted-vs-other-lag population tests.
+
+  Unique here (robustness analysis): configurations are paired into
+  coverage-maximising grid groups; the held-out group is correlated with
+  each training group separately and those r values are averaged; at least
+  five shared locations are required; and each repetition receives an
+  independent circular shift in the permutation null. This analysis also
+  includes a training-selected free-peak control and rate-map examples.
+
+  By contrast, the manuscript-primary no-control per-lag analysis leaves out
+  single configurations, pools all training configurations into one
+  dwell-weighted predicted map, requires three shared locations, and shifts
+  the held-out configuration series once per fold/permutation. Thus paired
+  configurations are an important difference, but not the only difference.
 
 Per-ROI statistical tests:
   (a) one-sample t-test of fixed-lag r > 0.
@@ -30,7 +48,7 @@ Plots written under <OUT_DIR>:
   * per_roi_stats.csv          — (a)/(b)/(c) results per ROI
   * roi_x_lag_overview.{pdf,png} — mean r-vs-0 t-stat per (ROI, lag),
                                     with stars for FDR sig.
-  * fixed_vs_free_comparison.{pdf,png} — for ACC, HC_anterior, HC_mid:
+  * fixed_vs_free_comparison.{pdf,png} — for mPFC, HC_anterior, HC_mid:
                                           fixed-lag vs free-peak r.
   * rate_map_examples/<ROI>/   — one PDF per "good" cell (max spatial
                                   coverage), showing the per-CV-split
@@ -91,11 +109,11 @@ RELOAD_FROM     = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys
 # mc.analyse.roi_relabel.relabel_per_cell. Set to None to disable.
 RELABEL_FROM    = ("/Users/xpsy1114/Documents/projects/multiple_clocks/"
                     "data/ephys_humans/derivatives/"
-                    "neurons_with_final_roi_labels.csv")
+                    "neurons_with_ROI_labels.csv")
 # RELABEL_FROM  = None
 
 # Cells / data --------------------------------------------------------
-CELL_SET        = "all_in_roi_table"     # 'rsa' or 'all_in_roi_table' or 'no_rsa_cells'
+CELL_SET        = "all_in_roi_table"     # 'rsa', 'not_in_rsa', or 'all_in_roi_table'
 SUBJECTS        = "all"                  # 'all' or list[int]
 ROIS_KEEP       = None                   # None = all in registry
 TRIALS          = "all_minus_explore"    # passed to filter_data
@@ -109,14 +127,15 @@ WEIGHTED_CORRELATION   = True
 MIN_DWELL_BINS         = 25
 MIN_SHARED_LOCS        = 5
 N_PEAKS_FREE           = 1                         # for free-peak control
-N_PERMUTATIONS         = 10
+N_PERMUTATIONS         = 1000
 RUN_PERMUTATIONS       = True
 RANDOM_SEED            = 42
 N_JOBS                 = -1
 # A-priori per-ROI predicted lags (FIXED-lag analysis) ---------------
-# ACC: action / planning lookahead.  HC: current location / place.
+# mPFC: action / planning lookahead. HC: current location / place.
 ROI_PREDICTED_LAGS_DEG = {
-    "ACC":         (30, 60),
+    "mPFC":        (30, 60),
+    "ACC":         (30, 60),  # backwards compatibility for cached runs
     "HC_anterior": (0, 330),
     "HC_mid":      (0, 330),
 }
@@ -126,9 +145,7 @@ ROI_PREDICTED_LAGS_DEG = {
 # `predicted-lag` tests above by showing exactly where the signal sits.
 SINGLE_LAGS_FOR_TESTS = [0, 30, 60, 330]
 
-# Display-name overrides used in figure labels ONLY. Data columns keep
-# their original ROI keys. Per CLAUDE.md, 'ACC' is written as 'mPFC' in
-# manuscript figures.
+# Display-name override retained for cached runs that still use `ACC`.
 ROI_DISPLAY_NAMES = {"ACC": "mPFC"}
 def _disp(roi):
     return ROI_DISPLAY_NAMES.get(roi, roi)
@@ -141,19 +158,19 @@ N_EXAMPLE_CELLS_PER_ROI         = 5         # top-N rate-map example PDFs
                                             # per (ROI, predicted-lag)
 EXAMPLE_MIN_VALID_LOCATIONS     = 4         # accept if mean rate map has
                                             # ≥ this many finite locations
-EXAMPLE_FOCUS_ROIS              = ["ACC", "HC_anterior", "HC_mid"]
+EXAMPLE_FOCUS_ROIS              = ["mPFC", "HC_anterior", "HC_mid"]
 DPI                              = 300
 CM                               = 1 / 2.54
 FONT_TICK, FONT_AXIS, FONT_BIG   = 9, 10, 11
 
-# z-MNI gradient analysis (ACC) --------------------------------------
-ZMNI_GRADIENT_ROI               = "ACC"
+# z-MNI gradient analysis (mPFC) -------------------------------------
+ZMNI_GRADIENT_ROI               = "mPFC"
 ZMNI_GRADIENT_SUBSET_LAGS_DEG   = (0, 30, 60)   # "early-future" lags
 ZMNI_GRADIENT_TOP_K_PER_SUBJECT = 1               # per subject per lag
 
 # Colour scheme — canonical CLAUDE.md mapping. Source of truth is
 # `mc.plotting.cell_results.SHOWGIRL2_DISCRETE` + `ROI_COLORS_SHOWGIRL2`.
-# ACC = idx 1 = dark teal-green ("#448363").
+# mPFC = idx 1 = dark teal-green ("#448363").
 from mc.plotting.cell_results import (
     SHOWGIRL2_DISCRETE as _SHOWGIRL2,
     ROI_COLORS_SHOWGIRL2 as _ROI_IDX,
@@ -1088,7 +1105,7 @@ def plot_roi_x_lag_table_heatmap(roi_x_lag, save_stem):
 
 
 # ====================================================================
-# ACC z-MNI gradient across lags
+# mPFC z-MNI gradient across lags
 # ====================================================================
 def _per_subject_lag_z_matrix(per_cell, roi, lags, top_k=1):
     """For each subject in `roi`, pick the top-k cells by per-lag r at
@@ -1151,7 +1168,7 @@ def _linear_trend_test(Z, lag_positions):
 
 
 def plot_zmni_gradient(per_cell, save_stem):
-    """Two-panel z-MNI gradient for ACC neurons across lags.
+    """Two-panel z-MNI gradient for mPFC neurons across lags.
     LEFT  — predicted-lag subset ZMNI_GRADIENT_SUBSET_LAGS_DEG (e.g. 0/30/60)
     RIGHT — all lags in LAGS_DEG
     Each panel: per-subject grey lines + across-subject mean ± SEM + the

@@ -32,10 +32,21 @@ Significance toolkit lives at the bottom (`ttest_mean_r_vs_zero`,
 This module is pure compute. No IO, no plotting.
 
 A-priori per-ROI predicted lags:
-  * ACC          → 30° or 60° (action / planning lookahead)
-  * HC_anterior  → 0°         (current location / place)
+  * mPFC         → 30° or 60° (action / planning lookahead)
+  * HC_anterior  → 0° or 330° (current / just-past location)
   * HC_mid       → 0° or 330° (current ± one bin)
   * any other    → no a-priori; report free-peak control
+
+RELATION TO `per_lag_encoding.py`
+  Both analyses use phase-residualised lagged location rate maps and
+  leave-one-group-out weighted-correlation validation. This module is the
+  paired-grid-group robustness estimator: it correlates a held-out group
+  separately with each training group (then averages r), requires at least
+  five shared locations, and independently shifts each repetition in the
+  permutation null. `per_lag_encoding.py` instead leaves out single task
+  configurations, pools all training configurations into one predicted map,
+  uses a three-location threshold, and shifts the held-out configuration
+  series once per fold/permutation. The two are related but not identical.
 
 @author: Svenja Küchenhoff (refactor: Claude)
 """
@@ -76,8 +87,9 @@ RANDOM_SEED          = 42
 # A-priori per-ROI predicted lags (degrees). Used by the FDR-corrected
 # fixed-lag analysis. Anything else falls back to free-peak control.
 ROI_PREDICTED_LAGS_DEG = {
-    'ACC':         (30, 60),
-    'HC_anterior': (0,),
+    'mPFC':        (30, 60),
+    'ACC':         (30, 60),  # backwards compatibility for cached callers
+    'HC_anterior': (0, 330),
     'HC_mid':      (0, 330),
 }
 
@@ -357,7 +369,7 @@ def cv_fixed_lag(neurons, locations, grid_group_idx,
                  n_loc=N_LOC):
     """Leave-one-grid-group-out CV at PRE-SPECIFIED lag(s). No peak
     selection on the training data — the lag is your a-priori prediction
-    (e.g. 30/60° for ACC, 0° for HC).
+    (e.g. 30/60° for mPFC, 0/330° for HC).
 
     Also returns the cross-validated r at every lag in `lags_deg` so you
     can show per-cell tuning curves alongside.

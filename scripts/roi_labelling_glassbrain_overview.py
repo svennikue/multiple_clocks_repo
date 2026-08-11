@@ -28,7 +28,7 @@ from mc.plotting.cell_results import (
 
 DEFAULT_ROI_TABLE = ("/Users/xpsy1114/Documents/projects/multiple_clocks/"
                      "data/ephys_humans/derivatives/"
-                     "neurons_with_final_roi_labels.csv")
+                     "neurons_with_ROI_labels.csv")
 
 # Colours for included ROIs (canonical CLAUDE.md mapping + extras)
 def _col(roi):
@@ -44,8 +44,8 @@ def _disp(roi):
     return ROI_DISPLAY_NAMES.get(roi, roi)
 
 
-ROIS_ORDER = ["EC", "medialOFC", "ACC", "HC_anterior", "HC_mid",
-                "Parahippocampal", "PCC", "Precuneus"]
+ROIS_ORDER = ["EC", "mOFC", "mPFC", "HC_anterior", "HC_mid",
+                "PHC", "PCC"]
 
 
 def draw(roi_table: Path, out_dir: Path):

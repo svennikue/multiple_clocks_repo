@@ -1,38 +1,23 @@
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Quick diagnostic — leave-N-out control-regressor dropout for the DSR RSA.
+Control-regressor dropout for DSR RSA.
 
-Enumerates every subset of `CONTROLS` (all sizes from 0 to len(CONTROLS)),
-crosses each subset with each DSR variant in `DSR_VARIANTS`, then runs
-`RSA_DSR_ROIs_simple.py` as a subprocess with these custom combos at
-`N_PERMS` permutations. Heavy diagnostic outputs (glassbrains, per-cell
-RDM diagnostics, pub figures) are disabled so the run finishes fast.
+Loads the pre-computed per-pair RDMs from a saved run (rdms/rdms_<ROI>.npz),
+then re-fits OLS for every subset of CONTROLS × DSR_VARIANTS.  No permutations,
+no subprocess — just fast re-fitting of the regression on the already-saved data.
 
-After the subprocess completes, this script:
-  * loads the combo results,
-  * applies BH-FDR within each (control-subset × DSR-variant) family
-    across the 7 ROIs (mirroring `confirmatory_fdr_per_combo.csv`),
-  * extracts an ACC-focused pivot,
-  * draws a sorted heatmap of ACC q-vals per control subset × DSR variant.
+Outputs go into <RUN_DIR>/dropout_analysis/:
+  dropout_results.csv          — beta + t-stat per (control-subset × DSR variant)
+  dropout_heatmap_beta.pdf/png — sorted heatmap of DSR betas
+  dropout_line_plot.pdf/png    — mean beta vs. n_controls added
 
-EDIT and re-run:
-  * `CONTROLS`     — base set of control regressor names
-  * `DSR_VARIANTS` — DSR sub-models to test
-  * `N_PERMS`      — perm count for the subprocess
-  * `TARGET_ROI`   — which ROI's pivot to render
-
-Outputs land in:
-  DATA_DIR/group/DSR_RSA_simple_ROI/<YYYY-MM-DD_HH-MM-SS>_dropout/
-
-@author: Svenja Küchenhoff
+Edit RELOAD_RUN to point at a different run folder.
 """
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
 from datetime import datetime
 from itertools import combinations
 from pathlib import Path
@@ -42,196 +27,184 @@ import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import mc
 
-
-# ── User-configurable settings ────────────────────────────────────────
-REPO = Path('/Users/xpsy1114/Documents/projects/multiple_clocks/multiple_clocks_repo')
-DATA = Path('/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives')
-RSA_SCRIPT = REPO / 'scripts/RSA_DSR_ROIs_simple.py'
-OUT_BASE = DATA / 'group/DSR_RSA_simple_ROI'
-
-CONTROLS = ['state', 'location', 'l2_norm',
-             'bttn_curr', 'bttn_next', 'reward_path']
+# ── Settings ──────────────────────────────────────────────────────────
+RELOAD_RUN   = '2026-07-30_11-11-36'
+TARGET_ROI   = 'mPFC'
+TEST         = 'split_halves_z'          # data key suffix in the .npz
+MODEL_TEST   = 'split_halves'            # model key suffix (no _z)
 DSR_VARIANTS = ['dsr_fmri', 'dsr_fmri_fut', 'dsr_fmri_informed']
+CONTROLS     = ['state', 'location', 'l2_norm', 'bttn_curr', 'bttn_next', 'reward_path']
 
-N_PERMS = 50
-TARGET_ROI = 'ACC'
-PRIMARY_TEST = 'split_halves_z'
-ALPHA = 0.05
+DATA_DIR = Path('/Users/xpsy1114/Documents/projects/multiple_clocks/data'
+                '/ephys_humans/derivatives')
+RUN_DIR  = DATA_DIR / 'group/DSR_RSA_simple_ROI' / RELOAD_RUN
+OUT_DIR  = RUN_DIR / 'dropout_analysis'
+OUT_DIR.mkdir(exist_ok=True)
 
-# 7 ROIs over which BH-FDR is applied per (combo × DSR variant) family.
-# Must match what RSA_DSR_ROIs_simple.py actually runs.
-ALL_ROIS = ['ACC', 'EC', 'Parahippocampal',
-             'HC_anterior', 'HC_mid', 'medialOFC', 'PCC', 'Precuneus']
+# ── Colours ────────────────────────────────────────────────────────────
+_sg2 = mc.plotting.cell_results.SHOWGIRL2_DISCRETE
+DSR_COLORS = {
+    'dsr_fmri':          _sg2[1],   # mPFC colour
+    'dsr_fmri_fut':      _sg2[4],   # mOFC colour
+    'dsr_fmri_informed': _sg2[2],   # HC_mid colour
+}
+DSR_LABELS = {
+    'dsr_fmri':          'DSR (fMRI)',
+    'dsr_fmri_fut':      'DSR future',
+    'dsr_fmri_informed': 'DSR informed',
+}
 
+# ── Load saved per-pair RDMs ──────────────────────────────────────────
+npz_path = RUN_DIR / f'rdms/rdms_{TARGET_ROI}.npz'
+if not npz_path.exists():
+    raise FileNotFoundError(f"No saved RDMs at {npz_path}. "
+                            "Run RSA_DSR_ROIs_simple.py first.")
+npz = np.load(npz_path, allow_pickle=True)
 
-# ── Build the combo dict ───────────────────────────────────────────────
-def build_combos(controls, dsr_variants):
-    out = {}
-    for size in range(len(controls) + 1):
-        for subset in combinations(controls, size):
-            sub = list(subset)
-            ctrl_tag = '_'.join(sub) if sub else 'NOCTRL'
-            for dsr in dsr_variants:
-                out[f'{ctrl_tag}__{dsr}'] = sub + [dsr]
-    return out
+y = npz[f'data__{TEST}']   # neural RDM pairs (N_pairs,)
 
-
-def bh_fdr(pvals):
-    p = np.asarray(pvals, dtype=float)
-    q = np.full_like(p, np.nan)
-    ok = np.isfinite(p)
-    if not ok.any():
-        return q
-    pv = p[ok]; n = pv.size
-    order = np.argsort(pv)
-    ranked = pv[order] * n / (np.arange(n) + 1)
-    ranked = np.minimum.accumulate(ranked[::-1])[::-1]
-    qok = np.empty(n); qok[order] = np.clip(ranked, 0.0, 1.0)
-    q[ok] = qok
-    return q
+def _rdm(name):
+    return npz[f'model__{MODEL_TEST}__{name}'].astype(float)
 
 
-def stars(q):
-    if not np.isfinite(q): return ''
-    if q < 0.001: return '***'
-    if q < 0.01:  return '**'
-    if q < 0.05:  return '*'
-    if q < 0.10:  return '·'
-    return ''
+# ── OLS helper ────────────────────────────────────────────────────────
+def ols_betas_tstats(y, regressors):
+    """OLS of y ~ intercept + regressors.  Returns (betas, t_stats) sans intercept."""
+    X = np.column_stack([np.ones(len(y))] + [r.astype(float) for r in regressors])
+    betas, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
+    y_hat    = X @ betas
+    resid    = y - y_hat
+    mse      = np.dot(resid, resid) / max(len(y) - X.shape[1], 1)
+    XtXinv   = np.linalg.pinv(X.T @ X)
+    se       = np.sqrt(mse * np.diag(XtXinv))
+    t_stats  = betas / np.where(se > 0, se, np.nan)
+    return betas[1:], t_stats[1:]   # drop intercept
 
 
-def main():
-    combos = build_combos(CONTROLS, DSR_VARIANTS)
-    print(f"Built {len(combos)} (control-subset × DSR-variant) combos "
-          f"from {len(CONTROLS)} controls × {len(DSR_VARIANTS)} DSR variants")
-    n_subsets = len(combos) // len(DSR_VARIANTS)
-    print(f"  = {n_subsets} control subsets × {len(DSR_VARIANTS)} DSR variants")
-
-    run_tag = datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '_dropout'
-    out_dir = OUT_BASE / run_tag
-    out_dir.mkdir(parents=True, exist_ok=True)
-    combos_json = out_dir / 'combos.json'
-    with open(combos_json, 'w') as f:
-        json.dump(combos, f, indent=2)
-
-    # Snapshot the diagnostic settings for reproducibility.
-    with open(out_dir / 'diagnostic_config.json', 'w') as f:
-        json.dump({
-            'controls':       CONTROLS,
-            'dsr_variants':   DSR_VARIANTS,
-            'n_perms':        N_PERMS,
-            'target_roi':     TARGET_ROI,
-            'primary_test':   PRIMARY_TEST,
-            'alpha':          ALPHA,
-            'all_rois':       ALL_ROIS,
-            'n_combos':       len(combos),
-            'n_subsets':      n_subsets,
-            'run_tag':        run_tag,
-            'rsa_script':     str(RSA_SCRIPT),
-        }, f, indent=2)
-
-    env = os.environ.copy()
-    env['RSA_DROPOUT_COMBOS_JSON'] = str(combos_json)
-    env['RSA_DROPOUT_N_PERMS']     = str(N_PERMS)
-    env['RSA_DROPOUT_OUTDIR']      = str(out_dir)
-    env['RSA_DROPOUT_DISABLE_HEAVY'] = '1'
-
-    print(f"\nLaunching RSA subprocess (this may take a while — "
-          f"{len(combos)} combos × {len(ALL_ROIS)} ROIs × {N_PERMS} perms)…")
-    print(f"  python {RSA_SCRIPT}")
-    print(f"  output dir = {out_dir}\n")
-    result = subprocess.run([sys.executable, str(RSA_SCRIPT)], env=env)
-    if result.returncode != 0:
-        print(f"\nERROR: subprocess returned code {result.returncode}.")
-        return 1
-
-    # Load + post-process ----------------------------------------------
-    combo_csv = out_dir / 'results_summary_combos.csv'
-    if not combo_csv.exists():
-        print(f"\nERROR: expected {combo_csv} but it doesn't exist.")
-        return 1
-    df = pd.read_csv(combo_csv)
-    df = df[df.test.eq(PRIMARY_TEST)
-             & df.sub_model.isin(DSR_VARIANTS)].copy()
-    print(f"\nLoaded {len(df)} rows from {combo_csv.name}")
-
-    # Per-(combo, DSR-variant) BH-FDR across 7 ROIs --------------------
-    df['q_fdr_dropout'] = np.nan
-    for (combo, sm), g in df.groupby(['combo', 'sub_model'], sort=False):
-        df.loc[g.index, 'q_fdr_dropout'] = bh_fdr(
-            g['p_perm'].to_numpy(dtype=float))
-    df.to_csv(out_dir / 'all_combos_results.csv', index=False)
-    print(f"Wrote all_combos_results.csv")
-
-    # ACC pivot --------------------------------------------------------
-    acc = df[df.roi == TARGET_ROI].copy()
-    # Re-derive control subset label (everything up to the '__' separator).
-    acc['ctrl_subset'] = acc['combo'].str.rsplit('__', n=1).str[0]
-    acc['n_ctrls'] = acc['ctrl_subset'].apply(
-        lambda s: 0 if s == 'NOCTRL' else len(s.split('_')))
-    pivot = acc.pivot_table(
-        index=['n_ctrls', 'ctrl_subset'],
-        columns='sub_model',
-        values=['beta', 'p_perm', 'q_fdr_dropout'],
-        aggfunc='first',
-    )
-    pivot.columns = [f'{m}_{sm}' for m, sm in pivot.columns]
-    q_cols = [c for c in pivot.columns if c.startswith('q_fdr_dropout_')]
-    pivot['min_q_across_dsr'] = pivot[q_cols].min(axis=1, skipna=True)
-    pivot = pivot.sort_values(['min_q_across_dsr', 'n_ctrls'])
-    pivot.to_csv(out_dir / f'{TARGET_ROI}_pivot.csv')
-    print(f"Wrote {TARGET_ROI}_pivot.csv  ({len(pivot)} rows)")
-
-    # Heatmap ---------------------------------------------------------
-    H = pivot[[f'q_fdr_dropout_{sm}' for sm in DSR_VARIANTS]].to_numpy()
-    fig_h = max(6.0, 0.18 * H.shape[0])
-    fig, ax = plt.subplots(figsize=(5, fig_h), constrained_layout=True)
-    im = ax.imshow(H, aspect='auto', cmap='Reds_r', vmin=0, vmax=0.3,
-                   interpolation='nearest')
-    ax.set_xticks(range(len(DSR_VARIANTS)))
-    ax.set_xticklabels(DSR_VARIANTS, rotation=20, ha='right', fontsize=8)
-    row_labels = []
-    for (n_ct, ctrl), _ in pivot.iterrows():
-        if ctrl == 'NOCTRL':
-            row_labels.append(f'[0] (no ctrls)')
-        else:
-            row_labels.append(f'[{n_ct}] ' + ctrl.replace('_', '+'))
-    ax.set_yticks(range(len(row_labels)))
-    ax.set_yticklabels(row_labels, fontsize=5)
-    for i in range(H.shape[0]):
-        for j in range(H.shape[1]):
-            s = stars(H[i, j])
-            if s:
-                col = 'white' if H[i, j] < 0.05 else 'black'
-                ax.text(j, i, s, ha='center', va='center',
-                        fontsize=6, color=col, fontweight='bold')
-    ax.set_xlabel('DSR sub-model')
-    ax.set_title(
-        f'{TARGET_ROI} — BH-FDR q across 7 ROIs per (control-subset × DSR)\n'
-        f'{N_PERMS} perms, sorted by best q;  ·=q<.10  *<.05  **<.01  ***<.001',
-        fontsize=9,
-    )
-    cb = fig.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
-    cb.set_label('q_FDR (within-combo, 7 ROIs)', fontsize=8)
-    cb.ax.tick_params(labelsize=7)
-    for ext in ('pdf', 'png'):
-        fig.savefig(out_dir / f'{TARGET_ROI}_dropout_heatmap.{ext}',
-                    dpi=300, bbox_inches='tight')
-    plt.close(fig)
-    print(f"Wrote {TARGET_ROI}_dropout_heatmap.{{pdf,png}}")
-
-    # Print the top-N best ACC results for the user ------------------
-    print(f"\nTop-15 control subsets for {TARGET_ROI} (sorted by best q across DSR variants):")
-    top = pivot.head(15)
-    for sm in DSR_VARIANTS:
-        b_col = f'beta_{sm}'; q_col = f'q_fdr_dropout_{sm}'
-        if b_col not in top.columns: continue
-    show_cols = [f'{m}_{sm}' for sm in DSR_VARIANTS for m in ('beta', 'q_fdr_dropout')]
-    print(top[show_cols].round(4).to_string())
-    print(f"\nDone. All outputs under: {out_dir}")
-    return 0
+# ── Sanity-check against known saved result ───────────────────────────
+# ctrl_dsrFULL = state + location + bttn_curr + dsr_fmri → expected beta ≈ 0.044
+_check_regs  = [_rdm('state'), _rdm('location'), _rdm('bttn_curr'), _rdm('dsr_fmri')]
+_check_order = ['state', 'location', 'bttn_curr', 'dsr_fmri']
+_betas, _ = ols_betas_tstats(y, _check_regs)
+_dsr_beta  = _betas[_check_order.index('dsr_fmri')]
+print(f"[sanity] dsr_fmri beta in ctrl_dsrFULL = {_dsr_beta:.4f}  "
+      f"(expected ~0.044 from saved results)")
 
 
-if __name__ == '__main__':
-    sys.exit(main())
+# ── Enumerate all control subsets × DSR variants ──────────────────────
+rows = []
+for dsr in DSR_VARIANTS:
+    dsr_rdm = _rdm(dsr)
+    for n_ctrl in range(len(CONTROLS) + 1):
+        for subset in combinations(CONTROLS, n_ctrl):
+            ctrl_rdms = [_rdm(c) for c in subset]
+            all_names = [dsr] + list(subset)
+            all_rdms  = [dsr_rdm] + ctrl_rdms
+            betas, tstats = ols_betas_tstats(y, all_rdms)
+            rows.append({
+                'dsr_variant': dsr,
+                'controls':    '+'.join(subset) if subset else 'none',
+                'n_controls':  n_ctrl,
+                'dsr_beta':    float(betas[0]),
+                'dsr_t':       float(tstats[0]),
+            })
+
+results = pd.DataFrame(rows)
+results.to_csv(OUT_DIR / 'dropout_results.csv', index=False)
+print(f"Wrote dropout_results.csv  ({len(results)} rows)")
+
+
+# ── Heatmap: DSR beta per (control subset × DSR variant) ─────────────
+pivot = results.pivot_table(
+    index=['n_controls', 'controls'],
+    columns='dsr_variant',
+    values='dsr_beta',
+    aggfunc='first',
+)[DSR_VARIANTS]
+
+# sort rows by dsr_fmri beta descending
+pivot = pivot.sort_values('dsr_fmri', ascending=False)
+
+H = pivot.to_numpy()
+vmax = np.nanpercentile(np.abs(H), 98)
+
+row_labels = []
+for (n_ct, ctrl), _ in pivot.iterrows():
+    tag = 'no controls' if ctrl == 'none' else ctrl.replace('+', ' + ')
+    row_labels.append(f'[{n_ct}]  {tag}')
+
+col_labels = [DSR_LABELS[d] for d in DSR_VARIANTS]
+
+fig_h = max(6.0, 0.22 * H.shape[0])
+fig, ax = plt.subplots(figsize=(5.5, fig_h), constrained_layout=True)
+im = ax.imshow(H, aspect='auto', cmap='RdBu_r',
+               vmin=-vmax, vmax=vmax, interpolation='nearest')
+ax.set_xticks(range(len(DSR_VARIANTS)))
+ax.set_xticklabels(col_labels, rotation=20, ha='right', fontsize=9)
+ax.set_yticks(range(len(row_labels)))
+ax.set_yticklabels(row_labels, fontsize=6)
+
+# annotate cells with beta value
+for i in range(H.shape[0]):
+    for j in range(H.shape[1]):
+        val = H[i, j]
+        if np.isfinite(val):
+            txt_col = 'white' if abs(val) > 0.6 * vmax else 'black'
+            ax.text(j, i, f'{val:.3f}', ha='center', va='center',
+                    fontsize=5, color=txt_col)
+
+ax.set_xlabel('DSR variant', fontsize=10)
+ax.set_title(
+    f'{TARGET_ROI} — DSR β per control subset\n'
+    f'(sorted by dsr_fmri β descending; OLS on {len(y)} pairs)',
+    fontsize=9,
+)
+cb = fig.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
+cb.set_label('DSR β (OLS)', fontsize=8)
+cb.ax.tick_params(labelsize=7)
+
+for ext in ('pdf', 'png'):
+    fig.savefig(OUT_DIR / f'dropout_heatmap_beta.{ext}',
+                dpi=300, bbox_inches='tight')
+plt.close(fig)
+print(f"Wrote dropout_heatmap_beta.{{pdf,png}}")
+
+
+# ── Line plot: mean beta per n_controls ───────────────────────────────
+summary = (results.groupby(['dsr_variant', 'n_controls'])['dsr_beta']
+           .agg(['mean', 'sem']).reset_index())
+
+fig, ax = plt.subplots(figsize=(4.5, 3.0), constrained_layout=True)
+for dsr in DSR_VARIANTS:
+    sub = summary[summary['dsr_variant'] == dsr]
+    ax.plot(sub['n_controls'], sub['mean'],
+            color=DSR_COLORS[dsr], label=DSR_LABELS[dsr], lw=2, marker='o', ms=5)
+    ax.fill_between(sub['n_controls'],
+                    sub['mean'] - sub['sem'],
+                    sub['mean'] + sub['sem'],
+                    color=DSR_COLORS[dsr], alpha=0.2)
+ax.axhline(0, color='k', lw=0.8, ls='--')
+ax.set_xlabel('Number of control regressors in GLM', fontsize=10)
+ax.set_ylabel('DSR β (mean ± SEM across subsets)', fontsize=10)
+ax.set_title(f'{TARGET_ROI} — DSR effect by control count', fontsize=11)
+ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True))
+ax.legend(fontsize=8, frameon=False)
+
+for ext in ('pdf', 'png'):
+    fig.savefig(OUT_DIR / f'dropout_line_plot.{ext}',
+                dpi=300, bbox_inches='tight')
+plt.close(fig)
+print(f"Wrote dropout_line_plot.{{pdf,png}}")
+
+# ── Print top-10 control subsets by dsr_fmri beta ────────────────────
+top = (results[results['dsr_variant'] == 'dsr_fmri']
+       .sort_values('dsr_beta', ascending=False)
+       .head(10)[['controls', 'n_controls', 'dsr_beta', 'dsr_t']])
+print(f"\nTop-10 control subsets for {TARGET_ROI} dsr_fmri:")
+print(top.round(4).to_string(index=False))
+print(f"\nDone. Outputs in: {OUT_DIR}")

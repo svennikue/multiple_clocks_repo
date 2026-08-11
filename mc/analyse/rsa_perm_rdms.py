@@ -51,9 +51,23 @@ import mc.analyse.my_RSA as _rsa
 # ── Test variants produced (z-only) ──────────────────────────────────
 TEST_VARIANTS = ('split_halves_z', 'between_tasks_z')
 
+# Supported shuffle modes for null construction. Both preserve
+# within-trial autocorrelation (they only permute WHICH trial goes WHERE):
+#   'shift'          — each trial gets an independent circular shift in
+#                      time. Preserves per-cell per-config firing
+#                      preferences. Historical default.
+#   'shift_and_swap' — as 'shift', PLUS: within each cell, the trials are
+#                      pooled across configs and re-assigned to config
+#                      slots uniformly at random. Preserves per-config
+#                      trial counts and run1/run2 mask patterns, but
+#                      breaks any per-cell per-config firing preference.
+#                      Recommended for DSR-family regressors — see
+#                      `publication_md/method.md`.
+SHUFFLE_MODES = ('shift', 'shift_and_swap')
+
 # Method identifier baked into the cache fingerprint. Bump when the
-# shift logic, downsampling, or RDM construction changes — older pickles
-# will then be rejected as stale.
+# shift / swap logic, downsampling, or RDM construction changes — older
+# pickles will then be rejected as stale.
 PERM_METHOD = 'circular_shift_per_trial_v1'
 
 
@@ -103,15 +117,66 @@ def _shift_and_pool_one_cell_config(trials_all, run1_mask, run2_mask,
             _avg_then_downsample(None))
 
 
+def _swap_config_assignment(per_cfg, configs, rng):
+    """Return a new per_config dict where the cell's trials have been pooled
+    across configs and randomly re-assigned to configs. Per-config trial
+    counts and per-config run1/run2 masks are preserved, so downstream code
+    treats the result exactly like the original per_cfg. Only the mapping
+    trial-content → config is broken.
+    """
+    slabs = []
+    sizes = []
+    for cfg in configs:
+        entry = per_cfg.get(cfg)
+        if entry is None or entry['trials_all'].shape[0] == 0:
+            sizes.append(0)
+        else:
+            slabs.append(entry['trials_all'])
+            sizes.append(entry['trials_all'].shape[0])
+    if not slabs:
+        return per_cfg
+
+    all_trials = np.vstack(slabs)
+    perm = rng.permutation(all_trials.shape[0])
+    reshuffled = all_trials[perm]
+
+    out = {}
+    off = 0
+    for cfg, n in zip(configs, sizes):
+        entry = per_cfg.get(cfg)
+        if entry is None or n == 0:
+            out[cfg] = entry
+            continue
+        out[cfg] = {
+            'trials_all': reshuffled[off:off + n],
+            'run1_mask':  entry['run1_mask'],
+            'run2_mask':  entry['run2_mask'],
+        }
+        off += n
+    return out
+
+
 def _build_population_matrices(per_cell_trials, configs, rng,
-                                n_conds_per_config, n_bins_per_trial):
+                                n_conds_per_config, n_bins_per_trial,
+                                shuffle_mode='shift'):
     """Returns ``(pop_split, pop_between)`` for ONE perm (or empirical).
 
     ``pop_split``   shape: ``(n_cells, n_configs * n_conds_per_config * 2)``
                     layout: [run1_cfg0 ... run1_cfgN | run2_cfg0 ... run2_cfgN]
     ``pop_between`` shape: ``(n_cells, n_configs * n_conds_per_config)``
                     layout: [all_cfg0 ... all_cfgN]
+
+    ``shuffle_mode`` picks the null construction (see ``SHUFFLE_MODES``).
+    ``rng=None`` bypasses all shuffling — used to build the empirical
+    population matrix.
     """
+    if shuffle_mode not in SHUFFLE_MODES:
+        raise ValueError(
+            f"unsupported shuffle_mode {shuffle_mode!r}; "
+            f"expected one of {SHUFFLE_MODES}")
+
+    do_swap = (shuffle_mode == 'shift_and_swap') and (rng is not None)
+
     bin_per_cond = n_bins_per_trial // n_conds_per_config
     n_cells = len(per_cell_trials)
     n_cfg = len(configs)
@@ -122,6 +187,8 @@ def _build_population_matrices(per_cell_trials, configs, rng,
 
     for ci, cell_chunk in enumerate(per_cell_trials):
         per_cfg = cell_chunk['per_config']
+        if do_swap:
+            per_cfg = _swap_config_assignment(per_cfg, configs, rng)
         for cfg_i, cfg in enumerate(configs):
             slot_lo = cfg_i * n_conds_per_config
             slot_hi = slot_lo + n_conds_per_config
@@ -173,6 +240,7 @@ def build_perm_data_rdms(
     n_conds_per_config: int = 12,
     n_bins_per_trial: int = 360,
     verbose: bool = True,
+    shuffle_mode: str = 'shift',
 ):
     """Compute empirical + per-perm z-scored RDMs.
 
@@ -194,22 +262,30 @@ def build_perm_data_rdms(
 
     n_perms : int       number of permutations to compute.
     seed    : int       RNG seed (deterministic shifts → reproducible RDMs).
+    shuffle_mode : str  null construction; one of ``SHUFFLE_MODES``.
 
     Returns
     -------
     empirical : dict {TEST_VARIANT: (n_pairs,) np.ndarray}
     perms     : dict {TEST_VARIANT: (n_perms, n_pairs) np.ndarray}
     """
+    if shuffle_mode not in SHUFFLE_MODES:
+        raise ValueError(
+            f"unsupported shuffle_mode {shuffle_mode!r}; "
+            f"expected one of {SHUFFLE_MODES}")
+
     configs = list(configs)
     n_cfg = len(configs)
 
     rng = np.random.default_rng(seed)
 
-    # Empirical RDMs (no shift). Reuse the same code path with rng=None.
+    # Empirical RDMs (no shuffling). rng=None short-circuits both shift
+    # and swap in _build_population_matrices.
     pop_split, pop_between = _build_population_matrices(
         per_cell_trials, configs, rng=None,
         n_conds_per_config=n_conds_per_config,
         n_bins_per_trial=n_bins_per_trial,
+        shuffle_mode=shuffle_mode,
     )
     emp_split, emp_between = _rdm_pair_from_pop(
         _z_score_per_neuron(pop_split),
@@ -228,6 +304,7 @@ def build_perm_data_rdms(
             per_cell_trials, configs, rng=rng,
             n_conds_per_config=n_conds_per_config,
             n_bins_per_trial=n_bins_per_trial,
+            shuffle_mode=shuffle_mode,
         )
         rdm_split, rdm_between = _rdm_pair_from_pop(
             _z_score_per_neuron(pop_split),
@@ -256,13 +333,24 @@ def fingerprint(
     configs: Iterable[str],
     n_conds_per_config: int = 12,
     n_bins_per_trial: int = 360,
+    shuffle_mode: str = 'shift',
 ):
     """Build the dict baked into the perm-RDM pickle.
 
     Any caller-visible parameter that influences the data RDM goes in
     here; the cache loader insists on an exact match before reusing.
+
+    Backward compatibility: when ``shuffle_mode == 'shift'`` we OMIT the
+    key from the fingerprint so pre-existing caches (which were built
+    without the shuffle_mode field) still match. Any non-default mode is
+    baked in explicitly, so caches from different modes never alias.
     """
-    return {
+    if shuffle_mode not in SHUFFLE_MODES:
+        raise ValueError(
+            f"unsupported shuffle_mode {shuffle_mode!r}; "
+            f"expected one of {SHUFFLE_MODES}")
+
+    fp = {
         'roi':                str(roi),
         'cell_ids':           tuple(sorted(map(str, cell_ids))),
         'n_cells':            int(len(list(cell_ids))),
@@ -276,6 +364,9 @@ def fingerprint(
         'tests_included':     TEST_VARIANTS,
         'method':             PERM_METHOD,
     }
+    if shuffle_mode != 'shift':
+        fp['shuffle_mode'] = shuffle_mode
+    return fp
 
 
 def _diff_fingerprint(cached, want):
@@ -423,15 +514,17 @@ def load_or_build_perm_rdms(
             return cached['empirical'], cached['perms']
 
     # 3) Build fresh
+    shuffle_mode = fingerprint_data.get('shuffle_mode', 'shift')
     if verbose:
         print(f"[perm-rdm cache] BUILD: {n_perms} perms × "
               f"{fingerprint_data['n_cells']} cells in ROI "
-              f"{fingerprint_data['roi']!r}")
+              f"{fingerprint_data['roi']!r}  (shuffle_mode={shuffle_mode!r})")
     empirical, perms = build_perm_data_rdms(
         per_cell_trials, configs, n_perms, seed,
         n_conds_per_config=n_conds_per_config,
         n_bins_per_trial=n_bins_per_trial,
         verbose=verbose,
+        shuffle_mode=shuffle_mode,
     )
 
     os.makedirs(os.path.dirname(os.path.abspath(pickle_path)) or '.', exist_ok=True)

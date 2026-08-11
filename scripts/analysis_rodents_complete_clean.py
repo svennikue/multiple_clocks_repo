@@ -36,8 +36,8 @@ import mc.analyse.analyse_ephys_clean as ae
 DATA_FOLDER = '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_recordings_200423/'
 OUT_BASE    = f"{DATA_FOLDER}derivatives/rodent_DSR_RSA/"
 
-NUMBER_PHASE_NEURONS = 3
-N_CONDS_PER_CONFIG   = 12       # 12 conditions / task config (matches human pipeline)
+NUMBER_PHASE_NEURONS = 2
+N_CONDS_PER_CONFIG   = 8       # 12 conditions / task config (matches human pipeline)
 # Both DSR variants are computed for every recday:
 #   'dsr'      — rodent-native DSR (predictions.model_DSR, cosine RDM)
 #   'dsr_fmri' — human-pipeline DSR (mode-path rolled by bin, Hamming RDM;
