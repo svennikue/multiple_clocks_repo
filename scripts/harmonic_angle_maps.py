@@ -3,6 +3,11 @@
 """
 Group-level "preferred future-step" angle map from per-subject β_std maps.
 
+Set ``USE_UNIT_VECTOR_MAPS = True`` to normalise each subject's
+voxel-wise (cos, sin) vector to unit length before the group mean.  These
+outputs are kept in a separate ``unit_vector_derived/`` results branch so
+they cannot be confused with the original magnitude-weighted maps.
+
 Follows the same DATASETS logic as
 ``future_step_dominance_mPFC_lOFC.py``.  For each dataset:
 
@@ -11,11 +16,15 @@ Follows the same DATASETS logic as
      across steps:
          cos_s(v) = Σ_k cos(θ_k) · β_{s,k}(v)
          sin_s(v) = Σ_k sin(θ_k) · β_{s,k}(v)
-     where θ_k = 2π·k / n_steps.
-     For 4 steps: cos weights [+1, 0, −1,  0]
-                  sin weights [ 0,+1,  0, −1]
-     For 8 steps: cos(2πk/8) / sin(2πk/8), k = 0..7.
-  3. Group means across subjects give cos_G(v), sin_G(v).
+     where θ_k = 2π·(k + 1/2) / n_steps: the centre of each angular
+     bin rather than its lower boundary. For 4 steps the centres are 45°,
+     135°, 225°, 315°; for 8 steps they are 22.5°, 67.5°, ..., 337.5°.
+  3. Optionally normalise each subject and voxel by its vector length:
+         length_s(v) = √(cos_s(v)² + sin_s(v)²)
+         cos_unit_s(v) = cos_s(v) / length_s(v)
+         sin_unit_s(v) = sin_s(v) / length_s(v)
+     Group means across subjects then give cos_G(v), sin_G(v). Without
+     normalisation, the original cos_s(v), sin_s(v) are averaged.
   4. Amplitude(v)   = √(cos_G² + sin_G²)
      Angle(v) [rad] = arctan2(sin_G, cos_G)
      Angle in steps = (angle / 2π · n_steps) mod n_steps
@@ -28,7 +37,9 @@ Outputs (into ``OUT_DIR/<dataset_label>/``):
   sin_persubj.nii.gz          — per-subject 4-D sin projection
   cos_group.nii.gz            — group-mean cos projection
   sin_group.nii.gz            — group-mean sin projection
-  amplitude.nii.gz            — √(cos_G² + sin_G²)
+  amplitude.nii.gz            — √(cos_G² + sin_G²); original group
+                                 magnitude, or directional agreement in
+                                 unit-vector mode
   angle_rad.nii.gz            — preferred angle in radians, full map
   angle_steps.nii.gz          — preferred angle mapped to [0, n_steps)
   angle_rad_masked_p05.nii.gz — angle only where Hotelling p<0.05
@@ -80,8 +91,18 @@ MPFC_MASK_PATH = Path(
     '/Users/xpsy1114/Documents/projects/multiple_clocks/data/masks'
     '/mask_PFC_LR_smoothed_resampled.nii.gz')
 
-OUT_DIR = Path('/Users/xpsy1114/Documents/projects/multiple_clocks/data'
-               '/derivatives/group/Main_Results_fMRI/harmonic_angle_maps')
+# Flag shared conceptually with the two downstream scripts.  True gives
+# every subject equal directional weight at each voxel; False preserves
+# the original magnitude-weighted group mean and output locations.
+USE_UNIT_VECTOR_MAPS = False
+UNIT_VECTOR_EPS = 1e-12
+UNIT_VECTOR_RESULTS_DIRNAME = 'unit_vector_derived'
+
+HARMONIC_RESULTS_ROOT = Path(
+    '/Users/xpsy1114/Documents/projects/multiple_clocks/data'
+    '/derivatives/group/Main_Results_fMRI/harmonic_angle_maps')
+OUT_DIR = (HARMONIC_RESULTS_ROOT / UNIT_VECTOR_RESULTS_DIRNAME
+           if USE_UNIT_VECTOR_MAPS else HARMONIC_RESULTS_ROOT)
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -122,8 +143,8 @@ DATASETS = [
         },
     },
     {
-        # ``LOCATION-split_eighths_*`` file is the zero-lag (now) map for
-        # the 8-way split — see the eighths dataset in
+        # ``LOCATION-split_eighths_*`` is the first (now / 0°..45°) bin
+        # for the 8-way split — see the eighths dataset in
         # future_step_dominance_mPFC_lOFC.py.
         'label':    'eighths',
         'base_dir': BASE_DIR,
@@ -167,6 +188,25 @@ def _save_like(ref_img, arr, out_path):
              str(out_path))
 
 
+def _normalise_subject_vectors(cos_stack, sin_stack, eps=UNIT_VECTOR_EPS):
+    """Normalise voxel-wise subject vectors while safely handling zeroes.
+
+    A vector whose length is not finite or is <= ``eps`` has no defined
+    direction and is represented as (0, 0).  This keeps background voxels
+    from producing divide-by-zero values while retaining the fixed subject
+    axis expected by the voxel-wise tests.
+
+    Returns ``(cos_unit, sin_unit, original_length, valid_direction)``.
+    """
+    length = np.sqrt(cos_stack * cos_stack + sin_stack * sin_stack)
+    valid = np.isfinite(length) & (length > eps)
+    cos_unit = np.zeros_like(cos_stack, dtype=float)
+    sin_unit = np.zeros_like(sin_stack, dtype=float)
+    np.divide(cos_stack, length, out=cos_unit, where=valid)
+    np.divide(sin_stack, length, out=sin_unit, where=valid)
+    return cos_unit, sin_unit, length, valid
+
+
 def _load_roi_mask(path, ref_img):
     """Load an ROI mask and, if needed, resample nearest-neighbour onto
     the reference image's grid. Returns a bool array or None if the file
@@ -195,12 +235,11 @@ def _rayleigh_voxelwise(cos_stack, sin_stack):
     and its Rayleigh p-value (Zar 2010, eq. 27.4):
         Z    = n · R̄²
         p    ≈ exp(√(1 + 4n + 4(n² − Z²)) − (1 + 2n))     (asymptotic)
-    Complementary to Hotelling T²: Hotelling is sensitive to the group
-    vector's MAGNITUDE (would flag a voxel where everyone has a big
-    (cos, sin) but pointing in slightly different directions if the
-    average still has decent length); Rayleigh is sensitive purely to
-    ANGLE consistency (would flag a voxel where every subject has
-    small (cos, sin) but they all point in the same direction).
+    Complementary to Hotelling T² for raw input vectors: Hotelling uses
+    their component magnitudes and covariance, whereas Rayleigh uses only
+    angles. In unit-vector mode, the original magnitudes have already been
+    removed before either test, so Hotelling instead tests the mean of the
+    unit components against (0, 0).
 
     Returns
     -------
@@ -360,10 +399,16 @@ def run_dataset(cfg):
         print(f"  loaded  {step:8s}  {fname}  shape={data.shape}")
 
     # ── Build Fourier weights ───────────────────────────────────────
-    theta = 2 * np.pi * np.arange(n_steps) / n_steps
-    cos_w = np.cos(theta)   # e.g. 4-step:  [+1, 0, −1,  0]
-    sin_w = np.sin(theta)   # e.g. 4-step:  [ 0,+1,  0, −1]
-    print(f"\n  θ_k       = {np.round(theta, 3)}")
+    # Use the centres of the bins: 45° for the first quarter and 22.5°
+    # for the first eighth, rather than treating each bin as its lower edge.
+    bin_width_deg = 360.0 / n_steps
+    phase_offset_deg = bin_width_deg / 2.0
+    theta_deg = phase_offset_deg + bin_width_deg * np.arange(n_steps)
+    theta = np.radians(theta_deg)
+    cos_w = np.cos(theta)
+    sin_w = np.sin(theta)
+    print(f"\n  bin centres [deg] = {np.round(theta_deg, 3)}")
+    print(f"  θ_k [rad]        = {np.round(theta, 3)}")
     print(f"  cos_w[k]  = {np.round(cos_w, 3)}")
     print(f"  sin_w[k]  = {np.round(sin_w, 3)}")
 
@@ -375,15 +420,32 @@ def run_dataset(cfg):
     sin_persubj = np.tensordot(stack, sin_w, axes=([-1], [0]))
     print(f"\n  cos/sin per-subject stacks built  shape={cos_persubj.shape}")
 
+    vector_length_persubj = np.sqrt(
+        cos_persubj * cos_persubj + sin_persubj * sin_persubj)
+    if USE_UNIT_VECTOR_MAPS:
+        cos_persubj, sin_persubj, vector_length_persubj, direction_valid = \
+            _normalise_subject_vectors(cos_persubj, sin_persubj)
+        n_zero = int(direction_valid.size - np.count_nonzero(direction_valid))
+        print("  unit-vector mode: divided each subject/voxel (cos, sin) "
+              "by sqrt(cos² + sin²)")
+        print(f"  undefined vectors (length <= {UNIT_VECTOR_EPS:g}) set to "
+              f"(0, 0): {n_zero}")
+
     _save_like(ref_img, cos_persubj, out_dir / 'cos_persubj.nii.gz')
     _save_like(ref_img, sin_persubj, out_dir / 'sin_persubj.nii.gz')
+    if USE_UNIT_VECTOR_MAPS:
+        # Retain the discarded raw length as a QC map; cos/sin outputs in
+        # this results branch contain the unit-vector components.
+        _save_like(ref_img, vector_length_persubj,
+                   out_dir / 'vector_length_persubj.nii.gz')
 
     # ── Group means, amplitude, angle ───────────────────────────────
     cos_G = np.nanmean(cos_persubj, axis=-1)
     sin_G = np.nanmean(sin_persubj, axis=-1)
     amplitude = np.sqrt(cos_G * cos_G + sin_G * sin_G)
     angle_rad = np.arctan2(sin_G, cos_G)                       # (−π, π]
-    # map to [0, n_steps): first shift wrap into [0, 2π) then scale
+    # Map the physical angle to bin-width units. Bin centres occur at
+    # 0.5, 1.5, ..., n_steps-0.5 rather than at integer boundaries.
     angle_steps = ((angle_rad + 2 * np.pi) % (2 * np.pi)) / (2 * np.pi) * n_steps
 
     # Degrees are the human-friendly version: multiply by 180/π. Both
@@ -665,9 +727,19 @@ def run_dataset(cfg):
             'steps':     steps,
             'n_steps':   n_steps,
             'n_subj':    n_subj,
+            'bin_width_deg':                   bin_width_deg,
+            'phase_offset_deg':                phase_offset_deg,
+            'theta_deg':                       [float(x) for x in theta_deg],
             'theta':     [float(x) for x in theta],
             'cos_w':     [float(x) for x in cos_w],
             'sin_w':     [float(x) for x in sin_w],
+            'use_unit_vector_maps':              USE_UNIT_VECTOR_MAPS,
+            'vector_mode':                       ('unit_vector_derived'
+                                                  if USE_UNIT_VECTOR_MAPS
+                                                  else 'magnitude_weighted'),
+            'unit_vector_epsilon':               (UNIT_VECTOR_EPS
+                                                  if USE_UNIT_VECTOR_MAPS
+                                                  else None),
             'n_vox_valid':                    n_vox_valid,
             'hotelling_n_sig_p05_uncorr':     n_vox_sig,
             'rayleigh_n_sig_p05_uncorr':      n_ray_sig,
@@ -677,16 +749,18 @@ def run_dataset(cfg):
             'mpfc':                            mpfc_stats,
         }, f, indent=2)
 
-    _write_readme(out_dir, label, n_steps, n_subj)
+    _write_readme(out_dir, label, n_steps, n_subj, phase_offset_deg,
+                  use_unit_vectors=USE_UNIT_VECTOR_MAPS)
     print(f"\n  → outputs in {out_dir}")
     return out_dir
 
 
-def _write_readme(out_dir, label, n_steps, n_subj):
+def _write_readme(out_dir, label, n_steps, n_subj, phase_offset_deg,
+                  use_unit_vectors=False):
     p = out_dir / 'README.md'
     step_examples = "\n".join(
-        f"- `angle_steps ≈ {k}` → preferred step = index {k}  "
-        f"(≈ {int(round(360.0 * k / n_steps))}° in `angle_deg_0to360`)"
+        f"- `angle_steps ≈ {k + 0.5:g}` → centre of bin {k}  "
+        f"(≈ {phase_offset_deg + 360.0 * k / n_steps:g}° in `angle_deg_0to360`)"
         for k in range(n_steps)
     )
     lines = [
@@ -694,11 +768,23 @@ def _write_readme(out_dir, label, n_steps, n_subj):
         "",
         f"- n_steps = {n_steps}",
         f"- n_subj  = {n_subj}",
+        f"- angular bin width = {360.0 / n_steps:g}°",
+        f"- Fourier phase offset = {phase_offset_deg:g}° (bin centres)",
+        f"- vector mode = {'unit-vector derived (equal subject direction weight)' if use_unit_vectors else 'raw vectors (magnitude-weighted group direction)'}",
         "",
         "## Whole-brain files",
-        "- `cos_persubj.nii.gz`, `sin_persubj.nii.gz` — per-subject 4-D",
-        "- `cos_group.nii.gz`, `sin_group.nii.gz` — group-mean projections",
-        "- `amplitude.nii.gz` — √(cos_G² + sin_G²), the length of the group mean vector",
+        ("- `cos_persubj.nii.gz`, `sin_persubj.nii.gz` — per-subject "
+         "4-D unit-vector components" if use_unit_vectors else
+         "- `cos_persubj.nii.gz`, `sin_persubj.nii.gz` — per-subject 4-D raw projections"),
+        ("- `vector_length_persubj.nii.gz` — original per-subject vector "
+         "length before unit normalisation" if use_unit_vectors else
+         "- Per-subject vectors retain their original magnitude."),
+        ("- `cos_group.nii.gz`, `sin_group.nii.gz` — mean unit-vector "
+         "components across subjects" if use_unit_vectors else
+         "- `cos_group.nii.gz`, `sin_group.nii.gz` — group-mean raw projections"),
+        ("- `amplitude.nii.gz` — mean resultant length in [0, 1]: "
+         "between-subject directional agreement" if use_unit_vectors else
+         "- `amplitude.nii.gz` — √(cos_G² + sin_G²), the length of the raw group-mean vector"),
         "- `angle_rad.nii.gz` — arctan2(sin_G, cos_G), range (−π, π]",
         "- `angle_deg.nii.gz` — same angle in degrees, range (−180, 180]",
         "- `angle_deg_0to360.nii.gz` — degrees wrapped into [0, 360)",
@@ -744,8 +830,9 @@ def _write_readme(out_dir, label, n_steps, n_subj):
         "fsleyes $FSLDIR/data/standard/MNI152_T1_2mm_brain.nii.gz \\",
         "    angle_deg_yellow0_masked_p05.nii.gz  -cm red-yellow -dr 0 180",
         "```",
-        "Yellow = voxel prefers `current` (0°); red = voxel prefers the",
-        "opposite step (±180°); intermediate = mixed. Sign of the angle",
+        "Yellow = the preferred angle is at the 0° bin boundary; red =",
+        "the preferred angle is at ±180°. The actual first-bin centres are",
+        f"{phase_offset_deg:g}° (and every {360.0 / n_steps:g}° thereafter). Sign of the angle",
         "is discarded (so `next` and `+3` look the same).",
         "Use `angle_deg_masked_p05.nii.gz` in place of `angle_deg.nii.gz`",
         "to hide sub-threshold voxels.",
@@ -758,16 +845,25 @@ def _write_readme(out_dir, label, n_steps, n_subj):
         "```",
         "",
         "## Interpretation",
-        f"For {n_steps} steps at angles θ_k = 2πk/{n_steps}:",
+        f"For {n_steps} bins at centre angles θ_k = 2π(k + 1/2)/{n_steps}:",
         "",
         step_examples,
         "",
-        "- **Amplitude** — length of the group-mean (cos, sin) vector; big",
-        "  → the voxel's β-across-steps has a clean sinusoidal shape.",
-        "  Small → either flat or noisy across steps.",
-        "- **Hotelling T² p / q** — is the group-mean 2-D vector significantly",
-        "  different from (0, 0)?  Sensitive to vector MAGNITUDE.  Use for",
-        "  \"does this voxel have any harmonic signal at all\".",
+        (("- **Amplitude** — mean resultant length after subject-wise unit "
+          "normalisation. Big → subjects agree on direction; small → their "
+          "directions cancel. It is not the original harmonic signal magnitude.")
+         if use_unit_vectors else
+         ("- **Amplitude** — length of the raw group-mean (cos, sin) vector; "
+          "big → the voxel's β-across-steps has a clean sinusoidal shape. "
+          "Small → either flat or noisy across steps.")),
+        (("- **Hotelling T² p / q** — tests whether the mean unit vector is "
+          "different from (0, 0). Original subject magnitudes have been "
+          "removed, so this reflects directional consistency rather than "
+          "raw harmonic effect magnitude.")
+         if use_unit_vectors else
+         ("- **Hotelling T² p / q** — is the raw group-mean 2-D vector "
+          "significantly different from (0, 0)? Sensitive to vector magnitude; "
+          "use for \"does this voxel have harmonic signal?\".")),
         "- **Rayleigh p / q** — do subjects agree on the ANGLE at this voxel,",
         "  regardless of magnitude?  Sensitive purely to angle consistency.",
         "  A voxel where every subject has a small but same-direction (cos, sin)",
@@ -782,15 +878,23 @@ def _write_readme(out_dir, label, n_steps, n_subj):
         "  `angle_rad*.nii.gz`, degrees in `angle_deg*.nii.gz`.  Only",
         "  meaningful at voxels that pass one of the tests above.",
         "",
-        "Two voxels with the same angle but different amplitudes both",
-        "prefer the same step; the higher-amplitude one just shows it",
-        "more cleanly.",
+        (("All non-zero subject vectors contribute equally to the group angle; "
+          "inspect `vector_length_persubj.nii.gz` separately when the discarded "
+          "original magnitude matters.")
+         if use_unit_vectors else
+         ("Two voxels with the same angle but different amplitudes both prefer "
+          "the same step; the higher-amplitude one just shows it more cleanly.")),
     ]
     p.write_text('\n'.join(lines))
 
 
 # ── Main entry ───────────────────────────────────────────────────────
 if __name__ == '__main__':
+    vector_mode = ('unit-vector derived (equal directional subject weight)'
+                   if USE_UNIT_VECTOR_MAPS
+                   else 'raw vectors (magnitude-weighted group direction)')
+    print(f"Vector mode: {vector_mode}")
+    print(f"Results root: {OUT_DIR}")
     for cfg in DATASETS:
         if cfg['label'] not in DATASETS_TO_RUN:
             print(f"[skip] dataset '{cfg['label']}' not in DATASETS_TO_RUN")

@@ -14,7 +14,14 @@ For each dataset in DATASETS × each map in MAPS:
     on 0 (blue = negative, white = 0, red = positive).
 
 Every map is gated by the dataset's ``amplitude.nii.gz`` so voxels with
-no harmonic signal don't fake a "0° = current" reading in yellow.
+no harmonic signal don't fake a 0° reading in yellow. The first-bin centre
+is 45° for quarters and 22.5° for eighths.
+
+The ``circular_alpha`` mode uses hue for preferred angle and per-vertex
+opacity for the unit-vector mean resultant length R. R=0 is transparent
+(subject directions cancel), while R=1 is maximally opaque (perfect
+directional agreement). Its alpha source always comes from the unit-vector
+results branch, even when the displayed angle is magnitude-weighted.
 
 Cells: filtered to ``alt_final_roi == 'mPFC'`` in
 ``neurons_with_ROI_labels.csv`` (canonical MNI coords from
@@ -22,8 +29,12 @@ Cells: filtered to ``alt_final_roi == 'mPFC'`` in
 medial views of the fsaverage pial surface, hemisphere-split by
 sign of ``MNI_x`` and jittered by a few mm so co-located cells separate.
 
+Set ``USE_UNIT_VECTOR_MAPS`` to select either the original magnitude-weighted
+harmonic maps or the separately stored unit-vector-derived maps. Outputs are
+written beneath the selected branch.
+
 Outputs (PDF + PNG per (dataset × map × hemi)):
-  <harmonic_angle_maps>/brain_overlays_with_mPFC_cells/<dataset>/…
+  <selected_harmonic_maps>/brain_overlays_with_mPFC_cells/<dataset>/…
 
 @author: Svenja Küchenhoff
 """
@@ -49,7 +60,7 @@ except Exception as _exc:
 
 try:
     from nilearn import surface as _surface
-    from nilearn.image import resample_to_img
+    from nilearn.image import resample_to_img, smooth_img, new_img_like
 except Exception as _exc:
     print(f"[error] nilearn required: {_exc}")
     sys.exit(1)
@@ -66,8 +77,16 @@ except Exception as _exc:
 
 
 # ── Settings ─────────────────────────────────────────────────────────
-BASE_HARMONIC = Path('/Users/xpsy1114/Documents/projects/multiple_clocks/data'
-                     '/derivatives/group/Main_Results_fMRI/harmonic_angle_maps')
+# Keep this flag aligned with ``harmonic_angle_maps.py``. True reads maps in
+# ``unit_vector_derived/``; False reads the original magnitude-weighted maps.
+USE_UNIT_VECTOR_MAPS = False
+UNIT_VECTOR_RESULTS_DIRNAME = 'unit_vector_derived'
+
+HARMONIC_RESULTS_ROOT = Path(
+    '/Users/xpsy1114/Documents/projects/multiple_clocks/data'
+    '/derivatives/group/Main_Results_fMRI/harmonic_angle_maps')
+BASE_HARMONIC = (HARMONIC_RESULTS_ROOT / UNIT_VECTOR_RESULTS_DIRNAME
+                 if USE_UNIT_VECTOR_MAPS else HARMONIC_RESULTS_ROOT)
 CELL_TABLE = Path('/Users/xpsy1114/Documents/projects/multiple_clocks/data'
                   '/ephys_humans/derivatives/neurons_with_ROI_labels.csv')
 ROI_LABEL_COLUMN = 'alt_final_roi'
@@ -75,11 +94,13 @@ CELL_ROI_TO_PLOT = 'mPFC'
 
 MPFC_MASK_PATH = Path('/Users/xpsy1114/Documents/projects/multiple_clocks/data'
                       '/masks/mask_PFC_LR_smoothed_resampled.nii.gz')
+GRAD15_MASK_PATH = Path('/Users/xpsy1114/Documents/projects/multiple_clocks/data'
+                        '/masks/gradient_thr_1.5.nii.gz')
 
 OUT_ROOT = BASE_HARMONIC / 'brain_overlays_with_mPFC_cells'
 OUT_ROOT.mkdir(parents=True, exist_ok=True)
 
-DATASETS = ['quarters', 'eighths']
+DATASETS = ['quarters', 'eighths', 'quarters_state']
 
 # Each map file: short_name → filename
 MAP_FILES = {
@@ -89,8 +110,8 @@ MAP_FILES = {
 }
 
 # Amplitude threshold — voxels below this are treated as background.
-# amplitude = √(cos_G² + sin_G²), so any voxel with real (cos, sin)
-# activity crosses this trivially; only true-background voxels stay 0.
+# In unit-vector mode amplitude is the mean resultant length (directional
+# agreement); otherwise it is the raw group-vector magnitude.
 AMP_EPS = 1e-6
 
 # For the amp-gated circular mode: percentile of the in-signal +
@@ -98,31 +119,66 @@ AMP_EPS = 1e-6
 # Milder than the Hotelling / Rayleigh p<0.05 test but strong enough
 # to suppress the small-magnitude arctan2 noise (bottom ~15% of voxels
 # are where the "angle jumps" between neighbours come from).
-AMP_GATE_PERCENTILE = 35.0
+AMP_GATE_PERCENTILE = 0
+
+# Opacity mapping for ``circular_alpha``. Gamma=0.5 uses sqrt(R), which
+# retains the ordering by agreement but makes low/moderate R substantially
+# more visible than a strict linear map. Set to 1.0 for alpha proportional
+# to R; values above 1 suppress weak agreement more strongly.
+AGREEMENT_ALPHA_GAMMA = 0.8
+AGREEMENT_ALPHA_MAX = 0.95
+
+# ── Angle-projection smoothing knobs (visualisation only) ─────────────
+# The `circular` / `circular_gated` modes can either project the angle
+# volume directly (default, may show ±180° wrap artefacts at hemisphere
+# boundaries) OR project cos and sin separately and compute the angle
+# per surface vertex (recommended, kills wrap discontinuities).
+PROJECT_VIA_COS_SIN      = True     # A — project cos & sin, arctan2 at vertex
+PRE_PROJ_SMOOTH_FWHM_MM  = 3.0      # B — Gaussian on cos/sin volumes (mm)
+SURFACE_SMOOTHING_STEPS  = 5        # C — MNE mesh-neighbour iterations
+BILATERAL_SYMMETRISE     = True     # D — x-flip cos/sin and average
+MASK_AMP_TOP_PCT         = None     # E — keep top X% of amp within mask
+
+# Save PDF alongside PNG?  Off by default (only PNG saved).
+SAVE_PDF                 = False
 
 # What to render.  (map, mask_key, mode)
 #   mask_key = 'whole' | 'mPFC' | 'DSR_main' | 'gradient'  (looked up in MASKS)
 #   mode     = 'abs_yellow_red' (yellow=0°, red=±180°) | 'diverging' (RdBu_r)
 COMBINATIONS = [
     # Symmetric |angle| (yellow=0°, red=±180°, sign lost)
-    ('angle_deg', 'whole',    'abs_yellow_red'),
-    ('angle_deg', 'mPFC',     'abs_yellow_red'),
-    ('angle_deg', 'DSR_main', 'abs_yellow_red'),
-    ('angle_deg', 'gradient', 'abs_yellow_red'),
+    ('angle_deg', 'whole',            'abs_yellow_red'),
+    ('angle_deg', 'mPFC',             'abs_yellow_red'),
+    ('angle_deg', 'DSR_main',         'abs_yellow_red'),
+    ('angle_deg', 'gradient',         'abs_yellow_red'),
+    ('angle_deg', 'gradient_thr1.5',  'abs_yellow_red'),
     # Cyclic wheel (yellow=0°, red=+90°, blue=±180°, green=-90°)
-    ('angle_deg', 'whole',    'circular'),
-    ('angle_deg', 'mPFC',     'circular'),
-    ('angle_deg', 'DSR_main', 'circular'),
-    ('angle_deg', 'gradient', 'circular'),
+    ('angle_deg', 'whole',            'circular'),
+    ('angle_deg', 'mPFC',             'circular'),
+    ('angle_deg', 'DSR_main',         'circular'),
+    ('angle_deg', 'gradient',         'circular'),
+    ('angle_deg', 'gradient_thr1.5',  'circular'),
     # Cyclic wheel + amp gate (hides bottom AMP_GATE_PERCENTILE% of amp
     # within the mask to suppress arctan2 jitter at low-signal voxels)
-    ('angle_deg', 'whole',    'circular_gated'),
-    ('angle_deg', 'mPFC',     'circular_gated'),
-    ('angle_deg', 'DSR_main', 'circular_gated'),
-    ('angle_deg', 'gradient', 'circular_gated'),
-    # Cos / sin (diverging RdBu_r, unchanged)
-    ('cos_group', 'whole',    'diverging'),
-    ('sin_group', 'whole',    'diverging'),
+    ('angle_deg', 'whole',            'circular_gated'),
+    ('angle_deg', 'mPFC',             'circular_gated'),
+    ('angle_deg', 'DSR_main',         'circular_gated'),
+    ('angle_deg', 'gradient',         'circular_gated'),
+    ('angle_deg', 'gradient_thr1.5',  'circular_gated'),
+    # Cyclic hue + opacity given by between-subject directional agreement.
+    ('angle_deg', 'mPFC',             'circular_alpha'),
+    ('angle_deg', 'gradient',         'circular_alpha'),
+    ('angle_deg', 'gradient_thr1.5',  'circular_alpha'),
+    # Cos / sin (diverging RdBu_r).  Bilaterally symmetrised in the
+    # 'diverging' branch when BILATERAL_SYMMETRISE = True (default),
+    # so what you see is the same processed volume the cyclic angle
+    # map is projected from.
+    ('cos_group', 'whole',            'diverging'),
+    ('sin_group', 'whole',            'diverging'),
+    ('cos_group', 'mPFC',             'diverging'),
+    ('sin_group', 'mPFC',             'diverging'),
+    ('cos_group', 'gradient_thr1.5',  'diverging'),
+    ('sin_group', 'gradient_thr1.5',  'diverging'),
 ]
 
 # Short tag per mode for output filenames so all modes coexist.
@@ -130,6 +186,7 @@ MODE_TAG = {
     'abs_yellow_red': 'abs',
     'circular':       'circ',
     'circular_gated': f'circg{int(AMP_GATE_PERCENTILE)}',
+    'circular_alpha': f'circ_alphaR_g{AGREEMENT_ALPHA_GAMMA:g}',
     'diverging':      'div',
 }
 
@@ -166,7 +223,21 @@ VIEWS = ('medial', 'lateral')
 # iterating on a single plot; a full run is ~50 min).  The keys are optional
 # — omit any of them to keep the full list for that axis.
 RENDER_FILTER = {
-    'combinations': [('angle_deg', 'gradient', 'circular_gated')],
+    'combinations': [
+        ('angle_deg', 'mPFC',            'circular_gated'),
+        ('angle_deg', 'whole',           'circular_gated'),
+        ('angle_deg', 'gradient', 'circular_gated'),
+        ('angle_deg', 'gradient_thr1.5', 'circular_gated'),
+        ('angle_deg', 'mPFC',            'circular_alpha'),
+        ('angle_deg', 'gradient',        'circular_alpha'),
+        ('angle_deg', 'gradient_thr1.5', 'circular_alpha')
+        # ('cos_group', 'whole',           'diverging'),
+        # ('sin_group', 'whole',           'diverging'),
+        # ('cos_group', 'mPFC',            'diverging'),
+        # ('sin_group', 'mPFC',            'diverging'),
+        # ('cos_group', 'gradient_thr1.5', 'diverging'),
+        # ('sin_group', 'gradient_thr1.5', 'diverging'),
+    ],
     'views':        ('medial',),
     # 'hemis':      ('lh',),          # example: uncomment to restrict hemis
     # 'datasets':   ('quarters',),    # example: uncomment to restrict datasets
@@ -186,7 +257,6 @@ def _ensure_fsaverage():
     fs_dir = fetch_fsaverage()
     _FSAVERAGE_PATH = os.path.dirname(fs_dir)
     return _FSAVERAGE_PATH
-
 
 def _set_brain_surface_alpha(brain, alpha):
     """Older MNE Brain versions don't accept alpha=... in the constructor.
@@ -238,6 +308,16 @@ def load_masks(ref_img):
         print(f"  mPFC mask: {int((masks['mPFC'].get_fdata() > 0.5).sum())} vox")
     else:
         print(f"  [warn] mPFC mask missing: {MPFC_MASK_PATH}")
+
+    # Gradient_thr_1.5: union of 4 per-quarter t-maps thresholded at t>1.5
+    # (built by hand — see gradient_thr_1.5.nii.gz in data/masks/).
+    if GRAD15_MASK_PATH.exists():
+        masks['gradient_thr1.5'] = _resample_mask(
+            nib.load(str(GRAD15_MASK_PATH)), ref_img)
+        print(f"  gradient_thr1.5 mask: "
+              f"{int((masks['gradient_thr1.5'].get_fdata() > 0.5).sum())} vox")
+    else:
+        print(f"  [warn] gradient_thr1.5 mask missing: {GRAD15_MASK_PATH}")
 
     if not HAS_CMO:
         print("  [warn] cell_mask_overlap unavailable — no DSR/gradient masks.")
@@ -296,6 +376,27 @@ def _make_brain(hemi, subjects_dir, title=None):
     return brain
 
 
+def _bilaterally_symmetrise(img):
+    """Return `img` averaged with its own left-right mirror.
+    Assumes standard MNI orientation where x-flipping the voxel array
+    reflects the volume about the mid-sagittal plane."""
+    data = img.get_fdata()
+    flipped = data[::-1, ...]
+    return new_img_like(img, (data + flipped) / 2.0)
+
+
+def _unit_agreement_path(nii_path):
+    """Return the matching unit-vector mean-resultant-length map.
+
+    This deliberately does not use the magnitude-weighted ``amplitude``
+    map: only the length of the mean subject-wise UNIT vectors has the
+    interpretation "between-subject directional agreement".
+    """
+    dataset = Path(nii_path).parent.name
+    return (HARMONIC_RESULTS_ROOT / UNIT_VECTOR_RESULTS_DIRNAME / dataset
+            / 'amplitude.nii.gz')
+
+
 def _project_and_transform(nii_path, amp_path, mode, hemi, subjects_dir,
                             roi_mask_img=None):
     """Load the map + amplitude (+ optional ROI mask), project each to
@@ -305,15 +406,29 @@ def _project_and_transform(nii_path, amp_path, mode, hemi, subjects_dir,
     When `roi_mask_img` is given, vertices outside the mask become NaN
     so MNE renders them transparent (the underlying pial surface shows
     through as light grey)."""
+    vertex_alpha = None
     img = nib.load(str(nii_path))
     amp_img = nib.load(str(amp_path))
     surf_path = os.path.join(subjects_dir, 'fsaverage', 'surf', f'{hemi}.pial')
 
-    texture = _surface.vol_to_surf(img,     surf_path,
-                                    interpolation='nearest').astype(float)
+    # For the diverging (cos/sin) branch we want the SAME processing that
+    # the cyclic-angle branch applies (bilateral symmetrisation + volumetric
+    # Gaussian on the cos/sin volume) so what you see for cos_group /
+    # sin_group is the exact volume the angle map is projected from.
+    if mode == 'diverging':
+        if BILATERAL_SYMMETRISE:
+            img = _bilaterally_symmetrise(img)
+        if PRE_PROJ_SMOOTH_FWHM_MM and PRE_PROJ_SMOOTH_FWHM_MM > 0:
+            img = smooth_img(img, PRE_PROJ_SMOOTH_FWHM_MM)
+        texture = _surface.vol_to_surf(
+            img, surf_path, interpolation='linear').astype(float)
+    else:
+        texture = _surface.vol_to_surf(
+            img, surf_path, interpolation='nearest').astype(float)
     amp_txt = _surface.vol_to_surf(amp_img, surf_path,
                                     interpolation='nearest').astype(float)
     has_signal = amp_txt > AMP_EPS
+    roi_txt = None
     if roi_mask_img is not None:
         roi_txt = _surface.vol_to_surf(roi_mask_img, surf_path,
                                         interpolation='nearest').astype(float)
@@ -328,24 +443,89 @@ def _project_and_transform(nii_path, amp_path, mode, hemi, subjects_dir,
         cbar_info = {'vmin': 0.0, 'vmax': 180.0,
                      'ticks': [0, 45, 90, 135, 180],
                      'label': '|preferred angle| (°)'}
-    elif mode in ('circular', 'circular_gated'):
+    elif mode in ('circular', 'circular_gated', 'circular_alpha'):
         # Cyclic wheel: keep the sign of the angle. Shift into [1, 361]
-        # so MNE's fmin can stay strictly positive (avoids the same
-        # `calculate_lut` crash that hits negative fmin for diverging).
-        # The colourbar we add externally uses raw −180..+180° so the
-        # user never sees the shifted numbers.
+        # so MNE's fmin can stay strictly positive.  If PROJECT_VIA_COS_SIN,
+        # project cos and sin group maps separately (optionally smoothed)
+        # then compute arctan2 per vertex — kills ±180° wrap discontinuities.
+        if PROJECT_VIA_COS_SIN:
+            cos_path = nii_path.parent / 'cos_group.nii.gz'
+            sin_path = nii_path.parent / 'sin_group.nii.gz'
+            if cos_path.exists() and sin_path.exists():
+                cos_img = nib.load(str(cos_path))
+                sin_img = nib.load(str(sin_path))
+                # (D) Bilateral symmetrisation on cos & sin volumes
+                if BILATERAL_SYMMETRISE:
+                    cos_img = _bilaterally_symmetrise(cos_img)
+                    sin_img = _bilaterally_symmetrise(sin_img)
+                # (B) Volumetric Gaussian on cos & sin (cos/sin are
+                # continuous → smoothing is well-defined; smoothing the
+                # angle directly would be a wrap-around disaster).
+                if PRE_PROJ_SMOOTH_FWHM_MM and PRE_PROJ_SMOOTH_FWHM_MM > 0:
+                    cos_img = smooth_img(cos_img, PRE_PROJ_SMOOTH_FWHM_MM)
+                    sin_img = smooth_img(sin_img, PRE_PROJ_SMOOTH_FWHM_MM)
+                cos_txt = _surface.vol_to_surf(
+                    cos_img, surf_path, interpolation='linear').astype(float)
+                sin_txt = _surface.vol_to_surf(
+                    sin_img, surf_path, interpolation='linear').astype(float)
+                # Recompute angle & amp on the surface (per vertex).
+                texture = np.degrees(np.arctan2(sin_txt, cos_txt))
+                amp_surf = np.sqrt(cos_txt ** 2 + sin_txt ** 2)
+                # Refresh has_signal with the surface amplitude so the
+                # ROI mask still applies.
+                has_signal = (amp_surf > AMP_EPS)
+                amp_txt = amp_surf   # for the gated-mode percentile below
+                if roi_mask_img is not None:
+                    roi_txt = _surface.vol_to_surf(
+                        roi_mask_img, surf_path,
+                        interpolation='nearest').astype(float)
+                    has_signal = has_signal & (roi_txt >= 0.5)
+            # else: fall through to the direct-angle path
+        # (E) Optional: keep only the top X% of amp within the mask
+        if MASK_AMP_TOP_PCT is not None and np.any(has_signal):
+            drop_below = float(np.percentile(amp_txt[has_signal],
+                                              MASK_AMP_TOP_PCT))
+            has_signal = has_signal & (amp_txt >= drop_below)
+        # circular_gated: additional in-mask amp cutoff
         if mode == 'circular_gated' and np.any(has_signal):
             amp_thr = float(np.percentile(amp_txt[has_signal],
                                            AMP_GATE_PERCENTILE))
             has_signal = has_signal & (amp_txt > amp_thr)
-        shifted = np.where(has_signal, texture + 181.0, np.nan)
-        data = shifted
+        # The harmonic generator already models angular-bin centres (45°
+        # for quarters; 22.5° for eighths), so no display-only correction
+        # belongs here.
+        data = np.where(has_signal, texture + 181.0, np.nan)
         cmap = LinearSegmentedColormap.from_list('circular_wheel',
                                                   CIRCULAR_ANCHORS_HEX)
         fmin, fmid, fmax = 1.0, 181.0, 361.0
         cbar_info = {'vmin': -180.0, 'vmax': 180.0,
                      'ticks': [-180, -90, 0, 90, 180],
                      'label': 'preferred angle (°)'}
+        if mode == 'circular_alpha':
+            agreement_path = _unit_agreement_path(nii_path)
+            if not agreement_path.exists():
+                raise FileNotFoundError(
+                    "circular_alpha needs the unit-vector agreement map: "
+                    f"{agreement_path}")
+            agreement_img = nib.load(str(agreement_path))
+            if (agreement_img.shape[:3] != img.shape[:3]
+                    or not np.allclose(agreement_img.affine, img.affine,
+                                       atol=1e-3)):
+                agreement_img = resample_to_img(
+                    agreement_img, img, interpolation='linear')
+            agreement_txt = _surface.vol_to_surf(
+                agreement_img, surf_path,
+                interpolation='linear').astype(float)
+            agreement_txt = np.clip(
+                np.nan_to_num(agreement_txt, nan=0.0), 0.0, 1.0)
+            vertex_alpha = AGREEMENT_ALPHA_MAX * np.power(
+                agreement_txt, AGREEMENT_ALPHA_GAMMA)
+            vertex_alpha = np.where(has_signal, vertex_alpha, 0.0)
+            cbar_info['alpha_label'] = (
+                'subject agreement R\n'
+                f'opacity = {AGREEMENT_ALPHA_MAX:g} × '
+                f'R^{AGREEMENT_ALPHA_GAMMA:g}')
+            cbar_info['alpha_source'] = str(agreement_path)
     elif mode == 'diverging':
         raw = np.where(has_signal, texture, np.nan)
         vmax = float(np.nanmax(np.abs(raw))) if np.any(has_signal) else 1.0
@@ -364,7 +544,7 @@ def _project_and_transform(nii_path, amp_path, mode, hemi, subjects_dir,
     else:
         raise ValueError(f"unknown mode {mode!r}")
 
-    return data, cmap, fmin, fmid, fmax, cbar_info
+    return data, cmap, fmin, fmid, fmax, cbar_info, vertex_alpha
 
 
 def render_one(ds, map_name, mask_name, nii_path, amp_path, mode,
@@ -384,7 +564,8 @@ def render_one(ds, map_name, mask_name, nii_path, amp_path, mode,
         print(f"  [skip] amplitude missing: {amp_path}")
         return
 
-    data, cmap, fmin, fmid, fmax, cbar_info = _project_and_transform(
+    data, cmap, fmin, fmid, fmax, cbar_info, vertex_alpha = \
+        _project_and_transform(
         nii_path, amp_path, mode, hemi, subjects_dir,
         roi_mask_img=roi_mask_img)
     if not np.any(np.isfinite(data)):
@@ -399,9 +580,23 @@ def render_one(ds, map_name, mask_name, nii_path, amp_path, mode,
     add_kwargs = dict(hemi=hemi, fmin=fmin, fmid=fmid, fmax=fmax,
                       colormap=cmap, alpha=OVERLAY_ALPHA, colorbar=False)
     try:
-        brain.add_data(data, smoothing_steps=0, **add_kwargs)
+        brain.add_data(data, smoothing_steps=int(SURFACE_SMOOTHING_STEPS),
+                        **add_kwargs)
     except TypeError:
         brain.add_data(data, **add_kwargs)
+    if vertex_alpha is not None:
+        # MNE's public ``alpha`` argument is scalar-only, but its layered
+        # mesh supports an opacity value per vertex. Replace the data
+        # overlay's scalar opacity with R-derived opacity after add_data.
+        mesh = brain._layered_meshes[hemi]
+        mesh.update_overlay(name='data', opacity=vertex_alpha)
+        brain._renderer._update()
+        in_mask_alpha = vertex_alpha[vertex_alpha > 0]
+        if in_mask_alpha.size:
+            print("    alpha from unit-vector R: "
+                  f"median={np.median(in_mask_alpha):.3f}, "
+                  f"range={in_mask_alpha.min():.3f}.."
+                  f"{in_mask_alpha.max():.3f}")
 
     # Cells (hemisphere-split)
     coords = cells_df[['MNI_x', 'MNI_y', 'MNI_z']].to_numpy(dtype=float)
@@ -424,6 +619,10 @@ def render_one(ds, map_name, mask_name, nii_path, amp_path, mode,
     out_dir = OUT_ROOT / ds
     out_dir.mkdir(parents=True, exist_ok=True)
     mode_tag = MODE_TAG.get(mode, mode)
+    # Append a small suffix when smoothing/symmetrisation is stronger
+    # than default, so different visualisation passes don't overwrite.
+    if BILATERAL_SYMMETRISE:
+        mode_tag = f'{mode_tag}_bil'
     stem = out_dir / f'{map_name}__{mask_name}__{mode_tag}__{hemi}_{view}'
     png_path = str(stem) + '.png'
     pdf_path = str(stem) + '.pdf'
@@ -446,8 +645,9 @@ def render_one(ds, map_name, mask_name, nii_path, amp_path, mode,
         ax_cb = fig.add_subplot(gs[1])
         # Shrink the colourbar horizontally so it doesn't look absurd.
         cb_pos = ax_cb.get_position()
-        cb_width_frac = 0.55
-        ax_cb.set_position([(1 - cb_width_frac) / 2, cb_pos.y0,
+        cb_width_frac = 0.50 if vertex_alpha is not None else 0.55
+        cb_left = 0.08 if vertex_alpha is not None else (1 - cb_width_frac) / 2
+        ax_cb.set_position([cb_left, cb_pos.y0,
                              cb_width_frac, cb_pos.height * 0.4])
         norm = Normalize(vmin=cbar_info['vmin'], vmax=cbar_info['vmax'])
         sm = ScalarMappable(cmap=cmap, norm=norm)
@@ -456,11 +656,29 @@ def render_one(ds, map_name, mask_name, nii_path, amp_path, mode,
         cbar.set_ticklabels([f'{t:g}' for t in cbar_info['ticks']])
         cbar.set_label(cbar_info['label'], fontsize=9)
         cbar.ax.tick_params(labelsize=8)
-        fig.savefig(pdf_path, dpi=300, bbox_inches='tight')
-        # Also overwrite the PNG so both formats have the fixed colourbar.
+        if vertex_alpha is not None:
+            # A compact second legend: black is composited over the same
+            # light-grey background with alpha increasing from R=0 to R=1.
+            ax_alpha = fig.add_axes(
+                [0.68, cb_pos.y0, 0.24, cb_pos.height * 0.4])
+            ramp = np.linspace(0.0, 1.0, 256)
+            rgba = np.zeros((1, 256, 4), dtype=float)
+            rgba[..., :3] = 0.05
+            rgba[..., 3] = (AGREEMENT_ALPHA_MAX
+                            * ramp ** AGREEMENT_ALPHA_GAMMA)
+            ax_alpha.set_facecolor('#d9d9d9')
+            ax_alpha.imshow(rgba, aspect='auto', origin='lower',
+                            extent=[0, 1, 0, 1])
+            ax_alpha.set_yticks([])
+            ax_alpha.set_xticks([0, 0.5, 1])
+            ax_alpha.tick_params(axis='x', labelsize=8)
+            ax_alpha.set_xlabel(cbar_info['alpha_label'], fontsize=8)
+        # PNG always; PDF only if SAVE_PDF (default off).
         fig.savefig(png_path, dpi=300, bbox_inches='tight')
+        if SAVE_PDF:
+            fig.savefig(pdf_path, dpi=300, bbox_inches='tight')
         plt.close(fig)
-        print(f"  wrote {pdf_path}")
+        print(f"  wrote {png_path if not SAVE_PDF else pdf_path}")
     except Exception as exc:
         print(f"  [mne] save failed: {exc}")
     finally:
@@ -471,6 +689,11 @@ def render_one(ds, map_name, mask_name, nii_path, amp_path, mode,
 
 
 def main():
+    vector_mode = ('unit-vector derived' if USE_UNIT_VECTOR_MAPS
+                   else 'magnitude-weighted')
+    print(f"Harmonic vector mode: {vector_mode}")
+    print(f"Harmonic input root: {BASE_HARMONIC}")
+    print(f"Overlay output root: {OUT_ROOT}")
     cells_df = load_cells()
     subjects_dir = _ensure_fsaverage()
     if subjects_dir is None:
