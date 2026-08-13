@@ -131,3 +131,61 @@ changed label — the `mLT2bHb07` cell above, `HC_anterior → HC_mid`.
 Downstream RSA results are therefore essentially unaffected; the value of
 the update is 86 cells now sitting on verified micro-bundle coordinates
 rather than inferred macro-contact positions.
+
+---
+
+## 2026-08-13 — Cell ↔ fMRI future-lag gradient: extensive exploration (mostly null)
+
+**Question:** do human mPFC single units recapitulate the fMRI DSR "preferred
+future angle" gradient — i.e. if we average cells, does anatomical position
+predict their preferred spatial-tuning lag the way the fMRI angle map does?
+
+**Scripts (all read `per_cell_ALL_ROIs.csv`, mPFC, 155 cells / 32 subjects):**
+`cell_gradient_master_table.py` (master per-cell + group tables),
+`gradient_brain_cells_by_lag.py` (MNE medial surfaces, cells coloured by lag),
+`cell_gradient_principal_curve.py` (bent-axis sliding window + shift test),
+`cell_gradient_split_table.py`, `cell_gradient_split_permgated.py`,
+`cell_gradient_full_factorial.py` (320-row robustness grid).
+Outputs under `data/ephys_humans/derivatives/group/cell_gradient_master/2026-08-13_09-45-28/`.
+
+**Methods settled on:** pool the 12-lag profiles within a cell group, then read
+the preferred lag off the pooled profile (argmax); per-cell argmax and the
+continuous first-harmonic angle are both too noisy (harmonic vector length
+≈ 0.07; per-cell harmonic angle ~ uniform). fMRI angle sampled at each cell
+via symmetrised + 3 mm cos/sin smoothing + 6 mm sphere (quarters map).
+Anatomical axis = PC1 of the gradient-mask voxels (folded x) = essentially
+dorsoventral (loads [-0.04, -0.41, 0.91], r = 0.98 with MNI z).
+
+**NULL / dead ends (do not re-run):**
+- **Continuous gradient does not exist.** Spearman(future-score, arc-length on a
+  bent principal curve) = +0.058, circular-shift p = 0.25, subject-bootstrap
+  95% CI [-0.10, +0.19]. In the full factorial, 31/32 correlation configs are
+  n.s. (r ≈ 0.0–0.17); ctrl-mode correlations ≈ 0 or negative.
+- **Continuous first-harmonic angle** per cell is unusable (near-uniform;
+  group bootstrap CIs span the whole circle).
+- **Controlled tuning (`_ctrl` columns) shows nothing** reproducible — binned
+  pooled lags are chaotic across weighting/gating (confirms prior expectation).
+- **Subject-first vs cell averaging** does not stabilise; it only *diverges from*
+  cell-weighting where the pooled profile is flat (peak r ≲ 0.05), i.e.
+  divergence is a noise flag, not a fixable choice.
+- **Perm-gating** (only cells significant at a lag contribute to that lag) does
+  not sharpen results; it thins data (median 2–7 cells/lag) and only confirms
+  the already-robust groups.
+- A real **240° "backward" signal** sits mid-axis (pc1-Q2 / z-middle,
+  peak r 0.085–0.10) — genuine, and it blocks any monotone ventral→dorsal ramp.
+
+**The one robust positive:** under **noctrl**, the **future-end bin of the
+gradient axis** pools to **60°**, invariant to cell-vs-subject weighting AND to
+perm-gating: `all/pc1/half:end`, `all/pc1/quartile:Q3`, and `all/z/quartile:Q4`
+all give 60/60/60/60, matching the local fMRI angle (~63°, err 3–9°; pooled
+peak r ≈ 0.08–0.16). Interpretation is **local, not a gradient**: "cells in the
+deep-future (dorsal/high-z) end of the DSR gradient prefer 60°, matching fMRI
+there," NOT "a cell gradient mirrors the fMRI gradient."
+
+**One nominally-significant correlation (EXPLORATORY — treat with caution):**
+`noctrl / in_mask / z / perm-gated (≥1 sig lag) / cell-weighted`:
+Spearman(future-score, MNI z) = **0.238, shift-p = 0.032, n = 54**. This is
+1 hit in 32 tests and does **not survive subject-weighting** (r = 0.028,
+p = 0.45), so it is not corrected-significant. Splitting those 54 cells at
+median z: low-z (n=27) argmax 240°, future-score +0.00; high-z (n=27) argmax
+**60°**, peak r 0.159, future-score +0.087 — the same "high-z → 60°" story.
