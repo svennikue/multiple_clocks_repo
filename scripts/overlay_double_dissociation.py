@@ -218,6 +218,64 @@ def _tstat_gt0(values):
     return t, p_one, p_two
 
 
+def _subject_clustered_lagwise_tests(records, rois):
+    """Return one lag-wise Fisher-z t test per ROI after subject aggregation.
+
+    Each cell's CV correlation is Fisher-transformed, cells are averaged
+    within subject at every lag, and the resulting independent subject means
+    are tested against zero.  This avoids treating multiple cells from the
+    same subject as independent observations.
+    """
+    rows = []
+    for roi in rois:
+        record = records[roi]
+        if record["curves"].size == 0:
+            continue
+        raw_subject_means = _analysis_units(
+            record, weighting="subject", fisher=False)
+        z_subject_means = _analysis_units(
+            record, weighting="subject", fisher=True)
+        t, p_one, p_two = _tstat_gt0(z_subject_means)
+        for j, lag in enumerate(LAGS_DEG_BASE):
+            valid = np.isfinite(z_subject_means[:, j])
+            n_subjects_valid = int(valid.sum())
+            rows.append({
+                "roi": _display(roi),
+                "lag_deg": lag,
+                "test": "one_sample_fisher_z_gt_zero",
+                "analysis_unit": "subject_mean",
+                "subject_aggregation": (
+                    "Fisher-z CV r averaged across cells within subject"),
+                "n_cells": record["curves"].shape[0],
+                "n_subjects_total": np.unique(record["subjects"]).size,
+                "n_subjects_valid": n_subjects_valid,
+                "mean_subject_raw_r": (
+                    float(np.nanmean(raw_subject_means[:, j]))
+                    if n_subjects_valid else np.nan),
+                "mean_subject_fisher_z": (
+                    float(np.nanmean(z_subject_means[:, j]))
+                    if n_subjects_valid else np.nan),
+                "t_fisher_z_vs_0": t[j],
+                "df": n_subjects_valid - 1,
+                "p_one_sided": p_one[j],
+                "p_two_sided": p_two[j],
+            })
+    out = pd.DataFrame(rows)
+    if not out.empty:
+        # The primary correction treats the 12 circular lags within each ROI
+        # as one family; the second column makes the whole 3 ROI × 12 lag
+        # family available for readers who want that more conservative scope.
+        out["p_one_sided_fdr_12_lags"] = (
+            out.groupby("roi")["p_one_sided"].transform(_bh_fdr))
+        out["p_two_sided_fdr_12_lags"] = (
+            out.groupby("roi")["p_two_sided"].transform(_bh_fdr))
+        out["p_one_sided_fdr_all_stats_rois_lags"] = _bh_fdr(
+            out["p_one_sided"].to_numpy())
+        out["p_two_sided_fdr_all_stats_rois_lags"] = _bh_fdr(
+            out["p_two_sided"].to_numpy())
+    return out
+
+
 def _unit_label(record, roi, weighting):
     n_cells = record["curves"].shape[0]
     n_subjects = np.unique(record["subjects"]).size
@@ -322,7 +380,7 @@ def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY,
         suffix = "" if current_weighting == "cell" else "_subject_weighted"
         unit_title = ("cell-weighted" if current_weighting == "cell"
                       else "subject-balanced")
-        fig, ax = plt.subplots(figsize=(9 * CM, 6 * CM), constrained_layout=True)
+        fig, ax = plt.subplots(figsize=(6 * CM, 4 * CM), constrained_layout=True)
         _draw_mean_overlay(ax, records, rois, current_weighting)
         ax.set_xticks(tick_pos)
         ax.set_xticklabels(tick_lab, fontsize=FONT_TICK, rotation=45)
@@ -337,7 +395,7 @@ def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY,
                         dpi=DPI, bbox_inches="tight")
         plt.close(fig)
 
-        fig, ax = plt.subplots(figsize=(9 * CM, 6 * CM), constrained_layout=True)
+        fig, ax = plt.subplots(figsize=(6 * CM, 4 * CM), constrained_layout=True)
         _draw_t_overlay(ax, records, rois, current_weighting)
         ax.set_xticks(tick_pos)
         ax.set_xticklabels(tick_lab, fontsize=FONT_TICK, rotation=45)
@@ -408,6 +466,14 @@ def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY,
         tbl.groupby(["weighting", "lag_deg"])["p_two_sided"].transform(_bh_fdr))
     tbl.to_csv(out_dir / "overlay_per_lag_table.csv", index=False)
 
+    # Always write the lag-wise subject-level inference table, regardless of
+    # whether the requested figures are cell-weighted, subject-balanced, or
+    # both.  STATS_ROIS includes HC_anterior even though it is not in the
+    # default visual overlay.
+    subject_lagwise = _subject_clustered_lagwise_tests(records, STATS_ROIS)
+    subject_lagwise.to_csv(
+        out_dir / "overlay_subject_clustered_lagwise_ttests.csv", index=False)
+
     target = _target_tests(records, STATS_ROIS, weightings)
     target.to_csv(out_dir / "overlay_target_window_tests.csv", index=False)
 
@@ -450,6 +516,9 @@ def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY,
                "- `overlay_meanR_weighting_comparison.pdf`: matched cell- "
                "versus subject-weighted comparison.",
                "- `overlay_per_lag_table.csv`: per-lag means and Fisher tests.",
+               "- `overlay_subject_clustered_lagwise_ttests.csv`: lag-wise "
+               "Fisher-z t-tests after averaging cells within subject for "
+               "mPFC, HC_anterior, and HC_mid.",
                "- `overlay_target_window_tests.csv`: predicted-window tests."]
     (out_dir / "WEIGHTING_RESULTS.md").write_text("\n".join(report) + "\n")
 

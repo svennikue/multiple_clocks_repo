@@ -1,23 +1,100 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Rodent DSR RSA — chosen key analyses.
+Rodent DSR RSA — validation of the action-plan (DSR) model on El-Gaby et
+al. (2024) mPFC recordings.
 
-Two main analyses are run for every recday:
-    1. z-scored full DSR RDM  (mode_path / all_trials / full_z)
-    2. across-task-halves RDM  (mode_path; duplicate-config sessions as halves)
+Purpose: show that the same RSA machinery used for the human fMRI and
+human single units recovers the concurrent-future-location code that
+El-Gaby et al. found at the level of individual mouse neurons, and that
+it does NOT find an abstract position-in-sequence code — reproducing both
+central properties of the original result.
 
-For the example recday (most neurons by default), three publication figures are
-built per analysis (figs 1 & 2 are per-variant, fig 3 is variant-independent):
-    - fig 1: DSR overview (modelled neurons + DSR model RDM + group betas with FDR)
+WHAT IS COMPARED
+----------------
+Per recording day, the geometry of the recorded population across
+timepoints × task configurations is compared against the geometry of four
+simulated populations. All four enter ONE joint GLM, so the action-plan
+model has to explain variance beyond the simpler codes:
+
+    dsr_fmri  'Action Plan'        concurrent future locations (see below)
+    stat      'Position in Seq.'   ordinal position A/B/C/D, config-general
+    loc       'Physical Location'  place code (9 grid nodes)
+    phas      'Subgoal Progress'   within-state phase (von Mises tuning)
+
+`MODEL_ORDER_DSR` is the fitted combo. The rodent-native DSR variant
+(`dsr`) and the location×phase model (`midn`) are computed but excluded:
+`dsr` and `dsr_fmri` correlate at r ≈ 0.6 and cannibalise each other's β
+in a joint fit (see diagnose_dsr_vs_dsr_fmri.py, 2026-07-27_22-28-27).
+`dsr_fmri` is the primary regressor because it is built exactly like the
+human pipeline (RSA_DSR_ROIs_simple.build_mode_path_dsr).
+
+NEURAL DATA -> RDM
+------------------
+Normalised recordings, 360 bins per ABCD loop. Per recday:
+  1. PHASE-RESIDUALISE each cell (see PHASE_RESIDUALISE below) — this is
+     the step that removes the subgoal-progress signal, which is the
+     strongest signal in this dataset and would otherwise dominate.
+  2. Average across trials within a task configuration.
+  3. Downsample 360 -> N_CONDS_PER_CONFIG conditions (mean over bins).
+  4. Concatenate configurations, z-score each neuron across all columns.
+  5. RDM = 1 − Pearson correlation across neurons, between every pair of
+     (configuration, timepoint) columns.
+
+MODEL RDMs
+----------
+Built from the MODE path across trials of a configuration (the single
+most frequent trajectory, not an average — an averaged path is not a
+valid trajectory), via `mc.simulation.predictions.model_DSR`.
+
+`dsr_fmri` specifically: the mode path is downsampled to
+N_CONDS_PER_CONFIG × 12 integer node IDs (12 × 12 = 144 with the current
+settings), and for each of the N_CONDS_PER_CONFIG timepoints that vector
+is rolled left by `pos × 12`, so it always reads
+[current segment | next | ... | previous]. Every timepoint therefore
+carries the whole remaining trajectory at once, in a frame anchored to
+the present. Its RDM is a HAMMING distance — the fraction of future
+positions at which two timepoints plan a different node — matching the
+"overlap of locations" logic in the paper. The other three models are
+cosine RDMs on their rate maps.
+
+Settings that define the parameterisation (and are now written into
+`key_analysis_stats.json['settings']`, because two runs differing only in
+these are otherwise indistinguishable from the JSON alone):
+N_CONDS_PER_CONFIG = 12 timepoints per configuration (30 bins = 30° each,
+matching the human pipeline) and NUMBER_PHASE_NEURONS = 3.
+
+TWO ANALYSES PER RECDAY
+-----------------------
+    1. `full_z`         — all configurations pooled; every off-diagonal
+                          pair (within- and across-configuration).
+    2. `across_halves`  — configurations recorded in TWO separate
+                          sessions are split into those two sessions and
+                          similarity is only ever computed across them.
+                          Halves share no trials, so no within-session
+                          autocorrelation can inflate the fit. Only
+                          configurations with ≥2 source sessions qualify.
+
+GROUP STATISTICS
+----------------
+Each recday's joint GLM is a standardised (z-scored) OLS; the per-recday β
+for each model is carried to the group level and tested with a one-sided
+one-sample t-test against zero across recdays, BH-FDR corrected across the
+four models. Written to `key_analysis_stats.json`.
+
+NOTE ON n: the 8 recdays come from 5 animals (ah03, ah04 ×3, me08, me10,
+me11 ×2), so the group test treats recording days, not animals, as
+independent units.
+
+FIGURES (example recday = most neurons unless EXAMPLE_RECDAY is set)
+    - fig 1: DSR overview (modelled neurons + DSR model RDM + group betas
+             with FDR stars)   [per analysis]
     - fig 2: example-subject row (data + each model's activation and RDM)
-    - fig 3: model schematics (one configuration; midnight palette)
+             [per analysis]
+    - fig 3: model schematics for one configuration  [variant-independent]
 
-A stats JSON containing mean / SD / SEM / group t / FDR-corrected p per model
-is written for both analyses.
-
-The full comparison-matrix sweep (trial filter × pool method × variant + the
-continuous pipeline) lives in ``analysis_rodents_legacy_alternatives.py``.
+The full comparison-matrix sweep (trial filter × pool method × variant +
+the continuous pipeline) lives in ``analysis_rodents_legacy_alternatives.py``.
 
 @author: Svenja Kuechenhoff
 """
@@ -36,8 +113,10 @@ import mc.analyse.analyse_ephys_clean as ae
 DATA_FOLDER = '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_recordings_200423/'
 OUT_BASE    = f"{DATA_FOLDER}derivatives/rodent_DSR_RSA/"
 
-NUMBER_PHASE_NEURONS = 2
-N_CONDS_PER_CONFIG   = 8       # 12 conditions / task config (matches human pipeline)
+NUMBER_PHASE_NEURONS = 3       # von Mises phase-tuned neurons per state (κ = 10/n = 3.33)
+N_CONDS_PER_CONFIG   = 12      # timepoints per task config; 360/12 = 30 bins (30°) each.
+                               # Matches the human cell pipeline
+                               # (RSA_DSR_ROIs_simple.N_CONDS_PER_CONF = 12).
 # Both DSR variants are computed for every recday:
 #   'dsr'      — rodent-native DSR (predictions.model_DSR, cosine RDM)
 #   'dsr_fmri' — human-pipeline DSR (mode-path rolled by bin, Hamming RDM;
@@ -64,14 +143,19 @@ DSR_DISPLAY_KEY      = 'dsr_fmri' if 'dsr_fmri' in MODEL_ORDER_DSR else 'dsr'
 #                    RSA in RSA_DSR_ROIs_simple.py. Removes the smooth
 #                    first-harmonic phase but leaves higher harmonics.
 #   'cosine_2h'   — 4 basis functions (adds sin, cos of 4πφ). Removes
-#                    first + second harmonic. This is what we use here
-#                    because the rodent `phas` model (3 von Mises tuning
-#                    curves per state, κ ≈ 3.33) has non-trivial 2nd-
-#                    harmonic content that a bare 'cosine' basis leaves
-#                    behind. In humans, the phase model is already null
-#                    after 'cosine' residualisation so this refinement
-#                    isn't needed there; the rodent phas structure is
-#                    sharper and needs the extra basis functions.
+#                    first + second harmonic. This is what we use here.
+#                    Chosen empirically: the criterion was that the
+#                    `phas` (Subgoal Progress) regressor is driven to a
+#                    null effect in the group GLM. A bare 'cosine' basis
+#                    leaves `phas` significant, because the rodent phase
+#                    tuning (von Mises, κ = 3.33) is sharp enough to carry
+#                    non-trivial 2nd-harmonic content. In humans the
+#                    phase model is already null after 'cosine', so the
+#                    extra basis functions aren't needed there — i.e.
+#                    this is the STRICTER of the two conventions.
+#                    φ = (bin mod 90)/90, the within-state phase; only
+#                    the phase component is subtracted, the cell's mean
+#                    firing rate is preserved.
 #   'categorical' — 3 boxcar indicators (early/middle/late). Tightest
 #                    match to the 3-neuron structure of `phas`, but
 #                    departs further from the human convention.
@@ -377,13 +461,41 @@ ae.pub_figure_model_schematics(
 
 
 # ── Write stats JSON ──────────────────────────────────────────────────
+# The settings block is written FIRST and is not optional: two runs with
+# different N_CONDS_PER_CONFIG / NUMBER_PHASE_NEURONS produce JSONs that are
+# otherwise indistinguishable, which has already caused an 8-vs-12 mix-up.
+run_settings = {
+    'run_tag':                 RUN_TAG,
+    'timestamp':               datetime.now().isoformat(timespec='seconds'),
+    'data_folder':             DATA_FOLDER,
+    'n_conds_per_config':      N_CONDS_PER_CONFIG,
+    'bins_per_cond':           360 // N_CONDS_PER_CONFIG,
+    'degrees_per_cond':        360 / N_CONDS_PER_CONFIG,
+    'number_phase_neurons':    NUMBER_PHASE_NEURONS,
+    'von_mises_kappa':         10.0 / NUMBER_PHASE_NEURONS,
+    'phase_residualise':       PHASE_RESIDUALISE,
+    'model_order_dsr':         MODEL_ORDER_DSR,
+    'dsr_display_key':         DSR_DISPLAY_KEY,
+    'len_standardised_path_dsr_fmri': ae.LEN_STANDARDISED_PATH_DSR_FMRI,
+    'dsr_fmri_matrix_shape':   [N_CONDS_PER_CONFIG,
+                                N_CONDS_PER_CONFIG
+                                * ae.LEN_STANDARDISED_PATH_DSR_FMRI],
+    'random_seed':             42,
+    'analysis_config':         ANALYSIS_CONFIG,
+}
+
 stats_path = os.path.join(OUT_DIR, 'key_analysis_stats.json')
 with open(stats_path, 'w') as f:
-    json.dump({'full_z':           stats_full_z,
+    json.dump({'settings':         run_settings,
+               'full_z':           stats_full_z,
                'across_halves':    stats_halves,
                'repeats_overview': repeats_overview},
               f, indent=2)
 print(f"\nWrote stats: {stats_path}")
+print(f"  settings: {N_CONDS_PER_CONFIG} conds/config "
+      f"({360 // N_CONDS_PER_CONFIG} bins = {360 / N_CONDS_PER_CONFIG:.0f}° each), "
+      f"{NUMBER_PHASE_NEURONS} phase neurons, "
+      f"phase_residualise={PHASE_RESIDUALISE!r}")
 
 # Variables persist in Spyder's variable explorer because the script runs at
 # module scope. Uncomment if you want a hard pause before exit.

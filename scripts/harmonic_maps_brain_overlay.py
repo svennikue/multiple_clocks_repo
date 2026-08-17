@@ -38,6 +38,7 @@ Outputs (PDF + PNG per (dataset × map × hemi)):
 
 @author: Svenja Küchenhoff
 """
+#import pdb; pdb.set_trace()
 from __future__ import annotations
 
 import os
@@ -53,6 +54,7 @@ from matplotlib.colors import LinearSegmentedColormap
 try:
     from mne.datasets import fetch_fsaverage
     from mne.viz import Brain
+    from mne import Label
     HAS_MNE_BRAIN = True
 except Exception as _exc:
     print(f"[warn] mne not available: {_exc}")
@@ -97,6 +99,18 @@ MPFC_MASK_PATH = Path('/Users/xpsy1114/Documents/projects/multiple_clocks/data'
 GRAD15_MASK_PATH = Path('/Users/xpsy1114/Documents/projects/multiple_clocks/data'
                         '/masks/gradient_thr_1.5.nii.gz')
 
+# Optional black contour over preferred-angle maps.  This is deliberately
+# separate from the ROI used to gate a map: it lets the DSR main-effect
+# boundary be shown on every preferred-angle plot, including whole-brain and
+# gradient plots.  Set to True when the contour is needed.
+SHOW_DSR_MAIN_EFFECT_OUTLINE = True
+DSR_MAIN_EFFECT_OUTLINE_PATH = Path(
+    '/Users/xpsy1114/Documents/projects/multiple_clocks/data/masks/'
+    'DSR_main_effect_mask.nii.gz')
+DSR_MAIN_EFFECT_OUTLINE_COLOR = 'black'
+# Number of cortical-mesh rings included in the contour.  One is a thin line.
+DSR_MAIN_EFFECT_OUTLINE_WIDTH = 1
+
 OUT_ROOT = BASE_HARMONIC / 'brain_overlays_with_mPFC_cells'
 OUT_ROOT.mkdir(parents=True, exist_ok=True)
 
@@ -121,12 +135,20 @@ AMP_EPS = 1e-6
 # are where the "angle jumps" between neighbours come from).
 AMP_GATE_PERCENTILE = 0
 
-# Opacity mapping for ``circular_alpha``. Gamma=0.5 uses sqrt(R), which
-# retains the ordering by agreement but makes low/moderate R substantially
-# more visible than a strict linear map. Set to 1.0 for alpha proportional
-# to R; values above 1 suppress weak agreement more strongly.
-AGREEMENT_ALPHA_GAMMA = 0.8
+# Opacity mapping for ``circular_alpha``.  The highest-agreement vertices
+# are fully opaque; only the remaining lower-agreement vertices are faded.
+# Set AGREEMENT_ALPHA_OPAQUE_TOP_PCT to None for the original continuously
+# transparent mapping across every vertex.
+AGREEMENT_ALPHA_OPAQUE_TOP_PCT = 100 #40.0
+# Gamma controls fading below the opaque cutoff: 0.5 uses sqrt(R), 1.0 is
+# linear, and values above 1 fade low-agreement vertices more strongly.
+AGREEMENT_ALPHA_GAMMA = 1.2
+# Used only when AGREEMENT_ALPHA_OPAQUE_TOP_PCT is None (the legacy,
+# fully-continuous alpha mapping).
 AGREEMENT_ALPHA_MAX = 0.95
+ALPHA_OPACITY_TAG = (
+    'continuous' if AGREEMENT_ALPHA_OPAQUE_TOP_PCT is None
+    else f'top{float(AGREEMENT_ALPHA_OPAQUE_TOP_PCT):g}_opaque')
 
 # ── Angle-projection smoothing knobs (visualisation only) ─────────────
 # The `circular` / `circular_gated` modes can either project the angle
@@ -140,7 +162,7 @@ BILATERAL_SYMMETRISE     = True     # D — x-flip cos/sin and average
 MASK_AMP_TOP_PCT         = None     # E — keep top X% of amp within mask
 
 # Save PDF alongside PNG?  Off by default (only PNG saved).
-SAVE_PDF                 = False
+SAVE_PDF                 = True
 
 # What to render.  (map, mask_key, mode)
 #   mask_key = 'whole' | 'mPFC' | 'DSR_main' | 'gradient'  (looked up in MASKS)
@@ -186,7 +208,8 @@ MODE_TAG = {
     'abs_yellow_red': 'abs',
     'circular':       'circ',
     'circular_gated': f'circg{int(AMP_GATE_PERCENTILE)}',
-    'circular_alpha': f'circ_alphaR_g{AGREEMENT_ALPHA_GAMMA:g}',
+    'circular_alpha': (f'circ_alphaR_{ALPHA_OPACITY_TAG}'
+                       f'_g{AGREEMENT_ALPHA_GAMMA:g}'),
     'diverging':      'div',
 }
 
@@ -214,6 +237,8 @@ CIRCULAR_ANCHORS_HEX = [
 CELL_COLOR = '#0e3d3a'   # CLAUDE.md "observed value" dark green
 CELL_SCALE = 0.35
 JITTER_MM  = 2.5
+# Set False to render the surface maps without single-unit cell markers.
+PLOT_CELLS = False
 
 HEMIS = ('lh', 'rh')
 VIEWS = ('medial', 'lateral')
@@ -224,12 +249,12 @@ VIEWS = ('medial', 'lateral')
 # — omit any of them to keep the full list for that axis.
 RENDER_FILTER = {
     'combinations': [
-        ('angle_deg', 'mPFC',            'circular_gated'),
-        ('angle_deg', 'whole',           'circular_gated'),
-        ('angle_deg', 'gradient', 'circular_gated'),
-        ('angle_deg', 'gradient_thr1.5', 'circular_gated'),
-        ('angle_deg', 'mPFC',            'circular_alpha'),
-        ('angle_deg', 'gradient',        'circular_alpha'),
+        # ('angle_deg', 'mPFC',            'circular_gated'),
+        # ('angle_deg', 'whole',           'circular_gated'),
+        # ('angle_deg', 'gradient', 'circular_gated'),
+        # ('angle_deg', 'gradient_thr1.5', 'circular_gated'),
+        # ('angle_deg', 'mPFC',            'circular_alpha'),
+        # ('angle_deg', 'gradient',        'circular_alpha'),
         ('angle_deg', 'gradient_thr1.5', 'circular_alpha')
         # ('cos_group', 'whole',           'diverging'),
         # ('sin_group', 'whole',           'diverging'),
@@ -350,6 +375,21 @@ def load_masks(ref_img):
     return masks
 
 
+def load_dsr_main_effect_outline(ref_img):
+    """Load the optional DSR mask contour on the harmonic-map grid."""
+    if not SHOW_DSR_MAIN_EFFECT_OUTLINE:
+        return None
+    if not DSR_MAIN_EFFECT_OUTLINE_PATH.exists():
+        print("  [warn] DSR main-effect outline mask missing: "
+              f"{DSR_MAIN_EFFECT_OUTLINE_PATH}")
+        return None
+    outline_img = _resample_mask(
+        nib.load(str(DSR_MAIN_EFFECT_OUTLINE_PATH)), ref_img)
+    print("  DSR main-effect outline mask: "
+          f"{int((outline_img.get_fdata() > 0.5).sum())} vox")
+    return outline_img
+
+
 def load_cells():
     df = pd.read_csv(CELL_TABLE)
     for ax in ('x', 'y', 'z'):
@@ -395,6 +435,33 @@ def _unit_agreement_path(nii_path):
     dataset = Path(nii_path).parent.name
     return (HARMONIC_RESULTS_ROOT / UNIT_VECTOR_RESULTS_DIRNAME / dataset
             / 'amplitude.nii.gz')
+
+
+def _add_mask_outline(brain, mask_img, hemi, subjects_dir):
+    """Project a binary volume mask and add its boundary as a black line.
+
+    ``Brain.add_label(..., borders=...)`` finds the boundary on the cortical
+    mesh, so only the DSR mask's perimeter is drawn; its interior remains
+    fully transparent and does not cover the preferred-angle colours.
+    """
+    if mask_img is None:
+        return
+    try:
+        surf_path = os.path.join(
+            subjects_dir, 'fsaverage', 'surf', f'{hemi}.pial')
+        texture = _surface.vol_to_surf(
+            mask_img, surf_path, interpolation='nearest').astype(float)
+        vertices = np.flatnonzero(texture >= 0.5)
+        if not vertices.size:
+            print(f"  [outline] DSR mask has no surface vertices on {hemi}")
+            return
+        outline = Label(vertices=vertices, hemi=hemi,
+                        name='DSR_main_effect_outline')
+        brain.add_label(outline, color=DSR_MAIN_EFFECT_OUTLINE_COLOR,
+                        alpha=1.0,
+                        borders=int(DSR_MAIN_EFFECT_OUTLINE_WIDTH))
+    except Exception as exc:
+        print(f"  [outline] DSR main-effect contour failed: {exc}")
 
 
 def _project_and_transform(nii_path, amp_path, mode, hemi, subjects_dir,
@@ -518,13 +585,44 @@ def _project_and_transform(nii_path, amp_path, mode, hemi, subjects_dir,
                 interpolation='linear').astype(float)
             agreement_txt = np.clip(
                 np.nan_to_num(agreement_txt, nan=0.0), 0.0, 1.0)
-            vertex_alpha = AGREEMENT_ALPHA_MAX * np.power(
-                agreement_txt, AGREEMENT_ALPHA_GAMMA)
+            opaque_cutoff = None
+            if AGREEMENT_ALPHA_OPAQUE_TOP_PCT is None:
+                vertex_alpha = AGREEMENT_ALPHA_MAX * np.power(
+                    agreement_txt, AGREEMENT_ALPHA_GAMMA)
+                alpha_label = (
+                    'subject agreement R\n'
+                    f'opacity = {AGREEMENT_ALPHA_MAX:g} × '
+                    f'R^{AGREEMENT_ALPHA_GAMMA:g}')
+            else:
+                opaque_top_pct = float(AGREEMENT_ALPHA_OPAQUE_TOP_PCT)
+                if not 0.0 < opaque_top_pct <= 100.0:
+                    raise ValueError(
+                        'AGREEMENT_ALPHA_OPAQUE_TOP_PCT must be in '
+                        '(0, 100], or None')
+                if np.any(has_signal):
+                    # E.g. 70% opaque means the cutoff is the 30th
+                    # percentile: all vertices at/above it get alpha=1.
+                    opaque_cutoff = float(np.percentile(
+                        agreement_txt[has_signal], 100.0 - opaque_top_pct))
+                else:
+                    opaque_cutoff = 1.0
+                if opaque_cutoff > 0:
+                    fade_fraction = np.clip(
+                        agreement_txt / opaque_cutoff, 0.0, 1.0)
+                    vertex_alpha = np.power(
+                        fade_fraction, AGREEMENT_ALPHA_GAMMA)
+                else:
+                    # A zero percentile cutoff means that many vertices have
+                    # R=0. Keep those transparent and make non-zero R opaque
+                    # rather than accidentally turning the entire map opaque.
+                    vertex_alpha = (agreement_txt > 0).astype(float)
+                alpha_label = (
+                    'subject agreement R\n'
+                    f'top {opaque_top_pct:g}% opaque; lower R fades '
+                    f'(γ={AGREEMENT_ALPHA_GAMMA:g})')
             vertex_alpha = np.where(has_signal, vertex_alpha, 0.0)
-            cbar_info['alpha_label'] = (
-                'subject agreement R\n'
-                f'opacity = {AGREEMENT_ALPHA_MAX:g} × '
-                f'R^{AGREEMENT_ALPHA_GAMMA:g}')
+            cbar_info['alpha_label'] = alpha_label
+            cbar_info['alpha_opaque_cutoff'] = opaque_cutoff
             cbar_info['alpha_source'] = str(agreement_path)
     elif mode == 'diverging':
         raw = np.where(has_signal, texture, np.nan)
@@ -549,7 +647,7 @@ def _project_and_transform(nii_path, amp_path, mode, hemi, subjects_dir,
 
 def render_one(ds, map_name, mask_name, nii_path, amp_path, mode,
                 cells_df, subjects_dir, hemi, view,
-                roi_mask_img=None):
+                roi_mask_img=None, outline_mask_img=None):
     """Build one Brain, overlay data + cells, save PDF+PNG.
 
     `mask_name` is used only for output filenames / titles; the actual
@@ -598,18 +696,25 @@ def render_one(ds, map_name, mask_name, nii_path, amp_path, mode,
                   f"range={in_mask_alpha.min():.3f}.."
                   f"{in_mask_alpha.max():.3f}")
 
-    # Cells (hemisphere-split)
-    coords = cells_df[['MNI_x', 'MNI_y', 'MNI_z']].to_numpy(dtype=float)
-    keep = coords[:, 0] <= 0 if hemi == 'lh' else coords[:, 0] >= 0
-    coords_h = _jitter(coords[keep], JITTER_MM,
-                        seed=hash((hemi, map_name)) & 0xFFFF)
-    if coords_h.shape[0]:
-        try:
-            brain.add_foci(coords_h, coords_as_verts=False, hemi=hemi,
-                            color=CELL_COLOR, scale_factor=CELL_SCALE,
-                            name=f'{CELL_ROI_TO_PLOT}_cells')
-        except Exception as exc:
-            print(f"  [mne] add_foci failed: {exc}")
+    # The outline is independent of the plot's gating mask and is limited to
+    # preferred-angle maps (not cos/sin plots).
+    if SHOW_DSR_MAIN_EFFECT_OUTLINE and map_name == 'angle_deg':
+        _add_mask_outline(brain, outline_mask_img, hemi, subjects_dir)
+
+    # Cells (hemisphere-split).  The flag also avoids requiring the cell table
+    # for a surface-only rendering pass.
+    if PLOT_CELLS and cells_df is not None:
+        coords = cells_df[['MNI_x', 'MNI_y', 'MNI_z']].to_numpy(dtype=float)
+        keep = coords[:, 0] <= 0 if hemi == 'lh' else coords[:, 0] >= 0
+        coords_h = _jitter(coords[keep], JITTER_MM,
+                            seed=hash((hemi, map_name)) & 0xFFFF)
+        if coords_h.shape[0]:
+            try:
+                brain.add_foci(coords_h, coords_as_verts=False, hemi=hemi,
+                                color=CELL_COLOR, scale_factor=CELL_SCALE,
+                                name=f'{CELL_ROI_TO_PLOT}_cells')
+            except Exception as exc:
+                print(f"  [mne] add_foci failed: {exc}")
 
     try:
         brain.show_view(view)
@@ -623,6 +728,10 @@ def render_one(ds, map_name, mask_name, nii_path, amp_path, mode,
     # than default, so different visualisation passes don't overwrite.
     if BILATERAL_SYMMETRISE:
         mode_tag = f'{mode_tag}_bil'
+    if SHOW_DSR_MAIN_EFFECT_OUTLINE and map_name == 'angle_deg':
+        mode_tag = f'{mode_tag}_dsr_outline'
+    if not PLOT_CELLS:
+        mode_tag = f'{mode_tag}_no_cells'
     stem = out_dir / f'{map_name}__{mask_name}__{mode_tag}__{hemi}_{view}'
     png_path = str(stem) + '.png'
     pdf_path = str(stem) + '.pdf'
@@ -664,8 +773,15 @@ def render_one(ds, map_name, mask_name, nii_path, amp_path, mode,
             ramp = np.linspace(0.0, 1.0, 256)
             rgba = np.zeros((1, 256, 4), dtype=float)
             rgba[..., :3] = 0.05
-            rgba[..., 3] = (AGREEMENT_ALPHA_MAX
-                            * ramp ** AGREEMENT_ALPHA_GAMMA)
+            opaque_cutoff = cbar_info['alpha_opaque_cutoff']
+            if opaque_cutoff is None:
+                rgba[..., 3] = (AGREEMENT_ALPHA_MAX
+                                * ramp ** AGREEMENT_ALPHA_GAMMA)
+            elif opaque_cutoff > 0:
+                rgba[..., 3] = np.clip(
+                    ramp / opaque_cutoff, 0.0, 1.0) ** AGREEMENT_ALPHA_GAMMA
+            else:
+                rgba[..., 3] = (ramp > 0).astype(float)
             ax_alpha.set_facecolor('#d9d9d9')
             ax_alpha.imshow(rgba, aspect='auto', origin='lower',
                             extent=[0, 1, 0, 1])
@@ -694,7 +810,9 @@ def main():
     print(f"Harmonic vector mode: {vector_mode}")
     print(f"Harmonic input root: {BASE_HARMONIC}")
     print(f"Overlay output root: {OUT_ROOT}")
-    cells_df = load_cells()
+    cells_df = load_cells() if PLOT_CELLS else None
+    if not PLOT_CELLS:
+        print("Cell markers: disabled (PLOT_CELLS = False)")
     subjects_dir = _ensure_fsaverage()
     if subjects_dir is None:
         print("[error] fsaverage unavailable — aborting.")
@@ -714,6 +832,7 @@ def main():
     print("\n=== Loading masks ===")
     masks = load_masks(ref_img)
     print(f"Masks available: {sorted(masks.keys())}")
+    outline_mask_img = load_dsr_main_effect_outline(ref_img)
 
     # Apply optional render filter (see RENDER_FILTER at the top).
     rf = RENDER_FILTER or {}
@@ -744,10 +863,12 @@ def main():
             roi_mask_img = masks[mask_name]
             print(f"\n[{ds}]  {map_name} × {mask_name}  ({mode})  ← {fname}")
             for hemi in hemis_to_run:
+                #import pdb; pdb.set_trace()
                 for view in views_to_run:
                     render_one(ds, map_name, mask_name, nii_path, amp_path,
                                 mode, cells_df, subjects_dir, hemi, view,
-                                roi_mask_img=roi_mask_img)
+                                roi_mask_img=roi_mask_img,
+                                outline_mask_img=outline_mask_img)
 
     print(f"\nAll overlays under: {OUT_ROOT}")
 

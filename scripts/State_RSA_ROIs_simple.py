@@ -73,9 +73,9 @@ N_PERMUTATIONS = 500
 FDR_ALPHA      = 0.05
 
 # Which data-RDM variants to run.
-# TESTS = ['split_halves', 'split_halves_z', 'between_tasks', 'between_tasks_z']
-TESTS = ['between_tasks_z']
-PRIMARY_TEST = 'between_tasks_z'
+TESTS = ['split_halves', 'split_halves_z', 'between_tasks', 'between_tasks_z']
+#TESTS = ['between_tasks_z']
+PRIMARY_TEST = 'split_halves_z' #'between_tasks_z'
 
 # Branches and their model specs.
 #   'all_cells' uses only 'state' (configs differ per subject so visual

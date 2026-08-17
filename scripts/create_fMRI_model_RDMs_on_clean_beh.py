@@ -2,65 +2,124 @@
 # -*- coding: utf-8 -*-
 """
 Created on Tue Sep 30 15:06:25 2025
-Based on clean behavioural tables,
-create regressors that I want to use for the fMRI.
 
-I will store a standard set of models 
+Build the model regressors (EVs) that the fMRI RSA regresses against.
 
-state # abstract task structure
-A-state # visual control for feedback print
-duration # distance between how long each bin takes
-path_rew # are we comparing same-with-same or different conditions
-next_buttons # buttons that you'll press next
-prev_buttons # buttons that brough you here
-buttons_out # buttons that bring you out of the current state
-location # phase-encoded location
-state_action_loc # current phase-action
-phys_abstr_space # physical space (location) x abstract task space (prev. state) combination
-curr_rew
-next_rew
-two_next_rew
-three_next_rew
-l2_norm
-curr_path
-DSR_onefut
-DSR_twofut
-DSR_threefut
-DSR_fourfut
-DSR_fivefut
-DSR_sixfut
-DSR_sevenfut
-rewDSR
-pathDSR
-rew_stateactionDSR
-path_stateactionDSR
-curr_quarter
-next_quarter
-next2_quarter
-next3_quarter
-DSR
-state_action_DSR
-action_DSR
+Pipeline
+--------
+1. Load the cleaned behavioural table (`clean_fmri_behaviour.py` must have
+   run first). Every row is one behavioural time-step.
+2. Define each model as a `(n_features, n_timesteps)` matrix in step-time.
+3. Project each model into the fMRI's binning: the task is cut into
+   8 bins per loop (`A_path, A_reward, B_path, B_reward, ... D_reward`),
+   and each model row is regressed onto the binary indicator of that bin
+   (OLS, no intercept — the regressors would otherwise be collinear with
+   it). Result: one feature vector per model per bin, keyed
+   `{task}_{state}_{phase}`, e.g. `A1_backw_A_reward`.
+4. Save all of them to one pickle. Model *selection* happens downstream,
+   so this script always produces everything; nothing is committed here.
 
+Every model exists for both task halves (`X1`/`X2`) × path/reward ×
+unique tasks. Downstream, `mc.analyse.my_RSA.build_across_halves_model_RDM`
+pairs each `X1_<dir>_<state>_<phase>` bin with its same-goal partner
+`X2_<flipped_dir>_<state>_<phase>` and turns the stack into a symmetric
+across-halves RDM — the same pairing the searchlight uses, so the RDMs
+plotted here are exactly the ones that enter the regression.
 
-in all possible regressors: both task halves, path x rewards x unique_tasks
+THE THREE MODEL COMBINATIONS THAT ARE ACTUALLY USED
+---------------------------------------------------
+(names below are the dict keys in `EVs`)
 
-note on 05th of feb 2026:
-    there are now quite a lot of models. At the same time, this script is very fast
-    and the stored models aren't very big. so In a way, it doesn't matter in which folder they
-    are stored and how many i produce here.
-    maybe adjust such that it's just always the same folder
-    and always produce all?
-    because you select later anyways
+  (1) Abstract-task GLM
+        state + location + l2_norm + A-state + DSR + path_rew + duration
+      Tests for an abstract task-structure code while controlling for
+      where the subject is, how far everything else is from there, the
+      visual feedback event, the concurrent future-action code, the
+      path/reward split, and how long each bin lasted.
 
-You can choose later which regressors you want to use.
+  (2) DSR GLM
+        DSR + location + l2_norm + A-state + buttons_out + next_buttons
+      Tests the concurrent future-action ("musicbox") code against the
+      current location, the distance-graded place code, the feedback
+      control, and the two button-identity controls — i.e. DSR has to
+      explain variance beyond the action being executed now and next.
 
+  (3) Split-DSR GLM
+        curr_quarter + next_quarter + next2_quarter + next3_quarter
+        + location + l2_norm + A-state + buttons_out + next_buttons
+      Same as (2), but the single DSR vector is cut into its four
+      state-wise quarters so each future step (now, +1, +2, +3) enters as
+      its own regressor. This is what the anatomical-gradient analysis
+      uses.
 
-logic is as follows:
-create the models based on the behaviour in time = 'steps'.
-create regressors based on 'path' or 'reward' also in time = 'steps'
-regress each model into the same binned dimension the fMRI is in.
-I want to end with regressors that go like: '{model}_A1_backw_A_reward.txt'
+HOW EACH COMPONENT IS BUILT
+---------------------------
+`location`  — per bin, the sequence of grid locations the subject actually
+    visited. Across repeats of that bin we take the MODAL path (the most
+    frequent one, not the mean — the mean is not a valid trajectory), then
+    resample it to a fixed length of 12 (`len_standardised_path`) so paths
+    of different step-counts are comparable. Compared by Hamming distance.
+    This is the building block for every DSR model below.
+
+`DSR`  — the concurrent future-action code (El-Gaby-style "musicbox").
+    For each task, the 8 bins' 12-element location vectors are
+    concatenated into one 96-element vector in canonical order
+    (A_path → D_reward). At bin `pos` the vector is left-rolled by
+    `pos × 12`, so it always reads: [current subpath | next subpath |
+    ... | previous subpath]. Every bin therefore represents the whole
+    remaining trajectory simultaneously, in a frame anchored to the
+    present. Hamming distance.
+
+`curr_quarter / next_quarter / next2_quarter / next3_quarter`  — the same
+    rolled 96-element DSR vector sliced into four 24-element quarters
+    (bins 0:24, 24:48, 48:72, 72:96). Each quarter is one state's
+    path+reward pair, i.e. the current state, the next, the one after,
+    and the one after that. Hamming distance.
+
+`l2_norm`  — a graded place code: a 9-element vector whose entry j is the
+    NEGATIVE Euclidean distance between the current location and grid
+    location j. Controls for spatial proximity in a way the binary
+    `location` model cannot (nearby locations are partly similar).
+    Compared by cross-correlation.
+
+`state`  — abstract task structure: one-hot over the four states A–D,
+    independent of the physical locations they map onto. Cross-correlation.
+
+`A-state`  — visual control. Marks only the A_reward bin, i.e. the moment
+    the reward-found feedback is printed on screen; soaks up the visual
+    evoked response that would otherwise leak into the state model.
+
+`buttons_out`  — the buttons that take the subject OUT of the current bin,
+    built the same way as `location` (modal executed button sequence,
+    resampled to 12). Hamming distance.
+`next_buttons` / `prev_buttons`  — `buttons_out` shifted by one bin (see
+    the CAVEAT below).
+
+`path_rew`  — categorical label (`path` vs `reward`) per bin, so the RDM
+    codes whether two bins are the same bin type. Categorical RDM.
+
+`duration`  — mean time spent at the current location within each bin;
+    compared by absolute difference.
+
+`curr_rew / next_rew / two_next_rew / three_next_rew`  — one-hot reward
+    location now / +1 / +2 / +3, built by rotating the run-length-encoded
+    reward sequence (`rotate_runs`). Not in the three GLMs above; kept as
+    a simpler alternative parameterisation of the future code.
+
+All remaining keys (`rewDSR`, `pathDSR`, `state_action_DSR`, `action_DSR`,
+`DSR_onefut` … `DSR_sevenfut`, `phys_abstr_space`, `state_action_loc`,
+`rot_*_quarter`, …) are exploratory variants that are computed and stored
+but do NOT enter the three GLMs above.
+
+CAVEAT — next_buttons / prev_buttons are swapped
+------------------------------------------------
+`EVs['next_buttons'][bin_{t+1}] = EVs['buttons_out'][bin_t]`, so
+`next_buttons` at a given bin actually holds the buttons of the PRECEDING
+bin, and `prev_buttons` holds those of the FOLLOWING bin. The two names
+are interchanged relative to their intent. Since both are used only as
+nuisance controls in GLMs (2) and (3), and both are included, this does
+not change those results — but the label is wrong if either is ever
+interpreted on its own.
 
 note: needs clean_fmri_behaviour.py to have run first.
 

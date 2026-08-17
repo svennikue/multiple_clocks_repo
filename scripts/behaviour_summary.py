@@ -28,11 +28,13 @@ with a single combined JSON, per-subject CSVs, and overview plots.
 import os
 import json
 import glob
+from collections import Counter
 from datetime import datetime
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 from scipy import stats
 
 
@@ -45,8 +47,32 @@ EPHYS_DERIV     = os.path.join(DATA_ROOT, 'ephys_humans', 'derivatives')
 EPHYS_BEH_COLS  = ['rep_correct', 't_A', 't_B', 't_C', 't_D',
                    'loc_A', 'loc_B', 'loc_C', 'loc_D', 'rep_overall',
                    'new_grid_onset', 'session_no', 'grid_no', 'correct']
+# Minimal timing exclusion.  This single 314.58 s correct-repeat-8 loop
+# appears to be a recording/behavioural interruption, so we retain the rest
+# of s23 and exclude only this exact attempt.  ``rep_correct`` is zero-based
+# in the source table, hence 7 = displayed repeat 8.
+EPHYS_EXCLUDE_ATTEMPTS = [
+    {'subject': 's23', 'session_no': 1, 'grid_no': 3, 'rep_correct': 7},
+]
 
-OUT_BASE        = os.path.join(DATA_ROOT, 'behaviour_summary')
+# Sample-trajectory figures.  The task layouts below are the two layouts
+# requested for the first-draft figure.  The acquisition differs between the
+# modalities, so the first is available in the cell data and the second in
+# fMRI.
+PLOT_SAMPLE_TRAJECTORIES = True
+TRAJECTORY_PREFERRED_LAYOUTS = ((3, 7, 9, 5), (5, 9, 4, 3))
+TRAJECTORY_N_STABLE = 5
+TRAJECTORY_N_RANDOM = 3
+TRAJECTORY_RANDOM_SEED = 20260815
+# Create both requested visual encodings for the same eight selected people.
+# In both, a transition's frequency is the fraction of repeats that include
+# it at least once; the two versions differ only in the visual encoding.
+TRAJECTORY_LINE_STYLES = ('opacity', 'thickness')
+
+# The override keeps normal output unchanged, while allowing a safe temporary
+# output location for checks without writing into the data directory.
+OUT_BASE        = os.environ.get(
+    'BEHAVIOUR_SUMMARY_OUT_BASE', os.path.join(DATA_ROOT, 'behaviour_summary'))
 RUN_TAG         = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 OUT_DIR         = os.path.join(OUT_BASE, RUN_TAG)
 PLOT_DIR        = os.path.join(OUT_DIR, 'plots')
@@ -254,6 +280,47 @@ def ephys_loop_table(df, sub):
     return df
 
 
+def exclude_ephys_attempts(tbl):
+    """Drop only explicitly registered interrupted ephys attempts."""
+    keep = np.ones(len(tbl), dtype=bool)
+    for attempt in EPHYS_EXCLUDE_ATTEMPTS:
+        if attempt['subject'] not in set(tbl['subject']):
+            continue
+        mask = np.ones(len(tbl), dtype=bool)
+        for column, value in attempt.items():
+            mask &= tbl[column].eq(value).to_numpy()
+        n_matches = int(mask.sum())
+        if n_matches != 1:
+            raise ValueError(
+                f"Expected exactly one excluded ephys attempt for {attempt}; "
+                f"found {n_matches}.")
+        keep &= ~mask
+        print(f"  excluded interrupted attempt: {attempt}")
+    return tbl.loc[keep].copy()
+
+
+def ephys_error_fraction_by_repeat(attempts):
+    """Pooled incorrect-attempt fraction at each of the 10 task repeats.
+
+    ``rep_correct`` identifies how many correct repeats had already been
+    completed when an attempt occurred.  Hence source value 0 is displayed as
+    repeat 1 and includes both the eventual first correct attempt and any
+    errors made before it.  This is intentionally pooled across everybody:
+    it answers the requested fraction of *all attempts* that were errors at
+    each repeat, rather than giving each participant equal weight.
+    """
+    usable = attempts[attempts['rep_correct'].between(0, 9)].copy()
+    summary = (usable.groupby('rep_correct')['correct']
+               .agg(n_attempts='size', n_correct='sum')
+               .reset_index())
+    summary['n_errors'] = (
+        summary['n_attempts'] - summary['n_correct']).astype(int)
+    summary['error_fraction'] = (
+        summary['n_errors'] / summary['n_attempts'])
+    summary['repeat_display'] = summary['rep_correct'].astype(int) + 1
+    return summary
+
+
 def ephys_summarise():
     sub_dirs = sorted([
         d for d in os.listdir(EPHYS_DERIV)
@@ -274,6 +341,7 @@ def ephys_summarise():
             continue
         df.columns = EPHYS_BEH_COLS
         tbl = ephys_loop_table(df, sub)
+        tbl = exclude_ephys_attempts(tbl)
         all_attempts.append(tbl)
 
         correct = tbl[tbl['correct'] == 1]
@@ -340,12 +408,23 @@ def ephys_summarise():
         int(r_): _describe(by_rep_session_mean[r_].to_numpy())
         for r_ in sorted(by_rep_session_mean.columns)
     }
+    error_by_repeat = ephys_error_fraction_by_repeat(all_df)
 
     group = {
         'n_sessions':           int(len(sess_df)),
+        'excluded_attempts':    EPHYS_EXCLUDE_ATTEMPTS,
         'loop_time_across_subj': _describe(
             sess_df['loop_time_mean'].to_numpy()),
         'loop_time_by_rep_correct': by_rep,
+        'pooled_error_fraction_by_rep_correct': {
+            int(row.rep_correct): {
+                'repeat_display': int(row.repeat_display),
+                'n_attempts': int(row.n_attempts),
+                'n_errors': int(row.n_errors),
+                'error_fraction': float(row.error_fraction),
+            }
+            for row in error_by_repeat.itertuples(index=False)
+        },
         'learning_slope_group': {
             **_describe(slopes_ok),
             't': float(t_slope) if np.isfinite(t_slope) else None,
@@ -372,9 +451,621 @@ def ephys_summarise():
     return sess_df, all_df, group
 
 
-# ── Plots (quick overview, not publication) ──────────────────────────
-_FLOOR_COLOR = '#448363'        # enforced-floor reference colour
-_FLOOR_LABEL = 'enforced floor (mean ± s.d.)'
+# ── Sample trajectory figures ────────────────────────────────────────
+_GRID_XY = {
+    1: (0, 2), 2: (1, 2), 3: (2, 2),
+    4: (0, 1), 5: (1, 1), 6: (2, 1),
+    7: (0, 0), 8: (1, 0), 9: (2, 0),
+}
+# Same location palette as the task schematic: dark blue/teal at locations
+# 1, 4, 7; pale blue/green at 3, 6, 9.  The grid itself therefore carries
+# the location identity, without printing a number in every square.
+_LOCATION_COLOURS = {
+    1: '#0a607a', 2: '#7eb1c4', 3: '#b6d4e0',
+    4: '#175e62', 5: '#5b9b8d', 6: '#c8e0d0',
+    7: '#0e3d3a', 8: '#3d8b7d', 9: '#a7d9b2',
+}
+# Colour identities for the ordered A–D reward locations.  These are drawn
+# as large square outlines, matching the task-configuration schematic.
+_STATE_OUTLINE_COLOURS = {
+    'A': '#F15A29',  # orange
+    'B': '#F7931E',  # yellow-orange
+    'C': '#C7C6E2',  # light purple
+    'D': '#6B60AA',  # dark purple
+}
+
+
+def _collapse_locations(values):
+    """Convert sampled locations into a route without dwell duplicates."""
+    route = []
+    for value in values:
+        if pd.isna(value):
+            continue
+        try:
+            loc = int(value)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= loc <= 9 and (not route or loc != route[-1]):
+            route.append(loc)
+    return tuple(route)
+
+
+def _fmri_reward_layout(group):
+    """Read the ordered A–D rewarded locations from a clean fMRI group."""
+    layout = []
+    for state in 'ABCD':
+        values = group.loc[group['state'].eq(state), 'curr_rew'].dropna()
+        if values.empty:
+            return None
+        layout.append(int(values.iloc[0]))
+    return tuple(layout)
+
+
+def _make_trajectory_candidate(modality, subject, layout, paths, **metadata):
+    """Attach reproducible route-consistency metadata to one task grid."""
+    if not paths:
+        return None
+    paths = sorted(paths, key=lambda item: item[0])
+    route_counts = Counter(route for _, route in paths)
+    # Explicit sorting makes ties deterministic rather than dependent on how
+    # the source CSV happened to be ordered.
+    modal_route, modal_count = sorted(
+        route_counts.items(), key=lambda item: (-item[1], item[0]))[0]
+    return {
+        'modality': modality,
+        'subject': subject,
+        'layout': tuple(int(v) for v in layout),
+        'paths': paths,
+        'n_repeats': len(paths),
+        'modal_route': modal_route,
+        'modal_route_count': int(modal_count),
+        'modal_route_fraction': float(modal_count / len(paths)),
+        'n_unique_routes': int(len(route_counts)),
+        'preferred_layout': tuple(layout) in TRAJECTORY_PREFERRED_LAYOUTS,
+        **metadata,
+    }
+
+
+def fmri_trajectory_candidates():
+    """Return one route candidate per fMRI subject/configuration."""
+    candidates = []
+    for path in sorted(glob.glob(FMRI_BEH_GLOB)):
+        subject = os.path.basename(path).split('_')[0]
+        if subject in FMRI_EXCLUDE:
+            continue
+        df = pd.read_csv(path)
+        grouper = ['task_half', 'instruction', 'task_config_seq']
+        for keys, group in df.groupby(grouper, sort=False):
+            layout = _fmri_reward_layout(group)
+            if layout is None:
+                continue
+            paths = []
+            for repeat, repeat_group in group.groupby('repeat', sort=True):
+                route = _collapse_locations(repeat_group['curr_loc'])
+                if route:
+                    paths.append((int(repeat), route))
+            candidate = _make_trajectory_candidate(
+                'fMRI', subject, layout, paths,
+                task_half=int(keys[0]), instruction=str(keys[1]),
+                task_config_seq=str(keys[2]))
+            if candidate is not None:
+                candidates.append(candidate)
+    return candidates
+
+
+def ephys_trajectory_candidates():
+    """Return one route candidate per cell-data subject/grid.
+
+    The location traces are sampled every 25 ms.  ``timings_rewards`` maps
+    each behavioural attempt onto its start and final sample, so the two raw
+    files are joined through their shared, original attempt order.  Only the
+    ten design-defined correct repeats (0–9) enter these figures.
+    """
+    sub_dirs = sorted([
+        d for d in os.listdir(EPHYS_DERIV)
+        if d.startswith('s') and os.path.isdir(
+            os.path.join(EPHYS_DERIV, d, 'cells_and_beh'))
+    ])
+    candidates = []
+    skipped = []
+    for directory in sub_dirs:
+        sub_number = directory[1:]
+        subject = f's{sub_number}'
+        folder = os.path.join(EPHYS_DERIV, directory, 'cells_and_beh')
+        behaviour_path = os.path.join(
+            folder, f'all_trial_times_{sub_number}.csv')
+        if not os.path.isfile(behaviour_path):
+            continue
+        behaviour = pd.read_csv(behaviour_path, header=None)
+        if behaviour.shape[1] != len(EPHYS_BEH_COLS):
+            skipped.append(f'{subject}: unexpected behaviour columns')
+            continue
+        behaviour.columns = EPHYS_BEH_COLS
+        raw_attempts = ephys_loop_table(behaviour, subject)
+        attempts = exclude_ephys_attempts(raw_attempts)
+
+        for grid_value, raw_grid in raw_attempts.groupby('grid_no', sort=False):
+            grid_no = int(grid_value)
+            raw_grid = raw_grid.sort_index()
+            layout = tuple(
+                raw_grid.iloc[0][['loc_A', 'loc_B', 'loc_C', 'loc_D']]
+                .astype(int))
+            # The 25-ms location arrays are large.  Inspect the requested
+            # layouts only, after the tiny behavioural table has identified
+            # them, rather than loading every grid from every participant.
+            if layout not in TRAJECTORY_PREFERRED_LAYOUTS:
+                continue
+            timing_path = os.path.join(
+                folder, f'timings_rewards_grid{grid_no}_sub{sub_number}.csv')
+            locations_path = os.path.join(
+                folder, f'locations_per_25ms_grid{grid_no}_sub{sub_number}.csv')
+            if not (os.path.isfile(timing_path)
+                    and os.path.isfile(locations_path)):
+                skipped.append(f'{subject}, grid {grid_no}: trace file missing')
+                continue
+            timings = pd.read_csv(timing_path, header=None).to_numpy()
+            locations = pd.read_csv(
+                locations_path, header=None).iloc[0].dropna().to_numpy()
+            if len(raw_grid) != len(timings):
+                skipped.append(
+                    f'{subject}, grid {grid_no}: {len(raw_grid)} attempts but '
+                    f'{len(timings)} timing rows')
+                continue
+
+            # Index in the unfiltered grid table = row in timings_rewards.
+            timing_row = {
+                source_index: position
+                for position, source_index in enumerate(raw_grid.index)
+            }
+            good_attempts = attempts[
+                attempts['grid_no'].eq(grid_no)
+                & attempts['correct'].eq(1)
+                & attempts['rep_correct'].between(0, 9)
+            ].sort_index()
+            paths = []
+            for source_index, attempt in good_attempts.iterrows():
+                endpoints = timings[timing_row[source_index]]
+                if not (np.isfinite(endpoints[0])
+                        and np.isfinite(endpoints[-1])):
+                    skipped.append(
+                        f'{subject}, grid {grid_no}: missing trace boundaries')
+                    continue
+                start, stop = int(endpoints[0]), int(endpoints[-1])
+                if start < 0 or stop < start or stop >= len(locations):
+                    skipped.append(
+                        f'{subject}, grid {grid_no}: invalid trace boundaries')
+                    continue
+                route = _collapse_locations(locations[start:stop + 1])
+                if route:
+                    paths.append((int(attempt['rep_correct']), route))
+            candidate = _make_trajectory_candidate(
+                'cells', subject, layout, paths,
+                grid_no=grid_no,
+                session_no=int(raw_grid.iloc[0]['session_no']))
+            if candidate is not None:
+                candidates.append(candidate)
+    if skipped:
+        print(f'  trajectory traces skipped ({len(skipped)}): {skipped[0]}')
+    return candidates
+
+
+def _trajectory_sort_key(candidate):
+    """Preferred layout first, then increasingly reliable whole routes."""
+    return (
+        0 if candidate['preferred_layout'] else 1,
+        -candidate['modal_route_fraction'],
+        -candidate['n_repeats'],
+        candidate['n_unique_routes'],
+        str(candidate['subject']),
+    )
+
+
+def select_trajectory_examples(candidates, expected_repeats):
+    """Pick five highly consistent and three seeded-random subjects.
+
+    Each subject appears at most once.  Complete examples are used whenever
+    possible; the fallback is deliberately retained for incomplete datasets
+    and is documented in the selection CSV.
+    """
+    n_needed = TRAJECTORY_N_STABLE + TRAJECTORY_N_RANDOM
+    complete = [c for c in candidates
+                if c['n_repeats'] >= expected_repeats]
+    pool = complete if len({c['subject'] for c in complete}) >= n_needed \
+        else list(candidates)
+
+    selected = []
+    used_subjects = set()
+    for candidate in sorted(pool, key=_trajectory_sort_key):
+        if candidate['subject'] in used_subjects:
+            continue
+        example = dict(candidate)
+        example['selection_type'] = 'stable'
+        example['selection_rank'] = len(selected) + 1
+        selected.append(example)
+        used_subjects.add(candidate['subject'])
+        if len(selected) == TRAJECTORY_N_STABLE:
+            break
+
+    # Retain one best target-layout grid per remaining person, then sample
+    # people without replacement.  The seed makes the three comparison plots
+    # reproducible across reruns, while leaving them independent of route
+    # consistency.
+    by_subject = {}
+    for candidate in sorted(pool, key=_trajectory_sort_key):
+        if candidate['subject'] not in used_subjects:
+            by_subject.setdefault(candidate['subject'], candidate)
+    random_pool = list(by_subject.values())
+    preferred_pool = [c for c in random_pool if c['preferred_layout']]
+    if len(preferred_pool) >= TRAJECTORY_N_RANDOM:
+        random_pool = preferred_pool
+    rng = np.random.default_rng(TRAJECTORY_RANDOM_SEED)
+    n_random = min(TRAJECTORY_N_RANDOM, len(random_pool))
+    if n_random:
+        sampled_indices = rng.choice(len(random_pool), size=n_random,
+                                     replace=False)
+        for index in sampled_indices:
+            example = dict(random_pool[int(index)])
+            example['selection_type'] = 'random'
+            example['selection_rank'] = len(selected) + 1
+            selected.append(example)
+    return selected
+
+
+def _route_text(route):
+    return '-'.join(str(location) for location in route)
+
+
+def _trajectory_edge_counts(candidate):
+    """Number of repeats using each directed transition, at most once/repeat."""
+    edge_counts = Counter()
+    for _, route in candidate['paths']:
+        edge_counts.update(set(zip(route[:-1], route[1:])))
+    return edge_counts
+
+
+def _plot_trajectory_grid(ax, candidate, line_style):
+    """Draw a coloured location grid and transition-frequency path overlay."""
+    if line_style not in TRAJECTORY_LINE_STYLES:
+        raise ValueError(f'Unknown trajectory line style: {line_style!r}')
+
+    # A solid, square version of the task's location colour map.  No location
+    # numbers are printed here: its position and colour identify each square.
+    for location, (x, y) in _GRID_XY.items():
+        ax.add_patch(Rectangle(
+            (x - 0.5, y - 0.5), 1, 1,
+            facecolor=_LOCATION_COLOURS[location], edgecolor='black',
+            linewidth=0.9, zorder=0))
+
+    edge_counts = _trajectory_edge_counts(candidate)
+    n_repeats = candidate['n_repeats']
+    # Plot weak/rare edges first so the dominant route is never obscured.
+    for (start, stop), count in sorted(edge_counts.items(),
+                                       key=lambda item: item[1]):
+        if start not in _GRID_XY or stop not in _GRID_XY:
+            continue
+        fraction = count / n_repeats
+        if line_style == 'opacity':
+            # Same broad path for every transition; low-frequency detours
+            # recede through transparency alone.  The full 0–1 range makes
+            # each 1/5 or 1/10 increment visibly distinguishable.
+            width = 7.2
+            alpha = 0.02 + 0.98 * fraction
+        else:  # thickness
+            # A deliberately wide dynamic range makes every repeat level
+            # (1–5 or 1–10) visible.  A small accompanying opacity cue keeps
+            # the rarest, very thin detours from competing with the main path.
+            width = 0.25 + 12.0 * fraction
+            alpha = 0.12 + 0.88 * fraction
+        start_xy, stop_xy = _GRID_XY[start], _GRID_XY[stop]
+        ax.plot([start_xy[0], stop_xy[0]], [start_xy[1], stop_xy[1]],
+                color='black', linewidth=width, alpha=alpha,
+                solid_capstyle='round', solid_joinstyle='round', zorder=2)
+
+    # Frame the four reward locations using their A–D identity colours.  The
+    # thinner frames sit beneath the path, keeping the task configuration
+    # visible without obscuring the route itself.
+    for state, location in zip('ABCD', candidate['layout']):
+        x, y = _GRID_XY[location]
+        ax.add_patch(Rectangle(
+            (x - 0.57, y - 0.57), 1.14, 1.14,
+            fill=False, edgecolor=_STATE_OUTLINE_COLOURS[state],
+            linewidth=2.5, joinstyle='miter', clip_on=False, zorder=1))
+
+    label = (f"{candidate['subject']}  ·  {candidate['selection_type']}\n"
+             f"{candidate['modal_route_count']}/{n_repeats} same route")
+    ax.set_title(label, fontsize=9, fontname='Arial', pad=3)
+    ax.text(1, -0.89, f"A→D: {_route_text(candidate['layout'])}",
+            ha='center', va='top', fontsize=8, fontname='Arial')
+    ax.set(xlim=(-0.64, 2.64), ylim=(-1.00, 2.64), aspect='equal')
+    ax.axis('off')
+
+
+def plot_sample_trajectories(candidates, modality, expected_repeats):
+    """Save opacity and thickness versions of the eight selected examples."""
+    selected = select_trajectory_examples(candidates, expected_repeats)
+    if not selected:
+        print(f'  no usable {modality} trajectory candidates.')
+        return
+
+    style_labels = {
+        'opacity': 'opacity encodes transition frequency',
+        'thickness': 'thickness + opacity encode transition frequency',
+    }
+    for line_style in TRAJECTORY_LINE_STYLES:
+        # The coloured reward frames deliberately extend just beyond each
+        # square, so give the two panel rows extra vertical breathing room.
+        fig, axes = plt.subplots(2, 4, figsize=(7.35, 5.80))
+        # Fixed margins are more reliable here than constrained_layout: each
+        # square grid deliberately has a title above and an A–D label below.
+        fig.subplots_adjust(left=0.035, right=0.99, bottom=0.060, top=0.86,
+                            wspace=0.36, hspace=0.44)
+        for axis, candidate in zip(axes.flat, selected):
+            _plot_trajectory_grid(axis, candidate, line_style)
+        for axis in axes.flat[len(selected):]:
+            axis.axis('off')
+        fig.suptitle(
+            f'{modality} sample trajectories — {style_labels[line_style]}',
+            fontname='Arial', fontsize=11, fontweight='bold', y=0.965)
+        stem = os.path.join(
+            PLOT_DIR,
+            f'{modality.lower()}_sample_trajectories_{line_style}')
+        for extension in ('.pdf', '.png'):
+            fig.savefig(f'{stem}{extension}', dpi=300)
+        plt.close(fig)
+
+    records = []
+    for candidate in selected:
+        records.append({
+            'modality': candidate['modality'],
+            'selection_type': candidate['selection_type'],
+            'selection_rank': candidate['selection_rank'],
+            'subject': candidate['subject'],
+            'reward_layout_A_to_D': _route_text(candidate['layout']),
+            'n_correct_repeats': candidate['n_repeats'],
+            'modal_route_count': candidate['modal_route_count'],
+            'modal_route_fraction': candidate['modal_route_fraction'],
+            'n_unique_routes': candidate['n_unique_routes'],
+            'modal_route': _route_text(candidate['modal_route']),
+            'routes_by_repeat': ' | '.join(
+                f'{repeat + 1}:{_route_text(route)}'
+                for repeat, route in candidate['paths']),
+            'task_half': candidate.get('task_half'),
+            'instruction': candidate.get('instruction'),
+            'task_config_seq': candidate.get('task_config_seq'),
+            'session_no': candidate.get('session_no'),
+            'grid_no': candidate.get('grid_no'),
+            'preferred_layout': candidate['preferred_layout'],
+        })
+    output = os.path.join(PLOT_DIR, f'{modality.lower()}_sample_trajectories_selection.csv')
+    pd.DataFrame(records).to_csv(output, index=False)
+    print(f'  wrote {len(selected)} {modality} trajectory examples: {output}')
+
+
+# ── Plots ────────────────────────────────────────────────────────────
+# Compact, A4-ready loop-time panels.  The axes are intentionally shared in
+# seconds: for fMRI this lets the observed time and the enforced floor be
+# compared directly.  A second y-axis for their difference would duplicate
+# that information with a changing transformation and be difficult to read
+# at this small panel size.
+PANEL_WIDTH_CM = 4.0
+PANEL_HEIGHT_CM = 2.0
+# A common span makes the cell and fMRI panels visually comparable.  5.5 s
+# accommodates the fMRI observed mean ± SEM and floor without clipping it.
+LOOP_PANEL_Y_SPAN_SECONDS = 5.5
+FONT_TICK = 9
+FONT_AXIS = 9
+FONT_TITLE = 11
+_ACTUAL_COLOR = 'black'
+_INDIVIDUAL_COLOR = '0.72'
+_SEM_COLOR = '0.72'
+_FLOOR_COLOR = '0.35'
+
+
+def _repeat_subject_means(loops_df, x_col, value_col, raw_repeats):
+    """Return equal-weight subject trajectories for the requested repeats."""
+    table = (loops_df[loops_df[x_col].isin(raw_repeats)]
+             .groupby(['subject', x_col])[value_col].mean()
+             .unstack(x_col)
+             .reindex(columns=raw_repeats))
+    return table.to_numpy(dtype=float)
+
+
+def _mean_and_sem(values):
+    """Column-wise mean and SEM, retaining NaN where no subject contributes."""
+    n = np.isfinite(values).sum(axis=0)
+    mean = np.nanmean(values, axis=0)
+    sem = np.full(values.shape[1], np.nan, dtype=float)
+    has_sem = n >= 2
+    if np.any(has_sem):
+        sem[has_sem] = (np.nanstd(values[:, has_sem], axis=0, ddof=1)
+                        / np.sqrt(n[has_sem]))
+    return mean, sem
+
+
+def _plot_compact_loop_panel(actual_values, x_values, x_tick_values,
+                             x_tick_labels, save_stem, style,
+                             floor_values=None):
+    """Save a 4 × 2 cm individual-trace or SEM loop-time panel.
+
+    ``actual_values`` and optional ``floor_values`` are subjects × repeats,
+    already averaged within subject.  Thus every plotted group value gives
+    each participant equal weight regardless of their number of loops.
+    """
+    if style not in {'individuals', 'sem'}:
+        raise ValueError(f'Unknown loop-panel style: {style!r}')
+    fig, ax = plt.subplots(
+        figsize=(PANEL_WIDTH_CM / 2.54, PANEL_HEIGHT_CM / 2.54))
+    # Leave sufficient room for 9 pt labels while retaining a usable panel.
+    fig.subplots_adjust(left=0.28, right=0.98, bottom=0.34, top=0.96)
+
+    actual_mean, actual_sem = _mean_and_sem(actual_values)
+    if style == 'individuals':
+        for trace in actual_values:
+            ax.plot(x_values, trace, color=_INDIVIDUAL_COLOR, lw=0.45,
+                    alpha=0.85, zorder=1)
+    else:
+        ax.fill_between(x_values, actual_mean - actual_sem,
+                        actual_mean + actual_sem, color=_SEM_COLOR,
+                        alpha=0.60, linewidth=0, zorder=1)
+
+    # Fat central group mean.
+    ax.plot(x_values, actual_mean, color=_ACTUAL_COLOR, lw=1.8,
+            marker='o', ms=1.8, zorder=3)
+
+    if floor_values is not None:
+        floor_mean, _ = _mean_and_sem(floor_values)
+        # The floor is a second time reference, not a second scale.
+        ax.plot(x_values, floor_mean, color=_FLOOR_COLOR, lw=1.25,
+                ls='--', marker=None, zorder=2)
+
+    # Keep every compact panel on exactly the same y-range.  Centre the span
+    # on its group-level references (mean ± SEM and, for fMRI, floor), rather
+    # than on individual trajectories, so a single unusual participant does
+    # not determine the publication-panel scale.
+    reference = [actual_mean - actual_sem, actual_mean + actual_sem]
+    if floor_values is not None:
+        reference.append(floor_mean)
+    reference = np.concatenate(reference)
+    reference = reference[np.isfinite(reference)]
+    if reference.size:
+        centre = (reference.min() + reference.max()) / 2.0
+        half_span = LOOP_PANEL_Y_SPAN_SECONDS / 2.0
+        ax.set_ylim(centre - half_span, centre + half_span)
+
+    ax.set_xticks(x_tick_values)
+    ax.set_xticklabels(x_tick_labels, fontname='Arial', fontsize=FONT_TICK)
+    ax.set_xlabel('correct repeat', fontname='Arial', fontsize=FONT_AXIS,
+                  labelpad=1)
+    ax.set_ylabel('ABCD time [s]', fontname='Arial', fontsize=FONT_AXIS,
+                  labelpad=1)
+    ax.tick_params(axis='both', labelsize=FONT_TICK, length=2, pad=1)
+    for label in ax.get_yticklabels():
+        label.set_fontname('Arial')
+    ax.spines[['top', 'right']].set_visible(False)
+    ax.spines[['left', 'bottom']].set_linewidth(0.5)
+
+    for ext in ('.pdf', '.png'):
+        fig.savefig(f'{save_stem}{ext}', dpi=300)
+    plt.close(fig)
+
+
+def _plot_compact_error_fraction_hist(error_fractions, save_stem):
+    """4 × 2 cm histogram of participant-level ephys error fractions."""
+    fractions = np.asarray(error_fractions, dtype=float)
+    fractions = fractions[np.isfinite(fractions)]
+    if fractions.size == 0:
+        return
+    fig, ax = plt.subplots(
+        figsize=(PANEL_WIDTH_CM / 2.54, PANEL_HEIGHT_CM / 2.54))
+    fig.subplots_adjust(left=0.30, right=0.98, bottom=0.34, top=0.96)
+    # The current distribution is contained in 0–0.4.  Retain that readable
+    # publication range if future data have a slightly larger maximum.
+    upper = max(0.4, np.ceil(fractions.max() * 10) / 10)
+    bins = np.linspace(0, upper, 7)
+    ax.hist(fractions, bins=bins, color='0.20', edgecolor='white',
+            linewidth=0.4)
+    ax.set_xlim(0, upper)
+    ax.set_xlabel('error fraction', fontname='Arial', fontsize=FONT_AXIS,
+                  labelpad=1)
+    ax.set_ylabel('# people', fontname='Arial', fontsize=FONT_AXIS,
+                  labelpad=1)
+    ax.tick_params(axis='both', labelsize=FONT_TICK, length=2, pad=1)
+    for label in [*ax.get_xticklabels(), *ax.get_yticklabels()]:
+        label.set_fontname('Arial')
+    ax.spines[['top', 'right']].set_visible(False)
+    ax.spines[['left', 'bottom']].set_linewidth(0.5)
+    for ext in ('.pdf', '.png'):
+        fig.savefig(f'{save_stem}{ext}', dpi=300)
+    plt.close(fig)
+
+
+def _plot_compact_pooled_error_by_repeat(error_by_repeat, save_stem):
+    """4 × 2 cm pooled ephys error fraction at every task repeat."""
+    if error_by_repeat.empty:
+        return
+    fig, ax = plt.subplots(
+        figsize=(PANEL_WIDTH_CM / 2.54, PANEL_HEIGHT_CM / 2.54))
+    fig.subplots_adjust(left=0.29, right=0.98, bottom=0.34, top=0.96)
+    x = error_by_repeat['repeat_display'].to_numpy(dtype=float)
+    values = error_by_repeat['error_fraction'].to_numpy(dtype=float)
+    ax.bar(x, values, width=0.70, color='0.20', edgecolor='black',
+           linewidth=0.35)
+    upper = max(0.1, np.ceil(values.max() * 10) / 10)
+    ax.set_ylim(0, upper)
+    ax.set_xticks([2, 4, 6, 8, 10])
+    ax.set_xticklabels(['2', '4', '6', '8', '10'], fontname='Arial',
+                       fontsize=FONT_TICK)
+    ax.set_xlabel('correct repeat', fontname='Arial', fontsize=FONT_AXIS,
+                  labelpad=1)
+    ax.set_ylabel('error fraction', fontname='Arial', fontsize=FONT_AXIS,
+                  labelpad=1)
+    ax.tick_params(axis='both', labelsize=FONT_TICK, length=2, pad=1)
+    for label in ax.get_yticklabels():
+        label.set_fontname('Arial')
+    ax.spines[['top', 'right']].set_visible(False)
+    ax.spines[['left', 'bottom']].set_linewidth(0.5)
+    for ext in ('.pdf', '.png'):
+        fig.savefig(f'{save_stem}{ext}', dpi=300)
+    plt.close(fig)
+
+
+def _plot_compact_ephys_time_with_errors(actual_values, x_values,
+                                         error_by_repeat, save_stem):
+    """Test panel: mean correct-loop time with pooled error-fraction bars."""
+    fig, ax_time = plt.subplots(
+        figsize=(PANEL_WIDTH_CM / 2.54, PANEL_HEIGHT_CM / 2.54))
+    # Extra right margin accommodates the requested second y-axis while
+    # retaining the same 4 × 2 cm figure footprint.
+    fig.subplots_adjust(left=0.28, right=0.74, bottom=0.34, top=0.96)
+    ax_error = ax_time.twinx()
+
+    error_x = error_by_repeat['repeat_display'].to_numpy(dtype=float)
+    error_values = error_by_repeat['error_fraction'].to_numpy(dtype=float)
+    ax_error.bar(error_x, error_values, width=0.70, color='0.30', alpha=0.50,
+                 edgecolor='none', zorder=0)
+    error_upper = max(0.1, np.ceil(error_values.max() * 10) / 10)
+    ax_error.set_ylim(0, error_upper)
+    ax_error.set_ylabel('error fraction', fontname='Arial', fontsize=FONT_AXIS,
+                        labelpad=1)
+    ax_error.tick_params(axis='y', labelsize=FONT_TICK, length=2, pad=1)
+    for label in ax_error.get_yticklabels():
+        label.set_fontname('Arial')
+    ax_error.spines['top'].set_visible(False)
+    ax_error.spines['right'].set_linewidth(0.5)
+
+    # Draw the time series above the transparent bars.
+    ax_error.set_zorder(0)
+    ax_time.set_zorder(1)
+    ax_time.patch.set_visible(False)
+    actual_mean, actual_sem = _mean_and_sem(actual_values)
+    ax_time.fill_between(x_values, actual_mean - actual_sem,
+                         actual_mean + actual_sem, color=_SEM_COLOR,
+                         alpha=0.60, linewidth=0, zorder=2)
+    ax_time.plot(x_values, actual_mean, color=_ACTUAL_COLOR, lw=1.8,
+                 marker='o', ms=1.8, zorder=3)
+
+    reference = np.concatenate([actual_mean - actual_sem,
+                                actual_mean + actual_sem])
+    reference = reference[np.isfinite(reference)]
+    if reference.size:
+        centre = (reference.min() + reference.max()) / 2.0
+        half_span = LOOP_PANEL_Y_SPAN_SECONDS / 2.0
+        ax_time.set_ylim(centre - half_span, centre + half_span)
+    ax_time.set_xticks([2, 4, 6, 8, 10])
+    ax_time.set_xticklabels(['2', '4', '6', '8', '10'], fontname='Arial',
+                             fontsize=FONT_TICK)
+    ax_time.set_xlabel('correct repeat', fontname='Arial', fontsize=FONT_AXIS,
+                       labelpad=1)
+    ax_time.set_ylabel('ABCD time [s]', fontname='Arial', fontsize=FONT_AXIS,
+                       labelpad=1)
+    ax_time.tick_params(axis='both', labelsize=FONT_TICK, length=2, pad=1)
+    for label in [*ax_time.get_xticklabels(), *ax_time.get_yticklabels()]:
+        label.set_fontname('Arial')
+    ax_time.spines[['top', 'right']].set_visible(False)
+    ax_time.spines[['left', 'bottom']].set_linewidth(0.5)
+    for ext in ('.pdf', '.png'):
+        fig.savefig(f'{save_stem}{ext}', dpi=300)
+    plt.close(fig)
 
 
 def _plot_loop_by_repeat(by_rep, title, save_path,
@@ -460,20 +1151,25 @@ fmri_subj, fmri_loops, fmri_group = fmri_summarise()
 print("\n=== Ephys ===")
 eph_sess, eph_attempts, eph_group = ephys_summarise()
 
-# Plots.
+# Compact loop-time panels.  These are the matched cell/fMRI figures intended
+# for a DIN A4 layout: each modality gets an individual-trajectory version and
+# a mean ± SEM version.
 if fmri_group is not None:
-    floor_mean = fmri_group['floor_loop_time_across_subj']['mean']
-    floor_sd   = fmri_group['floor_loop_time_across_subj']['sd']
-    _plot_loop_by_repeat(
-        fmri_group['loop_time_by_repeat'],
-        'fMRI — loop time across repeats',
-        os.path.join(PLOT_DIR, 'fmri_loop_by_repeat.png'),
-        floor_mean=floor_mean, floor_sd=floor_sd)
-    _plot_per_subj_loop(
-        fmri_loops, 'repeat',
-        f'fMRI — per-subject loop time (n={fmri_group["n_subjects"]})',
-        os.path.join(PLOT_DIR, 'fmri_per_subject_loop.png'),
-        floor_series_col='floor_loop_time')
+    # The fMRI task has five repeats (stored 0–4); display them as 1–5.
+    fmri_repeats_raw = list(range(5))
+    fmri_x = np.arange(1, 6)
+    fmri_actual = _repeat_subject_means(
+        fmri_loops, 'repeat', 'loop_time', fmri_repeats_raw)
+    fmri_floor = _repeat_subject_means(
+        fmri_loops, 'repeat', 'floor_loop_time', fmri_repeats_raw)
+    _plot_compact_loop_panel(
+        fmri_actual, fmri_x, fmri_x, [str(x) for x in fmri_x],
+        os.path.join(PLOT_DIR, 'fmri_loop_time_individuals'),
+        style='individuals', floor_values=fmri_floor)
+    _plot_compact_loop_panel(
+        fmri_actual, fmri_x, fmri_x, [str(x) for x in fmri_x],
+        os.path.join(PLOT_DIR, 'fmri_loop_time_sem'),
+        style='sem', floor_values=fmri_floor)
     _plot_hist(
         fmri_subj['loop_time_mean'].to_numpy(),
         'fMRI — subject-mean loop time',
@@ -523,19 +1219,41 @@ if fmri_group is not None:
     plt.close(fig)
 
 if eph_group is not None:
-    _plot_loop_by_repeat(
-        eph_group['loop_time_by_rep_correct'],
-        'Ephys — loop time across correct repeats',
-        os.path.join(PLOT_DIR, 'ephys_loop_by_rep_correct.png'),
-        rep_label='rep_correct (0-9)')
-    # Cap at rep_correct ≤ 9 so the rare overflow grids (12 trials across
-    # 9 sessions) don't drive the y-axis.
+    # Keep exactly the ten design-defined correct repeats.  The data store
+    # them as rep_correct=0–9, but the figure displays human-readable 1–10.
     correct = eph_attempts[(eph_attempts['correct'] == 1)
                            & (eph_attempts['rep_correct'].between(0, 9))].copy()
-    _plot_per_subj_loop(
-        correct, 'rep_correct',
-        f'Ephys — per-session loop time (n={eph_group["n_sessions"]})',
-        os.path.join(PLOT_DIR, 'ephys_per_session_loop.png'))
+    ephys_repeats_raw = list(range(10))
+    ephys_x = np.arange(1, 11)
+    ephys_actual = _repeat_subject_means(
+        correct, 'rep_correct', 'loop_time', ephys_repeats_raw)
+    _plot_compact_loop_panel(
+        ephys_actual, ephys_x, [2, 4, 6, 8, 10],
+        ['2', '4', '6', '8', '10'],
+        os.path.join(PLOT_DIR, 'ephys_loop_time_individuals'),
+        style='individuals')
+    _plot_compact_loop_panel(
+        ephys_actual, ephys_x, [2, 4, 6, 8, 10],
+        ['2', '4', '6', '8', '10'],
+        os.path.join(PLOT_DIR, 'ephys_loop_time_sem'),
+        style='sem')
+    # Error summary panels.  Histogram: one overall error fraction per
+    # participant.  By-repeat bars: pooled fraction of all attempts that were
+    # incorrect at that repeat (including errors made before the first correct
+    # completion of the repeat).
+    ephys_errors_by_repeat = ephys_error_fraction_by_repeat(eph_attempts)
+    ephys_errors_by_repeat.to_csv(
+        os.path.join(PLOT_DIR, 'ephys_error_fraction_by_repeat.csv'),
+        index=False)
+    _plot_compact_error_fraction_hist(
+        eph_sess['incorrect_proportion'].to_numpy(),
+        os.path.join(PLOT_DIR, 'ephys_error_fraction_histogram'))
+    _plot_compact_pooled_error_by_repeat(
+        ephys_errors_by_repeat,
+        os.path.join(PLOT_DIR, 'ephys_error_fraction_by_repeat'))
+    _plot_compact_ephys_time_with_errors(
+        ephys_actual, ephys_x, ephys_errors_by_repeat,
+        os.path.join(PLOT_DIR, 'ephys_loop_time_sem_with_error_fraction'))
     _plot_hist(
         eph_sess['completion_rate'].to_numpy(),
         'Ephys — session completion rate',
@@ -558,6 +1276,16 @@ if eph_group is not None:
         os.path.join(PLOT_DIR, 'ephys_configs_solved_hist.png'))
 
 
+if PLOT_SAMPLE_TRAJECTORIES:
+    print("\n=== Sample trajectories ===")
+    if fmri_group is not None:
+        plot_sample_trajectories(
+            fmri_trajectory_candidates(), 'fMRI', expected_repeats=5)
+    if eph_group is not None:
+        plot_sample_trajectories(
+            ephys_trajectory_candidates(), 'cells', expected_repeats=10)
+
+
 # ── Final combined JSON ──────────────────────────────────────────────
 combined = {
     'meta': {
@@ -571,6 +1299,14 @@ combined = {
             'fmri_exclude': sorted(FMRI_EXCLUDE),
             'ephys_scope':  "All sessions with cells_and_beh/all_trial_times_*.csv (n=63).",
             'ephys_loop_time_repeat_axis': "rep_correct (0-9), correct trials only.",
+            'sample_trajectory_figures': {
+                'enabled': PLOT_SAMPLE_TRAJECTORIES,
+                'preferred_layouts_A_to_D': [
+                    list(layout) for layout in TRAJECTORY_PREFERRED_LAYOUTS],
+                'n_stable_examples': TRAJECTORY_N_STABLE,
+                'n_random_examples': TRAJECTORY_N_RANDOM,
+                'random_seed': TRAJECTORY_RANDOM_SEED,
+            },
         },
     },
     'fmri':  fmri_group,

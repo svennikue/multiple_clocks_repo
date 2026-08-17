@@ -3,19 +3,117 @@
 """
 Created on 17th of October 2025.
 
-Running the RSA [mainly] without RSA toolbox,
-based on 
-1. clean_fmri_behaviour
-2. create_fMRI_model_RDMs_on_clean_beh
+Whole-brain searchlight RSA for the fMRI data, run without the RSA
+toolbox (only its searchlight-definition helper is used).
 
+Tests whether local BOLD geometry is explained by the concurrent
+action-plan (DSR) model over and above simpler codes — physical
+location, spatial proximity, the visual feedback event, and the buttons
+being pressed now / next / previously.
 
-# this is the old GLM I used:
-GLM ('regression') settings (creating the 'bins'):
-    03-4 -24 regressors; for the tasks where every reward is at a different location (A,C,E), only the rewards are modelled (stick function)
-# this is the new GLM I want to use:
-    # glm_all-rews-split_buttons
-    
-    
+PREREQUISITES (run in this order)
+---------------------------------
+1. `clean_fmri_behaviour.py`              -> cleaned behavioural table
+2. `create_fMRI_model_RDMs_on_clean_beh.py` -> model EVs pickle
+   (`{sub}_modelled_EVs_{EV_string}.pkl`) — see that script for how each
+   model is constructed
+3. FSL first-level GLM per task half      -> `glm_{regression_version}_pt0{th}.feat/`
+   with `EVs_{regression_version}_pt0{th}/task-to-EV.txt` giving the
+   PE-index -> condition-name mapping. Current version:
+   `all-paths-fixed_stickrews_split-buttons`.
+   (The old `03-4` numbering — 24 regressors, rewards modelled as stick
+   functions for A/C/E — is still supported by the loader.)
+
+USAGE
+-----
+    python fMRI_run_RSA_without_rsatoolbox_clean.py <subj_no> [config.json]
+
+Everything is driven by a JSON in `condition_files/`; the default is
+`rsa_config_quarters_DSR_controls.json`. The config sets which EV
+conditions enter the RDM, which models are built, whether single models
+and/or combo GLMs are run, smoothing, and the searchlight mask.
+
+WHAT THE SCRIPT DOES
+--------------------
+1. SEARCHLIGHTS. `get_volume_searchlight(mask, radius=3, threshold=0.5)`
+   in pt01 (`example_func`) space, since that is where all functional
+   data is registered to. Mask options: `grey_matter` (~126k
+   searchlights), `no_CSF` (~166k), or the full BOLD FOV (~175k).
+   Centers/neighbours are cached to pkl and reused.
+
+2. CONDITIONS. Model EVs come from the pickle; data EVs are the FSL PE
+   images of both task halves. Conditions are named
+   `{task}_{direction}_{state}_{phase}` (e.g. `A1_backw_A_reward`) and
+   filtered by the config's `EV_condition_selection.parts`, which takes
+   fnmatch include/exclude globs for each of the four name parts.
+
+3. CROSS-VALIDATED PAIRING (`pair_correct_tasks`). Each condition of
+   task half 1 is paired with the SAME goal configuration recorded in
+   task half 2, walked in the opposite direction:
+       `X1_forw`  <-> `X2_backw`
+       `X1_backw` <-> `X2_forw`
+   The two halves are stacked as [th1; th2].
+
+4. DATA RDMs. Per searchlight, cosine dissimilarity over the stacked
+   2n x 2n matrix; only the th2-vs-th1 off-diagonal block is kept and
+   symmetrised. Similarity is therefore only ever computed BETWEEN
+   independent halves, so shared noise within a run cannot inflate the
+   fit. RDMs are written to nifti and cached; optionally smoothed
+   (`smoothing` / `fwhm`).
+
+5. MODEL RDMs. Same pairing, then dispatched by model type:
+       path_rew            -> categorical RDM (same/different bin type)
+       duration            -> absolute-difference RDM
+       location, DSR, the  -> Hamming distance (fraction of positions
+       *_quarter splits,      at which two conditions differ)
+       buttons, *_DSR
+       *-weighted          -> weighted Hamming
+       everything else     -> cosine crosscorr (state, A-state, l2_norm...)
+   `A-state` additionally gets its NaN cells set to 1, and can be used to
+   mask (`A-state-mask`) or overwrite (`A-state-ones`) the state model.
+
+6. RSA GLM. `my_RSA.evaluate_model` = standardised (z-scored) OLS of the
+   searchlight data RDM on the stacked model RDMs, parallelised over
+   searchlights. Two modes, independently switchable in the config:
+     - `run_single_models`: each model fit on its own.
+     - `combo_models`: a list of named joint GLMs. Each regressor's map
+       is saved separately as `{MODEL}-{combo_name}.nii.gz`, so a
+       regressor's β is always "controlling for the rest of its combo".
+   If `masked_conds` is set, each combo is additionally re-fit within
+   each path/reward condition subset (`make_category_masks`), and
+   regressors that are constant within a subset are dropped from it
+   (`A-state` for path-path; `path_rew` for path-path and reward-reward).
+
+7. PROVENANCE. A settings summary (EV labels actually paired, model list,
+   combo definitions, dirs) is written to
+   `{results_dir}/{sub}_settings_summary.json`.
+
+THE COMBO GLMs IN THE DEFAULT CONFIG
+------------------------------------
+  `split_rot_quarters_DSR`
+      rot_curr_quarter + rot_next_quarter + rot_next2_quarter
+      + rot_next3_quarter + A-state + l2_norm
+      + next_buttons + prev_buttons + buttons_out
+      -> the DSR split into its four state-wise quarters, so each future
+         step enters as its own regressor (used for the anatomical
+         gradient analysis).
+
+  `DSR-contr_except_but_out` / `DSR-contr_except_next_but` /
+  `DSR-contr_except_prev_but`
+      DSR + location + A-state + l2_norm + two of the three button models
+      -> the same DSR GLM three times, each time leaving ONE button
+         regressor out. The button models are mutually collinear (each is
+         a one-bin shift of the others), so this checks that the DSR
+         effect does not depend on which of them is in the design.
+
+CAVEAT — laptop runs do not load the data
+-----------------------------------------
+`only_load_labels` is set to True whenever the subject's local
+`data/derivatives/{sub}` folder exists, i.e. on the laptop. In that mode
+`load_data_EVs` returns dummy zeros instead of the PE images, so the
+model RDMs and the condition pairing are built but the data RDMs are
+meaningless. Real results must be produced on the cluster.
+
 @author: Svenja Küchenhoff, 2025
 """
 

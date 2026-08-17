@@ -1,10 +1,74 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-cell_to_roi_july26.py — rebuild the human single-unit ROI labelling from
-scratch, one step at a time.
+cell_to_roi_july26.py — build the canonical human single-unit ROI table.
 
-STEP 1 (this file): coordinate loading + provenance.
+Produces `derivatives/neurons_with_ROI_labels.csv`, the table every
+downstream analysis reads. Two things matter in it:
+
+  MNI_x/y/z_final   microwire coordinate in MNI152, re-derived from each
+                    site's own electrode-localisation files (not the
+                    big table's original coords).
+  alt_final_roi     the analysis ROI, assigned from that coordinate by
+                    probabilistic atlases alone, or NaN if the region is
+                    covered by < 3 subjects.
+
+What actually determines an ROI
+-------------------------------
+Coordinate only. Three atlases are queried at the cell's own voxel and
+the FIRST rule that matches wins (`assign_atlas_roi`, rules 1-11):
+
+    1. EC          Juelich `GM Hippocampus entorhinal cortex`, y >= -18
+                   (below that the map overlaps the subicular complex)
+    2. mPFC        Brainnetome A32sg/A32p/A24cd/A24rv/A10m/A9m, or HO
+                   `Cingulate Gyrus, anterior division`, y >= 10
+                   (y < 10 -> `medial_CC`; A32sg with z <= -10 -> mOFC)
+    3. mOFC        Brainnetome A14m / A13 / A11m
+    4. HC          HO subcortical Hippocampus, or Juelich subiculum /
+                   cornu ammonis (also probed within +-3 mm). Split
+                   anterior vs mid at y = -21 (Poppenk & Moscovitch 2013)
+    5. PHC         HO cortical parahippocampal
+    6. PCC         Brainnetome A23 / A31 / dmPOS, or HO posterior
+                   cingulate / precuneous
+    8-11.          Visual, Amygdala, Thalamus, Insula
+    12.            neighbourhood fallback — same rules, same priority,
+                   probing a +-1/2/3 mm cube for cells whose exact voxel
+                   sits in white matter. Else `leftover`.
+
+HO and Juelich are used via their `maxprob-thr25-2mm` variants, so a
+non-background hit already means the voxel passed a 25 % probability
+threshold. Brainnetome is used as its published max-prob parcellation.
+One extra pass reassigns Amygdala cells to EC when Juelich entorhinal is
+within 3 mm (the EC/amygdala border is diffuse).
+
+NOT used: electrode names, clinical `region label` text, or any per-cell
+manual override. The text-based intent rescue (step 4) was disabled on
+2026-07-29 because it pulled cells whose researcher-annotated intent
+conflicted with the atlas verdict at the actual coordinate; the code is
+kept for reference but does nothing.
+
+`alt_final_roi` = `atlas_roi` when that ROI has >= 3 distinct subjects,
+else NaN. As of the current run that keeps 924 / 984 cells in six ROIs
+(HC_anterior 276, HC_mid 231, mOFC 163, mPFC 155, PCC 61, EC 38) and
+drops Visual / PHC / Thalamus / medial_CC / Insula / leftover.
+
+Where the coordinates come from
+-------------------------------
+Per site, in priority order (see the detailed notes below); provenance
+is recorded per cell in `coord_source` / `coord_verified`. Currently
+845 / 984 cells are verified against a source electrode entry.
+
+Steps in this file
+------------------
+  1  coordinate loading + provenance    -> ROI_assignment/cells_step1_*
+  2  atlas ROI assignment (25 % thr)    -> ROI_assignment/cells_step2_*
+  3  leftover diagnosis (thr0 lookup)   -> ROI_assignment/cells_step3_*
+  4  [DISABLED] text-intent rescue
+  5  glass-brain visualisations         -> ROI_assignment/cells_step5_*
+  6  leftover deep dive
+  7  summary plots + old-vs-new diff    -> ROI_assignment/cells_step7_*
+  8  change report vs REFERENCE_TABLE (previous run of this script)
+  final  -> derivatives/neurons_with_ROI_labels.csv
 
 Re-running after new source files arrive
 ----------------------------------------
@@ -78,16 +142,23 @@ Coordinate source priority per site:
       Where the independent coord disagrees with the big-table coord
       (>0.5 mm), we trust the independent coord and record the shift.
 
-Output columns per cell:
-  MNI_x_final, MNI_y_final, MNI_z_final   – coord we will use downstream
-  coord_source                             – provenance tag (see below)
+Coordinate columns per cell:
+  MNI_x_final, MNI_y_final, MNI_z_final   – coord used downstream
+  coord_source                             – provenance tag (see above)
   coord_verified                           – True if matched to source
   source_electrode                         – v2026 electrode / Baylor
                                              bundle / Utah row index
   source_region_hint                       – NMM/region label from source
+                                             (context only — never used
+                                             for ROI assignment)
   source_match_dist_mm                     – 0 for exact, NaN if no match
 
-Nothing here touches probabilistic atlases yet — that's step 2.
+ROI columns per cell:
+  atlas_roi            – raw atlas verdict, all 12 possible values
+  alt_final_roi        – analysis ROI (>= 3 subjects) else NaN
+  atlas_source_label   – the atlas label that triggered the match
+  atlas_reason         – which rule fired (e.g. `juelich_entorhinal_
+                         y_ge_-18`, `atlas_neighbor@2mm`)
 """
 import os
 import re
@@ -1629,11 +1700,11 @@ except Exception:
 ROI_COLORS = {
     "EC":          SHOWGIRL2_DISCRETE[0],
     "mPFC":        SHOWGIRL2_DISCRETE[1],
-    "HC_anterior": SHOWGIRL2_DISCRETE[2],
+    "HC_anterior": "#23677E", #teal
     "PCC":         SHOWGIRL2_DISCRETE[3],
     "mOFC":        SHOWGIRL2_DISCRETE[4],
-    "HC_mid":      "#a30d6c",   # magenta (CLAUDE.md override)
-    "PHC":         "#23677E",   # teal    (CLAUDE.md override)
+    "HC_mid":      SHOWGIRL2_DISCRETE[2],   # 
+    "PHC":         SHOWGIRL2_DISCRETE[5],   # teal    (CLAUDE.md override)
     # Non-target ROIs
     "Visual":      "#bdbdbd",
     "Thalamus":    "#7d3c98",

@@ -92,26 +92,29 @@ from mc.plotting.cell_results import plot_state_polar_clock, smooth_circular
 # ---------------------------------------------------------------------
 DATA_DIR = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives"
 OUT_BASE = os.path.join(DATA_DIR, "group", "encoding_state_sustained_cv")
+# Canonical, current MNI-derived cell-to-ROI table.  Do not rely on
+# ``cell_selection``'s default table here: that default is the older
+# ``neurons_with_final_roi_labels.csv`` file.
+ROI_TABLE_PATH = os.path.join(DATA_DIR, "neurons_with_ROI_labels.csv")
 
 # FLAG ADDED — reload a previous run's per-cell CSV instead of recomputing.
-RELOAD_OLD_RESULTS = '2026-06-25_14-38-13'
+RELOAD_OLD_RESULTS = None #'2026-06-25_14-38-13'
 
 # Reload-time ROI relabelling. Point at the fresh neurons ROI table (with
 # an `alt_final_roi` column) to overwrite the per-cell `roi` column on
 # reload; the ROI summary + figures are rewritten into a NEW sibling
 # directory `<original>_relabelled_<timestamp>/`. Set to None to skip.
 # Equivalent to passing `--relabel-from <path>` on the CLI.
-RELABEL_FROM = ("/Users/xpsy1114/Documents/projects/multiple_clocks/"
-                 "data/ephys_humans/derivatives/"
-                 "neurons_with_ROI_labels.csv")
+RELABEL_FROM = ROI_TABLE_PATH
 # RELABEL_FROM = None
 
 # RSA companion analysis — provides the 4th column of fig 11 (state RSA).
 # Change the date here when re-running with a new RSA run.
-RSA_STATE_RUN_DATE = '2026-06-26_11-30-30-final-State'
+#RSA_STATE_RUN_DATE = '2026-06-26_11-30-30-final-State'
 RSA_STATE_RUN_DIR  = ('/Users/xpsy1114/Documents/projects/multiple_clocks/data/'
-                       'ephys_humans/derivatives/group/DSR_RSA_simple_ROI/'
-                       f'{RSA_STATE_RUN_DATE}')
+                       'ephys_humans/derivatives/group/DSR_RSA_simple_ROI/2026-07-30_15-58-51-fixed_cells-fixed_perms')
+
+
 RSA_TEST_VARIANT = 'split_halves_z'   # all-correct-repeats averaged per
                                         # config, z-scored per neuron,
                                         # between-task-config cells only.
@@ -135,7 +138,8 @@ ROI_LABEL_COLUMN = "alt_final_roi"
 TARGET_ROIS = None
 SUBJECTS_TO_RUN = "all"
 
-ROI_ORDER = ["ACC", "medialOFC", "PCC", "Parahippocampal",
+# Names in the current table's ``alt_final_roi`` column.
+ROI_ORDER = ["mPFC", "mOFC", "PCC", "PHC",
              "HC_anterior", "HC_mid", "EC"]
 
 DPI = 300                    # publication-quality export
@@ -1422,6 +1426,7 @@ def _load_rsa_state_per_roi(rois):
     aligned to `rois`."""
     csv = os.path.join(RSA_STATE_RUN_DIR, 'results_summary_combos.csv')
     n = len(rois)
+    #import pdb; pdb.set_trace()
     if not os.path.exists(csv):
         print(f"  fig11: RSA CSV not found at {csv} — skipping RSA column.")
         return np.full(n, np.nan), np.full(n, np.nan), np.full(n, np.nan)
@@ -2114,6 +2119,7 @@ def main():
         "run_tag": run_tag, "timestamp": datetime.now().isoformat(timespec="seconds"),
         "data_dir": DATA_DIR, "out_dir": out_dir, "subjects": subjects,
         "target_rois": target_rois, "roi_label_column": ROI_LABEL_COLUMN,
+        "roi_table_path": ROI_TABLE_PATH,
         "fit_method": "OLS (numpy.linalg.lstsq)",
         "glm_terms": ["state (4 one-hot)", "phase (early, middle; late ref)",
                       "state × phase (8 cols)", "per-config intercepts (one dropped)"],
@@ -2129,6 +2135,14 @@ def main():
 
     all_rows = []; saved_design_fig = False
     t0 = time.time()
+    # Load exactly the current ROI table once and pass it explicitly below.
+    # This makes the full-analysis path use the same table as the reload path.
+    roi_table = cell_selection.load_roi_table(
+        data_dir=DATA_DIR, table_name=os.path.basename(ROI_TABLE_PATH),
+        roi_column=ROI_LABEL_COLUMN)
+    print(f"ROI table: {ROI_TABLE_PATH} "
+          f"[{ROI_LABEL_COLUMN}; {len(roi_table)} cells, "
+          f"{roi_table[ROI_LABEL_COLUMN].nunique()} labelled ROIs]")
 
     for sub_i, sub_str in enumerate(subjects, start=1):
         print(f"\n========== sub-{sub_str} ({sub_i}/{len(subjects)}) ==========")
@@ -2145,7 +2159,8 @@ def main():
         neurons_raw = sub_dict["normalised_neurons"]
 
         meta = cell_selection.attach_roi_to_neuron_labels(
-            neurons_raw.keys(), data_dir=DATA_DIR, roi_column=ROI_LABEL_COLUMN
+            neurons_raw.keys(), roi_table=roi_table,
+            roi_column=ROI_LABEL_COLUMN
         ).set_index("neuron_id")
         keep_labels = []
         for n_lab in neurons_raw:
