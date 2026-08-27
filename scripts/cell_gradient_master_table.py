@@ -63,7 +63,7 @@ from nilearn.image import new_img_like, smooth_img
 CELL_TABLE = Path(
     '/Users/xpsy1114/Documents/projects/multiple_clocks/data'
     '/ephys_humans/derivatives/group/per_lag_encoding'
-    '/2026-08-04_07-25-15_reload_from_2026-06-30_18-21-57_relabelled'
+    '/2026-08-04_07-25-15_reload_from_2026-06-30_18-21-57_relabelled-final'
     '/per_cell_ALL_ROIs.csv'
 )
 HARMONIC_ROOT = Path(
@@ -86,9 +86,9 @@ FMRI_DATASETS = ('quarters', 'eighths')
 FMRI_PRIMARY = 'quarters'                   # used for fmri_angle_bin grouping
 
 # fMRI sampling pipeline (matches harmonic_maps_brain_overlay display).
-FMRI_SYMMETRISE = True
-FMRI_SMOOTH_FWHM_MM = 3.0
-SPHERE_RADIUS_MM = 6.0
+FMRI_SYMMETRISE = False #True
+FMRI_SMOOTH_FWHM_MM = 0 #3.0
+SPHERE_RADIUS_MM = 0 #6.0
 
 N_BOOT = 2000
 RANDOM_SEED = 42

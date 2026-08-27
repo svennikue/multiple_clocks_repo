@@ -5,11 +5,111 @@ Created on Thu Apr 30 09:52:57 2026
 
 @author: Svenja Kuchenhoff
 
-RSA for DSR. 
-attempt to simplify - now looping over ROIs.
+Population RSA on human single units: does the concurrent action-plan
+(DSR) code explain the representational geometry of a human brain region,
+over and above simpler codes? One ROI at a time, same machinery as the
+rodent validation (analysis_rodents_complete_clean.py) and the fMRI
+searchlight (fMRI_run_RSA_without_rsatoolbox_clean.py).
 
-final analysis that i'm using for all
+WHO IS ANALYSED
+---------------
+Only sessions in which the subject solved the SAME 8 task configurations
+(listed in `configs`), read from
+`all_sessions_dsrRSA_grouping_summary.json`. That shared task set is what
+makes a pseudo-population across sessions possible. Cells are assigned to
+ROIs from `neurons_with_ROI_labels.csv` (`alt_final_roi`, built by
+cell_to_roi_july26.py); any ROI covered by fewer than MIN_RSA_SUBJECTS
+sessions is dropped before anything is computed.
 
+DATA RDM
+--------
+Per ROI, per session:
+  1. PHASE-RESIDUALISE each cell's 360-bin firing rate against a
+     within-state phase basis (PHASE_RESIDUALISE; 'cosine' =
+     [sin 2piphi, cos 2piphi]) and subtract only the phase component, so the
+     cell's mean rate is preserved. This is done at the DATA level rather
+     than by adding a phase RDM regressor: RDM-level partialling with a
+     block-structured phase RDM can remove DSR variance that merely shares
+     that structure. It is why "DSR" here cannot be a relabelled
+     goal-progress signal.
+  2. Split correct trials into two independent runs using the per-subject
+     grouping log. The split respects BLOCK boundaries (each `grid_no`
+     goes wholly to run 1 or run 2, never split), so the two halves share
+     no trials. With 3 blocks a 2+1 split is expected; the run-balance
+     diagnostic checks that any imbalance is not systematic across
+     configurations.
+  3. Average across trials within (config, half), downsample 360 bins to
+     N_CONDS_PER_CONF = 12 conditions per configuration, z-score per
+     neuron. 8 configs x 12 conds = 96 conditions.
+  4. RDM = cosine dissimilarity. Two variants are carried through:
+       split_halves_z  (PRIMARY, = FDR_TEST) - built from the stacked
+           run-1 / run-2 population matrix, so EVERY cell of the RDM is an
+           across-run comparison of two independent sub-populations. Both
+           the within-config block-diagonal (same config, run 1 vs run 2)
+           and the between-config cells contribute.
+       between_tasks_z (secondary) - repeats collapsed per config, so the
+           block-diagonal would be autocorrelation and is masked out; only
+           between-config cells contribute.
+     The `within` variant is deliberately never used: it is exactly that
+     autocorrelation trap.
+
+MODEL RDMs
+----------
+Built from behaviour: the modal path across all repeats of a configuration
+(per run, per ROI's contributing sessions), then simulated codes on top of
+it. `dsr_fmri` is the canonical DSR - the modal trajectory downsampled to
+N_CONDS_PER_CONF x LEN_STANDARDISED_PATH integer location IDs and rolled
+left by `pos * LEN_STANDARDISED_PATH` at each condition, so every
+timepoint carries the whole remaining trajectory anchored to the present
+(identical construction to build_mode_path_dsr in the fMRI pipeline;
+Hamming RDM). Controls are cosine or Hamming RDMs as appropriate:
+`location`, `l2_norm`, `bttn_curr` / `bttn_next` / `bttn_prev`, `state`,
+`phase`, `state_phase`, `midnight`, `uncover`, `repeat_counter`,
+`reward_path`, plus lag-subset and state-quarter splits of dsr_fmri.
+
+GLM AND INFERENCE
+-----------------
+`combo_models` defines the joint GLMs; each is one standardised OLS of the
+data RDM on the stacked model RDMs, so every regressor's beta controls for
+the rest of its combo. Significance comes from a permutation null
+(N_PERMUTATIONS), NOT from the parametric p:
+
+  SHUFFLE_MODE = 'shift_and_swap' (recommended, and what the reported
+  numbers use). Per trial circular shift PLUS a per-cell re-assignment of
+  trials to configurations. The circular shift alone ('shift', legacy)
+  leaves each cell's per-configuration firing preference intact, which
+  inflates the DSR null - the swap is what makes the null zero-centred
+  for every regressor.
+
+The permuted data RDMs are built once per ROI and cached (with a
+fingerprint over cells/perms/seed/phase setting/configs), and can be
+reused across runs. Perm OLS uses the SAME function as the empirical fit
+(`evaluate_model_vec`), vectorised over all permutations - CLAUDE.md
+rule #4. One-sided p_perm = fraction of permutation betas >= the
+empirical beta.
+
+BH-FDR is applied to one pre-specified confirmatory family:
+FDR_SUBMODELS inside FDR_COMBOS at FDR_TEST, across every ROI analysed.
+A second, per-combo FDR (`q_fdr_per_combo`) corrects across ROIs
+separately within each (combo x sub-model).
+
+RELOAD MODE
+-----------
+Set RELOAD_RUN to a previous run tag to skip the heavy RSA + permutation
+loop entirely and only re-render figures / re-run FDR from that run's
+saved CSVs. NOTE: in reload mode the `models` / `combo_models` /
+`SHUFFLE_MODE` settings above are NOT applied - the numbers come from the
+saved run, whose own settings are in its `config.json`. Set RELOAD_RUN =
+None to recompute.
+
+OUTPUTS (in OUT_BASE/<run_tag>/)
+  results_summary.csv / results_summary_combos.csv   per-ROI betas + p_perm
+  confirmatory_fdr.csv / confirmatory_fdr_per_combo.csv
+  rdms/rdms_<ROI>.npz            data + model RDM vectors, for add-on replay
+  perm_null_draws/perm_<ROI>.pkl full permutation null draws
+  perm_data_rdms/                cached permuted data RDMs
+  heatmap_roi_*, roi_*_glassbrains/, pub_figures/, rdm_diagnostics/
+  run_balance_diagnostic.csv, data_loss_audit.csv
 """
 
 import os

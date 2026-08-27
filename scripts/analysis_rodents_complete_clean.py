@@ -28,7 +28,6 @@ model has to explain variance beyond the simpler codes:
 in a joint fit (see diagnose_dsr_vs_dsr_fmri.py, 2026-07-27_22-28-27).
 `dsr_fmri` is the primary regressor because it is built exactly like the
 human pipeline (RSA_DSR_ROIs_simple.build_mode_path_dsr).
-
 NEURAL DATA -> RDM
 ------------------
 Normalised recordings, 360 bins per ABCD loop. Per recday:

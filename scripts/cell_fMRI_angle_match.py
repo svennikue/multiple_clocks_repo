@@ -1,26 +1,118 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""ONE script for everything in final_splits/: brain overlays + profile overlays
-+ the per-cell assignment CSV, for the three chosen cell-averaging splits.
+"""Do human mPFC single units show the same dorsoventral future-lag
+gradient that the 7T fMRI shows?
 
-Splits (all IN-MASK cells only; outside-mask cells shown grey):
-  1. z_tercile_consist : z-axis, 3 terciles, consistency-weighted
-                         -> ventral 0deg, mid 30deg, dorsal 60deg (fMRI 63/76/80)
-  2. pc1_ventral_dorsal: PC1 axis, median split, unweighted -> 30deg / 60deg
-  3. y_antpost_subj    : y-axis, median split, subject-weighted -> 60deg / 90deg
+This is the reported cell <-> fMRI correspondence analysis. Cells are
+ordered along an anatomical axis derived from the fMRI gradient mask,
+split into groups, and each group's pooled spatial-tuning profile is read
+out for its preferred future lag. If the cell population carries the same
+gradient, the preferred lag should increase from ventral to dorsal.
 
-Brain figures: OPAQUE fMRI-gradient backdrop (no transparency); cells drawn with
-a black halo behind each coloured sphere so they pop with dark contrast.
-Profile overlays: 4.5 x 3 cm, Arial >= 9 pt, bootstrap 16-84% bands, grey
-outside-mask line. Each cell/line coloured by its group's preferred angle on the
-cyclic wheel (same wheel as the backdrop).
+PIPELINE POSITION
+-----------------
+  per_lag_encoding.py        -> per-cell 12-lag spatial-tuning profiles
+                                (`r_lag{000..330}_noctrl`: leave-one-
+                                configuration-out correlation between
+                                lag-shifted 9-location rate maps)
+  cell_gradient_master_table.py -> per_cell_master.csv: adds the gradient
+                                axis coordinate, gradient-mask membership,
+                                and the fMRI preferred angle sampled at
+                                each cell
+  THIS SCRIPT                -> the splits, their pooled profiles, the
+                                brain overlays, and the two CSVs
 
-Each brain is saved twice: plain, and with thin "t-bars" showing the split axis
-(grey) and the division boundary/boundaries (black).
+This script is self-contained: it imports no other script in this repo.
 
-Outputs (in <master>/final_splits/):
+USAGE
+-----
+    python cell_fMRI_angle_match.py [--master-csv per_cell_master.csv]
+                                    [--out DIR] [--brains | --no-brains]
+
+Set `PLOT_BRAINS` at the top of this file to turn the fsaverage brain
+overlays on or off (--brains / --no-brains override it for one run).
+
+Everything numeric — the splits, the pooled profiles, both CSVs and the
+2D profile plots — is reproduced from `per_cell_master.csv` alone (~80 KB)
+on numpy + pandas + matplotlib. nibabel, nilearn and mne are imported
+lazily and ONLY when the brains are drawn, which additionally needs the
+fMRI group volumes, the gradient mask, a working 3D backend and an
+fsaverage download.
+
+THE BACKDROP IS NOT CONFIGURABLE HERE — AND THAT IS DELIBERATE
+--------------------------------------------------------------
+The brain figure shows cells coloured by their group's preferred lag on
+top of the fMRI preferred-angle map. Those two things are only comparable
+if the map is processed exactly as the per-cell angles were. So the
+symmetrisation, the pre-projection smoothing, the harmonic volumes and
+the gradient mask are all READ FROM the `config.json` that
+cell_gradient_master_table.py wrote next to `per_cell_master.csv`
+(`load_master_provenance`), and the script refuses to render if that file
+is missing rather than guessing. To see a raw, unsmoothed map, change the
+settings in cell_gradient_master_table.py and regenerate the master table
+— then the cells and the backdrop move together and the figure still
+means something. The only rendering knob left here is
+`SURFACE_SMOOTHING_STEPS`, which is display-side mesh smoothing with no
+counterpart in the per-cell sampling and cannot change a reported number.
+
+THE ANATOMICAL AXIS
+-------------------
+Defined in cell_gradient_master_table.py as PC1 of the MNI coordinates of
+the fMRI gradient-mask voxels, with x folded to |x| so the axis is
+bilaterally symmetric, oriented +z = dorsal. It is essentially
+dorsoventral (r = 0.98 with MNI z) with a slight posterior tilt. Note it
+comes from the GEOMETRY of the mask, not from the fMRI angle values, so
+the anatomical ordering of cells is independent of the fMRI effect it is
+compared against.
+
+SPLITS (in-mask cells only; outside-mask cells shown grey, never used to
+define the gradient)
+  1. z_tercile_consist : MNI z, 3 terciles, consistency-weighted
+                         -> ventral 0deg, mid 30deg, dorsal 60deg
+                            (fMRI at those cells: 63 / 76 / 80deg)
+  2. pc1_ventral_dorsal: PC1 axis, median split, unweighted
+                         -> ventral 30deg (n=42) / dorsal 60deg (n=32)
+                            *** the split reported in the manuscript ***
+  3. y_antpost_subj    : MNI y, median split, subject-weighted
+                         -> posterior 60deg / anterior 90deg
+
+Profiles are POOLED FIRST, then the peak is read off — never an average
+of per-cell argmaxes, which are unreliable at this SNR. Three weightings
+are available: unweighted, consistency-weighted (by each cell's peak r),
+and subject-weighted (mean within subject, then across subjects).
+Uncertainty is the 16-84th percentile of 1000 bootstrap resamples,
+resampling cells (unweighted / consistency) or subjects (subject-
+weighted).
+
+TWO CAVEATS THAT BELONG WITH ANY REPORT OF THIS RESULT
+------------------------------------------------------
+* Effective N is recording SITES, not cells. The 74 in-mask cells come
+  from 16 unique microwire bundles; cells on one bundle share identical
+  coordinates. The pc1 median (-13.81) falls exactly on a 15-cell bundle,
+  which is why that split is 42/32 rather than 37/37 (ties go to the
+  `<= median` ventral side). The per-cell circular correlation between
+  cell lag and fMRI angle is null (approx -0.15 to -0.21); the agreement
+  here is coarse and directional, at group level.
+* The axis/n_groups/weighting combinations reported above were picked
+  from a much larger sweep for the cleanest gradient-direction match.
+  Those exploratory scripts now live in
+  `scripts/old/cell_fMRI_gradient_exploration/` (see its README). The
+  splits are therefore descriptive, not an inferential test, and should
+  be presented as such.
+
+FIGURES
+-------
+Brain: opaque fMRI-gradient backdrop; cells as spheres with a black halo,
+coloured by their group's preferred angle on the same cyclic wheel,
+jittered +-3 mm so co-located cells read individually. Saved twice —
+plain, and with thin "t-bars" marking the split axis (grey) and the
+division boundaries (black).
+Profiles: 4.5 x 3 cm, Arial >= 9 pt, bootstrap bands, grey outside-mask
+line.
+
+OUTPUTS (in <master>/final_splits/)
   {scheme}_{lh,rh}_medial.{png,pdf}       -- brain overlay (no bars)
-  {scheme}_{lh,rh}_medial_bars.{png,pdf}  -- brain overlay + split axis/boundary
+  {scheme}_{lh,rh}_medial_bars.{png,pdf}  -- brain overlay + axis/boundary
   {scheme}_profiles.{png,pdf}             -- profile overlay
   final_splits_per_cell.csv               -- per-cell group + angle
   final_splits_summary.csv                -- per-group summary
@@ -31,26 +123,101 @@ import os
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import nibabel as nib
+import argparse
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from matplotlib.cm import ScalarMappable
-from matplotlib.colors import Normalize
+from matplotlib.colors import LinearSegmentedColormap, Normalize
 from matplotlib.ticker import MaxNLocator
 
-import gradient_brain_cells_by_lag as gb
-from mne.datasets import fetch_fsaverage
-from mne.viz import Brain
+# NOTE: nibabel / nilearn / mne are imported LAZILY inside the figure code
+# only. The numeric result (splits, pooled profiles, both CSVs) runs on
+# numpy + pandas + matplotlib alone, so a broken 3D backend or a missing
+# fsaverage download cannot block reproducing the reported numbers.
 
 mpl.rcParams['font.family'] = 'sans-serif'
 mpl.rcParams['font.sans-serif'] = ['Arial', 'Helvetica', 'DejaVu Sans']
 mpl.rcParams['font.size'] = 9
 mpl.rcParams['pdf.fonttype'] = 42
 
-OUT = gb.MASTER_DIR / 'final_splits'
+# ── Paths (defaults; override with --master-csv / --out) ─────────────
+MASTER_DIR = Path(
+    '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans'
+    '/derivatives/group/cell_gradient_master/2026-08-22_12-18-21'
+)
+DEFAULT_MASTER_CSV = MASTER_DIR / 'per_cell_master.csv'
+DEFAULT_OUT = MASTER_DIR / 'final_splits'
+
+# ── Render the fsaverage brain overlays? ─────────────────────────────
+# True  -> also write {scheme}_{lh,rh}_medial[_bars].{png,pdf}. Needs mne +
+#          nilearn, a working 3D backend, and an fsaverage download.
+# False -> CSVs and 2D profile plots only (all the numeric results).
+PLOT_BRAINS = True
+
+# The column of per_cell_master.csv carrying the fMRI angle at each cell.
+# The backdrop is built from the SAME dataset this column came from.
+FMRI_ANGLE_COLUMN = 'fmri_angle_quarters_deg'
+
 L = np.arange(0, 360, 30)
 CM, FS = 1 / 2.54, 9
 GREY = (0.7, 0.7, 0.7)
+
+AMP_EPS = 1e-6
+
+# Display-only: MNE mesh-neighbour smoothing of the projected backdrop.
+# This has NO counterpart in the per-cell sampling (which reads the volume
+# inside a sphere and never touches a surface), so it is a rendering
+# choice, not a data-processing one, and cannot change any reported number.
+SURFACE_SMOOTHING_STEPS = 5
+
+# ── Provenance: everything that determines the ANGLE VALUES ──────────
+# Symmetrisation, pre-projection smoothing, the harmonic volumes and the
+# gradient mask are deliberately NOT settable here. They are read from the
+# config.json that cell_gradient_master_table.py wrote next to
+# per_cell_master.csv, so the backdrop is always built exactly the way the
+# per-cell angles were. Choosing them independently would put the cells and
+# the map underneath them on two different conventions and make any
+# apparent cell-vs-backdrop mismatch uninterpretable.
+def load_master_provenance(master_csv):
+    """Return the fMRI-sampling settings used to build `master_csv`.
+
+    Raises if the sibling config.json is missing rather than falling back
+    to defaults — a guessed convention is exactly what this prevents.
+    """
+    import json
+    cfg_path = Path(master_csv).parent / 'config.json'
+    if not cfg_path.exists():
+        raise FileNotFoundError(
+            f"No config.json next to {master_csv}. The brain overlay must be "
+            f"built with the same fMRI sampling settings as the per-cell "
+            f"angles, and those settings live in the master run's "
+            f"config.json. Re-run cell_gradient_master_table.py, or point "
+            f"--master-csv at a run directory that has one.")
+    cfg = json.load(open(cfg_path))
+    missing = [k for k in ('harmonic_root', 'gradient_mask',
+                           'fmri_symmetrise', 'fmri_smooth_fwhm_mm')
+               if k not in cfg]
+    if missing:
+        raise KeyError(
+            f"{cfg_path} is missing {missing} — it predates the provenance "
+            f"fields. Re-run cell_gradient_master_table.py.")
+    dataset = FMRI_ANGLE_COLUMN.replace('fmri_angle_', '').replace('_deg', '')
+    prov = {
+        'harmonic_root': Path(cfg['harmonic_root']),
+        'gradient_mask': Path(cfg['gradient_mask']),
+        'dataset':       dataset,
+        'symmetrise':    bool(cfg['fmri_symmetrise']),
+        'smooth_fwhm':   float(cfg['fmri_smooth_fwhm_mm']),
+        'sphere_radius': cfg.get('sphere_radius_mm'),
+        'config_path':   str(cfg_path),
+    }
+    print(f"  [provenance] {cfg_path.parent.name}/config.json -> "
+          f"dataset={prov['dataset']}, symmetrise={prov['symmetrise']}, "
+          f"smooth_fwhm={prov['smooth_fwhm']} mm, "
+          f"per-cell sphere={prov['sphere_radius']} mm")
+    return prov
 
 BACKDROP_ALPHA = 1.0        # no transparency on the rainbow gradient
 SURF_ALPHA = 0.25
@@ -62,6 +229,58 @@ BAR_X = 2.0                 # |x| the bars are drawn at: small = toward the
                             # (medial-view) viewer, so bars sit ON TOP of cells
 AXIS_BAR_COLOR = (0.5, 0.5, 0.5)   # grey = split axis
 BOUND_BAR_COLOR = (0.0, 0.0, 0.0)  # black = division boundary
+
+# Cyclic wheel: -180 blue, -90 green, 0 yellow, +90 red, +180 blue.
+CIRCULAR_ANCHORS_HEX = ['#1E88E5', '#43A047', '#FCE300', '#E53935', '#1E88E5']
+CIRC_CMAP = LinearSegmentedColormap.from_list('circular_wheel',
+                                              CIRCULAR_ANCHORS_HEX)
+
+
+def angles_to_colours(angles_360):
+    """[0,360) angle -> signed (-180,180] -> cyclic wheel RGBA."""
+    a = np.asarray(angles_360, float)
+    signed = ((a + 180.0) % 360.0) - 180.0
+    return CIRC_CMAP(Normalize(vmin=-180, vmax=180)(signed))
+
+
+def backdrop_texture(hemi, subjects_dir, prov):
+    """+181-shifted fMRI preferred-angle texture for the gradient-masked
+    backdrop on this hemisphere (NaN outside mask / no signal).
+
+    Angle is circular, so the angle volume is NOT projected directly (that
+    would smear across the +-180 wrap): the cos and sin group volumes are
+    projected and the angle recomputed on the surface.
+
+    `prov` comes from `load_master_provenance` — the settings the per-cell
+    angles were sampled with. It is not user-settable, so the backdrop and
+    the cells always share one angle convention.
+    """
+    import nibabel as nib
+    from nilearn import surface as _surface
+    from nilearn.image import new_img_like, smooth_img
+
+    symmetrise, smooth_fwhm = prov['symmetrise'], prov['smooth_fwhm']
+
+    def _symmetrise(img):
+        d = img.get_fdata()
+        return new_img_like(img, (d + d[::-1, ...]) / 2.0)
+
+    surf = os.path.join(subjects_dir, 'fsaverage', 'surf', f'{hemi}.pial')
+    cos_img = nib.load(str(prov['harmonic_root'] / prov['dataset'] / 'cos_group.nii.gz'))
+    sin_img = nib.load(str(prov['harmonic_root'] / prov['dataset'] / 'sin_group.nii.gz'))
+    if symmetrise:
+        cos_img, sin_img = _symmetrise(cos_img), _symmetrise(sin_img)
+    if smooth_fwhm:
+        cos_img = smooth_img(cos_img, smooth_fwhm)
+        sin_img = smooth_img(sin_img, smooth_fwhm)
+    cos_txt = _surface.vol_to_surf(cos_img, surf, interpolation='linear')
+    sin_txt = _surface.vol_to_surf(sin_img, surf, interpolation='linear')
+    angle = np.degrees(np.arctan2(sin_txt, cos_txt))
+    amp = np.hypot(cos_txt, sin_txt)
+    mask_txt = _surface.vol_to_surf(
+        nib.load(str(prov['gradient_mask'])), surf, interpolation='nearest')
+    keep = (amp > AMP_EPS) & (mask_txt >= 0.5) & np.isfinite(angle)
+    return np.where(keep, angle + 181.0, np.nan)
 
 # scheme: (tag, axis_column, n_groups, weighting, group_names ventral->dorsal)
 SCHEMES = [
@@ -176,9 +395,14 @@ def summarize_scheme(tag, axis_col, axis, lab, order, rename, weighting, n,
 
 
 # ── split-axis + boundary "t-bar" geometry ───────────────────────────
-def gradient_pc1():
-    """Gradient-mask centroid + PC1 unit vector (folded x), oriented +z."""
-    m = nib.load(str(gb.GRAD15_MASK_PATH))
+def gradient_pc1(prov):
+    """Gradient-mask centroid + PC1 unit vector (folded x), oriented +z.
+
+    Recomputed here only to draw the split-axis t-bars; the per-cell
+    projection itself (`grad_axis_coord`) already comes from
+    cell_gradient_master_table.py using the identical definition."""
+    import nibabel as nib
+    m = nib.load(str(prov['gradient_mask']))
     mni = nib.affines.apply_affine(m.affine, np.argwhere(m.get_fdata() > 0))
     mni[:, 0] = np.abs(mni[:, 0])
     centroid = mni.mean(0)
@@ -187,7 +411,7 @@ def gradient_pc1():
     return centroid, (-pc1 if pc1[2] < 0 else pc1)
 
 
-def compute_split_lines(c, axis_col, axis, inm, n):
+def compute_split_lines(c, axis_col, axis, inm, n, prov):
     """Return (axis_line, [boundary_lines]) as folded-(x,y,z) point arrays:
     a grey line along the split axis and a black perpendicular bar at each
     division boundary (median for n=2; terciles for n=3)."""
@@ -210,7 +434,7 @@ def compute_split_lines(c, axis_col, axis, inm, n):
         bounds = [np.column_stack([np.full(24, cx), np.full(24, b), zw])
                   for b in edges]
     else:  # grad_axis_coord (PC1)
-        centroid, pc1 = gradient_pc1()
+        centroid, pc1 = gradient_pc1(prov)
         tr = np.linspace(axis[inm].min() - 1, axis[inm].max() + 1, 40)
         axis_line = centroid[None] + tr[:, None] * pc1[None]
         perp = np.array([0.0, -pc1[2], pc1[1]]); perp /= np.linalg.norm(perp)
@@ -224,11 +448,14 @@ def compute_split_lines(c, axis_col, axis, inm, n):
 
 # ── brain overlay (opaque backdrop, haloed cells) ────────────────────
 def render_brain(c, lab, order, ang, tag, subtitle, subjects_dir,
-                 axis_line, boundary_lines):
+                 axis_line, boundary_lines, out_dir, prov):
+    """Backdrop built from `prov` (the master run's own sampling settings),
+    so cells and map always share one convention."""
+    from mne.viz import Brain
     coords = c[['MNI_x', 'MNI_y', 'MNI_z']].to_numpy(float)
     cols = np.tile(np.array(GREY + (1.0,)), (len(c), 1))
     for g in order:
-        cols[lab == g] = gb.angles_to_colours([ang[g]])[0]
+        cols[lab == g] = angles_to_colours([ang[g]])[0]
     for hemi in ('lh', 'rh'):
         try:
             brain = Brain('fsaverage', hemi, 'pial', background='white',
@@ -237,15 +464,16 @@ def render_brain(c, lab, order, ang, tag, subtitle, subjects_dir,
         except TypeError:
             brain = Brain('fsaverage', hemi, 'pial', background='white',
                           size=(1000, 900), subjects_dir=subjects_dir)
-        data = gb.backdrop_texture(hemi, subjects_dir)
+        data = backdrop_texture(hemi, subjects_dir, prov)
         if np.isfinite(data).any():
             try:
                 brain.add_data(data, hemi=hemi, fmin=1, fmid=181, fmax=361,
-                               colormap=gb.CIRC_CMAP, alpha=BACKDROP_ALPHA,
-                               colorbar=False, smoothing_steps=5)
+                               colormap=CIRC_CMAP, alpha=BACKDROP_ALPHA,
+                               colorbar=False,
+                               smoothing_steps=(SURFACE_SMOOTHING_STEPS or None))
             except TypeError:
                 brain.add_data(data, hemi=hemi, fmin=1, fmid=181, fmax=361,
-                               colormap=gb.CIRC_CMAP, alpha=BACKDROP_ALPHA,
+                               colormap=CIRC_CMAP, alpha=BACKDROP_ALPHA,
                                colorbar=False)
         keep = coords[:, 0] <= 0 if hemi == 'lh' else coords[:, 0] >= 0
         rng = np.random.default_rng(hash((hemi, tag)) & 0xFFFF)
@@ -259,7 +487,7 @@ def render_brain(c, lab, order, ang, tag, subtitle, subjects_dir,
         except Exception:
             pass
         # version WITHOUT bars
-        png = str(OUT / f'{tag}_{hemi}_medial.png')
+        png = str(out_dir / f'{tag}_{hemi}_medial.png')
         brain.save_image(png)
         # add the split axis (grey) + boundary bars (black), version WITH bars.
         # Draw bars at a small fixed |x| so they sit in front of the cells in
@@ -278,7 +506,7 @@ def render_brain(c, lab, order, ang, tag, subtitle, subjects_dir,
             brain.show_view('medial')
         except Exception:
             pass
-        png_bars = str(OUT / f'{tag}_{hemi}_medial_bars.png')
+        png_bars = str(out_dir / f'{tag}_{hemi}_medial_bars.png')
         brain.save_image(png_bars)
         try:
             brain.close()
@@ -297,7 +525,7 @@ def _brain_cbar(png, hemi, subtitle):
     a = fig.add_subplot(gs[0]); a.imshow(img); a.axis('off')
     cax = fig.add_subplot(gs[1]); pos = cax.get_position()
     cax.set_position([0.24, pos.y0, 0.5, pos.height * 0.32])
-    sm = ScalarMappable(cmap=gb.CIRC_CMAP, norm=Normalize(-180, 180))
+    sm = ScalarMappable(cmap=CIRC_CMAP, norm=Normalize(-180, 180))
     cb = fig.colorbar(sm, cax=cax, orientation='horizontal')
     cb.set_ticks([-180, -90, 0, 90, 180])
     cb.set_label(f'cell group preferred lag (deg) on fMRI-gradient backdrop.  '
@@ -309,7 +537,7 @@ def _brain_cbar(png, hemi, subtitle):
 
 
 # ── profile overlay (bootstrap bands + grey outside line) ────────────
-def render_profiles(c, R, subj, consist, lab, order, tag, weighting):
+def render_profiles(c, R, subj, consist, lab, order, tag, weighting, out_dir):
     fig, ax = plt.subplots(figsize=(4.5 * CM, 3 * CM), constrained_layout=True)
     out = lab == 'outside'
     po = profile(R, out, subj, consist, weighting)
@@ -320,7 +548,7 @@ def render_profiles(c, R, subj, consist, lab, order, tag, weighting):
         sel = lab == g
         p = profile(R, sel, subj, consist, weighting)
         lo, hi = boot_band(R, sel, subj, consist, weighting)
-        col = gb.angles_to_colours([int(L[np.nanargmax(p)])])[0]
+        col = angles_to_colours([int(L[np.nanargmax(p)])])[0]
         ax.fill_between(L, lo, hi, color=col, alpha=0.2, linewidth=0)
         ax.plot(L, p, '-', color=col, lw=1.2)
         ax.plot(L[np.nanargmax(p)], np.nanmax(p), 'o', color=col, ms=2.6)
@@ -334,20 +562,54 @@ def render_profiles(c, R, subj, consist, lab, order, tag, weighting):
         s.set_linewidth(0.6)
     ax.spines[['top', 'right']].set_visible(False)
     for ext in ('pdf', 'png'):
-        fig.savefig(OUT / f'{tag}_profiles.{ext}', dpi=600)
+        fig.savefig(out_dir / f'{tag}_profiles.{ext}', dpi=600)
     plt.close(fig)
     print(f'  wrote {tag}_profiles.pdf/png')
 
 
 # ── main ─────────────────────────────────────────────────────────────
-def main():
-    OUT.mkdir(parents=True, exist_ok=True)
-    c = pd.read_csv(gb.MASTER_DIR / 'per_cell_master.csv')
+def parse_args(argv=None):
+    p = argparse.ArgumentParser(
+        description=__doc__.split('\n')[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument('--master-csv', type=Path, default=DEFAULT_MASTER_CSV,
+                   help='per_cell_master.csv from cell_gradient_master_table.py. '
+                        'This one file is all the numeric result needs.')
+    p.add_argument('--out', type=Path, default=None,
+                   help='output directory (default: <master-csv dir>/final_splits)')
+    p.add_argument('--brains', dest='plot_brains', action='store_true',
+                   default=PLOT_BRAINS,
+                   help=f'render the fsaverage brain overlays '
+                        f'(PLOT_BRAINS={PLOT_BRAINS} at the top of this file)')
+    p.add_argument('--no-brains', dest='plot_brains', action='store_false',
+                   help='skip the brain overlays; write CSVs + profile plots '
+                        'only. Needs no mne / 3D backend / fsaverage.')
+    # NOTE: symmetrisation, pre-projection smoothing, the harmonic volumes
+    # and the gradient mask are intentionally NOT exposed here — they are
+    # read from the master run's config.json (see load_master_provenance).
+    return p.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    out = args.out or args.master_csv.parent / 'final_splits'
+    out.mkdir(parents=True, exist_ok=True)
+    c = pd.read_csv(args.master_csv)
     R = c[[f'r_lag{a:03d}_noctrl' for a in L]].to_numpy(float)
     subj = c['subject_id'].to_numpy()
     consist = c['argmax_r'].to_numpy(float)
-    fmri = c['fmri_angle_quarters_deg'].to_numpy(float)
-    subjects_dir = os.path.dirname(fetch_fsaverage())
+    if FMRI_ANGLE_COLUMN not in c.columns:
+        raise KeyError(f"{args.master_csv} has no column {FMRI_ANGLE_COLUMN!r}")
+    fmri = c[FMRI_ANGLE_COLUMN].to_numpy(float)
+
+    subjects_dir, prov = None, None
+    if args.plot_brains:
+        prov = load_master_provenance(args.master_csv)
+        from mne.datasets import fetch_fsaverage
+        subjects_dir = os.path.dirname(fetch_fsaverage())
+    else:
+        print('(brains off: writing CSVs + profile plots only. Set '
+              'PLOT_BRAINS = True at the top, or pass --brains.)')
 
     inm = c['in_gradient_mask'].to_numpy(bool)
     per_cell = c[['neuron', 'subject_id', 'MNI_x', 'MNI_y', 'MNI_z',
@@ -366,22 +628,24 @@ def main():
         per_cell[f'{tag}_angle'] = [ang.get(g, np.nan) for g in lab]
         summary_rows += summarize_scheme(tag, col, axis, lab, order, rename, w,
                                          n, R, subj, consist, fmri, inm)
-        axis_line, boundary_lines = compute_split_lines(c, col, axis, inm, n)
-        render_brain(c, lab, order, ang, tag,
-                     f'{tag} [{w}]: {sub}, outside=grey', subjects_dir,
-                     axis_line, boundary_lines)
-        render_profiles(c, R, subj, consist, lab, order, tag, w)
+        if args.plot_brains:
+            axis_line, boundary_lines = compute_split_lines(
+                c, col, axis, inm, n, prov)
+            render_brain(c, lab, order, ang, tag,
+                         f'{tag} [{w}]: {sub}, outside=grey', subjects_dir,
+                         axis_line, boundary_lines, out, prov)
+        render_profiles(c, R, subj, consist, lab, order, tag, w, out)
 
-    per_cell.to_csv(OUT / 'final_splits_per_cell.csv', index=False)
+    per_cell.to_csv(out / 'final_splits_per_cell.csv', index=False)
     summary = pd.DataFrame(summary_rows)
-    summary.to_csv(OUT / 'final_splits_summary.csv', index=False)
+    summary.to_csv(out / 'final_splits_summary.csv', index=False)
     pd.set_option('display.width', 240); pd.set_option('display.max_columns', 20)
     print('\n=== GROUP SUMMARY ===')
     print(summary.drop(columns=['boundary_rule', 'n_cells_total']).to_string(
         index=False))
-    print(f'\nWrote {OUT / "final_splits_per_cell.csv"}')
-    print(f'Wrote {OUT / "final_splits_summary.csv"}')
-    print(f'All final_splits outputs in {OUT}')
+    print(f'\nWrote {out / "final_splits_per_cell.csv"}')
+    print(f'Wrote {out / "final_splits_summary.csv"}')
+    print(f'All outputs in {out}')
 
 
 if __name__ == '__main__':

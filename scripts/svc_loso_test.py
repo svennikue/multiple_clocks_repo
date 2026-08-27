@@ -1,30 +1,63 @@
 #!/usr/bin/env python
 """
+*** THIS IS THE GROUP TEST REPORTED FOR THE INSTRUCTION-PHASE RESULT. ***
+
 Small-volume-corrected max-t permutation test + leave-one-subject-out (LOSO)
-cross-validated timecourse, for an a-priori mask, over the per-TR RSA beta
-maps produced by group_stat_bootstrap_per_TR.py.
+cross-validated timecourse, for an a-priori mask, over the per-TR
+instruction-phase RSA beta maps.
 
-Why this test (not whole-brain cluster mass)
-----------------------------------------------
-Cluster-mass inference trades peak height for spatial extent: a strong but
-FOCAL effect (a handful of voxels) scores worse than a weak, diffuse one,
-because cluster mass integrates over both. If your a-priori hypothesis is a
-compact region (e.g. mPFC) and the effect is expected to be small in extent,
-correct only over that region's voxels x TRs, and read the peak directly.
+The manuscript's instruction-phase numbers come from this script's
+`{tag}_svc_summary.json` (peak t, peak TR, peak MNI, p_FWE, n_vox) and its
+`{tag}_loso_results.json` (the cross-validated timecourse). The whole-brain
+cluster-mass script that reads the same inputs is a different test and is
+NOT what is reported — it has been archived to
+`scripts/old/instruction_phase_alternatives/`.
 
-Two questions here, both max-statistic sign-flip permutations (Nichols &
-Holmes 2002), over the mask's voxels x n_TR jointly -- one correction covers
-both the spatial and temporal search:
+Pipeline position
+-----------------
+  fMRI_run_RSA_instruction.py   per subject, per TR: searchlight RSA of the
+                                instruction phase -> one beta map per model
+                                per second per subject
+  (group assembly)              per-subject maps smoothed (FWHM 5 mm),
+                                masked to voxels present in all subjects,
+                                stacked into
+                                <root>/group_RSA_instruction_per_TR_glmbase_01-TR{tr}_cropped/
+                                    cropped_masked_smooth_fwhm5_{model}_beta_std.nii  (X,Y,Z,n_subj)
+                                    mask_all_32_subjects.nii
+  THIS SCRIPT                   group inference inside an a-priori mask
+
+Why max-t and not whole-brain cluster mass
+------------------------------------------
+Cluster-mass inference trades peak height against spatial extent: a strong
+but FOCAL effect (a handful of voxels) scores worse than a weak diffuse one,
+because cluster mass integrates over both. The a-priori hypothesis here is a
+compact region (BA32 / medial BA9 / medial BA10) and the effect is expected
+to be small in extent, so we correct only over that region's voxels x TRs
+and read the peak directly.
+
+Two questions, both by max-statistic sign-flip permutation (Nichols &
+Holmes 2002). Under H0 the sign of a subject's whole beta map is arbitrary,
+so each permutation multiplies every subject's map by +-1, recomputes the
+group t-map, and keeps ONLY the largest t over all voxels AND all TRs. A
+single null therefore corrects simultaneously for the spatial and the
+temporal search — there is no separate correction over time.
 
   1. SVC peak test: is there a voxel x TR combination in this mask exceeding
-     what sign-flipping (H0: no consistent sign across subjects) predicts?
-  2. LOSO cross-validated timecourse: select the top-k voxels' by-TR t-stat
-     using only n-1 subjects, read out the held-out subject's mean beta in
-     those voxels, repeat for every subject. This removes the circularity of
-     "we picked voxels using the same data we're now averaging", so the
-     resulting timecourse is a fair estimate of effect size (not inflated
-     like a whole-sample voxel selection would be), and its own permutation
-     test is still valid.
+     what sign-flipping predicts? The corrected p for any voxel x TR is the
+     proportion of permutations whose max-t is at least its observed t.
+     `t_crit_FWE05` is the 95th percentile of that null; the significant
+     temporal window at the peak voxel is the set of TRs whose t exceeds it.
+  2. LOSO cross-validated timecourse: choose the top-k voxels by their
+     by-TR t-statistic using only n-1 subjects, then read out the HELD-OUT
+     subject's mean beta in those voxels, repeating for every subject. This
+     removes the circularity of selecting voxels on the same data one then
+     averages, so the timecourse is an unbiased estimate of effect size
+     rather than an inflated one, and its own permutation test stays valid.
+     Run for several k so the shape can be checked for robustness to the
+     selection size.
+
+NOTE ON df: the group has 32 subjects, so the one-sample t has df = 31.
+`tstat()` divides by the sample SD with ddof=1 and multiplies by sqrt(n).
 
 Usage
 -----

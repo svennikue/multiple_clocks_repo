@@ -60,6 +60,45 @@ CONTROL MODES
                L2-norm is intentionally NOT a control — fully collinear
                with the categorical location dummies in encoding space.
 
+*** THE MANUSCRIPT REPORTS `no_ctrl`. WHAT THAT MEANS, EXACTLY ***
+    "Uncontrolled" does NOT mean unprocessed. Two things are already
+    removed before a single rate map is built:
+      * within-state PHASE, residualised per cell on the raw 360-bin
+        firing rate with a cosine basis (see PHASE RESIDUALISATION
+        below). This is what stops the result being a relabelled
+        subgoal-progress signal.
+      * unreliable location estimates, via the dwell-based QC
+        (MIN_DWELL_BINS, MIN_SHARED_LOCS) and the dwell-weighted
+        correlation.
+    What `no_ctrl` omits is the nuisance-REGRESSION step: firing rate is
+    not additionally residualised against task state, the current button,
+    or the current location. The consequence is specific and worth stating
+    in the paper: at lag k the estimate is not protected against the
+    trajectory's own autocorrelation. Because subjects take stereotyped
+    paths, the location 30 deg ahead coincides with the current location on
+    ~39% of bins (~3.5x the 1/9 chance rate), decaying to chance by
+    +-90 deg. A significant result at a single lag therefore demonstrates
+    spatial structure at that lag, NOT that the structure is specific to
+    the future. Future-specificity is established only by the SHAPE of the
+    lag profile — mPFC significant at 30-60 deg while at chance at 0 deg,
+    the mirror image of the hippocampal profile — and by the within-cell
+    paired test (T2), which asks whether the predicted lags beat that same
+    cell's other ten lags. `with_ctrl` exists to probe the same question by
+    regression instead; it is a robustness check, not the headline.
+
+*** WHERE THE REPORTED NUMBERS COME FROM ***
+    This script writes per-cell CV r into `per_cell_ALL_ROIs.csv` and
+    CELL-level statistics into `per_roi_stats.csv`. The main-text figures
+    and statistics are NOT read off `per_roi_stats.csv`: they come from
+    `scripts/overlay_double_dissociation.py`, run on this script's
+    per-cell CSV, which additionally aggregates SUBJECT-WISE (average the
+    Fisher-z CV r across cells within a session, then test across
+    sessions). The two aggregations do not agree about which lag peaks in
+    mPFC — cell-level peaks at 30 deg, subject-level at 60 deg — so always
+    state which unit of analysis a quoted t and df refer to:
+        cell-level    -> df = n_cells - 1     (mPFC 154, HC_mid 231)
+        subject-level -> df = n_sessions - 1  (mPFC 31,  HC_mid 34)
+
 AGGREGATE MODELS
     dsrfull   Stacked rate-maps across all "beyond-now" lags
               (30°…330°, 11 × 9 = 99-d vector per config).
@@ -1906,6 +1945,71 @@ def fig_lag_regressor_correlation(long_df, out_dir):
     _save(fig, os.path.join(fig_dir, '10_lag_regressor_correlation'))
 
 
+def _write_lagwise_both_units(per_cell, out_dir):
+    """Lag-wise one-sample tests at CELL and SUBJECT level, for both
+    control modes, plus the predicted-lag window tests.
+
+    Cells from one session are not independent, so the subject-level
+    version (average Fisher-z across that session's cells, then test
+    across sessions) is the conservative read; the cell-level version is
+    the sensitive one. Both are written, and the manuscript states which
+    it quotes. See `mc.analyse.lagwise_aggregation` for the rationale.
+    """
+    from mc.analyse.lagwise_aggregation import (
+        lagwise_tests_both_units, target_window_tests_both_units,
+    )
+    lag_tables, win_tables = [], []
+    for ctrl_mode in ('noctrl', 'ctrl'):
+        cols = [f'r_lag{a:03d}_{ctrl_mode}' for a in LAGS_DEG]
+        if not all(c in per_cell.columns for c in cols):
+            continue
+        curves_by_roi = {}
+        for roi, g in per_cell.groupby('roi'):
+            if roi not in ROIS_TO_RUN:
+                continue
+            curves = g[cols].to_numpy(dtype=float)
+            if curves.size == 0 or not np.isfinite(curves).any():
+                continue
+            curves_by_roi[roi] = (curves, g['subject_id'].to_numpy())
+        if not curves_by_roi:
+            continue
+        label = f'per_lag_encoding_{ctrl_mode}'
+        lag_tables.append(
+            lagwise_tests_both_units(curves_by_roi, LAGS_DEG, label))
+        win_tables.append(
+            target_window_tests_both_units(
+                curves_by_roi, LAGS_DEG, ROI_PREDICTED_LAGS_DEG, label))
+
+    if lag_tables:
+        lag_df = pd.concat(lag_tables, ignore_index=True)
+        lag_path = os.path.join(out_dir, 'per_roi_lagwise_by_unit.csv')
+        lag_df.to_csv(lag_path, index=False)
+        print(f'Saved per_roi_lagwise_by_unit.csv ({lag_df.shape[0]} rows) '
+              f'— lag-wise tests at cell AND subject level')
+        # Console summary for the ROIs with an a-priori prediction.
+        for roi in ROI_PREDICTED_LAGS_DEG:
+            sub = lag_df[(lag_df.roi == roi)
+                         & (lag_df.analysis == 'per_lag_encoding_noctrl')]
+            if sub.empty:
+                continue
+            for unit in ('cell', 'subject'):
+                s = sub[sub.analysis_unit == unit]
+                if s.empty:
+                    continue
+                best = s.loc[s['t_fisher_z'].idxmax()]
+                print(f"    {roi:12s} [{unit:7s}] n={int(best['n_units_valid']):3d}  "
+                      f"peak lag {int(best['lag_deg']):3d}deg  "
+                      f"r={best['mean_raw_r']:+.3f}  t={best['t_fisher_z']:+.2f}  "
+                      f"p={best['p_one_sided']:.4f}  "
+                      f"q_lags={best['p_one_sided_fdr_lags']:.3f}")
+    if win_tables:
+        win_df = pd.concat(win_tables, ignore_index=True)
+        win_path = os.path.join(out_dir, 'per_roi_predicted_window_by_unit.csv')
+        win_df.to_csv(win_path, index=False)
+        print(f'Saved per_roi_predicted_window_by_unit.csv '
+              f'({win_df.shape[0]} rows) — predicted-lag tests at both units')
+
+
 def _stats_and_plots(per_cell, out_dir, fig_dir):
     """Recompute per-ROI stats + all figures from a pre-computed
     per_cell DataFrame. Shared by the full-run and reload paths."""
@@ -1916,6 +2020,12 @@ def _stats_and_plots(per_cell, out_dir, fig_dir):
     roi_stats.to_csv(os.path.join(out_dir, 'per_roi_stats.csv'), index=False)
     print(f'\nSaved per_roi_stats.csv ({roi_stats.shape[0]} rows × '
           f'{roi_stats.shape[1]} cols)')
+
+    # ── Lag-wise stats at BOTH units of analysis (cell + subject) ──────
+    # Written here so the manuscript numbers come straight out of this
+    # script and do not require running overlay_double_dissociation.py.
+    # Same shared implementation both use, so they cannot drift apart.
+    _write_lagwise_both_units(per_cell, out_dir)
 
     # Lag-agnostic single-lag summary (one t-test per (ROI × ctrl × lag))
     single_lag_df = single_lag_stats(per_cell, SINGLE_LAGS_FOR_TESTS)

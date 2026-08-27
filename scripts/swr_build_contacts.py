@@ -1,0 +1,221 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Milestone 2 of the SWR pipeline: build the macro-contact anatomy table.
+
+One row per LFP channel per session, with an MNI152 coordinate, grey/white,
+a native-atlas region label, and an ROI assigned by the SAME rule ladder the
+cell pipeline uses. Then adjacent-bipolar pairs for the contacts we care about.
+
+Group-level on purpose: the nilearn fetches plus four MaxProbAtlas
+instantiations cost ~30 s, and paying that once per session across 60 sessions
+would be pointless.
+
+Outputs, per session:
+    derivatives/s{XX}/LFP/macro_contacts_{XX}.csv
+    derivatives/s{XX}/LFP/bipolar_pairs_{XX}.csv
+and group-level:
+    derivatives/group/swr/macro_contacts_all.csv
+    derivatives/group/swr/contact_qc.csv
+    derivatives/group/swr/settings.json
+
+Usage:
+    conda activate env_multiple_clocks
+    python scripts/swr_build_contacts.py
+    python scripts/swr_build_contacts.py --sessions="[2,5,26]" --verbose=True
+
+@author: Svenja Kuchenhoff
+"""
+
+import os
+import sys
+import glob
+from datetime import datetime
+
+import numpy as np
+import pandas as pd
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import mc.analyse.swr_io as swr_io
+import mc.analyse.anatomy_sources as anat_src
+import mc.analyse.anatomy_atlas as anat_atlas
+import mc.analyse.contact_anatomy as ca
+
+try:
+    import fire
+except ImportError:
+    fire = None
+
+print("ARGS:", sys.argv)
+
+ANALYSIS_NAME = "swr_contacts"
+V2026_DIRNAME = "ABCD_pts_elecFilesForSvenja_v2026"
+
+
+def _settings_dict(sessions, v2026_folder):
+    return {
+        "analysis_name": ANALYSIS_NAME,
+        "sessions": list(sessions),
+        "v2026_folder": v2026_folder,
+        "hpc_rois": list(ca.HPC_ROIS),
+        "bipolar_scheme": "neighbour (Chen: most medial HC contact + immediate neighbour, ONE pair per probe)",
+        "utah_coords": "ElecXYZMNIRaw (direct row index, NOT via channel no.)",
+        "atlas_rules": "mc.analyse.anatomy_atlas.assign_atlas_roi (shared with cells)",
+        "hc_ant_mid_y": anat_atlas.HC_ANT_MID_Y,
+        "created": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
+def _load_channels(session, data_root):
+    """Channel names in LFP-array order.
+
+    Prefers the cached channels.npy, but that only exists for the handful of
+    sessions the old preprocessing ever ran on. Falls back to reading the
+    channel list straight out of the raw file header, so contact anatomy can
+    be built for every session with raw data -- not just the preprocessed ten.
+    """
+    lfp_dir = os.path.join(swr_io.session_deriv_dir(session, data_root), "LFP")
+    p = os.path.join(lfp_dir, "channels.npy")
+    if os.path.isfile(p):
+        return [str(c) for c in np.load(p, allow_pickle=True)], "channels.npy"
+
+    cfg_s = swr_io.session_config(session, data_root=data_root)
+    files, kind, _ = swr_io.discover_raw_files(session, cfg_s, data_root=data_root)
+    if not files:
+        return [], "none"
+
+    if kind == 'neuralynx':
+        stems = [os.path.splitext(os.path.basename(f))[0] for f in files[0]]
+        return stems, "ncs filenames"
+
+    try:
+        import neo
+        reader = neo.io.BlackrockIO(filename=files[0],
+                                    nsx_to_load=int(cfg_s.get('LFP_file_format', 3)))
+        names = [str(e) for e in reader.header['signal_channels']]
+        return [n.split(",")[0].strip("('") for n in names], "raw header"
+    except Exception as e:
+        print(f"    s{session:02d}: could not read channel names from raw: "
+              f"{type(e).__name__}: {e}")
+        return [], "none"
+
+
+def build_contacts(sessions=None, save_all=True, verbose=False):
+    swr_io.start_log(os.path.join(swr_io.derivatives_dir(swr_io.get_data_root()), "group", "swr"), "swr_build_contacts")
+    data_root = swr_io.get_data_root()
+    v2026 = os.path.join(data_root, V2026_DIRNAME)
+
+    manifest_p = os.path.join(swr_io.derivatives_dir(data_root),
+                              "group", "swr", "session_manifest.csv")
+    if not os.path.isfile(manifest_p):
+        raise FileNotFoundError(
+            f"{manifest_p} not found -- run scripts/swr_audit_sessions.py first")
+    manifest = pd.read_csv(manifest_p)
+
+    if sessions is not None:
+        manifest = manifest[manifest.session.isin([int(s) for s in sessions])]
+
+    print(f"Loading atlases and source tables ({len(manifest)} sessions)...")
+    atlases = anat_atlas.get_atlases()
+    baylor_macros = ca.load_baylor_macros(v2026)
+    ucla_macros = ca.load_ucla_macros(v2026)
+    print(f"  baylor macro tables: {len(baylor_macros)} subjects")
+    print(f"  ucla macro tables:   {len(ucla_macros)} subjects")
+
+    utah_needed = (manifest.recording_site == 'utah').any()
+    utah_map = {}
+    if utah_needed:
+        print("  discovering Utah .mat files (coord-matched)...")
+        utah_map = anat_src.discover_utah_mats()
+        print(f"  utah mats: {len(utah_map)} subjects")
+
+    all_rows, qc_rows = [], []
+    for _, m in manifest.iterrows():
+        session = int(m.session)
+        site = str(m.recording_site).lower()
+        label = str(m.subject_label).strip().strip("'") if pd.notna(m.subject_label) else None
+
+        channels, chan_src = _load_channels(session, data_root)
+        if not channels:
+            qc_rows.append({"session": session, "recording_site": site,
+                            "n_channels": 0, "n_resolved": 0, "n_hpc": 0,
+                            "n_pairs": 0, "n_hpc_pairs": 0,
+                            "note": "no channel list available"})
+            if verbose:
+                print(f"  s{session:02d}: no channel list")
+            continue
+
+        utah_mat = None
+        if site == 'utah' and label in utah_map:
+            utah_mat = utah_map[label][1]
+
+        contacts = ca.build_macro_table(
+            session, site, label, channels,
+            baylor_macros=baylor_macros, utah_mat=utah_mat,
+            ucla_macros=ucla_macros)
+        contacts = ca.label_contacts_with_atlas(contacts, atlases=atlases)
+
+        pairs = ca.build_bipolar_pairs(contacts)
+        if len(pairs):
+            pairs = ca.label_contacts_with_atlas(pairs, atlases=atlases)
+            pairs = pairs.rename(columns={"atlas_roi": "pair_roi"})
+            pairs.insert(0, "session", session)
+            pairs.insert(1, "subject_label", label)
+
+        n_res = int(contacts["resolved"].sum())
+        n_hpc = int(contacts["is_hpc"].sum())
+        n_hpc_pairs = int(pairs["pair_roi_native"].isin(ca.HPC_ROIS).sum()) if len(pairs) else 0
+        qc_rows.append({
+            "session": session, "recording_site": site, "subject_label": label,
+            "channel_source": chan_src, "n_channels": len(contacts),
+            "n_resolved": n_res,
+            "frac_resolved": round(n_res / max(len(contacts), 1), 3),
+            "n_hpc": n_hpc, "n_pairs": len(pairs), "n_hpc_pairs": n_hpc_pairs,
+            "note": "",
+        })
+        if verbose:
+            print(f"  s{session:02d} {site:7s} ch={len(contacts):4d} "
+                  f"resolved={n_res:4d} hpc={n_hpc:3d} pairs={len(pairs):3d} "
+                  f"hpc_pairs={n_hpc_pairs:3d}")
+
+        all_rows.append(contacts)
+        if save_all:
+            out_dir = os.path.join(swr_io.session_deriv_dir(session, data_root), "LFP")
+            os.makedirs(out_dir, exist_ok=True)
+            contacts.to_csv(os.path.join(out_dir, f"macro_contacts_{session:02d}.csv"),
+                            index=False)
+            if len(pairs):
+                pairs.to_csv(os.path.join(out_dir, f"bipolar_pairs_{session:02d}.csv"),
+                             index=False)
+
+    qc = pd.DataFrame(qc_rows)
+    print("\n" + "=" * 74)
+    print(" CONTACT ANATOMY SUMMARY")
+    print("=" * 74)
+    print(qc.groupby("recording_site")[
+        ["n_channels", "n_resolved", "n_hpc", "n_pairs", "n_hpc_pairs"]
+    ].sum().to_string())
+    print(f"\nsessions with >=1 hippocampal bipolar pair: "
+          f"{int((qc.n_hpc_pairs > 0).sum())}/{len(qc)}")
+
+    if all_rows:
+        allc = pd.concat(all_rows, ignore_index=True)
+        print("\n--- ROI counts across all resolved contacts ---")
+        print(allc.loc[allc.resolved, "native_roi"].value_counts().head(12).to_string())
+
+        if save_all:
+            gdir = os.path.join(swr_io.derivatives_dir(data_root), "group", "swr")
+            os.makedirs(gdir, exist_ok=True)
+            allc.to_csv(os.path.join(gdir, "macro_contacts_all.csv"), index=False)
+            qc.to_csv(os.path.join(gdir, "contact_qc.csv"), index=False)
+            swr_io.write_settings(gdir, _settings_dict(
+                list(manifest.session.astype(int)), v2026))
+            print(f"\nSaved -> {gdir}")
+    return None
+
+
+if __name__ == "__main__":
+    if fire is not None:
+        fire.Fire(build_contacts)
+    else:
+        build_contacts()

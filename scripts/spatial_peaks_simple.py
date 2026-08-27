@@ -99,8 +99,8 @@ OUT_BASE        = os.path.join(DATA_DIR, "group", "spatial_peaks_simple")
 # heavy CV + permutation compute and just re-run stats + plots from the
 # cached per-cell results. Outputs are written to a fresh `<run>_reload`
 # directory so the original is preserved.
-RELOAD_FROM     = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/spatial_peaks_simple/2026-06-26_18-47-11_phase_resid_paired_fixedlag-final/"
-# RELOAD_FROM   = None   # set to None to run the full CV + perm pipeline
+#RELOAD_FROM     = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans/derivatives/group/spatial_peaks_simple/2026-06-26_18-47-11_phase_resid_paired_fixedlag-final/"
+RELOAD_FROM   = None   # set to None to run the full CV + perm pipeline
 
 # Optional. Path to a fresh neurons_with_final_roi_labels.csv. Only used when
 # RELOAD_FROM is set; on reload the per-cell CSV's `roi` column is overwritten
@@ -1566,6 +1566,69 @@ def plot_per_lag_r_hist_all_rois(per_cell, single_lag_df,
     _save(fig, save_stem)
 
 
+def _write_lagwise_both_units(per_cell, out_dir):
+    """Lag-wise one-sample tests at CELL and SUBJECT level, plus the
+    predicted-lag window tests, from `per_lag_r_all_lags_json`.
+
+    Cells from one session are not independent observations, so the
+    subject-level version (average Fisher-z within session, then test
+    across sessions) is the conservative read and the cell-level one the
+    sensitive read. Both are written; the manuscript states which it
+    quotes. Same shared implementation as per_lag_encoding.py.
+    """
+    import json as _json
+    from mc.analyse.lagwise_aggregation import (
+        lagwise_tests_both_units, target_window_tests_both_units,
+    )
+    if "per_lag_r_all_lags_json" not in per_cell.columns:
+        print("  [lagwise] no per_lag_r_all_lags_json column — skipping")
+        return
+    subj_col = ("subject_int" if "subject_int" in per_cell.columns
+                else "subject_id")
+
+    curves_by_roi = {}
+    for roi, g in per_cell.groupby("roi"):
+        curves = []
+        for v in g["per_lag_r_all_lags_json"]:
+            try:
+                curves.append(np.asarray(_json.loads(v), dtype=float))
+            except (TypeError, ValueError):
+                curves.append(np.full(len(LAGS_DEG), np.nan))
+        curves = np.stack(curves) if curves else np.empty((0, len(LAGS_DEG)))
+        if curves.size == 0 or not np.isfinite(curves).any():
+            continue
+        curves_by_roi[roi] = (curves, g[subj_col].to_numpy())
+    if not curves_by_roi:
+        print("  [lagwise] no usable ROI curves — skipping")
+        return
+
+    label = "spatial_peaks_paired_grid_groups"
+    lag_df = lagwise_tests_both_units(curves_by_roi, LAGS_DEG, label)
+    lag_df.to_csv(out_dir / "per_roi_lagwise_by_unit.csv", index=False)
+    print(f"  saved per_roi_lagwise_by_unit.csv ({len(lag_df)} rows) "
+          f"— lag-wise tests at cell AND subject level")
+    for roi in ROI_PREDICTED_LAGS_DEG:
+        sub = lag_df[lag_df.roi == roi]
+        for unit in ("cell", "subject"):
+            s = sub[sub.analysis_unit == unit]
+            if s.empty:
+                continue
+            best = s.loc[s["t_fisher_z"].idxmax()]
+            print(f"    {roi:12s} [{unit:7s}] n={int(best['n_units_valid']):3d}  "
+                  f"peak lag {int(best['lag_deg']):3d}deg  "
+                  f"r={best['mean_raw_r']:+.3f}  t={best['t_fisher_z']:+.2f}  "
+                  f"p={best['p_one_sided']:.4f}  "
+                  f"q_lags={best['p_one_sided_fdr_lags']:.3f}")
+
+    win_df = target_window_tests_both_units(
+        curves_by_roi, LAGS_DEG, ROI_PREDICTED_LAGS_DEG, label)
+    if not win_df.empty:
+        win_df.to_csv(out_dir / "per_roi_predicted_window_by_unit.csv",
+                      index=False)
+        print(f"  saved per_roi_predicted_window_by_unit.csv "
+              f"({len(win_df)} rows) — predicted-lag tests at both units")
+
+
 def _stats_and_plots(per_cell, out_dir, skip_raw_plots=False):
     """Recompute per-ROI stats, ROI×lag table and all figures from a
     pre-computed per_cell DataFrame. Shared by the full and reload paths.
@@ -1576,6 +1639,12 @@ def _stats_and_plots(per_cell, out_dir, skip_raw_plots=False):
     roi_stats = _per_roi_stats(per_cell)
     roi_stats.to_csv(out_dir / "per_roi_stats.csv", index=False)
     print("  saved per_roi_stats.csv")
+
+    # Lag-wise stats at BOTH units of analysis (cell + subject), so the
+    # reported numbers come straight out of this script rather than
+    # requiring overlay_double_dissociation.py. Shared implementation
+    # with per_lag_encoding.py — see mc.analyse.lagwise_aggregation.
+    _write_lagwise_both_units(per_cell, out_dir)
     print()
     print("  TEST 1  mean_r_vs_0       : one-sample t (1-sided > 0) on")
     print("                              per-cell CV r at predicted lag.")

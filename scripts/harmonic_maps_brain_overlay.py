@@ -158,7 +158,7 @@ ALPHA_OPACITY_TAG = (
 PROJECT_VIA_COS_SIN      = True     # A — project cos & sin, arctan2 at vertex
 PRE_PROJ_SMOOTH_FWHM_MM  = 3.0      # B — Gaussian on cos/sin volumes (mm)
 SURFACE_SMOOTHING_STEPS  = 5        # C — MNE mesh-neighbour iterations
-BILATERAL_SYMMETRISE     = True     # D — x-flip cos/sin and average
+BILATERAL_SYMMETRISE     = False     # D — x-flip cos/sin and average
 MASK_AMP_TOP_PCT         = None     # E — keep top X% of amp within mask
 
 # Save PDF alongside PNG?  Off by default (only PNG saved).

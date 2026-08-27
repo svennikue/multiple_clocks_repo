@@ -1,58 +1,101 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Sustained-state encoding analysis — TWO tests, both on held-out data.
+"""Is a cell's abstract-state code SUSTAINED, or is it rhythmic?
 
-Per cell, per leave-one-config-out fold:
+A cell can look state-selective in two very different ways, and the
+distinction decides what such a code could support. It may hold its rate
+elevated for the whole of its preferred state — a stable index of task
+position. Or it may fire rhythmically within that state, so its mean is
+elevated while nothing about the moment-to-moment signal says which state
+it is. Only the first can serve as a persistent index. This script
+separates them, per cell, entirely on held-out data.
 
-  Full GLM (fit on training):
-     y = Σ_s β_s·I[state=s] + Σ_p β_p·I[phase=p, p≠late]
-       + Σ_{s,p} β_{sp}·I[state=s, phase=p, p≠late]
-       + Σ_c α_c·I[config=c, train, dropping reference]
+THE MODEL (fit on training configurations)
+------------------------------------------
+    y = Σ_s β_s · I[state=s]                       (4 one-hot columns)
+      + Σ_{s,j} β_{sj} · I[state=s] · P_j          (4 × 2 sum-coded)
+      + Σ_c α_c · I[config=c]                      (K_train − 1 intercepts)
 
-  Preferred state per fold = argmax over s of mean(y_train | state=s).
-  (Marginal across-phase means — robust to coding choices.)
+`P_j` are SUM-CODED phase indicators (+1 for phase j, −1 for the
+reference phase). There is deliberately NO separate phase main-effect
+column: the sum-coded interactions absorb it, and adding one would make
+the design rank-deficient. Sum coding is what buys the decomposition —
+β_state[s] is the marginal across-phase mean for state s, not a
+phase-reference cell mean, so the state block and the interaction block
+are orthogonal contributions:
+    ŷ_state       = X_state       @ β_state        "sustained" component
+    ŷ_interaction = X_interaction @ β_interaction  "phase-modulated"
 
-  Held-out scoring on the left-out config:
+Preferred state for a fold = argmax over s of mean(y_train | state=s),
+i.e. the highest marginal training FIRING RATE, not the largest β. This
+is deliberate: a marginal mean is robust to the coding choice.
 
-  (b) SUSTAINED: per-phase contrast for the preferred state
-       For p ∈ {early, middle, late}:
-         contrast[p] = mean(y_test | pref state, phase p)
-                     − mean(y_test | other states, phase p)
-       Statistic: min_phase_contrast = min over p of mean across folds.
-       Sustained iff min_phase_contrast significantly > 0 under perm.
+HELD-OUT SCORING (on the left-out configuration)
+------------------------------------------------
+  r_state        Pearson r between y_test and ŷ_state.
+                 Does the across-phase state code generalise?
+  r_interaction  Pearson r between y_test and ŷ_interaction.
+                 Does the within-state phase modulation generalise?
+  min_phase_contrast   For each phase p ∈ {early, middle, late}:
+                 contrast[p] = mean(y_test | preferred state, phase p)
+                             − mean(y_test | other states,   phase p)
+                 averaged over folds; the statistic is the MINIMUM over
+                 the three phases. A cell only scores high if its
+                 preferred state beats the others at EVERY phase — which
+                 is exactly what "sustained" means.
 
-  (c) ANY STATE: cross-validated ΔR² for the joint state contribution
-       Reduced model = phase + config (drop state main AND state×phase).
-       ΔR² = (SS_res_reduced − SS_res_full) / SS_tot on held-out.
+*** WHY min_phase_contrast IS NOT TESTED AGAINST ZERO ***
+    The minimum of three noisy estimates is biased downward, so its null
+    does not sit at zero — empirically the ROI means are NEGATIVE in
+    every region. A one-sample t-test against 0 is therefore invalid here
+    and will look like a null result no matter what the data say. Each
+    cell is instead tested against ITS OWN permutation null, and the ROI
+    is tested by asking whether that ROI's per-cell permutation-p values
+    are shifted below 0.5 (Wilcoxon). Under H0 a permutation-p is
+    Uniform[0,1] whatever the bias in the underlying statistic, so the
+    population test is bias-free. Do not quote `t_min_phase_gt0`.
 
-  Permutation null = circular shifts of y_test (same shifts for both stats).
+PERMUTATION NULL
+    Circular shifts of the held-out trace y_test, N_PERMUTATIONS per
+    fold, the SAME shifts reused for every statistic so the three are
+    on a common null.
 
-Sustained criterion: sig_sustained = (p_perm_min_phase_contrast < α).
-Any-state criterion: sig_r_state = (p_perm_r_state < α).
-BH-FDR within ROI gives the _fdr variants.
+CELL LABELS
+    sustained    p_perm(min_phase_contrast) < SIG_ALPHA
+    any-state    p_perm(r_state)            < SIG_ALPHA
+    phasic-only  sig_r_interaction AND NOT sig_r_state
+    BH-FDR within ROI across cells gives the `*_fdr` variants.
 
-Diagnostic figures (12, in diagnostic_figures/):
-  Pipeline:
-    01_design_matrix.png
-    02_pipeline_run_stats.png
-  Permutation validation:
-    03_perm_nulls_examples.png
-    04_perm_p_uniformity.png
-  Distributions:
-    05_dist_min_phase_contrast_per_roi.png
-    06_dist_r_state_per_roi.png
-    07_per_phase_contrast_by_category.png
-  Per-ROI summary:
-    08_roi_fractions_overview.png
-    09_scatter_b_vs_c.png
-    10_roi_pref_state_stacked.png
-  Example cells (polar):
-    11_examples_sustained_polar.pdf
-    12_examples_phasic_only_polar.pdf
-    13_examples_non_state_polar.pdf
+ROI-LEVEL INFERENCE
+    Per-ROI binomial of the sustained / phasic-only fraction vs the 5%
+    chance rate; a χ² omnibus of homogeneity across ROIs; and a planned
+    one-sided EC-vs-pooled-rest Fisher exact test (EC is singled out
+    a priori by the fMRI result). All three land in
+    diagnostic_figures/roi_inference.json.
 
-Outputs:
-  DATA_DIR/group/encoding_state_sustained_cv/<run_tag>/
+    The population-shift tests (Wilcoxon of per-cell perm-p vs 0.5) are
+    corrected across ROIs BOTH ways and stored in the ROI summary:
+        q_wilcoxon_<stat>    BH-FDR       (less conservative)
+        fwe_wilcoxon_<stat>  Bonferroni   (drives the figure stars)
+    for <stat> ∈ {min_phase, r_state, r_interaction}.
+
+NOTE ON ROI COUNT: ROI_ORDER lists 7, but PHC has no cells in the current
+table, so runs produce 6 ROIs and every across-ROI correction is over 6.
+
+OUTPUTS  (DATA_DIR/group/encoding_state_sustained_cv/<run_tag>/)
+    state_sustained_cv_results.csv       per cell: statistics, perm-p,
+                                         within-ROI q, labels
+    state_sustained_cv_roi_summary.csv   per ROI: fractions, binomials,
+                                         Wilcoxon p / q / FWE
+    config.json
+    diagnostic_figures/
+        01_design_matrix              02_pipeline_run_stats
+        03_perm_nulls_examples        05_dist_min_phase_contrast_per_roi
+        06_dist_r_state_per_roi       06b_dist_r_interaction_per_roi
+        07_per_phase_by_category      08_roi_fractions_overview
+        08b_roi_fractions_grouped     10_pref_state_stacked
+        11_effect_size_heatmap        captions.md
+        roi_inference.json
 """
 # import pdb; pdb.set_trace()
 from __future__ import annotations

@@ -24,7 +24,12 @@ DEFAULT_DATA_DIR = (
     "derivatives"
 )
 DEFAULT_RSA_SUBJECTS_JSON = "all_sessions_dsrRSA_grouping_summary.json"
-DEFAULT_ROI_TABLE = "neurons_with_final_roi_labels.csv"
+# Canonical per-cell ROI table, produced by scripts/cell_to_roi_july26.py.
+# The previous name (`neurons_with_final_roi_labels.csv`, from the older
+# cell_to_roi_MNI.py) now exists only inside archive folders; it is kept as
+# a fallback so callers pointing at an archived copy still work.
+DEFAULT_ROI_TABLE = "neurons_with_ROI_labels.csv"
+LEGACY_ROI_TABLE = "neurons_with_final_roi_labels.csv"
 DEFAULT_ROI_COLUMN = "alt_final_roi"
 
 
@@ -53,9 +58,35 @@ def load_rsa_subjects(data_dir=DEFAULT_DATA_DIR,
 def load_roi_table(data_dir=DEFAULT_DATA_DIR,
                    table_name=DEFAULT_ROI_TABLE,
                    roi_column=DEFAULT_ROI_COLUMN):
-    """Load the per-cell ROI/MNI table indexed by (subject, cell_idx)."""
+    """Load the per-cell ROI/MNI table indexed by (subject, cell_idx).
+
+    Falls back to the legacy filename if the canonical one is absent, and
+    raises with both paths listed rather than a bare FileNotFoundError, so
+    a stale default is obvious from the message.
+    """
     path = os.path.join(data_dir, table_name)
+    if not os.path.exists(path):
+        legacy = os.path.join(data_dir, LEGACY_ROI_TABLE)
+        if os.path.exists(legacy):
+            print(f"[cell_selection] {table_name} not found; falling back to "
+                  f"the legacy table {LEGACY_ROI_TABLE}. ROI labels may be "
+                  f"out of date — re-run scripts/cell_to_roi_july26.py.")
+            path = legacy
+        else:
+            raise FileNotFoundError(
+                f"No per-cell ROI table found in {data_dir}. Looked for "
+                f"{table_name!r} (canonical, written by "
+                f"scripts/cell_to_roi_july26.py) and {LEGACY_ROI_TABLE!r} "
+                f"(legacy, written by scripts/cell_to_roi_MNI.py)."
+            )
     df = pd.read_csv(path)
+    # The canonical table stores the corrected coordinates as MNI_*_final and
+    # keeps the untouched originals as MNI_*. Downstream code asks for MNI_x/
+    # y/z and means "the coordinate to use", so prefer the final ones — this
+    # is the same precedence RSA_DSR_ROIs_simple._load_roi_table applies.
+    for ax in ("x", "y", "z"):
+        if f"MNI_{ax}_final" in df.columns:
+            df[f"MNI_{ax}"] = df[f"MNI_{ax}_final"]
     needed = ["subject", "cell idx", roi_column,
               "MNI_x", "MNI_y", "MNI_z", "electrode label"]
     missing = [c for c in needed if c not in df.columns]

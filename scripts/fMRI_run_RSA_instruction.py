@@ -3,7 +3,65 @@
 """
 Created on Sat Jul  4 07:36:34 2026
 
-Running the instruction-phase RSA, per timepoint.
+Instruction-phase searchlight RSA, run separately for every second of the
+instruction period. Per subject, per TR, per model: one whole-brain beta map.
+
+RQ
+------------
+Is the action plan assembled BEFORE any action is executed? The task was
+designed so that each layout is instructed once forwards and once backwards
+(1-2-3-4 and 4-3-2-1), and subjects either followed the instructed order or
+mentally reversed it, with reversal trials marked from the first reward cue.
+That gives a 2x2 of visual instruction x execution, which is what lets a
+representation of what was just SEEN be separated from a representation of
+what will be DONE. The reward-DSR models describe the similarity of future
+executions anchored at 'A' and are deliberately different from the observed
+instructed order, so a fit to them cannot be explained by the visual input.
+
+PAIRING AND THE TWO MODEL FAMILIES
+----------------------------------
+Conditions are paired by same EXECUTION (A1_forw <-> A2_backw), so the RDM
+compares two independent task halves that share a plan but not a stimulus.
+Any model can then be built in two variants:
+  <model>          execution similarity — the plan the subject will carry out
+  <model>_instr    instruction similarity — built by `instruction_relabel_dict`,
+                   which overwrites each '_backw_' entry with its '_forw_'
+                   counterpart so that both directions share the vector they
+                   were SHOWN. Under the execution-based pairing this makes
+                   every (task_i, task_j) 2x2 sub-block internally uniform,
+                   which `verify_instruction_rdm_blocks` checks and prints.
+The two variants are also correlated with each other and reported, so the
+shared variance between "what was seen" and "what will be done" is explicit.
+
+`rewDSR` can additionally be split into its four reward-step channels
+(curr / next / two_next / three_next) by slicing the A_reward vector into
+quarters — a literal split, so Hamming behaves identically to Hamming on
+rewDSR itself rather than on the 9-dim one-hot stored under those names.
+
+DATA RDM SCOPE (config: `data_rdm_scope`)
+    'across_only'  (default) only the TH1 x TH2 off-block, so every cell is
+                   an across-half comparison and run-level noise cannot
+                   inflate similarity.
+    'full_no_diag' the symmetric (2n x 2n) matrix, strict lower triangle.
+                   Nearly doubles the pairs the OLS sees, but the within-half
+                   cells share run-level noise and are therefore biased
+                   toward looking similar; that bias is NOT corrected.
+
+WHAT HAPPENS NEXT (this script does NOT do group statistics)
+------------------------------------------------------------
+Per-subject maps are smoothed (FWHM 5 mm), masked to voxels present in all
+subjects and stacked into
+    group_RSA_instruction_per_TR_glmbase_01-TR{tr}_cropped/
+        cropped_masked_smooth_fwhm5_{model}_beta_std.nii   (X, Y, Z, n_subj)
+Group inference for the reported instruction-phase result is then done by
+`scripts/svc_loso_test.py`: a max-t sign-flip permutation test inside an
+a-priori BA32 / medial BA9 / medial BA10 mask, correcting over voxels and
+seconds jointly, plus a leave-one-subject-out cross-validated timecourse.
+
+USAGE
+    python fMRI_run_RSA_instruction.py <subj_no> [config.json]
+    (default config: rsa_instruction_full.json; the TR is set in the config,
+     so one run of this script = one second of the instruction phase)
 
 @author: Svenja Küchenhoff, 2026
 """

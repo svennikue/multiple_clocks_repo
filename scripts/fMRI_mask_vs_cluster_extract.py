@@ -1,38 +1,85 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Mean-within-mask + peak-within-mask extraction for the DSR and STATE
-group-level fMRI maps.
+ROI-mean extraction (and mask-vs-cluster validation) for the DSR and
+STATE group-level fMRI maps.
 
-Diagnostic for the state-figure plotting work-up:
-- The previous version of get_subj_effects_fMRI.py extracted per-subject
-  betas at a SINGLE peak voxel inside the top significant cluster. The
-  publication figure should instead report the MEAN of per-subject betas
-  WITHIN an anatomical mask (lOFC / mPFC for DSR; vmPFC / EC for state).
-- We also need to verify that each mask actually covers the region the
-  PALM cluster maps say is significant — i.e. that the peak voxel WITHIN
-  the mask is close (within a sensible distance) to the cluster-based
-  peak that we previously published.
+This produces the ANATOMICAL-ROI half of the two-step fMRI strategy: a
+directional, hypothesis-driven test inside a predefined mask, reported
+alongside the whole-brain / small-volume PALM searchlight result. It
+answers two questions per (effect, mask):
 
-What this script does, per (effect, mask):
-  1. Resample the mask onto the subject 4D grid if needed.
-  2. Find the peak voxel from the one-sample t map *restricted to the
-     mask*. Report its MNI.
-  3. Find the peak voxel from the same one-sample t map *restricted to
-     the largest significant cluster* (PALM cluster-mass FWE map). Report
-     its MNI + cluster size. For state we use the cluster-mass t map
-     directly as the cluster-locator (any nonzero voxel = inside a
-     significant cluster).
-  4. Compute the Euclidean MNI distance between the two peaks — small
-     distance ⇒ the mask covers what the cluster also picked out.
-  5. Compute the per-subject mean within the mask, run a one-sample
-     t-test against 0, print + save.
+  (a) What is the group effect averaged over the whole mask?
+      Every voxel in the mask contributes equally, so the estimate does
+      not depend on where the searchlight peak happened to fall. This is
+      what the paper reports as "we averaged each participant's beta in
+      an anatomically predefined mask" — NOT a peak-voxel readout. (The
+      earlier get_subj_effects_fMRI.py did extract single peak voxels,
+      which is circular when the peak is chosen from the same data.)
 
-Outputs:
+  (b) Does the mask actually cover what PALM found significant?
+      We locate the peak inside the mask and the peak of the best-
+      overlapping significant cluster, and report the distance between
+      them. A small distance means the anatomical ROI and the data-driven
+      cluster are pointing at the same thing.
+
+EFFECTS AND MASKS
+-----------------
+  DSR   (concurrent action plan)  -> lOFC, mPFC
+  STATE (position in sequence)    -> vmPFC, EC
+
+Note the naming: the mask file used for the STATE `vmPFC` region is the
+one the manuscript refers to as the mOFC mask.
+
+WHAT IT DOES, per (effect, mask)
+--------------------------------
+1. Resample the mask onto the subject 4D grid (nearest-neighbour,
+   binarised) if the grids differ.
+
+2. Split the mask into bilateral / left / right by MNI x (x = 0 midline
+   excluded from both unilateral masks), and pick a `matched`
+   hemisphere automatically:
+     - if any significant PALM cluster overlaps either hemisphere, take
+       the hemisphere with the larger overlap (`matched_basis =
+       cluster_overlap`);
+     - otherwise take the hemisphere with the higher within-mask peak t
+       (`matched_basis = peak_t`).
+   NB `matched` is chosen using the data, so it is a descriptive
+   convenience for plotting — quote `bilateral` (or a hemisphere fixed a
+   priori) when reporting an inferential test.
+
+3. Peak within the mask, from the PALM voxelwise t map where one is
+   supplied, and from our own voxelwise one-sample t recomputed from the
+   subject 4D as a cross-check (`*_own_t` columns).
+
+4. Peak of each significant cluster and its overlap with the mask.
+   Clusters come from the PALM cluster-mass FWE map thresholded at
+   1 − p > 0.95; for STATE, which has no such map at whole-brain level,
+   any nonzero voxel of the cluster-mass t map marks cluster membership.
+   Euclidean MNI distance between mask-peak and cluster-peak is reported.
+
+5. Small-volume correction report (STATE only): how many voxels inside
+   each anatomical mask survive the PFC+MTL voxel-FWE PALM correction,
+   and the MNI + p_FWE of the best one. This is where the left-EC
+   headline number comes from.
+
+6. Per-subject mean within the mask (and within each hemisphere
+   variant), one-sample t-test against 0. NOTE: the printed and stored
+   p-values are TWO-SIDED; the manuscript reports one-sided p for these
+   directional hypotheses, i.e. p_two / 2.
+
+OUTPUTS
+-------
   data/derivatives/group/Main_Results_fMRI/mask_vs_cluster_extract/
-      mask_vs_cluster_summary.csv
-      per_subject_mean_in_mask.csv
-      details.json
+      mask_vs_cluster_summary.csv   one row per (effect, region), with
+                                    bilateral / left / right / matched
+                                    columns and the SVC report
+      per_subject_mean_in_mask.csv  long form, one row per
+                                    (effect, region, variant, subject) —
+                                    this is what the figures plot
+      details.json                  full provenance: input maps, mask
+                                    paths, cluster overlaps, per-subject
+                                    vectors
 
 Run:
     python scripts/fMRI_mask_vs_cluster_extract.py

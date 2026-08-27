@@ -21,9 +21,12 @@ from typing import Optional
 import pandas as pd
 
 
+# Canonical per-cell ROI table (scripts/cell_to_roi_july26.py). The old
+# name `neurons_with_final_roi_labels.csv` (cell_to_roi_MNI.py) now lives
+# only in archive folders.
 DEFAULT_ROI_TABLE = ("/Users/xpsy1114/Documents/projects/multiple_clocks/"
                      "data/ephys_humans/derivatives/"
-                     "neurons_with_final_roi_labels.csv")
+                     "neurons_with_ROI_labels.csv")
 
 
 def relabel_per_cell(
