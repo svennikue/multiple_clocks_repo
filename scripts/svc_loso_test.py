@@ -83,9 +83,22 @@ import numpy as np
 import nibabel as nib
 
 
+def resolve_nii(path):
+    """Accept a .nii path and fall back to its .nii.gz twin (or vice versa).
+
+    Older per-TR group folders store uncompressed .nii, newer ones .nii.gz;
+    every caller here names the file the same way regardless."""
+    if os.path.exists(path):
+        return path
+    alt = path[:-3] if path.endswith(".gz") else path + ".gz"
+    if os.path.exists(alt):
+        return alt
+    raise FileNotFoundError(f"neither {path} nor {alt} exists")
+
+
 def load_ref(root, tr0_dirname_pattern):
     tr0_dir = tr0_dirname_pattern.format(tr=0)
-    ref_path = os.path.join(root, tr0_dir, "mask_all_32_subjects.nii")
+    ref_path = resolve_nii(os.path.join(root, tr0_dir, "mask_all_32_subjects.nii"))
     ref = nib.load(ref_path)
     return ref, ref.get_fdata() > 0
 
@@ -114,7 +127,8 @@ def extract_betas(root, tr_dirname_pattern, model, trs, mask, brain):
     out = None
     for j, tr in enumerate(trs):
         d = tr_dirname_pattern.format(tr=tr)
-        f = os.path.join(root, d, f"cropped_masked_smooth_fwhm5_{model}_beta_std.nii")
+        f = resolve_nii(os.path.join(root, d,
+                                     f"cropped_masked_smooth_fwhm5_{model}_beta_std.nii"))
         img = nib.load(f)
         data = img.get_fdata()          # (X, Y, Z, n_subj) or (X, Y, Z) per-subj set
         if data.ndim == 3:

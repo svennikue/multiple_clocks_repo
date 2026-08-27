@@ -1,5 +1,93 @@
 # CHANGELOG
 
+## 2026-08-27 — SVC max-t + LOSO over all 27 maps of `instr_test_full`, TR5 only
+
+**Scripts:** `scripts/svc_loso_batch.py` (new), `scripts/svc_loso_test.py` (patched
+to resolve `.nii`/`.nii.gz`).
+**Output:** `data/derivatives/group/per_TR_svc_instr_test_full_TR5_2026-08-27/`
+(`settings.json`, `summary_table.csv`, per-mask/per-model `_svc_summary.json`,
+`_loso_results.json`, `_loso_k{K}.npy`, `run.log`).
+
+**Test.** Identical to the reported instruction-phase test — one-sample t over
+32 subjects, sign-flip max-t permutation (10 000 perms, seed 0) corrected over
+all voxels in an a-priori mask, plus the LOSO cross-validated readout at
+k = 50/100/200. `tstat`, `null_max_t` and the LOSO selection are imported from
+`svc_loso_test.py`, so empirical and permutation values come from the same code.
+
+**Masks (3).**
+- `mPFC` = `masks/mask_PFC_LR_smoothed_resampled.nii.gz` (BA32/mBA9/mBA10), 4182 vox
+- `MTL` = `masks/Garvert_MTL_2mm.nii.gz` (HC/EC), 2695 vox
+- `visual` = `masks/visual_occipital_HO25_2mm.nii.gz` (NEW: union of the 8
+  occipital Harvard-Oxford cortical labels at thr25 — LOC sup/inf,
+  Intracalcarine, Cuneal, Lingual, Occipital Fusiform, Supracalcarine,
+  Occipital Pole), 12 497 vox in-brain of 27 220 in the atlas. The 7T FOV
+  truncates the occipital pole (3 % covered) and occipital fusiform (1 %), so
+  this mask is effectively dorsal/medial occipital + LOC-superior.
+
+**BLOCKER — only TR5 could be analysed.** Of the 12
+`group_RSA_instr_test_full_glmbase_01-TR{n}_cropped` folders, only TR5 finished
+downloading. All 26 beta maps in each of the other 11 folders fail `gzip -t`,
+truncated at exact 256 KB boundaries (6–10 MB of an expected ~28 MB) — an
+interrupted transfer, 275 corrupt files. So this run is `--trs 5`: max-t is
+corrected over voxels ONLY, not over voxels x TRs, and there is no timecourse.
+Re-run across all 12 TRs once the transfer completes.
+
+**Two maps are entirely zero** and were dropped from the tables (25 of 27
+remain): `REWDSR-rewDSR_noInstr` and `SIMPLE-rewDSR_noInstr` — i.e. the whole
+`rewDSR_noInstr` combo model in `condition_files/rsa_instruction_full.json`
+wrote all-zero output. `splitDSR_noInstr` is fine, so it is specific to that
+combo. Upstream bug, not a bug in this test.
+
+**Multiple comparisons.** By request, no correction across the family:
+each p_FWE is corrected within its own mask only. 25 maps x 3 masks = 75 tests.
+
+**Result — the `_instr` (visual instruction similarity) models dominate
+everywhere.** All p_FWE below are within-mask, one-sided positive; LOSO p at
+k=100.
+
+| mask | top map | peak t | MNI | p_FWE | LOSO t | LOSO p |
+|------|---------|--------|-----|-------|--------|--------|
+| mPFC   | curr_rew_instr | 4.79 | -4/38/8 | **.0037** | 3.26 | .0010 |
+| mPFC   | CURR_REW_INSTR-splitDSR_vs_instr | 4.70 | -8/42/10 | **.0051** | 3.02 | .0026 |
+| mPFC   | rewDSR_instr (= REWDSR_INSTR-rewDSR_vs_instr) | 4.46 | 4/20/34 | **.0107** | 2.26 | .0151 |
+| mPFC   | two_next_rew_instr | 4.28 | 4/48/36 | **.0208** | 3.56 | .0007 |
+| MTL    | rewDSR_instr | 8.30 | -32/-2/-34 | **<.0001** | 7.18 | <.0001 |
+| MTL    | two_next_rew_instr | 6.26 | -30/-24/-22 | **.0002** | 4.87 | <.0001 |
+| MTL    | curr_rew_instr | 6.11 | -32/-22/-24 | **.0004** | 4.60 | <.0001 |
+| MTL    | three_next_rew_instr | 5.75 | -24/-8/-24 | **.0006** | 4.04 | .0001 |
+| MTL    | next_rew_instr | 5.32 | -22/-10/-28 | **.0023** | 4.53 | <.0001 |
+| visual | curr_rew_instr | 6.06 | -10/-90/36 | **.0003** | 3.70 | <.0001 |
+| visual | rewDSR_instr | 6.16 | 24/-84/26 | **.0006** | 3.82 | <.0001 |
+| visual | two_next_rew_instr | 5.45 | -44/-62/2 | **.0030** | 3.81 | .0002 |
+
+**Not significant anywhere:** every execution-similarity model on its own —
+`rewDSR` (mPFC p = .74, MTL .86, visual .49), `simple` (.96 / .99 / .99),
+`curr_rew`, `next_rew`, `two_next_rew`, `three_next_rew`, and all four
+`*-splitDSR_noInstr` regressors. In the `*_vs_instr` combos the execution
+regressor is likewise null while its `_INSTR` partner carries the effect —
+i.e. at TR5 the instruction-similarity regressor explains the variance and
+leaves nothing for the execution regressor.
+
+**Caveat on the effect sizes.** MTL t = 8.3 and visual t = 6.2 for
+`rewDSR_instr` are far above anything the execution models produce, and the
+`_instr` models are uniform within (task_i, task_j) 2x2 sub-blocks by
+construction. A block-structured regressor of that kind can be picked up by any
+residual block structure in the data RDM (e.g. run/session or scanner-drift
+structure aligned with task identity), so these should be read as "the
+instruction-block model fits" and not yet as evidence about representation.
+Worth a control before interpreting.
+
+**Also recorded, descriptive only:** `peak_t_neg` / `p_FWE_neg` — the negative
+peak against the same (symmetric) sign-flip null, a second one-sided test not
+corrected for testing both directions. 11 of 75 cells have p_neg < .05, the
+strongest being `NEXT_REW-splitDSR_noInstr` in MTL (t = -5.02, 32/0/-20,
+p = .0035). At an uncorrected .05 with 75 tests, ~3.75 are expected by chance.
+
+**Method note:** the group brain mask here is the intersection of
+`mask_all_32_subjects` over all included TRs, not TR0's mask alone as in
+`svc_loso_test.load_ref` (the per-TR group masks differ by ~21 voxels; a voxel
+entering the max-t search must be valid at every TR the search runs over).
+
 ## 2026-08-09 (later) — YER micro positions reconstructed from macro probes
 
 **Script:** `scripts/cell_to_roi_july26.py`

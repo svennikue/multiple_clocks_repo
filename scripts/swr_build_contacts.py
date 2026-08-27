@@ -40,6 +40,7 @@ import mc.analyse.swr_io as swr_io
 import mc.analyse.anatomy_sources as anat_src
 import mc.analyse.anatomy_atlas as anat_atlas
 import mc.analyse.contact_anatomy as ca
+import mc.analyse.swr_report as swr_report
 
 try:
     import fire
@@ -90,8 +91,21 @@ def _load_channels(session, data_root):
 
     try:
         import neo
-        reader = neo.io.BlackrockIO(filename=files[0],
-                                    nsx_to_load=int(cfg_s.get('LFP_file_format', 3)))
+        # Use the format DETECTED from disk, not the config's. s50/s51 are
+        # marked `LFP_file_format: ncs` but are Blackrock .ns3, so int('ncs')
+        # raised and both sessions silently produced no contacts. Take the
+        # extension of the file discover_raw_files actually found.
+        nsx = cfg_s.get('LFP_file_format', 3)
+        try:
+            nsx = int(nsx)
+        except (TypeError, ValueError):
+            nsx = None
+        ext = os.path.splitext(files[0])[1].lstrip('.')          # e.g. 'ns3'
+        if ext.startswith('ns') and ext[2:].isdigit():
+            nsx = int(ext[2:])
+        if nsx is None:
+            nsx = 3
+        reader = neo.io.BlackrockIO(filename=files[0], nsx_to_load=nsx)
         names = [str(e) for e in reader.header['signal_channels']]
         return [n.split(",")[0].strip("('") for n in names], "raw header"
     except Exception as e:
@@ -208,6 +222,32 @@ def build_contacts(sessions=None, save_all=True, verbose=False,
                              index=False)
 
     qc = pd.DataFrame(qc_rows)
+
+    # inclusion report: every session accounted for, with a reason
+    rep = swr_report.InclusionReport(
+        "contacts", ANALYSIS_NAME,
+        "Sessions yielding at least one hippocampal bipolar derivation.")
+    for _, r in qc.iterrows():
+        u = f"s{int(r.session):02d}"
+        if int(r.get("n_hpc_pairs", 0)) > 0:
+            rep.include(u, "", site=r.recording_site,
+                        channels=int(r.n_channels), resolved=int(r.n_resolved),
+                        hpc=int(r.n_hpc), pairs=int(r.n_hpc_pairs))
+        elif int(r.get("n_channels", 0)) == 0:
+            rep.exclude(u, "no channel list could be read "
+                           "(no channels.npy and raw header unreadable)",
+                        site=r.recording_site)
+        elif int(r.get("n_resolved", 0)) == 0:
+            rep.exclude(u, "no channel matched an electrode table "
+                           "(missing/mismatched anatomy source)",
+                        site=r.recording_site, channels=int(r.n_channels))
+        elif int(r.get("n_hpc", 0)) == 0:
+            rep.exclude(u, "no contact in hippocampus by native segmentation",
+                        site=r.recording_site, resolved=int(r.n_resolved))
+        else:
+            rep.exclude(u, "hippocampal contacts found but no valid bipolar "
+                           "partner on the same probe",
+                        site=r.recording_site, hpc=int(r.n_hpc))
     print("\n" + "=" * 74)
     print(" CONTACT ANATOMY SUMMARY")
     print("=" * 74)
@@ -227,6 +267,7 @@ def build_contacts(sessions=None, save_all=True, verbose=False,
             os.makedirs(gdir, exist_ok=True)
             allc.to_csv(os.path.join(gdir, "macro_contacts_all.csv"), index=False)
             qc.to_csv(os.path.join(gdir, "contact_qc.csv"), index=False)
+            rep.write(gdir)
             swr_io.write_settings(gdir, _settings_dict(
                 list(manifest.session.astype(int)), v2026))
             print(f"\nSaved -> {gdir}")
