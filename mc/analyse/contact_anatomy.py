@@ -399,14 +399,18 @@ def label_contacts_with_atlas(df, atlases=None):
     # atlases are unavailable -- e.g. on a cluster node with no nilearn_data and
     # no network -- degrade gracefully rather than failing. This removes a 314 MB
     # dependency from the cluster run; contact selection is unaffected.
+    # `atlases=False` means "explicitly none" (caller already knows they are
+    # unavailable); `atlases=None` means "not supplied, try to load". Without
+    # that distinction a caller passing None would retry the failed load once
+    # per session and print the same error 60 times.
     if atlases is None:
         try:
             atlases = anat_atlas.get_atlases()
         except Exception as e:
             print(f"  [atlas unavailable: {type(e).__name__}: {e}]")
             print("  [continuing with native-space ROI only; atlas_roi will be NaN]")
-            atlases = None
-    if atlases is None:
+            atlases = False
+    if not atlases:
         df = df.reset_index(drop=True).copy()
         for c in ["_juelich", "_ho_cort", "_ho_sub", "_bn_label",
                   "atlas_roi", "atlas_source_label", "atlas_reason"]:

@@ -100,7 +100,8 @@ def _load_channels(session, data_root):
         return [], "none"
 
 
-def build_contacts(sessions=None, save_all=True, verbose=False):
+def build_contacts(sessions=None, save_all=True, verbose=False,
+                   use_atlas=True):
     swr_io.start_log(os.path.join(swr_io.derivatives_dir(swr_io.get_data_root()), "group", "swr"), "swr_build_contacts")
     data_root = swr_io.get_data_root()
     v2026 = os.path.join(data_root, V2026_DIRNAME)
@@ -116,7 +117,20 @@ def build_contacts(sessions=None, save_all=True, verbose=False):
         manifest = manifest[manifest.session.isin([int(s) for s in sessions])]
 
     print(f"Loading atlases and source tables ({len(manifest)} sessions)...")
-    atlases = anat_atlas.get_atlases()
+    # The atlas is a CROSS-CHECK only: `native_roi` (each site's own
+    # segmentation) is what drives `is_hpc` and the bipolar pairing, and the
+    # pairs are byte-identical without it (verified on s38). So a missing atlas
+    # must not stop the run -- it is not needed on the cluster at all.
+    atlases = False          # False = explicitly none (see label_contacts_with_atlas)
+    if use_atlas:
+        try:
+            atlases = anat_atlas.get_atlases()
+        except Exception as e:
+            print(f"  [atlas unavailable] {e}")
+            print("  [continuing with native-space ROI only -- contact selection "
+                  "is unaffected; atlas_roi will be NaN]")
+    else:
+        print("  [--use_atlas=False: native-space ROI only]")
     baylor_macros = ca.load_baylor_macros(v2026)
     ucla_macros = ca.load_ucla_macros(v2026)
     print(f"  baylor macro tables: {len(baylor_macros)} subjects")

@@ -223,8 +223,17 @@ def audit_sessions(sessions=None, save_all=True, verbose=False, return_data=Fals
     flagged = manifest[manifest.status != 'ok']
     if len(flagged):
         print(f"\n--- {len(flagged)} sessions NOT ok (resolve before building) ---")
-        for _, r in flagged.iterrows():
-            print(f"  s{int(r.session):02d}  {r.status:14s}  {r.warnings[:110]}")
+        # group by the leading part of the reason: 60 identical lines hide the
+        # signal, and one systematic problem is very different from 60 separate
+        # ones
+        flagged = flagged.copy()
+        flagged["_key"] = (flagged.status.astype(str) + " | "
+                           + flagged.warnings.astype(str).str.slice(0, 70))
+        for key, grp in flagged.groupby("_key"):
+            sess = ", ".join(f"s{int(x):02d}" for x in sorted(grp.session)[:14])
+            more = f" (+{len(grp)-14} more)" if len(grp) > 14 else ""
+            print(f"  [{len(grp):2d}] {key}")
+            print(f"       {sess}{more}")
 
     # ---- save -----------------------------------------------------------
     # inclusion/exclusion report -- every session accounted for, with a reason

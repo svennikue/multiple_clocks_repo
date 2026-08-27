@@ -35,7 +35,28 @@ import nibabel as nib
 # cell_to_roi_MNI.py so results remain comparable.
 HC_ANT_MID_Y = -21.0
 
-DEFAULT_BRAINNETOME_DIR = "/Users/xpsy1114/Documents/toolboxes/Brainnatome"
+# Brainnetome lives outside the data tree, so it needs searching rather than
+# hardcoding: the original path was a laptop-only location and broke on ceph.
+# Override with $BRAINNETOME_DIR.
+_BRAINNETOME_CANDIDATES = [
+    os.environ.get("BRAINNETOME_DIR", ""),
+    "/Users/xpsy1114/Documents/toolboxes/Brainnatome",
+    "/ceph/behrens/svenja/analysis/toolboxes/Brainnatome",
+    "/ceph/behrens/svenja/toolboxes/Brainnatome",
+    os.path.expanduser("~/toolboxes/Brainnatome"),
+    os.path.expanduser("~/Brainnatome"),
+]
+
+
+def find_brainnetome_dir():
+    """First candidate directory that actually holds the atlas, else None."""
+    for d in _BRAINNETOME_CANDIDATES:
+        if d and os.path.isfile(os.path.join(d, "BN_Atlas_246_LUT.txt")):
+            return d
+    return None
+
+
+DEFAULT_BRAINNETOME_DIR = find_brainnetome_dir()
 
 # Populated by get_atlases(). `assign_atlas_roi` reads `juelich` from here.
 ho_cort = None
@@ -64,6 +85,13 @@ def get_atlases(brainnetome_dir=DEFAULT_BRAINNETOME_DIR, verbose=True):
     ho_sub_atlas = nldatasets.fetch_atlas_harvard_oxford("sub-maxprob-thr25-2mm")
     juelich_atlas = nldatasets.fetch_atlas_juelich("maxprob-thr25-2mm")
 
+    if not brainnetome_dir:
+        raise FileNotFoundError(
+            "Brainnetome atlas not found. It is only needed for the atlas "
+            "CROSS-CHECK -- contact selection uses native-space labels and is "
+            "unaffected. Either set BRAINNETOME_DIR, copy the 182 KB folder "
+            "(BN_Atlas_246_1mm.nii.gz + BN_Atlas_246_LUT.txt), or run with "
+            "--use_atlas=False.")
     brainnetome_nii = os.path.join(brainnetome_dir, "BN_Atlas_246_1mm.nii.gz")
     brainnetome_lut = os.path.join(brainnetome_dir, "BN_Atlas_246_LUT.txt")
 

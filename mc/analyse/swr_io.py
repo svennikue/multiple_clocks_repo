@@ -118,9 +118,26 @@ def load_behaviour(session, data_root=None, apply_exclusions=True):
 
     beh = pd.read_csv(path, header=None)
     if beh.shape[1] != len(BEH_COLS):
+        hint = ""
+        if beh.shape[1] == len(BEH_COLS) - 1:
+            # Seen on ceph 2026-08-27: every session carried the OLDER 13-column
+            # file, which lacks `correct`. Without it `plan_known` cannot be
+            # derived, so the phase, discovery, solve_number and error_correct
+            # designs are all impossible. Failing here is deliberate -- padding
+            # a missing column would silently invalidate the whole H1 analysis.
+            hint = ("\n    This looks like the OLDER 13-column file, missing "
+                    "the final `correct` column.\n"
+                    "    The 14-column version is required: `correct` is what "
+                    "`plan_known` and every\n"
+                    "    H1 window design are derived from. Sync the newer "
+                    "files (~1 MB total):\n"
+                    "      rsync -av --include='*/' "
+                    "--include='all_trial_times_*.csv' --exclude='*' \\\n"
+                    "            <local>/derivatives/ "
+                    "<ceph>/human_ABCD_ephys/derivatives/")
         raise ValueError(
             f"s{session:02d}: behaviour file has {beh.shape[1]} columns, "
-            f"expected {len(BEH_COLS)} ({BEH_COLS}). Path: {path}")
+            f"expected {len(BEH_COLS)}. Path: {path}{hint}")
     beh.columns = BEH_COLS
 
     beh['session'] = session

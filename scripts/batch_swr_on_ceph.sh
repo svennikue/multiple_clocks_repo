@@ -7,6 +7,7 @@
 # instead of that script's `-p gpu --gres=gpu:1 --mem=128G`, which this pipeline
 # does not need and should not occupy.
 #
+# 
 # Usage:
 #   bash scripts/batch_swr_on_ceph.sh <job_name> <python_script> <condition_file> [mem] [cpus] [time] [partition]
 #
