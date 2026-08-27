@@ -296,7 +296,19 @@ def discover_raw_files(session, cfg_sesh, data_root=None):
     site = (cfg_sesh or {}).get('recording_site')
     fmt = (cfg_sesh or {}).get('LFP_file_format')
 
-    if site == 'ucla' or fmt == 'ncs':
+    # Detect the format from what is ON DISK, not from the recording site.
+    # The config conflates the two -- it marks all six UCLA sessions as
+    # `LFP_file_format: ncs`, but s50 (patient 576) and s51 (patient 578) were
+    # recorded on Blackrock and contain .ns3/.ns5. Trusting the site would make
+    # those two look like sessions with no raw data at all.
+    has_ncs = bool(glob.glob(os.path.join(sdir, '**', '*.ncs'), recursive=True))
+    has_nsx = bool(glob.glob(os.path.join(sdir, '**', '*.ns[0-9]'), recursive=True))
+    if has_nsx and not has_ncs and (site == 'ucla' or fmt == 'ncs'):
+        warn.append(f"config says ncs but only .nsx found on disk -- "
+                    f"treating {site} session as blackrock")
+        site, fmt = site, 3        # fall through to the blackrock branch below
+
+    if (site == 'ucla' or fmt == 'ncs') and not (has_nsx and not has_ncs):
         pats = [os.path.join(sdir, '**', '*.ncs')]
         found = sorted({f for p in pats for f in glob.glob(p, recursive=True)})
         if not found:
@@ -325,10 +337,16 @@ def discover_raw_files(session, cfg_sesh, data_root=None):
                         f"(suffixes {sorted(blocks)}) not represented in YAML")
         return [sorted(blocks[k]) for k in sorted(blocks)], 'neuralynx', warn
 
-    ext = f"ns{fmt}" if fmt in (2, 3, '2', '3') else "ns*"
+    ext = f"ns{fmt}" if fmt in (2, 3, '2', '3') else "ns[0-9]"
     pats = [os.path.join(sdir, f"*.{ext}"),
-            os.path.join(sdir, 'LFP', f"*.{ext}")]
-    files = sorted({f for p in pats for f in glob.glob(p)})
+            os.path.join(sdir, 'LFP', f"*.{ext}"),
+            os.path.join(sdir, '**', f"*.{ext}")]
+    files = sorted({f for p in pats for f in glob.glob(p, recursive=True)})
+    if not files:                       # config's ns-number may be wrong too
+        files = sorted(set(glob.glob(os.path.join(sdir, '**', '*.ns[0-9]'),
+                                     recursive=True)))
+        if files:
+            warn.append(f"no *.{ext} found; fell back to any .nsx on disk")
     if not files:
         return [], 'blackrock', [f"no *.{ext} files found under {sdir}"]
     return _sort_blackrock(files), 'blackrock', warn

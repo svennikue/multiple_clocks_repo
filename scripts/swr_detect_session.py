@@ -38,6 +38,7 @@ import mc.analyse.swr_io as swr_io
 import mc.analyse.swr_preproc as pp
 import mc.analyse.swr_artifact as art
 import mc.analyse.swr_detect as det
+import mc.analyse.swr_report as swr_report
 
 try:
     import fire
@@ -170,10 +171,25 @@ def detect_session(session, analysis_name=ANALYSIS_NAME, save_all=True,
             if cs > 0:
                 print(f"  pooled rate: strict {n_s/cs:.3f} Hz | relaxed {n_r/cs:.3f} Hz")
 
+    rep = swr_report.InclusionReport(
+        "detection", analysis_name,
+        f"s{session:02d}: bipolar derivations entering ripple detection.")
+    for _, r in qc_df.iterrows():
+        u = f"s{session:02d}/{r.pair_id}"
+        if bool(r.excluded):
+            rep.exclude(u, f">2/3 of the recording contaminated "
+                           f"({r.contaminated_frac:.0%})", roi=r.pair_roi)
+        elif float(r.get("clean_s", 0)) <= 0:
+            rep.exclude(u, "no artifact-free time", roi=r.pair_roi)
+        else:
+            rep.include(u, "", roi=r.pair_roi, n_events=int(r.get("n_events", 0)),
+                        clean_s=r.clean_s, rate_hz=r.get("rate_hz"))
+
     if save_all:
         out_dir = os.path.join(swr_io.session_deriv_dir(session, data_root),
                                "LFP-ripples", analysis_name)
         os.makedirs(out_dir, exist_ok=True)
+        rep.write(out_dir)
         if len(events):
             events.to_csv(os.path.join(out_dir, "ripple_events.csv"), index=False)
         qc_df.to_csv(os.path.join(out_dir, "channel_qc.csv"), index=False)

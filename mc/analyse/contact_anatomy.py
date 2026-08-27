@@ -394,8 +394,32 @@ def label_contacts_with_atlas(df, atlases=None):
     Mirrors the per-cell query block of cell_to_roi_july26.py exactly, so a
     contact and a cell at the same coordinate get the same ROI.
     """
+    # The atlas is a CROSS-CHECK, not the ROI criterion: `native_roi` (from each
+    # site's own segmentation) drives `is_hpc` and the bipolar pairing. So if the
+    # atlases are unavailable -- e.g. on a cluster node with no nilearn_data and
+    # no network -- degrade gracefully rather than failing. This removes a 314 MB
+    # dependency from the cluster run; contact selection is unaffected.
     if atlases is None:
-        atlases = anat_atlas.get_atlases()
+        try:
+            atlases = anat_atlas.get_atlases()
+        except Exception as e:
+            print(f"  [atlas unavailable: {type(e).__name__}: {e}]")
+            print("  [continuing with native-space ROI only; atlas_roi will be NaN]")
+            atlases = None
+    if atlases is None:
+        df = df.reset_index(drop=True).copy()
+        for c in ["_juelich", "_ho_cort", "_ho_sub", "_bn_label",
+                  "atlas_roi", "atlas_source_label", "atlas_reason"]:
+            df[c] = np.nan
+        df["atlas_available"] = False
+        if "native_region" in df.columns:
+            df["native_roi"] = [native_roi_label(r, y) for r, y
+                                in zip(df["native_region"], df["mni_y"])]
+        else:
+            df["native_roi"] = None
+        df["is_hpc"] = df["native_roi"].isin(HPC_ROIS)
+        df["roi_concordant"] = np.nan          # cannot be assessed without atlas
+        return df
     ho_cort, ho_sub, juelich, brainnetome = atlases
 
     if df.empty:
@@ -438,6 +462,7 @@ def label_contacts_with_atlas(df, atlases=None):
         ]
     else:
         df["native_roi"] = None
+    df["atlas_available"] = True
     df["is_hpc"] = df["native_roi"].isin(HPC_ROIS)
     # The atlas ladder is a strict superset of native HC, so a native-HC
     # contact that the atlas does NOT call HC would be an anomaly worth seeing.

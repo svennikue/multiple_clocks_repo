@@ -44,6 +44,7 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import mc.analyse.swr_io as swr_io
+import mc.analyse.swr_report as swr_report
 
 try:
     import fire
@@ -226,8 +227,29 @@ def audit_sessions(sessions=None, save_all=True, verbose=False, return_data=Fals
             print(f"  s{int(r.session):02d}  {r.status:14s}  {r.warnings[:110]}")
 
     # ---- save -----------------------------------------------------------
+    # inclusion/exclusion report -- every session accounted for, with a reason
+    rep = swr_report.InclusionReport(
+        "audit", ANALYSIS_NAME,
+        "Sessions reconciled across config YAML, behaviour and raw files on disk.")
+    for _, r in manifest.iterrows():
+        u = f"s{int(r.session):02d}"
+        if r.status == "ok":
+            rep.include(u, "", site=r.recording_site, blocks=r.n_beh_blocks,
+                        repeats=r.n_repeats)
+        elif r.status == "needs_review":
+            rep.include(u, f"usable with caveat: {str(r.warnings)[:90]}",
+                        site=r.recording_site)
+        else:
+            reason = {"no_raw_files": "no raw LFP files on this machine",
+                      "no_behaviour": "behaviour file missing or unreadable"
+                      }.get(r.status, str(r.status))
+            rep.exclude(u, reason, site=r.recording_site)
+    rep.note("`no raw LFP files on this machine` is usually a data-location "
+             "issue, not a data-quality one: re-run the audit on the cluster.")
+
     if save_all:
         out_dir = os.path.join(swr_io.derivatives_dir(data_root), "group", "swr")
+        rep.write(out_dir)
         os.makedirs(out_dir, exist_ok=True)
         manifest.to_csv(os.path.join(out_dir, "session_manifest.csv"), index=False)
         block_df.to_csv(os.path.join(out_dir, "session_blocks.csv"), index=False)
