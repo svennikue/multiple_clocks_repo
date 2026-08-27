@@ -5,7 +5,9 @@ import os, sys, shutil, glob
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import mc.analyse.swr_io as swr_io
 
-FINAL = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/final_results/ripple_analysis/figures"
+# derived from the data root so it follows the data to the cluster
+FINAL = os.path.join(os.path.dirname(swr_io.get_data_root(verbose=False)),
+                     "final_results", "ripple_analysis", "figures")
 
 def collect(analysis_name="swr_v1"):
     swr_io.start_log(FINAL, "swr_collect_figures")

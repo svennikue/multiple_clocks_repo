@@ -140,7 +140,12 @@ def build_contacts(sessions=None, save_all=True, verbose=False,
     utah_map = {}
     if utah_needed:
         print("  discovering Utah .mat files (coord-matched)...")
-        utah_map = anat_src.discover_utah_mats()
+        # pass the resolved root explicitly rather than relying on the
+        # module default, so this works wherever the data lives
+        utah_map = anat_src.discover_utah_mats(
+            path_to_subject_folders=data_root,
+            path_to_cell_table=os.path.join(
+                swr_io.derivatives_dir(data_root), "neurons_MNI_latest.csv"))
         print(f"  utah mats: {len(utah_map)} subjects")
 
     all_rows, qc_rows = [], []

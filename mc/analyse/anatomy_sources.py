@@ -35,13 +35,20 @@ except ImportError:
 
 
 # Default source locations (were module globals in cell_to_roi_july26.py).
-DEFAULT_SUBJECT_FOLDERS = (
-    "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
-)
-DEFAULT_CELL_TABLE = (
-    "/Users/xpsy1114/Documents/projects/multiple_clocks/"
-    "data/ephys_humans/derivatives/neurons_MNI_latest.csv"
-)
+# Resolved local-then-ceph rather than hardcoded: the literal Mac paths broke
+# every cluster run. Same precedence as swr_io.get_data_root(), kept here as a
+# tiny local helper so this module stays importable on its own.
+_ROOT_LOCAL = "/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans"
+_ROOT_CEPH = "/ceph/behrens/svenja/human_ABCD_ephys"
+
+
+def _default_root():
+    return _ROOT_LOCAL if os.path.isdir(_ROOT_LOCAL) else _ROOT_CEPH
+
+
+DEFAULT_SUBJECT_FOLDERS = _default_root()
+DEFAULT_CELL_TABLE = os.path.join(_default_root(), "derivatives",
+                                  "neurons_MNI_latest.csv")
 
 
 COORD_MATCH_TOL_MM = 0.5

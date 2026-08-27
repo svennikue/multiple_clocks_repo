@@ -38,8 +38,9 @@ except ImportError:
 
 # Project-wide state colours (CLAUDE.md): orange -> purple
 STATE_COLORS = {"A": "#F15A29", "B": "#F7931E", "C": "#C7C6E2", "D": "#6B60AA"}
-FINAL = ("/Users/xpsy1114/Documents/projects/multiple_clocks/data/"
-         "final_results/ripple_analysis/figures")
+# derived from the data root so it follows the data to the cluster
+FINAL = os.path.join(os.path.dirname(swr_io.get_data_root(verbose=False)),
+                     "final_results", "ripple_analysis", "figures")
 CM = 1 / 2.54
 
 plt.rcParams.update({
