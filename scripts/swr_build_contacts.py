@@ -150,17 +150,9 @@ def build_contacts(sessions=None, save_all=True, verbose=False,
     print(f"  baylor macro tables: {len(baylor_macros)} subjects")
     print(f"  ucla macro tables:   {len(ucla_macros)} subjects")
 
-    utah_needed = (manifest.recording_site == 'utah').any()
-    utah_map = {}
-    if utah_needed:
-        print("  discovering Utah .mat files (coord-matched)...")
-        # pass the resolved root explicitly rather than relying on the
-        # module default, so this works wherever the data lives
-        utah_map = anat_src.discover_utah_mats(
-            path_to_subject_folders=data_root,
-            path_to_cell_table=os.path.join(
-                swr_io.derivatives_dir(data_root), "neurons_MNI_latest.csv"))
-        print(f"  utah mats: {len(utah_map)} subjects")
+    # Utah electrode files are resolved PER SESSION (own folder, then same
+    # patient), not by coord-matching cells against every folder -- see
+    # ca.resolve_utah_mat for why that was unsafe here.
 
     all_rows, qc_rows = [], []
     for _, m in manifest.iterrows():
@@ -178,9 +170,13 @@ def build_contacts(sessions=None, save_all=True, verbose=False,
                 print(f"  s{session:02d}: no channel list")
             continue
 
-        utah_mat = None
-        if site == 'utah' and label in utah_map:
-            utah_mat = utah_map[label][1]
+        utah_mat, utah_src = None, ""
+        if site == 'utah':
+            utah_mat, utah_src = ca.resolve_utah_mat(
+                session, m.subject_key, data_root, manifest=manifest,
+                verbose=verbose)
+            if utah_mat is None and verbose:
+                print(f"  s{session:02d}: {utah_src}")
 
         contacts = ca.build_macro_table(
             session, site, label, channels,

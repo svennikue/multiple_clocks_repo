@@ -44,6 +44,11 @@ Usage
 
 Outputs (into --out-dir):
     settings.json                      every parameter + the resolved inputs
+    {mask}/{model}_t.nii.gz            observed t-map (3-D, or 4-D over TRs)
+    {mask}/{model}_voxelFWEp.nii.gz    voxel-wise FWE p against the max-t null
+    {mask}/{model}_voxel1minusFWEp.nii.gz      1-p; threshold 0.95 for p<.05
+    {mask}/{model}_voxel1minusFWEp_neg.nii.gz  same, negative direction
+    {mask}/{model}_null_max_t.npy      the permutation max-t null itself
     {mask}/{model}_svc_summary.json    peak stats, both signs, per-TR traces
     {mask}/{model}_loso_results.json   LOSO timecourse per k
     {mask}/{model}_loso_k{K}.npy       per-subject held-out beta x TR
@@ -123,7 +128,7 @@ def svc_both_signs(D, ref, ijk, n_perm, seed):
 
     pk_p, t_p, mni_p = _peak(Tobs)
     pk_n, t_n, mni_n = _peak(-Tobs)
-    return dict(
+    return Tobs, nmt, dict(
         n_vox=int(n_vox), n_tr=int(n_tr), n_subj=int(n),
         peak_t=t_p, peak_p_FWE=float((nmt >= t_p).mean()),
         peak_TR=int(pk_p[1]), peak_mni=mni_p,
@@ -135,6 +140,42 @@ def svc_both_signs(D, ref, ijk, n_perm, seed):
         peak_voxel_t_by_TR=[float(v) for v in Tobs[pk_p[0], :]],
         max_t_by_TR=[float(v) for v in Tobs.max(0)],
         n_perm=int(n_perm), seed=int(seed))
+
+
+def voxel_fwe_p(T, nmt):
+    """Voxel-wise FWE p from the max-t null: p(v) = fraction of permutations
+    whose max t is >= this voxel's observed t. Same null, same convention as
+    the archived cluster script's `_voxelFWEp` maps."""
+    srt = np.sort(nmt)
+    return ((len(srt) - np.searchsorted(srt, T, side="left")) / len(srt)).astype(np.float32)
+
+
+def write_maps(out_dir, model, Tobs, nmt, ref, ijk, n_tr):
+    """Write the observed t-map and its voxel-wise FWE maps, both signs.
+
+    3-D when one TR is analysed, 4-D (X, Y, Z, TR) when several are -- open in
+    fsleyes and scrub the TR slider. Everything outside the mask is 0 in the
+    t-map and p = 1 (so 1-p = 0) in the p-maps. Threshold the
+    `_voxel1minusFWEp` maps at 0.95 for p_FWE < .05."""
+    shape3 = ref.shape[:3]
+    ix, iy, iz = ijk
+
+    def _vol(vals, fill):
+        v = np.full(shape3 + (n_tr,), fill, dtype=np.float32)
+        v[ix, iy, iz, :] = vals
+        return v[..., 0] if n_tr == 1 else v
+
+    p_pos = voxel_fwe_p(Tobs, nmt)
+    p_neg = voxel_fwe_p(-Tobs, nmt)
+    hdr = ref.header.copy()
+    for suffix, vals, fill in (
+            ("t",                   Tobs,        0.0),
+            ("voxelFWEp",           p_pos,       1.0),
+            ("voxel1minusFWEp",     1.0 - p_pos, 0.0),
+            ("voxel1minusFWEp_neg", 1.0 - p_neg, 0.0)):
+        nib.save(nib.Nifti1Image(_vol(vals, fill), ref.affine, hdr),
+                 os.path.join(out_dir, f"{model}_{suffix}.nii.gz"))
+    np.save(os.path.join(out_dir, f"{model}_null_max_t.npy"), nmt.astype(np.float32))
 
 
 def loso(D, k_values, n_perm, seed):
@@ -235,8 +276,11 @@ def main():
             cols = lin[name]
             D = np.ascontiguousarray(Du[:, cols, :])
             ijk = tuple(a[cols] for a in union_ijk)
-            svc = svc_both_signs(D, ref, ijk, n_perm=args.n_perm, seed=args.seed)
+            Tobs, nmt, svc = svc_both_signs(D, ref, ijk, n_perm=args.n_perm,
+                                            seed=args.seed)
             svc["model"], svc["mask"] = model, name
+            write_maps(os.path.join(args.out_dir, name), model, Tobs, nmt,
+                       ref, ijk, len(trs))
             json.dump(svc, open(os.path.join(args.out_dir, name,
                                              f"{model}_svc_summary.json"), "w"), indent=2)
             row = dict(mask=name, model=model, n_vox=svc["n_vox"],

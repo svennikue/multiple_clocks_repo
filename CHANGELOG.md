@@ -5,8 +5,15 @@
 **Scripts:** `scripts/svc_loso_batch.py` (new), `scripts/svc_loso_test.py` (patched
 to resolve `.nii`/`.nii.gz`).
 **Output:** `data/derivatives/group/per_TR_svc_instr_test_full_TR5_2026-08-27/`
-(`settings.json`, `summary_table.csv`, per-mask/per-model `_svc_summary.json`,
-`_loso_results.json`, `_loso_k{K}.npy`, `run.log`).
+— `settings.json`, `summary_table.csv`, `run.log`, and per mask/model:
+`_svc_summary.json`, `_loso_results.json`, `_loso_k{K}.npy`, plus the volumes
+`_t.nii.gz` (observed t), `_voxelFWEp.nii.gz` (voxel-wise FWE p against the
+max-t null), `_voxel1minusFWEp.nii.gz` and `_voxel1minusFWEp_neg.nii.gz`
+(threshold at 0.95 for p_FWE < .05), and `_null_max_t.npy` (the null itself,
+for re-thresholding). 3-D here because one TR was analysed; 4-D (X,Y,Z,TR) when
+several are. Neither `svc_loso_test.py` nor the first version of
+`svc_loso_batch.py` wrote volumes — added 2026-08-27, verified to reproduce the
+json peaks exactly.
 
 **Test.** Identical to the reported instruction-phase test — one-sample t over
 32 subjects, sign-flip max-t permutation (10 000 perms, seed 0) corrected over

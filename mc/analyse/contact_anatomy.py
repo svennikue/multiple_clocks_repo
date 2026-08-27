@@ -600,3 +600,49 @@ def build_bipolar_pairs(contacts, target_rois=HPC_ROIS,
     out = pd.DataFrame(rows)
     out.attrs["skipped"] = skipped
     return out
+
+
+# =============================================================================
+# UTAH ELECTRODE FILE RESOLUTION
+# =============================================================================
+
+def resolve_utah_mat(session, subject_key, data_root, manifest=None,
+                     verbose=False):
+    """Find the Electrodes.mat that genuinely belongs to `session`.
+
+    Deliberately NOT `anat_src.discover_utah_mats()`, which coord-matches each
+    subject's cells against every folder's electrode pool and picks the best.
+    That has no uniqueness constraint, and Utah subjects have only 3-16 cells
+    each, so the match is weak: measured on this dataset, **s47's mat was
+    assigned to six different patients** (UT202302, UT202311, UT202418,
+    UT202421, UT202422b, UT202503), and s23's to two. Sessions would silently
+    receive another patient's electrode positions.
+
+    Resolution order, strongest first:
+      1. the session's own `s{NN}/electrodes/*.mat`  -- definitive
+      2. another session of the SAME patient          -- same implant
+      3. nothing: return None so the caller excludes the session with a
+         reason, rather than borrowing a stranger's anatomy
+
+    `anat_src.discover_utah_mats` is left untouched: the cell pipeline calls it
+    and changing it would alter published cell ROIs. That pipeline appears to
+    have the same weakness -- worth reviewing separately.
+    """
+    for name in ("Electrodes.mat", "ChannelMap.mat"):
+        p = os.path.join(data_root, f"s{int(session):02d}", "electrodes", name)
+        if os.path.isfile(p):
+            return anat_src._load_mat(p), f"own ({name})"
+
+    # same patient, different session
+    if manifest is not None and subject_key:
+        same = manifest[(manifest.subject_key == subject_key)
+                        & (manifest.session != int(session))]
+        for other in sorted(same.session.astype(int)):
+            for name in ("Electrodes.mat", "ChannelMap.mat"):
+                p = os.path.join(data_root, f"s{other:02d}", "electrodes", name)
+                if os.path.isfile(p):
+                    if verbose:
+                        print(f"    s{int(session):02d}: using s{other:02d}'s "
+                              f"{name} (same patient {subject_key})")
+                    return anat_src._load_mat(p), f"same patient s{other:02d}"
+    return None, "no Electrodes.mat for this session or patient"
