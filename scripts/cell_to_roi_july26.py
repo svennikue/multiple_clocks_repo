@@ -42,10 +42,13 @@ One extra pass reassigns Amygdala cells to EC when Juelich entorhinal is
 within 3 mm (the EC/amygdala border is diffuse).
 
 NOT used: electrode names, clinical `region label` text, or any per-cell
-manual override. The text-based intent rescue (step 4) was disabled on
-2026-07-29 because it pulled cells whose researcher-annotated intent
-conflicted with the atlas verdict at the actual coordinate; the code is
-kept for reference but does nothing.
+manual override. A text-based "intent rescue" once promoted leftover cells
+using the electrode's annotated target region; it was disabled on
+2026-07-29 (it pulled cells whose annotated intent conflicted with the
+atlas verdict at the actual coordinate) and deleted on 2026-08-28. Step 4
+now contains only the amygdala/EC boundary pass, which is itself purely
+coordinate-based: an Amygdala cell is reassigned to EC when Juelich
+entorhinal lies within 3 mm.
 
 `alt_final_roi` = `atlas_roi` when that ROI has >= 3 distinct subjects,
 else NaN. As of the current run that keeps 924 / 984 cells in six ROIs
@@ -89,58 +92,61 @@ skipped too). Once the new file passes the reliability gate (mean
 `baylor_v2026_bundle_305to152_unreliable_file` to the fully-verified
 `baylor_v2026_bundle_micro`.
 
-Coordinate source priority per site:
+Where the coordinates come from
+-------------------------------
+Every coordinate is read from the recording site's own electrode file. Nothing
+is coord-matched against the big table, whose coordinates were entered by hand
+and are the thing under question.
 
   Baylor
-    - v2026 CSV micro-bundle MNI152, matched by stripping the trailing
-      2 channel digits of `electrode label` (mRT2bHaEa04 ->
-      mRT2bHaEa01). Two row types describe the same bundle:
-        `microwires`  — the micro bundle itself (label `mLT2bHb01`)
-        `sEEG-micro`  — contact 01 of the macro probe the bundle sits
-                        in (label `LT2bHb01`, ~3 mm shallower)
-      `microwires` is preferred; `sEEG-micro` is used only for bundles
-      that have no `microwires` row (both are keyed on the m-prefixed
-      bundle name so either can match the big table).
-      Reliability gate: file's MNI152 must agree with file's MNI305 via
-      the Fischl 305->152 transform to <= 8 mm mean.
-    - If subject file is unreliable: use file MNI305 -> 152 transform.
-    - If the subject's file ships NO micro rows at all (YER), rebuild
-      each bundle from its macro probe: the micro tip sits a fixed
-      3.15 mm beyond the deepest macro contact along the insertion
-      axis. That constant is Baylor's own — it is identical in all 119
-      bundles that do have `microwires` rows — so the rebuild
-      reproduces their supplied positions to 0.25 mm median / 1.07 mm
-      max. Tagged `..._micro_reconstructed_from_macro` and left
-      `coord_verified = False` because it is inferred, not supplied.
-    - If subject has no v2026 file at all: keep big-table coord
-      transformed 305->152, but flag as `pre2026_macro_position`
-      (systematically ~4 mm off from true micro position — Baylor
-      originally reported the last macro contact where the micro bundle
-      is now correctly reported).
+    - v2026 CSV `microwires` row, MNI152 as shipped, matched by stripping the
+      trailing 2 channel digits of `electrode label` (mRT2bHaEa04 ->
+      mRT2bHaEa01). Two row types describe the same bundle: `microwires` (the
+      bundle itself) and `sEEG-micro` (contact 01 of the macro probe it sits
+      in, ~3 mm shallower); `microwires` is preferred.
+      -> `baylor_v2026_bundle_micro`
+    - If the file fails its own MNI152-vs-MNI305 consistency gate (<= 8 mm
+      mean via the Fischl transform), its MNI305 is transformed instead.
+      -> `baylor_v2026_bundle_305to152_unreliable_file`
+    - If the file ships NO micro rows at all (YER), each bundle is rebuilt from
+      its macro probe: the micro tip sits 3.15 mm beyond the deepest macro
+      contact along the insertion axis. That constant is Baylor's own -- it is
+      identical in all 119 bundles that do have `microwires` rows, and the
+      rebuild reproduces their supplied positions to 0.25 mm median / 1.07 mm
+      max. The only inference left in this file, and flagged as such.
+      -> `baylor_v2026_micro_reconstructed_from_macro`
 
   UCLA
-    - Coord-based match to the v2026 xlsx (Sheet1). For every big-table
-      cell, find the nearest electrode in that subject's xlsx; if within
-      COORD_MATCH_TOL_MM (0.5 mm) accept and attach the v2026 electrode
-      name + NMM region label. Big-table coord itself is kept (it was
-      derived from the same source; the match just verifies + names).
+    - `sub-{NNN}_localizations.xlsx`, sheet `Sheet1` (the second sheet, and the
+      only one carrying MNI coordinates), restricted to `isMicro == TRUE` so a
+      microwire cell cannot match a macro contact. The big-table coordinate is
+      used only to identify WHICH microwire row the cell is (they agree to
+      <= 0.5 mm); the coordinate written out is the file's.
+      -> `ucla_file_micro`
 
   Utah
-    - Coord independently reconstructed from the subject's
-      `s{NN}/electrodes/Electrodes.mat` via:
-        1. Big-table `chan{N}` -> find (r, c) in `ChannelMap1`
-           (or `ChannelMap2`) where value == N.
-        2. Enumerate every `LabelMap[r, c]` starting with 'm'
-           (microwires) in canonical order (column asc, row desc =
-           deepest microwire first per probe). This ordered list
-           corresponds 1:1 to `MicroElec`, whose entries are 1-indexed
-           rows into `ElecXYZMNIProj`.
-        3. Coord = `ElecXYZMNIProj[MicroElec[i] - 1]` for the
-           microwire that sits at (r, c).
-        4. Cross-check: `LabelMap[r, c]` is the micro-label (e.g.
-           mLOFC3, mLVCG3), stored as `source_region_hint`.
-      Where the independent coord disagrees with the big-table coord
-      (>0.5 mm), we trust the independent coord and record the shift.
+    - `Electrodes.mat`, resolved by the patient ID the file declares in its own
+      `Fname`, e.g. `D:/Data/UIC202302/Imaging/Registered/Electrodes.mat`.
+      Folder position is NOT trusted: s47 holds patient 202302 at its top
+      level and 202311 under `electrodes/`.
+    - Coordinate and microwire label are read from the SAME row index,
+          label = ElecMapRaw[MicroElecRaw[i] - 1, 0]
+          coord = ElecXYZMNIRaw[MicroElecRaw[i] - 1]
+      so no ordering assumption connects them. Cells labelled `chanN` are
+      bridged `ChannelMap1/2 -> LabelMap -> label`, and the coordinate is then
+      taken by that label.
+      -> `utah_file_micro`
+
+    Validated on all 16 patients: 352/360 microwires have `sign(MNI_x)`
+    consistent with the `mL`/`mR` in their own label; the 8 exceptions are OFC
+    contacts within 2.5 mm of the midline, where the sign carries no
+    information.
+
+NULL / dead end (do not reintroduce): `discover_utah_mats()` coord-matched each
+subject's 3-16 cells against every folder's electrode pool with no uniqueness
+constraint. It assigned s47's file to six different patients, and it is circular
+-- it validates files against the hand-entered coordinates it is meant to
+replace. Superseded by `index_utah_files_by_id`.
 
 Coordinate columns per cell:
   MNI_x_final, MNI_y_final, MNI_z_final   – coord used downstream
@@ -215,8 +221,6 @@ REFERENCE_TABLE = os.path.join(
     "neurons_with_ROI_labels.csv")
 
 step1_out = os.path.join(roi_assignment_dir, "cells_step1_coords.csv")
-step1_utah_recon_out = os.path.join(roi_assignment_dir,
-                                     "cells_step1_utah_reconstruction_log.csv")
 
 # =============================================================================
 # ELECTRODE COORDINATE SOURCES  ->  mc/analyse/anatomy_sources.py
@@ -227,6 +231,7 @@ step1_utah_recon_out = os.path.join(roi_assignment_dir,
 # the cell and LFP analyses change together. The move was verbatim and this
 # script must still reproduce neurons_with_ROI_labels.csv byte-for-byte.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import mc.plotting.cell_results as cell_plots        # noqa: E402
 from mc.analyse.anatomy_sources import (              # noqa: E402
     COORD_MATCH_TOL_MM,
     BAYLOR_RELIABILITY_TOL_MM,
@@ -241,7 +246,9 @@ from mc.analyse.anatomy_sources import (              # noqa: E402
     load_ucla_v2026,
     build_micro_map,
     channel_position,
-    discover_utah_mats,
+    index_utah_files_by_id,
+    utah_micro_coord,
+    subject_numeric_id,
 )
 # =============================================================================
 # MAIN
@@ -348,16 +355,17 @@ for idx in df.index[baylor_mask]:
         df.at[idx, "coord_verified"] = False
 
 
-# --- UCLA: coord-match big-table -> v2026 xlsx --------------------------
+# --- UCLA: take the coordinate from the subject's own localizations.xlsx ---
+# The big-table coordinate is used only to identify WHICH microwire row a cell
+# belongs to (they agree to <= 0.5 mm); the coordinate written out is the
+# file's, not the hand-entered one.
 for idx in df.index[ucla_mask]:
     subj = df.at[idx, "subject_label_clean"]
     bt = df.loc[idx, coord_cols_bt].to_numpy(float)
-    df.at[idx, "MNI_x_final"] = bt[0]
-    df.at[idx, "MNI_y_final"] = bt[1]
-    df.at[idx, "MNI_z_final"] = bt[2]
 
     if np.any(np.isnan(bt)) or subj not in ucla_tables:
-        df.at[idx, "coord_source"] = "ucla_bigtable_unverified"
+        df.loc[idx, ["MNI_x_final", "MNI_y_final", "MNI_z_final"]] = bt
+        df.at[idx, "coord_source"] = "ucla_no_v2026_file"
         continue
 
     t = ucla_tables[subj]
@@ -367,142 +375,48 @@ for idx in df.index[ucla_mask]:
     dist = float(d[i])
     df.at[idx, "source_match_dist_mm"] = dist
     if dist <= COORD_MATCH_TOL_MM:
-        df.at[idx, "coord_source"] = "ucla_v2026_coord_match"
+        df.loc[idx, ["MNI_x_final", "MNI_y_final", "MNI_z_final"]] = coords[i]
+        df.at[idx, "coord_source"] = "ucla_file_micro"
         df.at[idx, "coord_verified"] = True
         df.at[idx, "source_electrode"] = str(t.iloc[i]["electrode"])
         df.at[idx, "source_region_hint"] = str(t.iloc[i]["region_hint"])
     else:
-        df.at[idx, "coord_source"] = "ucla_bigtable_no_v2026_match"
+        df.loc[idx, ["MNI_x_final", "MNI_y_final", "MNI_z_final"]] = bt
+        df.at[idx, "coord_source"] = "ucla_no_micro_within_tol"
 
 
-# --- Utah: independently reconstruct MNI from ChannelMap+MicroElec+Proj -
-print("\n--- Utah folder auto-discovery ---")
-utah_mapping = discover_utah_mats()
-for subj, (folder, _mat) in utah_mapping.items():
-    print(f"  {subj} -> {folder}")
-
-utah_micro_maps = {subj: build_micro_map(mat)
-                   for subj, (_f, mat) in utah_mapping.items()}
-utah_reconstruction_log = []
-
-# Also precompute a pooled coord array per subject for the coord-match
-# fallback (some subjects have no valid MicroElec/MicroElecRaw path).
-utah_pooled = {}
-for subj, (folder, mat) in utah_mapping.items():
-    pool, tags = [], []
-    for k in ("ElecXYZMNIProj", "ElecXYZMNIRaw"):
-        if k in mat:
-            a = np.asarray(mat[k], dtype=float)
-            if a.ndim == 2 and a.shape[1] == 3:
-                pool.append(a)
-                tags.extend([(k, i) for i in range(len(a))])
-    if pool:
-        utah_pooled[subj] = (np.vstack(pool), tags)
+# --- Utah: read coordinate and label from the patient's own Electrodes.mat --
+# Files are resolved by the patient ID each one declares in its own `Fname`,
+# never by coord-matching cells against every folder. Coordinate and microwire
+# label are read from the SAME row index
+#     label = ElecMapRaw[MicroElecRaw[i]-1, 0]
+#     coord = ElecXYZMNIRaw[MicroElecRaw[i]-1]
+# so there is no ordering assumption between them.
+print("\n--- Utah electrode files (identified by their own Fname) ---")
+utah_index = index_utah_files_by_id(path_to_subject_folders, verbose=True)
+print(f"  {len(utah_index)} Utah patients resolved")
 
 for idx in df.index[utah_mask]:
-    bt = df.loc[idx, coord_cols_bt].to_numpy(float)
     subj = df.at[idx, "subject_label_clean"]
     lab = str(df.at[idx, "electrode label"]).strip()
+    pid = subject_numeric_id(subj)
+    bt = df.loc[idx, coord_cols_bt].to_numpy(float)
 
-    if subj not in utah_mapping:
-        df.loc[idx, ["MNI_x_final", "MNI_y_final", "MNI_z_final"]] = bt
-        df.at[idx, "coord_source"] = "utah_bigtable_no_mat"
-        continue
-
-    folder, mat = utah_mapping[subj]
-    mmap = utah_micro_maps.get(subj, {})
-
-    # Try algorithmic reconstruction first.
-    coord = None
-    micro_label = None
-    coord_source_field = None
-    m = re.match(r"^chan(\d+)$", lab, re.IGNORECASE)
-    if m:
-        chan = int(m.group(1))
-        if chan in mmap:
-            coord, micro_label, coord_source_field = mmap[chan]
+    coord, src = utah_micro_coord(pid, lab, utah_index)
+    if coord is not None:
+        df.loc[idx, ["MNI_x_final", "MNI_y_final", "MNI_z_final"]] = coord
+        df.at[idx, "coord_source"] = "utah_file_micro"
+        df.at[idx, "coord_verified"] = True
+        df.at[idx, "source_electrode"] = src
+        df.at[idx, "source_region_hint"] = src.split(":")[-1]
+        if not np.any(np.isnan(bt)):
+            df.at[idx, "source_match_dist_mm"] = float(
+                np.linalg.norm(np.asarray(coord, float) - bt))
     else:
-        # Label might already be a micro label like 'mLHIP4' (some cells
-        # in the big table were entered this way). Find (r,c) in
-        # LabelMap directly and read its coord via the chan value there.
-        lm = mat.get("LabelMap")
-        if lm is not None:
-            pos = np.argwhere(lm == lab)
-            if len(pos):
-                r, c = pos[0]
-                cm_chan = None
-                for cm in (mat.get("ChannelMap1"), mat.get("ChannelMap2")):
-                    if cm is None:
-                        continue
-                    v = cm[r, c]
-                    if v is not None and not np.isnan(v) and v > 0:
-                        cm_chan = int(v)
-                        break
-                if cm_chan in mmap:
-                    coord, micro_label, coord_source_field = mmap[cm_chan]
-
-    if coord is not None and not np.any(np.isnan(coord)):
-        dist = (float(np.linalg.norm(coord - bt))
-                if not np.any(np.isnan(bt)) else np.nan)
-        utah_reconstruction_log.append({
-            "subject": subj, "electrode_label": lab, "micro_label": micro_label,
-            "bt_x": bt[0], "bt_y": bt[1], "bt_z": bt[2],
-            "recon_x": coord[0], "recon_y": coord[1], "recon_z": coord[2],
-            "shift_mm": dist,
-        })
-        # Conservative policy: only trust the reconstruction when it
-        # agrees with the big-table coord within 3 mm. Larger shifts
-        # are ambiguous — could be either a big-table error (like the
-        # documented UT1-202217 mLVCG cases: chan107/110/112 with wrong
-        # coords copy-pasted) or a per-subject quirk my algorithm
-        # doesn't handle (e.g. s23 uses MicroElecRaw with a numbering
-        # scheme I can't verify against ground truth). Flag those for
-        # user review rather than silently overriding.
-        UTAH_RECON_TOL_MM = 3.0
-        if not np.isnan(dist) and dist <= UTAH_RECON_TOL_MM:
-            df.at[idx, "MNI_x_final"] = coord[0]
-            df.at[idx, "MNI_y_final"] = coord[1]
-            df.at[idx, "MNI_z_final"] = coord[2]
-            df.at[idx, "coord_source"] = f"utah_reconstructed_via_{coord_source_field}"
-            df.at[idx, "coord_verified"] = True
-            df.at[idx, "source_electrode"] = f"{folder}:{micro_label}"
-            df.at[idx, "source_region_hint"] = micro_label
-            df.at[idx, "source_match_dist_mm"] = dist
-            continue
-        else:
-            df.loc[idx, ["MNI_x_final", "MNI_y_final", "MNI_z_final"]] = bt
-            df.at[idx, "coord_source"] = "utah_bigtable_recon_disagrees_gt3mm"
-            df.at[idx, "source_electrode"] = f"{folder}:{micro_label} (recon={coord.tolist()})"
-            df.at[idx, "source_region_hint"] = micro_label
-            df.at[idx, "source_match_dist_mm"] = dist
-            continue
-
-    # Fallback: no reconstruction available. Verify big-table coord
-    # against the pooled .mat coord set (>= 0.5 mm to a nearest row).
-    df.loc[idx, ["MNI_x_final", "MNI_y_final", "MNI_z_final"]] = bt
-    if subj in utah_pooled and not np.any(np.isnan(bt)):
-        coords, tags = utah_pooled[subj]
-        d = np.linalg.norm(coords - bt, axis=1)
-        if np.any(~np.isnan(d)):
-            i = int(np.nanargmin(d))
-            dist = float(d[i])
-            df.at[idx, "source_match_dist_mm"] = dist
-            if dist <= COORD_MATCH_TOL_MM:
-                df.at[idx, "coord_source"] = "utah_bigtable_verified_by_mat_lookup"
-                df.at[idx, "coord_verified"] = True
-                df.at[idx, "source_electrode"] = f"{folder}:{tags[i][0]}[{tags[i][1]}]"
-                continue
-    df.at[idx, "coord_source"] = "utah_bigtable_unreconstructed"
-
-if utah_reconstruction_log:
-    ul = pd.DataFrame(utah_reconstruction_log)
-    ul.to_csv(step1_utah_recon_out, index=False)
-    n_agree = int((ul["shift_mm"] <= 3.0).sum())
-    n_disagree = int((ul["shift_mm"] > 3.0).sum())
-    print(f"\n[Utah] Algorithmically reconstructed {len(ul)} cells: "
-          f"{n_agree} agree with big-table (<=3 mm), "
-          f"{n_disagree} disagree (>3 mm, flagged for user review).")
-    print(f"Full log saved to: {step1_utah_recon_out}")
+        df.loc[idx, ["MNI_x_final", "MNI_y_final", "MNI_z_final"]] = np.nan
+        df.at[idx, "coord_source"] = (
+            "utah_no_electrode_file" if pid not in utah_index
+            else "utah_label_not_in_file")
 
 
 # =============================================================================
@@ -682,16 +596,13 @@ leftovers = df[df["atlas_roi"] == "leftover"].copy()
 print(f"\n{len(leftovers)} leftover cells (no atlas ROI at 25% threshold).")
 
 if len(leftovers):
-    from nilearn.plotting import plot_glass_brain
-    fig = plt.figure(figsize=(12, 4))
-    gb = plot_glass_brain(None, display_mode="lyrz", figure=fig,
-                          title=f"Leftover cells (n = {len(leftovers)}) "
-                                "— no ROI at 25% threshold")
     coords = leftovers[["MNI_x_final", "MNI_y_final",
                         "MNI_z_final"]].to_numpy(float)
-    gb.add_markers(coords, marker_color="#0e3d3a", marker_size=18)
-    fig.savefig(step2_leftover_plot, dpi=200, bbox_inches="tight")
-    plt.close("all")
+    cell_plots.glass_brain_cells(
+        [("leftover", coords)], out_path=step2_leftover_plot,
+        title=f"Leftover cells (n = {len(leftovers)}) "
+              "— no ROI at 25% threshold",
+        figsize=(12, 4))
     plt.close("all")
     print(f"Saved: {step2_leftover_plot}")
 
@@ -815,17 +726,14 @@ for _, row in cluster_summary.iterrows():
     grp = leftovers[leftovers["primary_hint"] == hint]
     coords = grp[["MNI_x_final", "MNI_y_final",
                   "MNI_z_final"]].to_numpy(float)
-    fig = plt.figure(figsize=(12, 4))
     safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", hint)[:60]
     title = (f"{hint}  |  n={row['n_cells']} cells, "
              f"{row['n_subjects']} subjects\n"
              f"electrode hints: {row['sample_source_region_hints']}")
-    gb = plot_glass_brain(None, display_mode="lyrz", figure=fig, title=title)
-    gb.add_markers(coords, marker_color="#0e3d3a", marker_size=22)
     fpath = os.path.join(step3_plot_dir,
                          f"leftover_{plotted:02d}_{safe_name}.png")
-    fig.savefig(fpath, dpi=180, bbox_inches="tight")
-    plt.close("all")
+    cell_plots.glass_brain_cells([("leftover", coords)], out_path=fpath,
+                                 title=title, figsize=(12, 4), dpi=180)
     plotted += 1
 
 print(f"\nSaved {plotted} per-cluster glass-brain plots to: "
@@ -860,105 +768,7 @@ print(f"Saved: {step3_leftovers_out}")
 # too far" hypothesis: only rescue when the intended gray-matter region
 # is genuinely nearby.
 
-RESCUE_MAX_DIST_MM = 8.0
-
-# Map (intent-label substring) -> (target_roi, atlas, [patterns])
-# atlas keys: 'ho_sub', 'ho_cort', 'juelich', 'brainnetome'
-INTENT_MAP = [
-    # Note: text patterns matching UCLA v2026 xlsx region_hint (e.g.
-    # "phg parahippocampal", "posterior cingulate", "insula") were
-    # removed on 2026-07-29. They were catching cells whose electrode
-    # was targeting a DIFFERENT region (e.g. sub60 GA1-REC* electrodes
-    # labelled REC by the researcher, but annotated "Right PHG
-    # parahippocampal gyrus" by UCLA's coord-based v2026 xlsx). The
-    # rescue now only uses site-standard electrode labels (`mlphg`,
-    # `lins`, `lec`, ...) which reflect actual electrode intent
-    # rather than post-hoc coord-based annotation.
-
-    # ==== Utah .mat LabelMap micro-labels (m-prefixed, specific)
-    ("mlofc",  "mOFC", "brainnetome", ["a11m", "a13", "a14m"]),
-    ("mrofc",  "mOFC", "brainnetome", ["a11m", "a13", "a14m"]),
-    # HO fallback for mOFC — the coord `RmOFC (8.6, 22.9, -14.9)` sits in
-    # WM at exact position; Brainnetome doesn't cover it within 8 mm but
-    # HO cortical `Frontal Orbital Cortex` / `Subcallosal Cortex` do.
-    ("mlofc",  "mOFC", "ho_cort", ["frontal orbital", "subcallosal"]),
-    ("mrofc",  "mOFC", "ho_cort", ["frontal orbital", "subcallosal"]),
-    ("mlamcc", "mPFC", "brainnetome", ["a24", "a32"]),
-    ("mramcc", "mPFC", "brainnetome", ["a24", "a32"]),
-    ("mlacc",  "mPFC", "brainnetome", ["a24", "a32"]),
-    ("mracc",  "mPFC", "brainnetome", ["a24", "a32"]),
-    ("mlmcg",  "mPFC", "brainnetome", ["a24", "a32", "a23"]),
-    ("mrmcg",  "mPFC", "brainnetome", ["a24", "a32", "a23"]),
-    # HC / PHG intents: try EC first (Juelich entorhinal at ≤5 mm) —
-    # EC boundary is diffuse and the electrode label is often wrong
-    # about EC vs HC head; prefer EC on the brink.
-    ("mlahip", "EC",   "juelich", ["entorhinal"]),
-    ("mrahip", "EC",   "juelich", ["entorhinal"]),
-    ("mlahc",  "EC",   "juelich", ["entorhinal"]),
-    ("mrahc",  "EC",   "juelich", ["entorhinal"]),
-    ("mlhip",  "EC",   "juelich", ["entorhinal"]),
-    ("mrhip",  "EC",   "juelich", ["entorhinal"]),
-    ("mlphg",  "EC",   "juelich", ["entorhinal"]),
-    ("mrphg",  "EC",   "juelich", ["entorhinal"]),
-    ("mlahip", "HC",   "ho_sub", ["hippocampus"]),
-    ("mrahip", "HC",   "ho_sub", ["hippocampus"]),
-    ("mlahc",  "HC",   "ho_sub", ["hippocampus"]),
-    ("mrahc",  "HC",   "ho_sub", ["hippocampus"]),
-    ("mlhip",  "HC",   "ho_sub", ["hippocampus"]),
-    ("mrhip",  "HC",   "ho_sub", ["hippocampus"]),
-    ("mlphg",  "PHC", "ho_cort", ["parahippocampal"]),
-    ("mrphg",  "PHC", "ho_cort", ["parahippocampal"]),
-
-    # ==== Big-table `region label` (all sites) — coarser, applied as fallback
-    ("l_precuneus", "PCC", "brainnetome", ["a31", "dmpos", "a23"]),
-    ("r_precuneus", "PCC", "brainnetome", ["a31", "dmpos", "a23"]),
-    ("precuneus",   "PCC", "brainnetome", ["a31", "dmpos", "a23"]),
-    ("thalamus",    "Thalamus",  "ho_sub", ["thalamus"]),
-    ("lamyg",       "Amygdala",  "ho_sub", ["amygdala"]),
-    ("ramyg",       "Amygdala",  "ho_sub", ["amygdala"]),
-    ("lvofc",  "mOFC", "brainnetome", ["a11m", "a13", "a14m"]),
-    ("rvofc",  "mOFC", "brainnetome", ["a11m", "a13", "a14m"]),
-    # `RmOFC` / `LmOFC` (Baylor `right/left medial OFC` labels) —
-    # letter order differs from Utah's `mLOFC`, so add explicit patterns.
-    ("lmofc",  "mOFC", "brainnetome", ["a11m", "a13", "a14m"]),
-    ("rmofc",  "mOFC", "brainnetome", ["a11m", "a13", "a14m"]),
-    ("lmofc",  "mOFC", "ho_cort", ["frontal orbital", "subcallosal"]),
-    ("rmofc",  "mOFC", "ho_cort", ["frontal orbital", "subcallosal"]),
-    ("lofc",   "mOFC", "brainnetome", ["a11m", "a13", "a14m"]),
-    ("rofc",   "mOFC", "brainnetome", ["a11m", "a13", "a14m"]),
-    # HO cortical fallback (same rationale as mlofc/mrofc above).
-    ("lofc",   "mOFC", "ho_cort", ["frontal orbital", "subcallosal"]),
-    ("rofc",   "mOFC", "ho_cort", ["frontal orbital", "subcallosal"]),
-    ("ldacc",  "mPFC", "brainnetome", ["a24", "a32"]),
-    ("rdacc",  "mPFC", "brainnetome", ["a24", "a32"]),
-    ("lpgacc", "mPFC", "brainnetome", ["a24", "a32", "a10m", "a9m"]),
-    ("rpgacc", "mPFC", "brainnetome", ["a24", "a32", "a10m", "a9m"]),
-    ("pgacc",  "mPFC", "brainnetome", ["a24", "a32", "a10m", "a9m"]),
-    ("lacc",   "mPFC", "brainnetome", ["a24", "a32"]),
-    ("racc",   "mPFC", "brainnetome", ["a24", "a32"]),
-    ("lins",   "Insula", "ho_cort", ["insular"]),
-    ("rins",   "Insula", "ho_cort", ["insular"]),
-    ("mlins",  "Insula", "ho_cort", ["insular"]),
-    ("mrins",  "Insula", "ho_cort", ["insular"]),
-    ("lpcc",   "PCC",  "brainnetome", ["a23", "a31", "dmpos"]),
-    ("rpcc",   "PCC",  "brainnetome", ["a23", "a31", "dmpos"]),
-    ("lvcc",   "medial_CC", "brainnetome", ["a24", "a32"]),  # ventral CC
-    ("rvcc",   "medial_CC", "brainnetome", ["a24", "a32"]),
-    ("lec",    "EC",   "juelich", ["entorhinal"]),
-    ("rec",    "EC",   "juelich", ["entorhinal"]),
-    # LEC/REC labels can also land in HC when the electrode overshoots
-    # posteriorly (e.g. y = -25 is HC body territory, not EC). Try EC
-    # first (rule above); if entorhinal isn't within 8 mm, this fallback
-    # rescues to HC (split by y downstream).
-    ("lec",    "HC",   "ho_sub", ["hippocampus"]),
-    ("rec",    "HC",   "ho_sub", ["hippocampus"]),
-    ("phg",    "PHC", "ho_cort", ["parahippocampal"]),
-    ("lhc",    "HC",   "ho_sub", ["hippocampus"]),
-    ("rhc",    "HC",   "ho_sub", ["hippocampus"]),
-]
-
-
-def _neighborhood_search(atlas, xyz, patterns, max_dist=RESCUE_MAX_DIST_MM):
+def _neighborhood_search(atlas, xyz, patterns, max_dist=3.0):
     """Search a small integer-mm cube grid around xyz for an atlas
     label containing any of the given patterns. Return
     (matched_label, distance_mm) or (None, None)."""
@@ -981,7 +791,7 @@ def _neighborhood_search(atlas, xyz, patterns, max_dist=RESCUE_MAX_DIST_MM):
 
 
 print("\n\n=========================================================")
-print(" STEP 4 — [DISABLED] no text-based intent rescue")
+print(" STEP 4 — AMYGDALA/EC BOUNDARY PASS")
 print("=========================================================\n")
 # Removed on 2026-07-29 (was: neighborhood-search rescue keyed on the
 # text of the electrode's `source_region_hint` / big-table `region
@@ -992,9 +802,6 @@ print("=========================================================\n")
 # atlas-at-coord priority rules in `assign_atlas_roi` (rules 1-10),
 # with the Juelich hippocampal-subfield extension in rule 4.
 df["rescue_dist_mm"] = np.nan
-df["rescue_source_atlas_label"] = ""
-n_rescued = 0
-rescue_rows = []
 
 
 # Amygdala-vs-EC sanity: EC boundary is diffuse and amygdala electrodes
@@ -1027,14 +834,6 @@ if n_amyg_to_ec:
 # remain — every assignment is derived from the atlases + priority
 # order + intent rescue, so the pipeline is fully anatomical and
 # reproducible from coordinate alone.
-if rescue_rows:
-    rescue_df = pd.DataFrame(rescue_rows)
-    print("\nRescue breakdown (target ROI x intent):")
-    print(rescue_df.groupby(["target_roi", "intent"])
-                    .size().reset_index(name="n").to_string(index=False))
-    print("\nDistance distribution (mm) at rescue:")
-    print(rescue_df["rescue_dist_mm"].describe().round(2).to_string())
-
 print("\nFINAL ROI counts:")
 print(df["atlas_roi"].value_counts(dropna=False).to_string())
 
@@ -1064,44 +863,22 @@ except Exception:
 
 # Canonical ROI colour palette — matches CLAUDE.md `roi_colour_dict`.
 # ROIs not listed there use neutral filler colours.
-ROI_COLORS = {
-    "EC":          SHOWGIRL2_DISCRETE[0],
-    "mPFC":        SHOWGIRL2_DISCRETE[1],
-    "HC_anterior": "#23677E", #teal
-    "PCC":         SHOWGIRL2_DISCRETE[3],
-    "mOFC":        SHOWGIRL2_DISCRETE[4],
-    "HC_mid":      SHOWGIRL2_DISCRETE[2],   # 
-    "PHC":         SHOWGIRL2_DISCRETE[5],   # teal    (CLAUDE.md override)
-    # Non-target ROIs
-    "Visual":      "#bdbdbd",
-    "Thalamus":    "#7d3c98",
-    "Amygdala":    "#e67e22",
-    "medial_CC":   "#4a4a4a",
-    "Insula":      "#1abc9c",
-    "leftover":    "#888888",
-}
+# ROI colours come from mc.plotting.cell_results (CLAUDE.md Showgirl2 map),
+# so every figure in the project uses the same hue per ROI.
+ROI_COLORS = {roi: cell_plots.get_roi_colour(roi)
+              for roi in ['EC', 'mPFC', 'HC_anterior', 'PCC', 'mOFC',
+                          'HC_mid', 'PHC', 'Visual', 'Thalamus', 'Amygdala',
+                          'medial_CC', 'Insula', 'leftover']}
 
 # ---------- (a) master plot ----------
-fig = plt.figure(figsize=(14, 5))
-gb = plot_glass_brain(None, display_mode="lyrz", figure=fig,
-                       title="All cells color-coded by final ROI "
-                             f"(n = {len(df)})")
-for roi in df["atlas_roi"].dropna().unique():
-    sub = df[df["atlas_roi"] == roi]
-    coords = sub[["MNI_x_final", "MNI_y_final", "MNI_z_final"]].to_numpy(float)
-    if not len(coords):
-        continue
-    color = ROI_COLORS.get(roi, "#000000")
-    gb.add_markers(coords, marker_color=color, marker_size=20)
-# Legend as separate patch below
-legend_handles = [Line2D([0], [0], marker="o", color="w",
-                          markerfacecolor=ROI_COLORS.get(roi, "#000"),
-                          markersize=8,
-                          label=f"{roi} (n={int((df['atlas_roi']==roi).sum())})")
-                   for roi in sorted(df["atlas_roi"].dropna().unique())]
-fig.legend(handles=legend_handles, loc="lower center", ncol=6,
-           bbox_to_anchor=(0.5, -0.03), frameon=False, fontsize=8)
-fig.savefig(step5_master_out, dpi=200, bbox_inches="tight")
+cell_plots.glass_brain_cells(
+    [(roi, df.loc[df["atlas_roi"] == roi,
+                  ["MNI_x_final", "MNI_y_final", "MNI_z_final"]].to_numpy(float))
+     for roi in sorted(df["atlas_roi"].dropna().unique())],
+    out_path=step5_master_out, figsize=(14, 5),
+    title=f"All cells color-coded by final ROI (n = {len(df)})",
+    legend=True, legend_loc="lower center", legend_ncol=6,
+    legend_bbox=(0.5, -0.03))
 plt.close("all")
 print(f"\nSaved master plot: {step5_master_out}")
 
@@ -1149,26 +926,12 @@ for roi, (atlas_obj, patterns) in ROI_ATLAS_SPECS.items():
     coords = sub[["MNI_x_final", "MNI_y_final", "MNI_z_final"]].to_numpy(float)
     mask_img = _mask_img(atlas_obj, patterns)
     color = ROI_COLORS.get(roi, "#000000")
-    fig = plt.figure(figsize=(12, 4))
-    gb = plot_glass_brain(None, display_mode="lyrz", figure=fig,
-                           title=f"{roi}: atlas mask (blue) + {len(coords)} "
-                                 f"cells (colored, incl. rescued)")
-    gb.add_contours(mask_img, levels=[0.5], colors="#4a90d9",
-                     linewidths=1.0)
-    # Split rescued vs originally-assigned so rescued shows in a
-    # slightly different marker
-    rescued_mask = sub["rescue_dist_mm"].notna()
-    if rescued_mask.any():
-        gb.add_markers(coords[rescued_mask.to_numpy()],
-                        marker_color=color, marker_size=34)
-    orig_mask = ~rescued_mask
-    if orig_mask.any():
-        gb.add_markers(coords[orig_mask.to_numpy()],
-                        marker_color=color, marker_size=20)
     safe = re.sub(r"[^A-Za-z0-9_-]+", "_", roi)
     fpath = os.path.join(step5_per_roi_dir, f"{safe}.png")
-    fig.savefig(fpath, dpi=180, bbox_inches="tight")
-    plt.close("all")
+    cell_plots.glass_brain_cells(
+        [(roi, coords, color)], out_path=fpath, figsize=(12, 4), dpi=180,
+        title=f"{roi}: atlas mask (blue) + {len(coords)} cells",
+        contours=[(mask_img, "#4a90d9")])
 
 print(f"Saved per-ROI atlas-overlay plots to: {step5_per_roi_dir}")
 
@@ -1246,7 +1009,8 @@ for roi, mask_img in roi_masks.items():
         pass
 coords = leftovers_final[["MNI_x_final", "MNI_y_final",
                           "MNI_z_final"]].to_numpy(float)
-gb.add_markers(coords, marker_color="#0e3d3a", marker_size=22)
+gb.add_markers(coords, marker_color=cell_plots.GLASS_DEFAULT_COLOUR,
+                   marker_size=cell_plots.GLASS_MARKER_SIZE)
 
 roi_handles = [Line2D([0], [0], color=ROI_COLORS.get(r, "#000"),
                        linewidth=2.5, label=r)
@@ -1288,7 +1052,8 @@ for hint, n in cluster_counts.items():
                              linewidths=0.9)
         except Exception:
             pass
-    gb.add_markers(coords, marker_color="#0e3d3a", marker_size=28)
+    gb.add_markers(coords, marker_color=cell_plots.GLASS_DEFAULT_COLOUR,
+                   marker_size=cell_plots.GLASS_MARKER_SIZE)
     fig.legend(handles=roi_handles, loc="lower center", ncol=7,
                bbox_to_anchor=(0.5, -0.05), frameon=False, fontsize=8)
     safe = re.sub(r"[^A-Za-z0-9_-]+", "_", hint)[:60]
@@ -1345,24 +1110,15 @@ step7_diff_out = os.path.join(
 
 # ---------- Master plots ----------
 def _master_plot(df_sub, title, save_path):
-    fig = plt.figure(figsize=(14, 5))
-    gb = plot_glass_brain(None, display_mode="lyrz", figure=fig, title=title)
-    for roi in df_sub["atlas_roi"].dropna().unique():
-        s = df_sub[df_sub["atlas_roi"] == roi]
-        coords = s[["MNI_x_final", "MNI_y_final",
-                    "MNI_z_final"]].to_numpy(float)
-        if len(coords):
-            gb.add_markers(coords, marker_color=ROI_COLORS.get(roi, "#000"),
-                           marker_size=40)
-    legend = [Line2D([0], [0], marker="o", color="w",
-                      markerfacecolor=ROI_COLORS.get(r, "#000"),
-                      markersize=8,
-                      label=f"{r} (n={int((df_sub['atlas_roi']==r).sum())})")
-               for r in sorted(df_sub["atlas_roi"].dropna().unique())]
-    fig.legend(handles=legend, loc="lower center", ncol=6,
-               bbox_to_anchor=(0.5, -0.03), frameon=False, fontsize=8)
-    fig.savefig(save_path, dpi=200, bbox_inches="tight")
-    plt.close("all")
+    """All cells of `df_sub`, coloured by ROI, on a glass brain."""
+    cell_plots.glass_brain_cells(
+        [(roi, df_sub.loc[df_sub["atlas_roi"] == roi,
+                          ["MNI_x_final", "MNI_y_final",
+                           "MNI_z_final"]].to_numpy(float))
+         for roi in sorted(df_sub["atlas_roi"].dropna().unique())],
+        out_path=save_path, title=title, figsize=(14, 5),
+        legend=True, legend_loc="lower center", legend_ncol=6,
+        legend_bbox=(0.5, -0.03))
 
 _master_plot(df, f"All cells by final ROI (n = {len(df)})",
              step7_master_all_out)
@@ -1477,7 +1233,7 @@ for roi in RSA_ROIS:
         continue
     coords = s[["MNI_x_final", "MNI_y_final", "MNI_z_final"]].to_numpy(float)
     gb_rsa.add_markers(coords, marker_color=ROI_COLORS.get(roi, "#000"),
-                       marker_size=20)
+                       marker_size=40)
 
 legend_rsa = []
 for roi in RSA_ROIS:

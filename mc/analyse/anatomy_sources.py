@@ -276,6 +276,11 @@ def load_ucla_v2026(folder):
         if not os.path.exists(fpath):
             continue
         d = pd.read_excel(fpath, sheet_name="Sheet1")
+        # Sheet1 is the second sheet and the only one carrying MNI coordinates.
+        # Cells are microwire recordings, so macro contacts are excluded: a
+        # micro cell must not be able to match a macro row.
+        if "isMicro" in d.columns:
+            d = d[d["isMicro"].astype(str).str.upper().isin(["TRUE", "1", "1.0"])]
         d = d[["electrode", "MNI_x", "MNI_y", "MNI_z", "NMM"]].copy()
         d = d.dropna(subset=["MNI_x", "MNI_y", "MNI_z"]).reset_index(drop=True)
         d = d.rename(columns={"NMM": "region_hint"})
@@ -286,6 +291,52 @@ def load_ucla_v2026(folder):
 # =============================================================================
 # UTAH .mat LOADER
 # =============================================================================
+
+
+def _obj_array(items):
+    """1-D object array built element-by-element.
+
+    `np.array(list_of_arrays, dtype=object)` tries to broadcast when the
+    elements share a leading dimension; filling an empty object array
+    sidesteps that.
+    """
+    out = np.empty(len(items), dtype=object)
+    for i, v in enumerate(items):
+        out[i] = v
+    return out
+
+
+def _h5_deref(f, val):
+    """Resolve one h5py value into a plain python object.
+
+    MATLAB v7.3 stores a cell array of strings as a dataset of HDF5 object
+    references; each reference points at a `char` dataset of uint16 code
+    points. Reading such a dataset with a plain `np.array(...)` yields
+    reference handles, not text — which is why `LabelMap` came back as a
+    bare `None` for every v7.3 file and those subjects silently produced
+    zero microwires. Dereference explicitly instead.
+    """
+    if not isinstance(val, h5py.Reference):
+        return val
+    try:
+        d = f[val]
+    except Exception:
+        return None
+    cls = d.attrs.get("MATLAB_class", b"")
+    if isinstance(cls, bytes):
+        cls = cls.decode("utf-8", "ignore")
+    if d.attrs.get("MATLAB_empty", 0):
+        return None
+    a = np.array(d)
+    if cls == "char":
+        return "".join(chr(int(c)) for c in a.ravel() if int(c) > 0)
+    if cls == "cell":
+        return _obj_array([_h5_deref(f, r) for r in a.ravel()])
+    if a.size == 0:
+        return None
+    if a.size == 1:
+        return a.ravel()[0]
+    return a
 
 
 def _load_mat(fpath):
@@ -299,7 +350,13 @@ def _load_mat(fpath):
             out = {}
             with h5py.File(fpath, "r") as f:
                 for k in f.keys():
-                    arr = np.array(f[k])
+                    d = f[k]
+                    arr = np.array(d)
+                    if arr.dtype == object:
+                        # cell array -> dereference every element
+                        flat = _obj_array([_h5_deref(f, r)
+                                           for r in arr.ravel()])
+                        arr = flat.reshape(arr.shape)
                     # h5py returns column-major; transpose 2D arrays.
                     if arr.ndim == 2:
                         arr = arr.T
@@ -311,6 +368,205 @@ def _load_mat(fpath):
     except Exception as e:
         print(f"  [mat load] scipy failed for {fpath}: {e}")
         return None
+
+
+def mat_text(val):
+    """Decode a MATLAB char field (v7 str, or v7.3 uint16 code points)."""
+    a = np.asarray(val)
+    if a.dtype.kind in "US":
+        return str(a.ravel()[0]) if a.size else ""
+    try:
+        return "".join(chr(int(c)) for c in a.ravel() if int(c) > 0)
+    except Exception:
+        return ""
+
+
+def mat_patient_id(mat):
+    """Patient ID this electrode file actually belongs to, read from its own
+    `Fname` (the original acquisition path, e.g. `D:\\Data\\UIC202311\\...`).
+
+    This is the file's own statement of identity, so it replaces coord-matching
+    the file against a hand-entered coordinate table -- which was circular, had
+    no uniqueness constraint, and assigned one patient's file to six others.
+    Returns None if `Fname` is absent or carries no recognisable ID.
+    """
+    if mat is None or "Fname" not in mat:
+        return None
+    m = re.search(r"(?:UIC|UT1?[-_]?)(\d{6}[a-z]?)", mat_text(mat["Fname"]), re.I)
+    return m.group(1) if m else None
+
+
+def build_micro_label_map(mat):
+    """Return `{micro_label: (mni_xyz, source_field)}` read DIRECTLY.
+
+    `MicroElecRaw` holds 1-based row indices into `ElecMapRaw` (column 0 is the
+    electrode label) and `ElecXYZMNIRaw` (the coordinate). Label and coordinate
+    are therefore taken from the *same row index* -- there is no ordering
+    assumption, unlike `build_micro_map`, which infers the pairing by sorting
+    microwires by amplifier channel value and matching that against `MicroElec`.
+
+    Every Utah file carries these three arrays, including the ones whose
+    `MicroElec` is empty and whose `LabelMap`/`ChannelMap` are absent
+    altogether (the MATLAB v7.3 exports). Validated on all 15 files:
+    352/360 microwires have `sign(MNI_x)` consistent with the `mL`/`mR` in
+    their own label; the 8 exceptions are OFC contacts within 2.5 mm of the
+    midline, where the sign carries no information.
+    """
+    if mat is None:
+        return {}
+    for k in ("MicroElecRaw", "ElecMapRaw", "ElecXYZMNIRaw"):
+        if k not in mat:
+            return {}
+    idx = np.asarray(mat["MicroElecRaw"]).ravel()
+    emap = np.asarray(mat["ElecMapRaw"], dtype=object)
+    xyz = np.asarray(mat["ElecXYZMNIRaw"], dtype=float)
+    if emap.ndim != 2 or xyz.ndim != 2 or len(emap) != len(xyz):
+        return {}
+    out = {}
+    for i in idx:
+        try:
+            i = int(i)
+        except (TypeError, ValueError):
+            continue
+        if not (1 <= i <= len(emap)):
+            continue
+        label = str(emap[i - 1, 0]).strip()
+        coord = xyz[i - 1]
+        if label and not np.any(np.isnan(coord)):
+            out[label] = (coord, "ElecXYZMNIRaw")
+    return out
+
+
+# NB: macOS is case-insensitive, so listing both "Registered" and "registered"
+# would scan the same directory twice.
+UTAH_SEARCH_SUBDIRS = ("", "electrodes", "Registered-selected", "Registered")
+UTAH_MAT_NAMES = ("Electrodes.mat", "ChannelMap.mat", "ChannelMap2.mat")
+
+
+def subject_numeric_id(label):
+    """Numeric patient ID from a subject label, e.g. `UT1-202422b` -> `202422`.
+
+    Utah labels carry four formats and sometimes a trailing session letter that
+    the electrode file's own `Fname` does not (`UT1-202422b` vs `UIC202422`), so
+    the letter is dropped for matching.
+    """
+    m = re.search(r"(\d{6})", str(label))
+    return m.group(1) if m else None
+
+
+def index_utah_files_by_id(path_to_subject_folders=DEFAULT_SUBJECT_FOLDERS,
+                           verbose=False):
+    """Index every Utah electrode file by the patient ID it declares itself.
+
+    Returns `{patient_id: (location, label_map, chan_map)}` where `label_map`
+    is `build_micro_label_map` and `chan_map` is `build_micro_map`, merged
+    across `Electrodes.mat` and its sibling `ChannelMap*.mat` (the MATLAB v7.3
+    exports keep the `chanN` bridge only in the latter).
+
+    Every candidate location is scanned, not just the first that contains a
+    file: one session folder can hold two different patients' files (s47 has
+    202302 at its top level and 202311 under `electrodes/`). Identity comes
+    from each file's own `Fname`, so a misfiled copy cannot be mis-assigned --
+    which is what coord-matching against the hand-entered cell table could not
+    prevent.
+    """
+    by_id = {}
+    for folder in sorted(os.listdir(path_to_subject_folders)):
+        if not (folder.startswith("s") and folder[1:].isdigit()):
+            continue
+        for sd in UTAH_SEARCH_SUBDIRS:
+            d = (os.path.join(path_to_subject_folders, folder, sd) if sd
+                 else os.path.join(path_to_subject_folders, folder))
+            if not os.path.isdir(d):
+                continue
+            group = {}                      # pid -> list of mats found here
+            for name in UTAH_MAT_NAMES:
+                fp = os.path.join(d, name)
+                if not os.path.isfile(fp):
+                    continue
+                mat = _load_mat(fp)
+                if mat is None:
+                    continue
+                pid = mat_patient_id(mat)
+                if pid is None:
+                    continue
+                group.setdefault(pid, []).append(mat)
+            for pid, mats in group.items():
+                lmap, cmap = {}, {}
+                for mat in mats:
+                    lmap.update(build_micro_label_map(mat))
+                    cmap.update(build_micro_map(mat))
+                if not lmap and not cmap:
+                    continue
+                loc = f"{folder}/{sd}" if sd else folder
+                # merge across every location holding this patient's files:
+                # s04 keeps a bare ChannelMap.mat at its top level and the
+                # microwire coordinates one level down, and neither alone is
+                # sufficient.
+                if pid in by_id:
+                    old_loc, old_l, old_c = by_id[pid]
+                    old_l.update(lmap)
+                    old_c.update(cmap)
+                    by_id[pid] = (old_loc if old_l else loc, old_l, old_c)
+                else:
+                    by_id[pid] = (loc, lmap, cmap)
+                if verbose:
+                    print(f"    {pid} -> {loc}  ({len(lmap)} microwires)")
+    return by_id
+
+
+def index_utah_mats_by_id(path_to_subject_folders=DEFAULT_SUBJECT_FOLDERS):
+    """`{patient_id: (location, mat_dict)}` for Utah `Electrodes.mat` files.
+
+    Same identity rule as `index_utah_files_by_id` -- each file is filed under
+    the patient it names in its own `Fname` -- but returns the loaded mat, for
+    callers that need the macro arrays rather than the microwire maps.
+    """
+    out = {}
+    for folder in sorted(os.listdir(path_to_subject_folders)):
+        if not (folder.startswith("s") and folder[1:].isdigit()):
+            continue
+        for sd in UTAH_SEARCH_SUBDIRS:
+            d = (os.path.join(path_to_subject_folders, folder, sd) if sd
+                 else os.path.join(path_to_subject_folders, folder))
+            if not os.path.isdir(d):
+                continue
+            for name in ("Electrodes.mat", "ChannelMap.mat"):
+                fp = os.path.join(d, name)
+                if not os.path.isfile(fp):
+                    continue
+                mat = _load_mat(fp)
+                if mat is None:
+                    continue
+                pid = mat_patient_id(mat)
+                if pid and pid not in out:
+                    out[pid] = (f"{folder}/{sd}/{name}" if sd
+                                else f"{folder}/{name}", mat)
+    return out
+
+
+def utah_micro_coord(patient_id, electrode_label, utah_index):
+    """Coordinate + provenance for one Utah cell, read straight from the file.
+
+    `(xyz, source)` or `(None, "")`. The big-table `electrode label` is either
+    the microwire label itself (`mLHIP4`) or an amplifier channel (`chan113`);
+    the latter is bridged `ChannelMap1/2 -> LabelMap -> label`, and the
+    coordinate is then taken by that label so that label and coordinate always
+    come from the same row of the same file.
+    """
+    entry = utah_index.get(patient_id)
+    if entry is None:
+        return None, ""
+    loc, lmap, cmap = entry
+    lab = str(electrode_label).strip()
+    if lab in lmap:
+        return lmap[lab][0], f"{loc}:{lab}"
+    m = re.match(r"^chan(\d+)$", lab, re.IGNORECASE)
+    if m and int(m.group(1)) in cmap:
+        micro_label = str(cmap[int(m.group(1))][1])
+        if micro_label in lmap:
+            return lmap[micro_label][0], f"{loc}:{micro_label}"
+    return None, ""
 
 
 def build_micro_map(mat):
@@ -388,9 +644,8 @@ def channel_position(mat, chan):
 def discover_utah_mats(path_to_subject_folders=DEFAULT_SUBJECT_FOLDERS,
                        path_to_cell_table=DEFAULT_CELL_TABLE):
     """For each Utah subject, find which `s{NN}/electrodes/*.mat` file
-    corresponds to it. We don't trust that s{NN} == subject_index
-    (e.g. subject 24 lives in s23), so we coord-match: pool every
-    folder's `ElecXYZMNIProj` coords and pick the folder that covers
+    corresponds to it, by coord-matching: pool every folder's
+    `ElecXYZMNIProj` coords and pick the folder that covers
     >= 50% of the subject's big-table cells at <= 0.5 mm. Returns
     {subject_label: (folder_name, mat_dict)} — the whole mat dict is
     kept so the independent-reconstruction step below can use it."""

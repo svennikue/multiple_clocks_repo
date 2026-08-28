@@ -1,5 +1,566 @@
 # CHANGELOG
 
+## 2026-08-28 (night) — `within_only` scope: the right fix for the instruction question
+
+The user's suggestion -- drop the across-half block entirely -- is better than
+the block nuisance regressor, and it is now implemented as
+`data_rdm_scope = "within_only"`.
+
+**Why it removes the artefact structurally.** The bias came from a similarity
+offset BETWEEN the within-half and across-half blocks (data: 0.828 vs 0.863
+dissimilarity, within < across in 89% of searchlights) which the instruction
+regressors encode (r = +0.42 to +0.54 with an across-half indicator). Keep only
+within-half cells and that contrast does not exist, so no regressor can absorb
+it. Unlike the nuisance regressor, nothing has to be modelled away.
+
+**It keeps the contrast the design was built for.** Of the 90 within-half
+cells, 10 are same-task-letter pairs (the two directions of one task inside one
+half). On exactly those cells the instruction dissimilarity is **0** (they saw
+the same sequence) and the execution dissimilarity is **1** (they execute the
+reverse). That is the instruction x execution dissociation, and it lives
+entirely inside the within-half block.
+
+**Empirical check** (sub-02, TR4, 3161 searchlights, mean single-subject t):
+
+| combo | scope | instr | exec |
+|-------|-------|-------|------|
+| rewDSR_vs_instr | full_no_diag | +0.268 | -0.254 |
+| rewDSR_vs_instr | **within_only** | -0.472 | **+0.058** |
+| splitDSR_vs_instr | full_no_diag | +0.120 | -0.063 |
+| splitDSR_vs_instr | **within_only** | **-0.081** | **+0.011** |
+
+The mirror-image offset is gone. The residual -0.47 for `rewDSR_instr` in the
+2-regressor combo is not obviously an artefact: a negative instruction beta on
+within-half cells means same-instruction pairs are LESS similar than the
+instruction model predicts, which is what you expect if the same-letter pair
+(same instruction, reversed execution) is dominated by execution coding.
+
+**No temporal-proximity confound.** Within a half, same-task pairs are closer
+in time in TH1 (mean gap 362 vs 594 s) but FURTHER apart in TH2 (575 vs 528 s)
+for sub-02 -- the ordering is not systematic, and the gaps are hundreds of
+seconds, far outside BOLD autocorrelation.
+
+**No recomputation needed.** `within_only` reads the same `data_RDM_full.npy`
+cache as `full_no_diag` and keeps 90 of its 190 columns. Cell ordering is
+`np.tril_indices(n_all, k=-1)` in both `get_full_instruction_RDM_per_searchlight`
+and `_lower_tri_flat`, verified, so the mask aligns. If those caches survive on
+the cluster this is a re-fit, not a re-run.
+
+**Implemented** in `scripts/fMRI_run_RSA_instruction.py`: `within_half_mask()`,
+`data_rdm_scope = "within_only"` accepted, model regressors and the cached data
+RDM both subset by the same mask, and the `block` nuisance now asserts against
+`within_only` (constant there, and unnecessary). Config
+`condition_files/rsa_instruction_within_and_across_th.json` renamed to
+`rsa_instruction_within_th_only.json`, `name_of_RSA =
+within_th_only_intr-vs-exe`, scope `within_only`, block nuisance dropped.
+
+Verified: all 10 single models and all 3 combos are full rank on 90 cells
+(2/2, 3/3, 5/5, 9/9).
+
+**The figures and printouts were WRONG for the new scope and are now fixed.**
+Three places still described the across block regardless of `data_rdm_scope`:
+
+1. The model-RDM figures always plotted `model_RDM_dir[model]`, the (n, n)
+   across block, and the assembled (2n, 2n) figure only fired for
+   `full_no_diag`. In `within_only` that meant the saved figure showed cells
+   that are not fitted -- and for every instruction model it is a uniform block
+   of 1.0, carrying no information at all. Replaced with `_display_RDM()`,
+   which returns the matrix for the current scope with excluded cells set to
+   NaN (`plot_instruction_RDM` already renders NaN white via
+   `masked_invalid` + `set_bad`). Filenames now carry the scope:
+   `{results_dir}_{model}_{data_rdm_scope}`.
+2. The example data-RDM figure had the same problem; same fix.
+3. The printed "execution vs instruction Pearson r" fell through to the
+   across-block branch for any scope other than `full_no_diag`, so in
+   `within_only` it would have reported a correlation against a constant
+   vector. It now always uses `_model_regressor()`, i.e. exactly the vectors
+   the OLS sees. `_model_regressor` was moved above the verification block so
+   both share one definition.
+
+Also `verify_instruction_rdm_blocks` now runs on the matrix actually fitted
+(across block for `across_only`, the assembled matrix otherwise) and prints
+which scope it checked.
+
+Rendered all three scopes for `rewDSR_instr` and `rewDSR` to confirm: 100 / 400
+/ 200 cells shown for across_only / full_no_diag / within_only, and
+`rewDSR_instr` under `across_only` is `unique = [1.]` -- the degenerate uniform
+block, now impossible to mistake for a real model RDM.
+
+**Config as it will run:** `within_th_only_intr-vs-exe`, scope `within_only`,
+TR set per run, 10 single models + 3 combos (`rewDSR_vs_instr` 2,
+`instr_split` 4, `splitDSR_vs_instr` 8) = 24 beta/t/p map sets per subject per
+TR. No block nuisance (nothing left to absorb).
+
+**Status of the three scopes.**
+- `across_only` -- correct for EXECUTION. Instruction is constant, so it cannot
+  be tested there at all.
+- `within_only` -- correct for INSTRUCTION, and it also carries the
+  instruction x execution dissociation. Execution is estimable but from
+  within-run cells only.
+- `full_no_diag` -- mixes the two and introduces the block offset. Superseded;
+  use it only with the block nuisance, and only as a control.
+
+## 2026-08-28 (evening) — the full_no_diag t-bias diagnosed, and a block nuisance regressor
+
+**The bias is real and it is not regressor collinearity.** Whole-brain t over
+all voxels x 12 TRs, `instr_test_full`:
+
+| map | mean t | % voxels > 0 |
+|-----|--------|--------------|
+| rewDSR_instr (single model) | **+2.07** | 97.0% |
+| REWDSR_INSTR-rewDSR_vs_instr | +2.06 | 97.0% |
+| rewDSR (single model) | **-1.04** | 15.7% |
+| REWDSR-rewDSR_vs_instr | -1.03 | 16.0% |
+| simple | -1.18 | 13.7% |
+
+Single-model fits show the same offset, so it is not suppression between
+regressors -- and r(rewDSR, rewDSR_instr) = -0.004 anyway. For comparison, the
+`across_only` maps sit at -0.48 to +0.71.
+
+**Cause: a within/across block offset in the DATA that the instruction models
+encode.** Of the 190 lower-triangle cells, 90 are within-half and 100 across.
+
+- Data (sub-02 TR4, 126 404 searchlights): mean cosine dissimilarity **0.828
+  within vs 0.863 across**, a 4.0% offset, with within < across in **88.9%** of
+  searchlights. Run-level noise.
+- Regressors, correlation with an across-half indicator: every `_instr` model
+  **+0.42 to +0.54** (within mean 0.711, across constant 1.000); every
+  execution model **-0.13 to -0.17** (0.911 vs 0.820).
+
+An instruction regressor therefore says exactly what the run noise says, and
+collects a large positive beta in nearly every voxel; execution collects the
+mirror-image negative one.
+
+**The existing group maps CANNOT be corrected post hoc.** 82% of the block
+indicator is a direction orthogonal to the old design `[1, instr, exec]`, i.e.
+information the fit never computed. Predicting the correctly-fitted beta from
+everything that was saved (beta and t for both regressors, 3152 searchlights):
+R^2 = **0.577** for instruction, 0.936 for execution. Not a correction, and not
+close enough to be one.
+
+**But a re-fit may not need the expensive step.** The searchlight data RDMs are
+cached as `data_RDM_full.npy` and `fMRI_run_RSA_instruction.py` already skips
+computation when the cache exists. 99.8% of searchlights have no NaN cell (only
+3 distinct NaN patterns among the other 293), and the OLS for all 126 111 clean
+searchlights at one design takes **21 s** in the current per-searchlight loop
+(0.6 s vectorised via `evaluate_model_vec`, 34x). So if those caches survive on
+the cluster this is minutes per subject-TR, not days. Worth checking before
+committing to a long re-run.
+
+**Implemented:** `build_block_nuisance_RDM()` in
+`scripts/fMRI_run_RSA_instruction.py`, reserved regressor name `block`, and a
+config flag `add_block_nuisance: true` that appends it to every combo so it
+cannot be forgotten in one. Asserts `full_no_diag` scope (in `across_only` it
+would be constant). Enabled in
+`condition_files/rsa_instruction_within_and_across_th.json`.
+
+Verified on sub-02 TR4: all three combos stay full rank with it
+(4/4, 6/6, 10/10), and over 3161 searchlights the mean single-subject t for
+`splitDSR_vs_instr` moves from instr +0.120 / exec -0.063 to
+**instr -0.101 / exec +0.003 / block +1.319** -- the nuisance takes the offset
+and execution recentres on zero.
+
+**What it fixes and what it does not.** After the nuisance absorbs the offset,
+where each regressor's remaining variance lives:
+
+| regressor | % within-half | % across-half |
+|-----------|---------------|---------------|
+| rewDSR_instr | **100.0%** | 0.0% |
+| curr_rew_instr / two_next_rew_instr | **100.0%** | 0.0% |
+| rewDSR | 21.4% | 78.6% |
+| curr_rew / two_next_rew | 33.1% | 66.9% |
+
+Execution keeps 67-79% of its variance in across-half cells, so the nuisance
+makes those fits interpretable. Instruction keeps **zero** -- across halves the
+same task is instructed in the reverse order, so those cells carry no
+instruction information at all and the estimate is always a purely within-run
+comparison, where "same instruction" is also "same stimulus, same run". No
+nuisance regressor can change that; it is a property of the counterbalancing.
+
+**Recommendation:** the re-run buys trustworthy execution numbers in
+`full_no_diag` (which `across_only` already provides more cleanly) and a clean
+demonstration that the instruction effect was the block artefact -- a good
+supplementary control. It does NOT make the instruction models usable as
+evidence for instruction coding.
+
+## 2026-08-28 (later) — all three per-TR datasets on identical footing
+
+All three now run through `scripts/per_TR_loso.py` / `mc.analyse.loso`, same 5
+masks, same seeds, 10 000 SVC perms, LOSO k=50/100/200, whole-brain at 1000.
+
+| # | dataset | maps | scope | output |
+|---|---------|------|-------|--------|
+| 1 | `instr_test_full` | 27 (25 usable) | `full_no_diag` | `per_TR_svc_instr_test_full_allTR_2026-08-28` |
+| 2 | `split_rew_DSR_per_TR` | 8 | `across_only` | `per_TR_svc_split_rew_DSR_allTR_2026-08-27` |
+| 3 | `instruction_per_TR` | 1 (rewDSR) | `across_only` | `per_TR_svc_instruction_rewDSR_allTR_2026-08-28` |
+
+**The reported number reproduces exactly** through the new runner:
+
+    reported   : t=5.079 TR4 MNI -6/32/18 p_FWE=.0407 n_vox=4181
+    new runner : t=5.079 TR4 MNI -6/32/18 p_FWE=.0407 n_vox=4179
+
+(The 2-voxel difference is the mask-intersection change; it does not move the p
+at four decimals.) Its LOSO is p_FWE = .0144 at TR4. Nothing in MTL or visual
+(best p = .47), nothing whole-brain (p = .451).
+
+**Dataset 1 result: every single significant map is an instruction model, and
+NO execution map is significant in ANY mask.**
+
+| mask | sig maps | best instruction | best execution |
+|------|----------|------------------|----------------|
+| mPFC | 6/25 | curr_rew_instr t=6.94 TR2 -6/66/18 **p=.0002** | NEXT_REW-splitDSR_noInstr t=3.77 p=.313 |
+| MTL_L | 8/25 | rewDSR_instr t=8.30 TR5 -32/-2/-34 **p<.0001** | THREE_NEXT_REW-splitDSR_noInstr t=3.20 p=.482 |
+| MTL_R | 7/25 | curr_rew_instr t=6.41 TR0 22/0/-24 **p=.0002** | t=2.76 p=.665 |
+| visual | 6/25 | CURR_REW_INSTR-splitDSR_vs_instr t=8.52 TR3 **p<.0001** | t=4.72 p=.136 |
+
+0 of 10 execution maps reach p<.05 in any of the five masks. Whole brain: 7 of
+25 significant, all instruction, peaking t=10.3 at TR2 (rewDSR_instr, 0/-32/-10).
+
+**The scope, not the model, decides the answer.** The same subjects and the
+same rewDSR construct give t=5.08, p=.041 in mPFC under `across_only`
+(dataset 3) and nothing at all under `full_no_diag` (dataset 1, best mPFC
+execution p=.313), while the instruction models go from structurally
+impossible (constant regressor) to t=6.9-10.3. Adding the within-half cells
+does not add power to the execution test -- it destroys it and replaces it
+with a large instruction effect. That is what the within-half confound
+predicts: within a half, "same instruction" IS the same visual stimulus in the
+same run, so those cells inject stimulus-repetition structure that the
+instruction regressor fits and the execution regressor does not.
+
+**Timing supports the stimulus reading.** Peak TRs of the significant
+instruction maps cluster early -- TR0:3, TR1:4, TR2:11, TR3:5, TR4:2, TR5:4,
+TR6:6 (mode TR2) -- and the LOSO timecourses
+(`per_TR_timecourses_instr.pdf`) rise at TR1-3 and decay, the shape of a
+response to a screen that is on from 0 s, not of a plan assembled once all
+four rewards are known at 6 s. Compare dataset 2, whose across-half execution
+channels peak LATE (mPFC two_next TR4-6, left MTL next_rew TR7-8).
+
+**Conclusion for the manuscript:** `across_only` is the defensible scope for
+these questions. `full_no_diag` should not be used to compare instruction
+against execution, because it is exactly the scope in which the two are
+confounded. The instruction models in dataset 1 should not be reported as
+evidence for instruction coding.
+
+**Robustness fixes made while running this:**
+- `_load_with_retry` -- the first 12-TR `instr_test_full` attempt died at model
+  14/27 when `nib.load` transiently failed on an intact TR7 file (sync-backed
+  storage). Reads now retry 4x with a 10 s wait; genuinely corrupt files still
+  raise.
+- `--resume` -- skips models whose outputs exist and rebuilds both summary
+  tables from every per-model json on disk, so an interrupted run resumes
+  without redoing finished work and still writes complete tables. Verified:
+  "resume: 13 of 27 models already complete, 14 to run" -> "summary table
+  covers 27 of 27 models".
+- `load_ref` now intersects the group masks over the TRs that HAVE one and
+  prints how many it used. The `instruction_per_TR` folders only ship
+  `mask_all_32_subjects` for TR0 and TR3 -- which is why the original script
+  read TR0's and stopped -- and this would otherwise have been a hard failure.
+- `base_channel` strips a trailing `_instr`, so a reward channel keeps one
+  colour across its execution and instruction variants.
+
+## 2026-08-28 — per-TR LOSO analysis refactored into one runner + one library
+
+The scripts folder had grown four files for one analysis. Consolidated:
+
+**`mc/analyse/loso.py`** (new, registered in `mc/analyse/__init__.py`) holds
+everything: inputs (`resolve_nii`, `load_ref`, `load_mask`, `load_masks`,
+`discover_models`, `read_model_columns`), statistics (`tstat`, `null_max_t`,
+`adaptive_pblock`, `voxel_fwe_p`, `perm_wholebrain`), tests (`run_svc`,
+`run_loso`, `run_wholebrain`), volume writing (`vol_from_cols`,
+`write_mask_maps`, `write_wholebrain_maps`), results loading (`load_loso`,
+`load_settings`, `result_masks`) and plotting (`plot_per_TR_timecourses` plus
+the CLAUDE.md palettes and the reward schedule).
+
+**`scripts/per_TR_loso.py`** (new) is the only runner, with three modes:
+`--mode run` (analyse, no figures), `--mode plot` (load an existing
+`--out-dir` and plot, no recomputation), `--mode both` (default).
+In plot mode it reads `settings.json` and defaults to the four reward channels
+when present, else every model.
+
+**Archived** to `scripts/old/per_TR_loso_pre_refactor/` with a README:
+`svc_loso_test.py`, `svc_loso_batch.py`, `plot_per_TR_timecourses.py`,
+`hemisphere_contrast.py` (the last retired at the user's request).
+
+**Equivalence verified before archiving** — both implementations run on the
+same input:
+
+    tstat       bit-identical: True
+    null_max_t  bit-identical (pblock = 250 and 1000): True
+    run_loso    bit-identical to the inline LOSO of svc_loso_test.main(): True
+
+One deliberate behavioural difference remains, as before: `load_ref` intersects
+the group mask across all included TRs rather than taking TR0's alone (~21
+voxels; mPFC 4181 -> 4182), so the reported `BA32-9-10` p will not reproduce
+bit-for-bit. Documented in the archive README.
+
+**References repointed:** `scripts/future_step_dominance_mPFC_lOFC.py` imported
+`tstat, null_max_t` from `svc_loso_test` and now imports them from
+`mc.analyse.loso`. Prose references updated in
+`scripts/fMRI_run_RSA_instruction.py`, `scripts/mask_stats.py`,
+`docs/rerun_after_roi_update.md` and
+`scripts/old/instruction_phase_alternatives/README.md`.
+
+**Still duplicating this code:** `scripts/mask_stats.py` and
+`scripts/mask_stats_spyder.py` carry their own copies of `load_ref`,
+`load_mask`, `extract_betas`, `tstat` and `null_max_t` (they compare voxel-wise
+FDR against permutation FWE). They pre-date this work and were left alone; they
+are the obvious next thing to fold into `mc.analyse.loso`.
+
+## 2026-08-27 (evening, later) — HC/EC hemisphere split: next_rew is left-lateralised
+
+**Masks:** `Garvert_MTL_2mm.nii.gz` split at MNI x = 0 into
+`data/masks/Garvert_MTL_2mm_L.nii.gz` (1352 vox, 1332 in-brain) and
+`..._R.nii.gz` (1364 vox, 1354 in-brain), provenance in
+`Garvert_MTL_2mm_hemispheres.json`. No voxel sits at x = 0, and the two are
+near-symmetric in size, so their FWE thresholds are comparable
+(t_crit = 4.70 vs 4.67).
+
+**Re-ran** `per_TR_svc_split_rew_DSR_allTR_2026-08-27` with 5 masks
+(mPFC, MTL, MTL_L, MTL_R, visual). Same seeds/data, so mPFC / MTL / visual and
+the whole-brain maps are unchanged; the folder now also holds the hemispheres.
+
+**SVC, next_rew:**
+
+| mask | peak t | TR | MNI | p_FWE | LOSO peak | LOSO p |
+|------|--------|----|-----|-------|-----------|--------|
+| MTL bilateral | 5.64 | 7 | -12/-38/-10 | .0116 | TR7 t=2.40 | .0510 |
+| **MTL left** | 5.64 | 7 | -12/-38/-10 | **.0054** | TR8 t=3.07 | **.0124** |
+| MTL right | 3.68 | 4 | 24/-36/2 | .3224 | TR2 t=0.53 | .6277 |
+
+Splitting HELPS: the same peak voxel goes from p = .0116 bilaterally to
+p = .0054 in the left mask, because halving the search volume lowers the
+threshold while the effect is entirely on the left. LOSO likewise strengthens
+(.051 -> .012, 3 significant seconds TR7/8/9).
+
+**Direct L-R contrast** (`scripts/hemisphere_contrast.py`, new). "Significant
+in L, not in R" is not a lateralisation test, so this tests L - R itself on the
+per-subject LOSO held-out arrays (each hemisphere selected its own top-k on
+n-1 subjects, so the paired difference stays unbiased), with the same
+`null_max_t` sign-flip null corrected over the 12 seconds:
+
+| channel | largest \|L-R\| | t(L-R) | p_FWE(L>R) |
+|---------|---------------|--------|------------|
+| **next_rew** | TR7 | **+2.83** | **.0243** |
+| two_next_rew | TR10 | +1.91 | .1479 |
+| three_next_rew | TR0 | -1.53 | .2648 (R>L) |
+| curr_rew | TR0 | -1.22 | .4399 (R>L) |
+
+So the left-lateralisation of `next_rew` is a real difference, not just a
+difference in significance — L > R at TR7 (and TR8, p = .027), FWE-corrected
+over seconds. No other channel is lateralised either way.
+
+Left HC/EC t per second for next_rew: 0.14, 0.20, 0.51, 0.79, 0.99, 1.58,
+2.36, 2.89, 3.07, 2.64, 1.85, 1.37 — a slow build peaking at TR7-8, i.e. during
+the fast second pass, not when B is first shown at 1.5-3 s. Right HC/EC is flat
+throughout (max \|t\| = 0.53).
+
+**Figures:** `per_TR_timecourses_MTL_hemispheres.pdf/.jpeg` (+ `_peaks.csv`),
+`hemisphere_contrast_MTL_L_vs_MTL_R.csv`.
+
+**Caveat unchanged:** 8 models x 5 masks now, uncorrected across that family.
+The lateralisation contrast is 4 tests; next_rew at .024 would not clear
+Bonferroni over 4 (.0125). It confirms the direction of an effect selected on
+other grounds rather than establishing it independently.
+
+## 2026-08-27 (evening) — split_rew_DSR across all 12 TRs: no reveal staircase
+
+**Data:** `group_RSA_split_rew_DSR_per_TR_glmbase_01-TR{0..11}_cropped` — all 12
+TRs present and intact (unlike `instr_test_full`, which is still 11/12
+truncated). Its `sub-XX_settings_summary.json` has no `data_rdm_scope` key, so
+it ran the default **`across_only`**: every RDM cell is an across-half
+comparison, which makes it free of the within-half same-stimulus confound that
+limits the `full_no_diag` instruction models. Execution channels only — there
+are no `_instr` models in this run.
+
+**Analysis:** `svc_loso_batch.py`, 3 masks, 10 000 SVC perms, LOSO k=50/100/200,
+whole-brain maps at 1000 perms. Output
+`data/derivatives/group/per_TR_svc_split_rew_DSR_allTR_2026-08-27/`
+(+ `per_TR_timecourses.pdf/.jpeg/_peaks.csv` from the new
+`scripts/plot_per_TR_timecourses.py`).
+
+**Timing ground truth.** `create_EVs_for_RDMs.py` builds the `01-TR{n}` EV as a
+1-s boxcar at `instruct_start + n`, HRF-convolved by FEAT — so the TR axis is
+neural seconds with no lag to add back. `show_rewards` in
+`mc/latest_experiment/3x3_fMRI_part1.py` shows ONE reward at a time: A 0-1.5,
+B 1.5-3, C 3-4.5, D 4.5-6, then a faster refresh A 6-7, B 7-8, C 8-9, D 9-12.
+
+**Result: neither the sequential-reveal staircase nor a synchronous rise at
+TR6.** LOSO t per second (k=100), mPFC:
+
+| channel | TR0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| curr (A) | -1.25 | -2.08 | -1.66 | -0.92 | -0.51 | -0.59 | -0.81 | -0.92 | -0.90 | -1.13 | -1.46 | -1.60 |
+| next (B) | -0.30 | -0.83 | -0.22 | 0.83 | 1.91 | **2.48** | 2.34 | 2.07 | 1.94 | 1.70 | 1.20 | 0.68 |
+| two_next (C) | 0.10 | -0.03 | 0.97 | 2.27 | **3.45\*** | **3.47\*** | **2.82\*** | 2.15 | 1.23 | 0.16 | -0.36 | -0.37 |
+| three_next (D) | 0.27 | 0.65 | 1.32 | **1.70** | 1.56 | 1.02 | 0.41 | 0.06 | -0.13 | -0.21 | -0.46 | -0.70 |
+
+- `curr_rew` (reward A) is **never** represented — flat or negative at every
+  second, in every mask.
+- Peaks run D (TR3) -> C (TR4-6) -> B (TR5-8): if anything the REVERSE of the
+  reveal order, and nothing like a double sweep.
+- `two_next_rew` is the only channel with FWE-significant LOSO seconds
+  (TR4/5/6, p < .05 corrected over the 12 seconds).
+- MTL: only `next_rew`, SVC t = 5.64 at **TR7**, MNI -12/-38/-10,
+  p_FWE = .012 — five seconds after B is first shown, but coincident with B's
+  second appearance (7-8 s).
+- Whole brain: only `next_rew` (t = 6.97, TR7, p_FWE = .014) and its combo
+  regressor (t = 7.27, TR7, p_FWE = .010). Peak MNI -10/70/-4 is at the very
+  anterior edge of the brain mask — check that it is not a smoothing/edge
+  artefact before believing it.
+- Occipital: nothing (best p_FWE = .144).
+
+**The reported mPFC effect decomposes into the MIDDLE two channels.** The
+published instruction-phase result is parent `rewDSR`, t = 5.08 at TR4,
+MNI **-6/32/18**, p_FWE = .041. In the split:
+`next_rew` t = 4.76 at TR4, MNI **-6/32/18** (p = .081), and `two_next_rew`
+t = 4.51 at TR4, MNI **-8/32/18** (p = .113) — the same voxel and the same
+second. `curr_rew` (t = 2.64, p = .93) and `three_next_rew` (t = 3.12, p = .74)
+contribute nothing. So the mPFC effect is carried by rewards B and C, not by
+where the subject is now and not by the last reward. Neither child alone beats
+the parent, consistent with them contributing jointly rather than one driving it.
+
+**Multiple comparisons:** 8 models x 3 masks plus 8 whole-brain tests, not
+corrected across that family (per the standing request). Bonferroni over 8
+models would need p < .00625; `next_rew` whole-brain (.010/.014) and MTL (.012)
+do not clear that. Treat the decomposition as the robust part and the
+individual p-values as suggestive.
+
+**Still open:** the same split for the INSTRUCTION channels needs the
+`instr_test_full` download to finish, and it will carry the within-half
+confound, so it is not directly comparable to this run.
+
+## 2026-08-27 (later still) — whole-brain t / FWE-p / uncorrected-p volumes added
+
+**Script:** `scripts/svc_loso_batch.py`, new `--wholebrain` branch.
+
+Motivation: the SVC test only ever reported numbers inside a mask, so there
+was nothing to scroll through in fsleyes. `--wholebrain` now writes, per model,
+in `wholebrain/`:
+
+| file | what |
+|------|------|
+| `{model}_t.nii.gz` | observed group t, all brain voxels |
+| `{model}_1minusFWEp.nii.gz` | 1-p, FWE over whole brain x all TRs (max-t null) |
+| `{model}_1minusp_uncorr.nii.gz` | 1-p, uncorrected, that voxel's own permutation p |
+| `{model}_summary.json`, `{model}_null_max_t.npy` | peak stats, the null itself |
+| `wholebrain_summary_table.csv` | one row per model |
+
+3-D for a single TR, **4-D (X, Y, Z, TR)** as soon as several TRs are passed —
+so the fsleyes TR slider scrubs the instruction period. `--wholebrain-neg`
+adds the negative-direction p maps; `--wholebrain-models` restricts which
+models get volumes.
+
+**Implementation notes.**
+- One read per model still serves everything: with `--wholebrain` the
+  extraction target becomes the whole brain mask and each ROI is a column
+  subset of it, so adding whole-brain costs no extra I/O.
+- `perm_wholebrain()` keeps only the max-t null plus a per-voxel exceedance
+  tally, never the (n_perm x n_vox) null, so memory is set by the block size
+  and not by n_perm. Blocks are sized to ~1e7 floats.
+- The permutation t uses the same sign-flip identity as
+  `svc_loso_test.null_max_t` (`var = (S2 - n*M^2)/(n-1)`). To make CLAUDE.md
+  rule 4 checkable rather than assumed, the function **asserts** that the
+  all-plus-one flip reproduces `tstat(D)` on the observed data — empirical and
+  permutation statistic are therefore verifiably the same statistic.
+- `n_p_FWE_lt_05` in the whole-brain summary is counted off the p map itself,
+  not off the 95th-percentile t threshold; at low n_perm the two drift apart
+  (1320 vs 1324 voxels at 200 perms) and only the former matches what you get
+  by thresholding the saved map at 0.95.
+
+**Interpretation guard rails, written into the docstrings.** The whole-brain
+FWE null corrects over the entire brain mask AND every included TR at once, so
+it is far stricter than the small-volume p in the mask folders and the two must
+not be compared. The uncorrected map is for looking around, not for claims.
+A voxel no permutation beat gets p = 0 / 1-p = 1; that means p < 1/n_perm, not
+a real zero.
+
+**Verified** (rewDSR_instr, TR5, 200-perm smoke run): map peak t = 8.8615 at
+MNI -34/-2/-34 matches the summary json exactly; 147 358 in-brain voxels
+match; uncorrected p <= FWE p at every brain voxel.
+
+**TR5 re-run with the maps** (1000 whole-brain perms, 147 358 voxels; the SVC
+mask numbers are unchanged from the earlier entry). 7 of 25 usable maps survive
+whole-brain FWE, and every one of them is an `_instr` model:
+
+| model | peak t | MNI | p_FWE | vox p_FWE<.05 |
+|-------|--------|-----|-------|---------------|
+| rewDSR_instr | 8.86 | -34/-2/-34 | <.001 | 1406 |
+| REWDSR_INSTR-rewDSR_vs_instr | 8.86 | -34/-2/-34 | <.001 | 1406 |
+| curr_rew_instr | 7.76 | -14/-22/10 | <.001 | 1086 |
+| CURR_REW_INSTR-splitDSR_vs_instr | 7.10 | 46/-46/-14 | .001 | 394 |
+| two_next_rew_instr | 6.77 | -12/-22/8 | .002 | 109 |
+| next_rew_instr | 6.29 | -26/0/4 | .005 | 55 |
+| three_next_rew_instr | 6.00 | -12/-22/10 | .008 | 68 |
+
+No execution model comes close (best non-`_instr` whole-brain p = .129). Note
+the peaks sit in thalamus / temporal pole / posterior insula rather than in any
+of the a-priori regions — consistent with the within-half same-stimulus
+confound noted in the entry below, and a further reason not to interpret these
+until that control is run.
+
+Output size: 33 MB of volumes for 27 models at one TR; expect ~0.4 GB and
+roughly 45-90 min for the full 12-TR sweep.
+
+## 2026-08-27 (later) — instruction models are degenerate in `across_only`, fine in `full_no_diag`
+
+**Diagnosed on sub-02's actual model vectors** (`rewDSR` at the A_reward anchor,
+`condition_files/rsa_instruction_full.json` settings).
+
+**Why the across-half instruction RDM is constant.** Within one half, forw and
+backw saw the SAME instructed sequence (backw reverses it mentally), so
+`instruction_relabel_dict` is correct. But the same task letter is instructed in
+the OPPOSITE order in the two halves — task A: half-1 instruction = 1,7,5,3,
+half-2 instruction = 3,5,7,1. Reversing four distinct reward positions leaves no
+slot matching, so every same-letter across-half cell is a Hamming mismatch (1),
+and different-letter cells are 1 as well. The entire TH1 x TH2 block is
+therefore uniformly 1.0 — zero variance, for `rewDSR_instr` and all four
+`*_rew_instr` split channels alike.
+
+**Consequence — `across_only` is dead for every instruction model.**
+`evaluate_model_vec` zeroes a constant column, then `matrix_rank(XtX) < n_aug`
+makes it return NaN for EVERY regressor in the design, and
+`save_my_RSA_results` writes those NaNs as an all-zero map with no error. Ranks
+in `across_only`: `rewDSR_vs_instr` 2/3, `instr_split` 1/5,
+`splitDSR_vs_instr` 5/9 — all dead.
+
+**`full_no_diag` is NOT ill-defined.** The within-half blocks W1/W2 carry the
+instruction structure ("same letter within this half" = same stimulus = 0), so
+the regressors have real variance (std 0.266 for `rewDSR_instr`, 0.344 for the
+split channels) and every requested design is full rank: `rewDSR_vs_instr` 3/3,
+`instr_split` 5/5, `splitDSR_vs_instr` 9/9, max |r| between regressors 0.644.
+Instruction and execution are close to orthogonal there: r = -0.004 (rewDSR),
++0.020 / +0.109 / +0.109 / +0.020 (curr/next/two/three).
+
+**But the identifying variance is entirely within-half.** All 100 across-half
+cells sit at the same value, so no across-half pair can inform an instruction
+beta — it is estimated only from the 90 within-half cells. Within a half,
+"same instruction" is identical to "same task letter", i.e. the same visual
+stimulus in the same run. That is precisely the shared-run-noise bias the
+`data_rdm_scope` docstring flags and does not correct. The TR5 SVC result
+(MTL t = 8.3, visual t = 6.2 for `rewDSR_instr`) is therefore most likely a
+within-run same-stimulus effect and must not yet be read as instruction coding
+in EC/HC. A within-half-only null (or splitting W1 vs W2) is the control to run.
+
+**Cause of the two all-zero maps found in the earlier TR5 run.** Combo
+`rewDSR_noInstr` = [`rewDSR`, `simple`]: `simple` is finite in only 30 of 190
+lower-triangle cells, and on exactly those 30 cells `rewDSR` and `simple`
+correlate at **r = 1.0** -> rank 2/3 -> NaN for both -> all-zero maps. Not a
+bug in the group test. Do not re-run that combo as specified.
+
+**Changes.**
+- New `condition_files/rsa_instruction_within_and_across_th.json`
+  (`name_of_RSA = within_and_across_th_intr-vs-exe`, `data_rdm_scope =
+  full_no_diag`): 10 single models plus combos `rewDSR_vs_instr` [rewDSR,
+  rewDSR_instr], `instr_split` [the four `*_rew_instr` channels], and
+  `splitDSR_vs_instr` [all 8 exec+instr split channels, as in the old file].
+  `simple` dropped.
+- `scripts/fMRI_run_RSA_instruction.py`: new `design_rank_report()` plus a
+  pre-flight loop that checks every single model and every combo for constant
+  regressors / rank deficiency BEFORE any searchlight OLS runs, and raises with
+  the offending list instead of silently writing zero maps. Verified: it passes
+  all 13 designs of the new config and flags exactly `rewDSR_noInstr` in the old
+  one.
+
 ## 2026-08-27 — SVC max-t + LOSO over all 27 maps of `instr_test_full`, TR5 only
 
 **Scripts:** `scripts/svc_loso_batch.py` (new), `scripts/svc_loso_test.py` (patched
@@ -642,3 +1203,526 @@ checkpoint as reduced ripple amplitude or rate.
 - Do not generate all adjacent pairs. It inflates n several-fold with non-independent
   derivations sharing contacts.
 - Do not pick the anchor by contact number; numbering conventions differ per site.
+
+## 2026-08-27 — Coordinate provenance audit of `cell_to_roi_july26.py`
+
+Full trace of where every one of the 984 cell coordinates in
+`neurons_with_ROI_labels.csv` comes from. Written up in
+`docs/coordinate_provenance_audit.md`.
+
+**Clean (906 / 984, 92 %):** 608 Baylor from the v2026 `microwires` row as shipped;
+140 UCLA big-table coords independently corroborated ≤ 0.5 mm against the v2026
+xlsx; 97 Utah reconstructed from the patient's own `Electrodes.mat`; 35 Baylor
+MNI305 re-transformed (file failed its own 152-vs-305 gate); 26 Baylor inferred
+from the macro probe with Baylor's own 3.15 mm protrusion constant.
+
+**Not clean (78 cells, 7.9 %):** `utah_bigtable_recon_disagrees_gt3mm`. When the
+reconstruction from the patient's own `.mat` disagrees with the hand-entered big
+table by > 3 mm, the code keeps the **big table** and discards the reconstruction.
+Median disagreement **37.9 mm**, max 62.3 mm; 73/78 exceed 10 mm. These currently
+contribute mOFC 48, mPFC 18, HC_anterior 9, EC 3.
+
+**Placeholder coordinate found:** 17 cells across UT1-202418 / UT1-202422b /
+UT1-202503 all sit at the single point (4.55, 29.50, -20.63), which the atlas
+calls mOFC. Those subjects (s54, s53, s55, plus s52 = UT202421) have **no
+`Electrodes.mat` anywhere** — the four genuinely missing Utah files. s30 and s42
+also lack one but are the same patients as s29 and s41.
+
+**Root cause:** `discover_utah_mats()` coord-matches 3–16 big-table cells against
+every folder's electrode pool with no uniqueness constraint, so s47's file was
+assigned to six different patients. Measured: **8 of 12 Utah subjects match their
+own `s{NN}` folder at 100 %** — the folder numbering is reliable and the
+coord-matching was unnecessary. It is also circular: it validates the big table
+against files using the big table's own (hand-entered) coordinates as the key.
+
+**NOT changed:** the cell pipeline's behaviour is untouched — fixing items 1–3 in
+the audit would change published cell ROIs and is the user's call. Only the
+docstring was corrected (it claimed the reconstruction is preferred above 0.5 mm;
+the code does the opposite at 3 mm) and an invented rationale was removed from
+`discover_utah_mats()`.
+
+**Already fixed in the SWR pipeline:** `mc.analyse.contact_anatomy.resolve_utah_mat`
+resolves by folder (own → same patient → exclude with a stated reason), so no
+session inherits another patient's electrodes.
+
+### 2026-08-27 (addendum) — is the Utah .mat reconstruction trustworthy?
+
+Validated `build_micro_map` against two independent signals: the microwire label
+(`LabelMap`) vs the coordinate (`ElecXYZMNIProj/Raw` via `MicroElec`). Hemisphere
+agreement **245/264 = 92.8 %**, region agreement **185/256 = 72.3 %**, against
+chance of ~50 % and ~15 %. **The reconstruction method is sound** — but not
+uniformly, and three subjects fail individually.
+
+- **s23 (UT1_sj202309) is broken**: hemisphere 8/24, region 0/24. `MicroElec` empty,
+  uses the `MicroElecRaw` fallback, labels misaligned to coords (`mLHIP1-8` land at
+  x ≈ +8, which is not hippocampus in either hemisphere). Exclude, don't guess.
+- **s47 and s39**: hemisphere 24/24 but region 8/24 — needs a look.
+- **Resolving by folder fixes UT1_sj202308**: 1/16 → 16/16 hemisphere correct. The
+  published laterality was right; the coord-matched file assignment was wrong.
+- **MATLAB v7.3 (HDF5) files are silently unreadable**: `_load_mat` returns
+  `LabelMap` as bare `None` because string cells are HDF5 object references that are
+  never dereferenced. Affects s48, s52, s54, s55 — all four yield ZERO microwires
+  and always fall back to the big table. Three of them are the placeholder-coord
+  subjects.
+- **Files after re-download**: s52, s54, s55 are present but under `Registered/` /
+  `Registered-selected/`, which the loader never searches (it only looks in
+  `electrodes/`). Only **s53 (UT202422b)** is genuinely absent. s30/s42 lack a file
+  but are the same patients as s29/s41.
+
+**UCLA is clean.** `load_ucla_v2026` reads the right sheet (`Sheet1`, the second
+sheet, carrying `MNI_x/y/z` + `isMicro`). It does not filter on `isMicro`, but all
+**140/140** UCLA cells match a microwire row at ≤ 0.5 mm and none match a macro —
+so the missing filter is latent, not an actual error.
+
+Full detail incl. per-subject tables: `docs/coordinate_provenance_audit.md`.
+No code paths changed in this session; docstrings only.
+
+### 2026-08-27 (addendum 2) — Utah coordinates: 168/175 now read directly
+
+**Fixed the v7.3 read bug.** `_load_mat` returned `LabelMap` as a bare `None` for
+MATLAB v7.3 files because cell-array strings are HDF5 object references that were
+never dereferenced. s48, s52, s54, s55 therefore yielded ZERO microwires and always
+fell back to the hand-entered big table. Now dereferenced.
+
+**Files declare their own identity.** Every Utah `.mat` carries `Fname` (the original
+acquisition path, e.g. `D:\Data\UIC202311\...`). Added `mat_patient_id()` to read it,
+which removes the need for coord-matching entirely. Two mismatches found:
+`s47` holds patient **202311**'s data (not 202302 — it is the v7 export of the same
+165 electrodes as s48), and `s53`'s newly-downloaded file is a **duplicate of s52**
+(202421, not 202422b). So UT1-202302 and UT1-202422b have no electrode file.
+NOTE these files contain patient *names* in `PatientIDStr` — use the numeric ID.
+
+**Removed the ordering assumption.** `build_micro_map` inferred the label↔coordinate
+pairing by sorting microwires by amplifier channel against `MicroElec` (validated on
+only s02/s06; failed on s23). Every file also has `MicroElecRaw` + `ElecMapRaw` +
+`ElecXYZMNIRaw`, which indexed by the same row give label and coordinate together.
+Added `build_micro_label_map()`. Validated across all 15 files: **352/360** microwires
+have `sign(MNI_x)` matching the `mL`/`mR` in their own label (the 8 exceptions are
+OFC within 2.5 mm of midline). **s23 goes from 8/24 to 24/24.**
+
+**Census across all 984 cells:** 776 read directly from a site file; 140 (UCLA)
+verified identical to the site file at ≤0.5 mm; 61 (Baylor) derived by a documented
+transform; **7 guessed because no source file exists** (UT1-202302 ×3,
+UT1-202422b ×4) = 0.7 %. Utah went from 97/175 to **168/175** readable.
+
+**Not yet wired into `cell_to_roi_july26.py`** — that changes published cell ROIs.
+
+### 2026-08-27 (addendum 3) — full coordinate rebuild from site files only
+
+Re-derived every cell coordinate from the recording site's own electrode file.
+Output: `derivatives/ROI_assignment/coordinate_rebuild_2026-08-27/`.
+
+**Baylor and UCLA do not move (0.00 mm)** — the published table already used file
+coordinates for both. Every change is Utah: UT1-202503 (52.8 mm), UT1-202418
+(42.8), UT1-202421 (42.7), UT1_sj202308 (17.5), UT202314 (2.7), UT202413 (2.7),
+UT1-202311 (1.3); all other Utah subjects 0.00.
+
+**UT1_sj202309 (s23) does not move.** Its published coordinate already equalled the
+direct read, so the hand-entered table was right for s23 and the old ordering-based
+reconstruction was what was wrong — the old code kept the big table there for the
+wrong reason.
+
+**26 of 977 cells (2.7 %) change atlas ROI, all Utah:** mOFC→HC_anterior 12,
+mOFC→mPFC 6, EC→HC_anterior 3, mPFC→mOFC 3, mOFC→HC_mid 2.
+
+**New alt_final_roi counts (tier C, only the 7 no-file cells excluded):**
+EC 38→35, HC_anterior 276→291, HC_mid 231→233, PCC 61→61, **mOFC 163→139**,
+mPFC 155→158. 924→917 cells kept.
+
+Only two non-as-shipped sources remain, both flagged: BY2-YEN (35 cells, the file's
+own MNI305 through the Fischl affine) and BY2-YER (26 cells, macro + 3.15 mm, where
+3.15 mm is Baylor's own constant, identical across all 119 ground-truth bundles and
+reproducing them to 0.25 mm median). Dropping YER costs 16 mPFC cells (158→142).
+
+**NULL / dead end (do not re-run):** coord-matching electrode files against the
+big table. It is circular — the big table's coordinates are the thing in question —
+and with 3-16 cells per subject it has no discriminative power. Use `Fname`.
+
+## 2026-08-27 — Single-unit QC audit
+
+`abcd_passed.mat` verified as `abcd_data_08-Sep-2025.mat` filtered to the QC-passing
+units: 63 sessions, 1042 -> 984 (58 removed). Every retained spike train and every
+`regionLabel` is byte-identical to the source — neural data and labels both untouched.
+
+**Exclusions:** 36 for < 300 spikes (median 233, range 110-296); 22 as duplicates at
+zero-lag r >= 0.50 on 100 ms bins. **All 22 duplicate pairs are within the same
+microwire bundle and share a region label** (21/22 by bundle key; the 22nd is adjacent
+contacts of one UCLA probe). That is the signature of one neuron on two wires, so the
+criterion is doing what it claims — worth stating explicitly in the methods.
+
+Retained population: median 4118 spikes, 10th pct 747, median FR 1.56 Hz, median RPV
+0.00%. All three criteria assessed as sound; see `docs/cell_qc_methods.md`.
+
+**Two problems found:**
+1. The manuscript states duplicates were removed at *r = 70*. The run actually used
+   **r >= 0.50**. At 0.70 only 9 units would have gone rather than 22. Methods text
+   needs correcting.
+2. **The QC code that produced `abcd_passed.mat` is not in the repo.** Its recorded
+   settings include `MinOverallFR_Hz` and `SessionLowFR_Hz`, which appear in none of
+   the four QC .m files and in no git commit. Decisions survive in
+   `qc_all_sessions.mat`, but the pipeline is not reproducible as it stands.
+   Separately, `qc_master_summary.txt` (Aug 2025) passed only 347/924 = 37.6% at
+   nominally identical thresholds — almost certainly faulty; mark it superseded.
+
+**New:** `scripts/plot_cell_qc_figure.py` -> `derivatives/group/cell_qc/`
+(publication figure + per-cell metrics CSV + settings.json). Reads the stored QC
+metrics; recomputes nothing.
+
+Note: 924 in the manuscript is NOT the QC output (984) — it is what survives the
+>= 3-subject ROI rule afterwards. The Aug QC run coincidentally had 924 as its
+denominator; do not conflate them.
+
+### 2026-08-27 — QC is reproducible again: `scripts/run_cell_qc.m`
+
+Wrote a self-contained MATLAB script that regenerates the accepted-cell set and
+`abcd_passed.mat` from `abcd_data_08-Sep-2025.mat`. Verified against the canonical
+`qc_all_sessions.mat` (2026-04-16) cell by cell across all 1042 units:
+
+    electrodeLabel differing : 0        RPV      max|diff| 0.00e+00
+    n_spikes       differing : 0        corr_max max|diff| 0.00e+00
+    accept/reject  differing : 0        fail reason differing : 0
+
+1042 -> 984 (58 excluded), and `abcd_passed_rebuild.mat` matches the canonical file
+in size, session count, cell count and electrode-label order.
+
+**Resolved the missing-parameter question.** The canonical run recorded
+`MinOverallFR_Hz = 0.1` and `SessionLowFR_Hz = 0.1`, which appear in no script. They
+were never applied: 13 accepted units fire below 0.1 Hz (min 0.049 Hz). They are
+deliberately NOT implemented in `run_cell_qc.m` — implementing them would change the
+accepted set. The three criteria in the script (spike count, RPV, within-bundle
+correlation) reproduce the canonical split exactly.
+
+Outputs use an `OUT_SUFFIX` (default `_rebuild`) so nothing canonical is overwritten
+until a rebuild has been verified.
+
+### 2026-08-27 — new cell ROI table from site files only
+
+`scripts/build_cell_roi_table.py` ->
+`derivatives/ROI_assignment/cells_from_site_files_2026-08-27/neurons_with_ROI_labels_v2.csv`
+
+Every coordinate read from the recording site's own electrode file. Utah files are
+resolved by the patient ID each file declares in its own `Fname` (never by
+coord-matching), and the Utah coordinate and microwire label are read from the SAME
+row index, so no ordering assumption remains.
+
+    baylor_file_micro         608     as shipped
+    utah_file_micro           168     as shipped
+    ucla_file_micro           140     as shipped
+    baylor_file_305to152       35     BY2-YEN, same file's MNI305 + Fischl affine
+    baylor_micro_from_macro    26     BY2-YER, macro + 3.15 mm (Baylor's own constant)
+    no_electrode_file           7     UT1-202302 (3), UT1-202422b (4)
+
+ROI counts, published -> rebuilt: EC 38->35, HC_anterior 276->291, HC_mid 231->233,
+PCC 61->61, **mOFC 163->139**, mPFC 155->158. Cells with an ROI 924 -> 917.
+
+**The 7 cells with no electrode file** take the collaborator's `regionLabel` from
+`abcd_data_08-Sep-2025.mat`, flagged `roi_provisional=True`: UT1-202302 -> ROFC,
+UT1-202422b -> RHC. Her labels carry hemisphere but not the medial/lateral or
+anterior/mid distinction this taxonomy needs, so they are recorded coarsely
+(`OFC_unsplit`, `HC_unsplit`) rather than invented. Both fall below the
+>=3-subject rule (one subject each) and so carry `alt_final_roi = NaN` — they are
+identifiable in the table but do not enter per-ROI analyses. Note this is a real
+change for UT1-202422b: those 4 cells were previously counted as **mOFC** because
+they sat on the placeholder coordinate; the collaborator calls them hippocampus.
+
+Columns added: `has_coordinate`, `coord_source`, `roi_source`, `roi_provisional`,
+`collaborator_regionLabel`, `published_alt_final_roi` (for diffing).
+
+## 2026-08-27 — cell ROI pipeline consolidated onto site electrode files
+
+`scripts/cell_to_roi_july26.py` is again the single script for cell ROIs. Its
+coordinate section now reads every coordinate from the recording site's own
+electrode file; `scripts/build_cell_roi_table.py` (a temporary standalone) was
+deleted rather than left as a second entry point.
+
+**s47 and s53 arrived from the collaborator and close the last gap.** Both declare
+the correct patient in their own `Fname`: `s47/Electrodes.mat` -> 202302,
+`s53/Electrodes.mat` -> 202422. **All 984 cells now have a coordinate from their own
+patient's file — zero unresolved.** (The previously-used `s47/electrodes/` file is a
+different patient, 202311; one session folder can hold two patients' files, which is
+why folder position is not trusted.)
+
+**The collaborator's labels were right.** With the real files:
+  UT1-202302  chan97/102  she said ROFC -> file says mROFC1/mROFC6, atlas mOFC
+  UT1-202422b chan116/119 she said RHC  -> file says mRHIP4/mRHIP7 at
+                                           (23.5,-16.6,-17.4), atlas HC_anterior
+The 4 UT1-202422b cells had been counted as **mOFC** off the placeholder coordinate.
+She said hippocampus; she was correct.
+
+**Final coordinate provenance (984 cells):**
+    baylor_v2026_bundle_micro                     608
+    utah_file_micro                               175
+    ucla_file_micro                               140
+    baylor_v2026_bundle_305to152_unreliable_file   35
+    baylor_v2026_micro_reconstructed_from_macro    26   <- the only inference left
+
+**alt_final_roi:** HC_anterior 275->295, HC_mid 232->233, mPFC 155->158,
+**mOFC 163->142**, PCC 61->61, EC 38->35, NaN 60. 33/984 cells changed.
+
+**Also changed, per the rule that anatomy read-in must match across analyses:**
+- `load_ucla_v2026` now filters `isMicro`, so a micro cell cannot match a macro row
+  (measured: it never did, so this is a guard, not a change).
+- `contact_anatomy.resolve_utah_mat` (LFP pipeline) now resolves by declared patient
+  ID via the same index. Utah LFP sessions resolved: **18/18**, up from partial.
+- New in `anatomy_sources`: `subject_numeric_id`, `index_utah_files_by_id`,
+  `index_utah_mats_by_id`, `utah_micro_coord`, `build_micro_label_map`,
+  `mat_patient_id`, `mat_text`.
+
+**NULL / dead end (do not re-run):** `discover_utah_mats()` coord-matching. No
+uniqueness constraint, assigned s47's file to six patients, and circular — it
+validates electrode files against the hand-entered coordinates it is meant to
+replace.
+
+**Script inventory after consolidation:**
+    scripts/run_cell_qc.m            which units enter    -> abcd_passed.mat
+    scripts/cell_to_roi_july26.py    cell anatomy + ROI   -> neurons_with_ROI_labels.csv
+    scripts/swr_build_contacts.py    LFP contact anatomy  -> macro_contacts_all.csv
+
+### 2026-08-27 — re-run readiness after the ROI rebuild
+
+Audited all 18 analysis scripts against the rebuilt ROI table. Checklist:
+`docs/rerun_after_roi_update.md`.
+
+**Key fact making the re-run cheap:** the analysed cell set is unchanged — same 984
+cells, the same 60 excluded by the >=3-subject rule, 0 cells entering or leaving,
+33 moving between ROIs. Per-cell statistics therefore do not need recomputing; only
+the ROI grouping does, which is what the existing `RELABEL_FROM` hooks do.
+
+**One genuine trap found and fixed.** `RSA_DSR_ROIs_simple.py` had
+`RELOAD_RUN = '2026-07-30_15-58-51-fixed_cells-fixed_perms'`, which skips the RSA
+and permutation loop and re-renders plots from the old saved CSVs. A re-run would
+have silently reproduced the previous result. Set to `None`; old tag kept in a
+comment.
+
+**Checked and left alone:** `REUSE_PERMS_FROM_PREVIOUS_RUNS = True` in the same
+script is safe — the perm-cache fingerprint includes `cell_ids`, so any ROI whose
+membership changed rebuilds its null and PCC (unchanged) legitimately reuses.
+`per_lag_encoding.py` (RELOAD + RELABEL), `spatial_peaks_simple.py` and
+`encoding_state_sustained_cv.py` (full run + RELABEL) were already correct.
+
+**Four hardcoded upstream run directories** would otherwise mix old and new results.
+Marked in source with `# >>> RERUN-CHECK` (`grep -rn "RERUN-CHECK" scripts/`):
+`cell_gradient_master_table.py:CELL_TABLE`, `cell_fMRI_angle_match.py:MASTER_DIR`,
+`overlay_double_dissociation.py:DEFAULT_PER_CELL_CSV` and `:DEFAULT_PER_LAG_CSV`.
+
+**Unaffected (fMRI / behaviour / rodent only):** behaviour_summary,
+create_fMRI_model_RDMs_on_clean_beh, analysis_rodents_complete_clean,
+fMRI_run_RSA_without_rsatoolbox_clean, fMRI_mask_vs_cluster_extract,
+harmonic_angle_maps, fMRI_run_RSA_instruction, svc_loso_test, plot_cell_qc_figure.
+
+## 2026-08-28 — cell_to_roi_july26.py leaned; glass-brain plotting centralised
+
+Output verified **byte-identical** to the pre-cleanup table (984 cells, mOFC 142,
+EC 35, HC_anterior 295). 1790 -> 1633 lines.
+
+**Deleted the text-based intent rescue (98 lines).** `RESCUE_MAX_DIST_MM`,
+`INTENT_MAP` and the rescue bookkeeping (`n_rescued`, `rescue_rows`,
+`rescue_source_atlas_label`, the unreachable rescue-breakdown report). It had been
+disabled since 2026-07-29 and printed "[DISABLED]"; the 4 leftover cells stayed
+leftover either way.
+
+**Kept, deliberately:** `_neighborhood_search` and the amygdala/EC boundary pass
+inside step 4. That pass is *not* the intent rescue — it is purely
+coordinate-based (reassign Amygdala -> EC when Juelich entorhinal is within 3 mm)
+and the amygdala pass calls the helper. It currently reassigns 0 cells, but it is
+live, principled code, not dead weight. `rescue_dist_mm` is retained because it
+records that pass and step 5 reads it.
+
+**Glass-brain plotting moved to `mc/plotting/cell_results.glass_brain_cells()`**
+with module constants `GLASS_MARKER_SIZE`, `GLASS_DISPLAY_MODE`, `GLASS_DPI`,
+`GLASS_FIGSIZE`, `GLASS_DEFAULT_COLOUR`. Four of the nine figures now call it
+(leftover scatter, per-hint leftovers, master ROI plot, per-ROI atlas overlay, and
+the reusable `_master_plot`). The remaining figures build bespoke contour legends;
+they now take their marker size and colours from the same constants rather than
+hardcoding them.
+
+**⚠ Corrected a palette conflict.** `mc/plotting/cell_results._EXTRA_ROI_COLORS`
+had `HC_anterior = '#a30d6c'` (magenta) commented as a "CLAUDE.md override".
+CLAUDE.md actually assigns **#23677E to HC_anterior** and **#a30d6c to lOFC**, and
+`cell_to_roi_july26.py` followed CLAUDE.md. The module is now correct
+(HC_anterior teal, lOFC magenta) and completed with PHC and the non-target ROIs,
+so the script's local `ROI_COLORS` is derived from it instead of duplicating it.
+
+**This changes figure colours in three other scripts** that call `get_roi_colour`:
+`spatial_peaks_simple.py`, `roi_labelling_glassbrain_overview.py` and
+`mpfc_coord_shift_glassbrain.py`. Anterior hippocampus will render teal rather
+than magenta in those. Revert by swapping the two entries back if the published
+figures need to match the old colours.
+
+### 2026-08-28 — ⚠ the gradient analysis is running on stale coordinates
+
+`cell_gradient_master_table.py:279` reads `MNI_x/y/z` from the per-lag
+`per_cell_ALL_ROIs.csv`, not from `neurons_with_ROI_labels.csv`. Those coordinates
+are frozen at the per-lag **base** run (2026-06-30): `relabel_per_cell` rewrites the
+`roi` column only — it never touches coordinates. So the reload+relabel workflow
+that is correct for every ROI-grouped analysis is **wrong for the gradient**, which
+is about coordinates.
+
+Measured against the canonical table: **140 of 158 mPFC cells carry stale
+coordinates.**
+
+    session 52 (Utah)    6 cells   42.1 mm off -- still at the placeholder
+                                   (4.55, 29.50, -20.63) vs real (~3, ~19, +20.7);
+                                   the z sign flips
+    session  6           4 cells   10.4 mm
+    sessions 45, 46      5 cells    7.0 mm
+    sessions 43,44,49,
+             61,62,7,8,9          3.3-4.8 mm  (Baylor - stale from an earlier
+                                   coordinate change, not from this rebuild)
+
+Both the old (2026-08-22) and new (2026-08-28) gradient runs use the same stale
+source, so the old-vs-new comparison below is internally consistent but **neither
+reflects the corrected anatomy**.
+
+Old vs new gradient overlap (both on stale coordinates):
+
+    mPFC cells             155 -> 158
+    inside gradient mask    74 ->  72
+    ventral / dorsal      42/32 -> 42/30
+    PC1 median split     -13.81 -> -13.81 (unchanged)
+    ventral pooled lag      30° ->  30°   (unchanged)
+    dorsal  pooled lag      60° ->  60°   (unchanged)
+    fMRI theta at sites  25-126° -> 25-126°
+    recording sites          16 ->  15
+
+**Fix required before trusting any gradient number:** take coordinates in
+`cell_gradient_master_table.py` from `neurons_with_ROI_labels.csv` (join on
+subject + cell idx, as `relabel_per_cell` does) rather than from the per-cell lag
+CSV, which should supply only the lag statistics.
+
+### 2026-08-28 — gradient analysis fixed and re-run on canonical coordinates
+
+**Fix.** `cell_gradient_master_table.py` now refreshes `MNI_x/y/z` from
+`neurons_with_ROI_labels.csv` (join on subject + cell idx, the keys
+`relabel_per_cell` uses) via a new `refresh_coordinates()`, and raises rather than
+proceeding if any cell is unmatched. `CELL_TABLE` supplies the per-cell lag
+statistics only. Measured refresh: 158 mPFC cells, median shift 3.32 mm, max
+43.1 mm, **143 cells moved > 1 mm**.
+
+**`harmonic_maps_brain_overlay.py` checked and found correct** — it already maps
+`MNI_*_final` onto `MNI_*` at load (lines 396-397). No change needed.
+
+**Result (`cell_gradient_master/2026-08-28_15-19-35`):**
+
+    run                      mPFC  in_mask  ventral  dorsal  vent_lag  dors_lag  sites
+    paper / pre-rebuild       155       74       42      32       30        60      16
+    new ROIs, stale coords    158       72       42      30       30        60      15
+    new ROIs, FIXED coords    158       87       48      39       30        60      19
+
+**The ventral-to-dorsal progression is unchanged: ventral 30°, dorsal 60°.** With
+correct coordinates it now rests on more cells and more recording sites, not fewer.
+
+Peak strengths shift: ventral r 0.059 -> 0.079, dorsal r 0.125 -> 0.081. The fMRI
+gradient angle range sampled by the cells widens at the low end, 25-126° -> 5-120°.
+
+**Paper numbers to update:** "74/155 mPFC units overlap the gradient" -> **87/158**;
+"42 neurons at the ventral end and 32 slightly dorsal" -> **48 and 39**;
+"n = 16 recording sites" -> **19**. The median split boundary and the 30°/60°
+peaks stand.
+
+### 2026-08-28 — inferential test of the ventral/dorsal gradient split
+
+`scripts/gradient_split_stats.py`. Unit of inference is the recording site (87
+in-mask cells sit at only **19 distinct coordinates**); the permutation shuffles
+the ventral/dorsal label across sites and rebuilds the pooled profiles through the
+same code path.
+
+    pooled argmax difference   30 deg (30->60)   p = 0.37
+    pooled circular-mean diff  23 deg (29->53)   p = 0.47
+    circ-linear corr, angle vs axis position     r = 0.069, p = 0.88
+    circ-circ corr, cell pref vs fMRI at site    r = -0.079, p = 0.74
+
+Null argmax shift: median 0 deg, IQR 0-30 deg. A one-bin shift is the smallest
+non-zero difference the 12-lag grid allows and occurs by chance in ~1/3 of
+permutations. **The ventral/dorsal split is descriptive, not statistically
+supported.**
+
+Also: after the coordinate fix the fMRI gradient angle at the cells' own sites is
+**58 deg (ventral) vs 61 deg (dorsal)** — a 3 deg difference. The manuscript clause
+"consistent with the fMRI progression from 30-75 deg" is not supported at the cell
+locations; before the fix these read 71 deg and 100 deg, which is where the
+apparent correspondence came from.
+
+Counts to update: 74/155 -> **87/158** in mask; 16 -> **19** recording sites;
+42/32 -> **48/39** ventral/dorsal.
+
+Write-up incl. smoothness-index suggestions for Fig 3b:
+`docs/gradient_split_stats_and_smoothness.md`.
+
+### 2026-08-28 (addendum) — two corrections on the gradient stats
+
+**1. Tests against zero DO exist and are nominally significant.** I had tested only
+the ventral-vs-dorsal contrast. At each group's own peak, one-sided:
+ventral 30 deg r=0.079 t(47)=2.44 p=0.009 (cell) / t(11)=0.81 p=0.219 (site);
+dorsal 60 deg r=0.081 t(38)=2.21 p=0.017 (cell) / t(6)=2.24 p=0.033 (site).
+Caveats: testing at the argmax chosen from the same data is circular (Bonferroni
+over 12 lags takes ventral to p=0.11), and it does not test the progression claim.
+
+**2. The fMRI map DOES show a clear progression; my earlier number was wrong.**
+Angle by MNI z in the gradient mask runs 59 deg (z -5) -> 95 deg (z +10) ->
+158 deg (z +28) -> 333 deg (z +38), monotonic. My "58 vs 61 deg" came from the
+pipeline's per-cell lookup, which is a **single voxel** (SPHERE_RADIUS_MM = 0)
+averaged arithmetically rather than circularly. I quoted it without checking its
+derivation.
+
+The real issue is cell placement: ventral cells span z -4.6 to +4.1 (mean 0.8,
+12 sites), dorsal z +1.2 to +9.8 (mean 2.8, 7 sites) -- **2 mm apart with
+overlapping ranges**, sampling only the flattest ventral stretch. Recomputed with
+the pipeline's constants, all three sampling schemes give dorsal <= ventral:
+(a) COM vertex 52/46, (b) per-site vector mean 58/45, (c) mask voxels <=8mm 84/66.
+Likely because PC1 = [-0.04, -0.41, 0.91] mixes y and z, and the dorsal group has
+higher z but lower y.
+
+**Recommended claim (option d):** the units lie at z -5 to +10 where the map reads
+~60-95 deg, overlapping the immediate-future quarter (0-90 deg). Defensible;
+the ventral-vs-dorsal progression is not.
+
+### 2026-08-28 (addendum 2) — vs-zero tests stored, and the z-projection works
+
+**New:** `scripts/gradient_split_vs_zero.py` -> `gradient_split_vs_zero.csv`
+(cell / site / subject units x 12 lags + the pre-specified 30+60 window, one-sided
+vs zero, BH-FDR across the 2 groups and across the 12 lags).
+`scripts/gradient_fmri_z_projection.py` -> `fmri_angle_z_profile.csv`,
+`fmri_angle_by_group.csv`.
+
+Dorsal cluster is above zero at every unit (q = 0.033-0.067); ventral survives only
+at cell level and neither survives the 12-lag correction, so the peak-lag test
+should be reported as the pre-specified 30+60 window.
+
+**The z-projection recovers the correspondence.** Vector-mean angle across
+gradient-mask voxels per z-slab: 62 deg at z=-2 -> 71 (z=0) -> 82 (z=+2) ->
+89 (z=+4) -> 97 (z=+10). Read off at the groups: **ventral z=0.8 -> 70.5 deg,
+dorsal z=2.8 -> 81.6 deg** — an 11 deg progression in the predicted direction.
+
+This supersedes the earlier "58 vs 61 deg", which came from the pipeline's
+single-voxel lookup averaged arithmetically rather than circularly. Caveats: it is
+descriptive, not a test, and the z-ranges overlap. The fMRI range over the cells'
+z-span is **~70-97 deg**, not the 30-75 deg the manuscript states.
+
+### 2026-08-28 (addendum 3) — consolidated gradient results table
+
+**New:** `scripts/gradient_results_table.py` ->
+`<run>/final_splits/gradient_results_summary.csv`. One tidy long-format table
+holding every statistic quoted for Fig 3d, in three blocks:
+
+    contrast  the ventral-vs-dorsal tests (site-level permutation, seed 42).
+              These existed nowhere on disk before -- they had only ever run
+              interactively -- so they are now reproducible.
+    vs_zero   one-sided tests against zero at cell / site / subject level,
+              merged from gradient_split_vs_zero.csv
+    fmri_z    where each cluster sits on the fMRI gradient z-profile,
+              merged from fmri_angle_by_group.csv
+
+`scripts/gradient_split_stats.py` absorbed into it and deleted, so the contrast
+tests have a single home.
+
+Permutation values reproduce exactly from seed 42 (argmax p = 0.3722, circular
+mean p = 0.4673, circ-linear r = 0.0688 p = 0.8696, circ-circular r = -0.0787
+p = 0.7441).
+
+Gradient scripts now, in run order:
+    cell_gradient_master_table.py    per-cell master + canonical coordinates
+    cell_fMRI_angle_match.py         ventral/dorsal splits
+    gradient_split_vs_zero.py        vs-zero tests   -> gradient_split_vs_zero.csv
+    gradient_fmri_z_projection.py    fMRI z-profile  -> fmri_angle_*.csv
+    gradient_results_table.py        contrasts + merge -> gradient_results_summary.csv

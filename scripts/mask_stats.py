@@ -2,7 +2,7 @@
 """
 Compare two correction methods on a-priori mask:
   1. Voxel-level FDR (Benjamini-Hochberg, q < 0.05)
-  2. Permutation-based peak voxel FWE (sign-flip max-t, as in svc_loso_test.py)
+  2. Permutation-based peak voxel FWE (sign-flip max-t, as in mc.analyse.loso)
 
 Both applied to the joint voxel x TR search space.
 

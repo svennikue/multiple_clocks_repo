@@ -70,17 +70,18 @@ ROI_NAME_MAP = {
 #                         "2026-07-23_12-28-10_reload_from_2026-07-01_07-29-33_"
 #                         "reload_from_replot_no_rsa_cells_relabelled/"
 #                         "per_cell.csv")
+# >>> RERUN-CHECK: hardcoded upstream run dir -- update after re-running spatial_peaks_simple.py
 DEFAULT_PER_CELL_CSV = ("/Users/xpsy1114/Documents/projects/multiple_clocks/"
                         "data/ephys_humans/derivatives/group/"
                         "spatial_peaks_simple/"
-                        "2026-07-01_10-35-40_reload_from_2026-06-26_18-47-11_"
-                        "phase_resid_paired_fixedlag-final/"
+                        "2026-08-28_10-23-56_phase_resid_paired_fixedlag/"
                         "per_cell.csv")
+# >>> RERUN-CHECK: hardcoded upstream run dir -- update after re-running per_lag_encoding.py
 DEFAULT_PER_LAG_CSV = ("/Users/xpsy1114/Documents/projects/multiple_clocks/"
                        "data/ephys_humans/derivatives/group/"
                        "per_lag_encoding/"
-                       "2026-08-04_07-25-15_reload_from_2026-06-30_18-21-57_"
-                       "relabelled/per_cell_ALL_ROIs.csv")
+                       "2026-08-28_10-18-21_reload_from_2026-06-30_18-21-57_relabelled/"
+                       "per_cell_ALL_ROIs.csv")
 
 
 LAGS_DEG_BASE = list(range(0, 360, 30))    # 12 lags used in spatial_peaks

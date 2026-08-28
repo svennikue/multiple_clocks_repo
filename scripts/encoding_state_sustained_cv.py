@@ -141,7 +141,7 @@ OUT_BASE = os.path.join(DATA_DIR, "group", "encoding_state_sustained_cv")
 ROI_TABLE_PATH = os.path.join(DATA_DIR, "neurons_with_ROI_labels.csv")
 
 # FLAG ADDED — reload a previous run's per-cell CSV instead of recomputing.
-RELOAD_OLD_RESULTS = None #'2026-06-25_14-38-13'
+RELOAD_OLD_RESULTS = '2026-08-17_08-41-10'
 
 # Reload-time ROI relabelling. Point at the fresh neurons ROI table (with
 # an `alt_final_roi` column) to overwrite the per-cell `roi` column on

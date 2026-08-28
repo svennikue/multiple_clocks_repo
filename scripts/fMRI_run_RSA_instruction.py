@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 """
 Created on Sat Jul  4 07:36:34 2026
-
 Instruction-phase searchlight RSA, run separately for every second of the
 instruction period. Per subject, per TR, per model: one whole-brain beta map.
-
 RQ
+
+
 ------------
 Is the action plan assembled BEFORE any action is executed? The task was
 designed so that each layout is instructed once forwards and once backwards
@@ -54,7 +54,8 @@ subjects and stacked into
     group_RSA_instruction_per_TR_glmbase_01-TR{tr}_cropped/
         cropped_masked_smooth_fwhm5_{model}_beta_std.nii   (X, Y, Z, n_subj)
 Group inference for the reported instruction-phase result is then done by
-`scripts/svc_loso_test.py`: a max-t sign-flip permutation test inside an
+`scripts/per_TR_loso.py` (statistics in `mc.analyse.loso`): a max-t
+sign-flip permutation test inside an
 a-priori BA32 / medial BA9 / medial BA10 mask, correcting over voxels and
 seconds jointly, plus a leave-one-subject-out cross-validated timecourse.
 
@@ -210,6 +211,40 @@ def _lower_tri_flat(mat):
     return mat[i, j]
 
 
+def within_half_mask(n_pairs):
+    """Boolean over the strict lower triangle of the (2n, 2n) block RDM, True
+    for the WITHIN-half cells (the W1 and W2 blocks), False for across-half.
+
+    Ordering matches `_lower_tri_flat`, so the same mask selects the matching
+    cells of a model regressor and of a data RDM built in 'full_no_diag' mode.
+
+    This is what `data_rdm_scope = 'within_only'` keeps. It exists because the
+    across-half block is where the instruction models are degenerate (across
+    halves the same task is instructed in the reverse order, so every
+    across-half cell is a mismatch and the block is constant at 1.0). Keeping
+    only within-half cells removes the within/across contrast entirely, so no
+    regressor can absorb the run-level similarity offset between the two
+    blocks -- and it retains the pair the design was built around: within a
+    half, the two directions of one task saw the SAME instruction (instruction
+    dissim 0) but execute REVERSED sequences (execution dissim 1)."""
+    N = 2 * n_pairs
+    blk = np.zeros((N, N))
+    blk[:n_pairs, n_pairs:] = 1
+    blk[n_pairs:, :n_pairs] = 1
+    return _lower_tri_flat(blk) == 0
+
+
+def within_half_mask_2d(n_pairs):
+    """(2n, 2n) boolean, True for the two WITHIN-half blocks. Display companion
+    to `within_half_mask`, which returns the same selection over the flattened
+    strict lower triangle."""
+    N = 2 * n_pairs
+    m = np.zeros((N, N), dtype=bool)
+    m[:n_pairs, :n_pairs] = True
+    m[n_pairs:, n_pairs:] = True
+    return m
+
+
 def assemble_full_rdm_from_blocks(W1, A, W2):
     """Build the (n1+n2, n1+n2) block RDM from three (n,n) blocks:
 
@@ -230,6 +265,39 @@ def assemble_full_rdm_from_blocks(W1, A, W2):
     R[:n1, n1:] = A
     R[n1:, :n1] = A.T
     R[n1:, n1:] = W2
+    return R
+
+
+BLOCK_NUISANCE = 'block'
+
+
+def build_block_nuisance_RDM(n_pairs):
+    """(2n, 2n) indicator: 1 for across-task-half cells, 0 for within-half.
+
+    Why this is needed in 'full_no_diag'. Within-half pairs share run-level
+    noise and come out systematically MORE similar than across-half pairs --
+    measured on sub-02 TR4, mean cosine dissimilarity 0.828 within vs 0.863
+    across, in 89% of searchlights. Any regressor correlated with the
+    within/across split therefore gets a large beta everywhere for a reason
+    that has nothing to do with the model it encodes.
+
+    The instruction models are exactly such regressors: across halves the same
+    task is instructed in the reverse order, so their across-half block is
+    constant at 1.0 while their within-half block averages 0.711 -- r = +0.42
+    to +0.54 with this indicator. The execution models lean the other way
+    (r = -0.13 to -0.17). That is what put every instruction t-map at a mean of
+    +2.07 (97% of voxels positive) and every execution t-map at -1.04.
+
+    Including this indicator as a nuisance regressor absorbs the offset so the
+    real regressors compete only for the residual structure. It does NOT make
+    the instruction models clean: with the offset removed, 100% of an
+    instruction regressor's remaining variance still lies in within-half cells
+    (execution keeps 67-79% across-half), because the design gives instruction
+    similarity no across-half variance at all."""
+    N = 2 * n_pairs
+    R = np.zeros((N, N))
+    R[:n_pairs, n_pairs:] = 1
+    R[n_pairs:, :n_pairs] = 1
     return R
 
 
@@ -272,6 +340,40 @@ def slice_rewDSR_into_split_channels(model_EVs, EV_keys, use_instruction=False):
         out[name] = (th1_full[:, i * CHUNK:(i + 1) * CHUNK],
                      th2_full[:, i * CHUNK:(i + 1) * CHUNK])
     return out
+
+def design_rank_report(names, X):
+    """Report on a design that `evaluate_model` would silently fail on.
+
+    `evaluate_model_vec` zeroes a constant regressor column and returns NaN
+    for EVERY regressor when the (NaN-dropped, z-scored) design is
+    rank-deficient. `save_my_RSA_results` then writes those NaNs out as an
+    all-zero map with no error anywhere — so this has to be caught before the
+    OLS runs. Two things trigger it with these models:
+      * any `_instr` model in 'across_only' scope — the instruction RDM is
+        constant across task halves by design (both halves saw the same
+        sequence in opposite order, so every across-half cell is a mismatch),
+        so it carries no variance there and needs 'full_no_diag';
+      * a combo whose regressors are collinear on the rows surviving the NaN
+        drop — e.g. ['rewDSR', 'simple'], which correlate at r = 1.0 on the
+        30 cells where `simple` is not NaN.
+
+    Returns (ok, message)."""
+    X = np.asarray(X, dtype=float)
+    if X.ndim == 1:
+        X = X.reshape(-1, 1)
+    Xa = np.column_stack([np.ones(X.shape[0]), X])
+    fin = np.isfinite(Xa).all(axis=1)
+    Z = Xa[fin]
+    for c in range(1, Z.shape[1]):
+        sd = Z[:, c].std()
+        Z[:, c] = (Z[:, c] - Z[:, c].mean()) / sd if sd > 0 else 0.0
+    const = [n for i, n in enumerate(names) if Z[:, i + 1].std() == 0]
+    rank = int(np.linalg.matrix_rank(Z.T @ Z))
+    ok = rank == Z.shape[1]
+    msg = (f"{int(fin.sum())}/{X.shape[0]} rows finite, rank {rank}/{Z.shape[1]}"
+           + (f", constant: {const}" if const else ""))
+    return ok, msg
+
 
 #
 #
@@ -325,9 +427,17 @@ PLOTTING = True
 #                   noise → within-run pairs tend to look more similar than
 #                   across-run pairs at the same true stimulus similarity;
 #                   this bias is known but not corrected here.
+# 'within_only'   : the strict lower triangle of the two WITHIN-half blocks
+#                   only. Built from the same (2n x 2n) matrix as
+#                   'full_no_diag' and then subset, so it reuses the same
+#                   cached data RDM. Use this for instruction-similarity
+#                   questions: the across-half block carries no instruction
+#                   information (constant by design) and its similarity offset
+#                   against the within-half block is what biases every
+#                   instruction regressor upward in 'full_no_diag'.
 data_rdm_scope = config.get("data_rdm_scope", "across_only")
-assert data_rdm_scope in ("across_only", "full_no_diag"), (
-    f"data_rdm_scope must be 'across_only' or 'full_no_diag' "
+assert data_rdm_scope in ("across_only", "full_no_diag", "within_only"), (
+    f"data_rdm_scope must be 'across_only', 'full_no_diag' or 'within_only' "
     f"— got {data_rdm_scope!r}")
 print(f"data_rdm_scope = {data_rdm_scope}")
 
@@ -419,6 +529,10 @@ for sub in subjects:
     # Labels aligned with data pairing (row -> TH1 label, col -> TH2 label).
     th1_labels = [p.split(' with ')[0].replace('_instruction_onset', '') for p in paired_labels]
     th2_labels = [p.split(' with ')[1].replace('_instruction_onset', '') for p in paired_labels]
+    # Cells of the (2n, 2n) strict lower triangle that are WITHIN-half. Used to
+    # subset both the model regressors and the cached data RDM when
+    # data_rdm_scope == 'within_only'.
+    within_mask = within_half_mask(len(th1_labels))
 
     model_RDM_dir = {}
     # In 'full_no_diag' mode we additionally store the assembled (2n, 2n)
@@ -466,7 +580,7 @@ for sub in subjects:
             a_rew_keys = [k.replace('_instruction_onset', '_A_reward') for k in EV_keys]
             m_th1, m_th2, _ = pair_correct_tasks(a_rew_sub, a_rew_keys)
         model_RDM_dir[model] = mc.analyse.my_RSA.compute_hamming_instruction_RDM(m_th1, m_th2)
-        if data_rdm_scope == 'full_no_diag':
+        if data_rdm_scope in ('full_no_diag', 'within_only'):
             W1 = mc.analyse.my_RSA.compute_hamming_instruction_RDM(m_th1, m_th1)
             W2 = mc.analyse.my_RSA.compute_hamming_instruction_RDM(m_th2, m_th2)
             model_RDM_full_dir[model] = assemble_full_rdm_from_blocks(
@@ -475,10 +589,63 @@ for sub in subjects:
     # Simple — {-1, +1, NaN} based on same/different execution within the same task letter.
     if 'simple' in selected_models:
         model_RDM_dir['simple'] = mc.analyse.my_RSA.build_simple_instruction_RDM(th1_labels, th2_labels)
-        if data_rdm_scope == 'full_no_diag':
+        if data_rdm_scope in ('full_no_diag', 'within_only'):
             all_labels = th1_labels + th2_labels
             model_RDM_full_dir['simple'] = mc.analyse.my_RSA.build_simple_instruction_RDM(
                 all_labels, all_labels)
+
+    # Block nuisance regressor. Available as the reserved name 'block' in any
+    # combo; `add_block_nuisance: true` in the config appends it to every combo
+    # automatically so it cannot be forgotten in one of them.
+    add_block_nuisance = config.get("add_block_nuisance", False)
+    combo_cfg = config.get("combo_models", [])
+    if add_block_nuisance:
+        for combo in combo_cfg:
+            if BLOCK_NUISANCE not in combo["regressors"]:
+                combo["regressors"] = list(combo["regressors"]) + [BLOCK_NUISANCE]
+    _block_wanted = (BLOCK_NUISANCE in selected_models or
+                     any(BLOCK_NUISANCE in c["regressors"] for c in combo_cfg))
+    if _block_wanted:
+        assert data_rdm_scope == "full_no_diag", (
+            "the 'block' nuisance regressor only exists in 'full_no_diag' scope "
+            "-- in 'across_only' every cell is across-half and in 'within_only' "
+            "every cell is within-half, so it is constant either way and the "
+            "design would be rank-deficient. In 'within_only' it is also "
+            "unnecessary: there is no block contrast left to absorb.")
+        n_pairs = len(th1_labels)
+        model_RDM_full_dir[BLOCK_NUISANCE] = build_block_nuisance_RDM(n_pairs)
+        # keep the (n, n) across block too, so the combo `missing` check and the
+        # plotting path see it like any other model
+        model_RDM_dir[BLOCK_NUISANCE] = np.ones((n_pairs, n_pairs))
+        print(f"[block nuisance] added: {int(build_block_nuisance_RDM(n_pairs).sum())} "
+              f"across-half cells of {n_pairs*2}x{n_pairs*2}, "
+              f"appended to {sum(BLOCK_NUISANCE in c['regressors'] for c in combo_cfg)} "
+              f"combo model(s)")
+
+    def _model_regressor(m):
+        """The 1-D vector the OLS actually sees, for the current scope."""
+        if data_rdm_scope == "across_only":
+            return np.asarray(model_RDM_dir[m]).ravel()
+        flat = _lower_tri_flat(model_RDM_full_dir[m])
+        return flat[within_mask] if data_rdm_scope == "within_only" else flat
+
+    def _display_RDM(model):
+        """(matrix, row labels, col labels, caption) for plotting.
+
+        Shows the cells that ENTER THE OLS for the current scope; anything
+        excluded is NaN, which `plot_instruction_RDM` renders white. Plotting
+        the (n, n) across block regardless of scope -- as this script used to --
+        is misleading in 'within_only', where that block is not fitted at all
+        and is a constant 1.0 for every instruction model."""
+        if data_rdm_scope == "across_only":
+            return (np.asarray(model_RDM_dir[model], dtype=float),
+                    th1_labels, th2_labels, "across block (TH1 x TH2)")
+        M = np.array(model_RDM_full_dir[model], dtype=float)
+        all_lab = th1_labels + th2_labels
+        if data_rdm_scope == "within_only":
+            M[~within_half_mask_2d(len(th1_labels))] = np.nan
+            return M, all_lab, all_lab, "within-half only; white = not fitted"
+        return M, all_lab, all_lab, "full 2n x 2n (W1 | A | W2)"
 
     # ── Instruction-model verification + correlation with execution ──────
     # For every model ending in `_instr`, verify the 2x2 sub-block
@@ -488,11 +655,17 @@ for sub in subjects:
     # two RDMs so you can see how much variance they share.
     instr_models_present = [m for m in selected_models if m.endswith(INSTR_SUFFIX)]
     for im in instr_models_present:
-        rdm = np.asarray(model_RDM_dir[im])
-        block_df, all_uniform = verify_instruction_rdm_blocks(
-            rdm, th1_labels, th2_labels)
-        print(f"\n[instr-model verify] {im}: RDM shape = {rdm.shape}, "
-              f"all 2x2 blocks uniform = {all_uniform}")
+        # Verify on the matrix that is actually fitted. The 2x2 uniformity
+        # property is a statement about the across block; in 'within_only' the
+        # meaningful check is on the assembled matrix instead, so report which.
+        if data_rdm_scope == "across_only":
+            rdm, rlab, clab = np.asarray(model_RDM_dir[im]), th1_labels, th2_labels
+        else:
+            rdm = np.asarray(model_RDM_full_dir[im])
+            rlab = clab = th1_labels + th2_labels
+        block_df, all_uniform = verify_instruction_rdm_blocks(rdm, rlab, clab)
+        print(f"\n[instr-model verify, scope={data_rdm_scope}] {im}: "
+              f"RDM shape = {rdm.shape}, all 2x2 blocks uniform = {all_uniform}")
         with pd.option_context('display.width', 200,
                                 'display.max_rows', 100):
             print(block_df.round(4).to_string(index=False))
@@ -502,14 +675,11 @@ for sub in subjects:
         # ravel'd (n, n) A block, which is exactly the regressor the OLS sees.
         base_name = im[:-len(INSTR_SUFFIX)]
         if base_name in model_RDM_dir:
-            if data_rdm_scope == 'full_no_diag' and base_name in model_RDM_full_dir:
-                exec_flat = _lower_tri_flat(model_RDM_full_dir[base_name])
-                instr_flat = _lower_tri_flat(model_RDM_full_dir[im])
-                scope_note = "full lower-tri"
-            else:
-                exec_flat = np.asarray(model_RDM_dir[base_name]).ravel()
-                instr_flat = np.asarray(model_RDM_dir[im]).ravel()
-                scope_note = "across block"
+            # Always over the vectors the OLS sees -- otherwise the number
+            # printed describes cells that are not being fitted.
+            exec_flat = _model_regressor(base_name)
+            instr_flat = _model_regressor(im)
+            scope_note = data_rdm_scope
             m = np.isfinite(exec_flat) & np.isfinite(instr_flat)
             r_pearson = float(np.corrcoef(exec_flat[m], instr_flat[m])[0, 1])
             print(f"[correlation, {scope_note}] {base_name} (execution) vs {im} "
@@ -529,16 +699,11 @@ for sub in subjects:
                 vmin, vmax, title = -1, 1, 'simple execution dissim'
             else:
                 vmin, vmax, title = 0, 1, f'{model} A_reward hamming dissim'
-            mc.analyse.my_RSA.plot_instruction_RDM(model_RDM_dir[model], th1_labels, th2_labels,
-                                                   title=title, vmin=vmin, vmax=vmax,
-                                                   save_path=f"{results_dir}_{model}")
-            if data_rdm_scope == "full_no_diag" and model in model_RDM_full_dir:
-                all_labels = th1_labels + th2_labels
-                mc.analyse.my_RSA.plot_instruction_RDM(
-                    model_RDM_full_dir[model], all_labels, all_labels,
-                    title=f'{title} (full 2n x 2n, W1|A|W2)',
-                    vmin=vmin, vmax=vmax,
-                    save_path=f"{results_dir}_{model}_full")
+            M, rlab, clab, caption = _display_RDM(model)
+            mc.analyse.my_RSA.plot_instruction_RDM(
+                M, rlab, clab, title=f'{title}\n{caption}',
+                vmin=vmin, vmax=vmax,
+                save_path=f"{results_dir}_{model}_{data_rdm_scope}")
 
         # Optional inspection plot: cosine dissim from one random searchlight.
         plot_example_data_RDM = config.get("plot_example_data_RDM", False)
@@ -548,18 +713,25 @@ for sub in subjects:
             vox_ids = np.asarray(neighbors[sl_idx])
             sl_data = data_concat[:, vox_ids]
             n_conds = sl_data.shape[0] // 2
-            example_data_RDM = mc.analyse.my_RSA.compute_cosine_instruction_RDM(sl_data[:n_conds], sl_data[n_conds:])
+            # Same convention as the model figures: show the cells that enter
+            # the OLS for this scope, white out the rest.
+            if data_rdm_scope == "across_only":
+                ex = mc.analyse.my_RSA.compute_cosine_instruction_RDM(
+                    sl_data[:n_conds], sl_data[n_conds:])
+                rlab, clab, caption = th1_labels, th2_labels, "across block (TH1 x TH2)"
+            else:
+                ex = np.array(mc.analyse.my_RSA.compute_cosine_instruction_RDM(
+                    sl_data, sl_data), dtype=float)
+                rlab = clab = th1_labels + th2_labels
+                if data_rdm_scope == "within_only":
+                    ex[~within_half_mask_2d(len(th1_labels))] = np.nan
+                    caption = "within-half only; white = not fitted"
+                else:
+                    caption = "full 2n x 2n (W1 | A | W2)"
             mc.analyse.my_RSA.plot_instruction_RDM(
-                example_data_RDM, th1_labels, th2_labels,
-                title=f'example data RDM (searchlight #{sl_idx}, cosine dissim)', save_path=f"{results_dir}_data"
-            )
-            if data_rdm_scope == "full_no_diag":
-                example_full = mc.analyse.my_RSA.compute_cosine_instruction_RDM(sl_data, sl_data)
-                all_labels = th1_labels + th2_labels
-                mc.analyse.my_RSA.plot_instruction_RDM(
-                    example_full, all_labels, all_labels,
-                    title=f'example FULL data RDM (searchlight #{sl_idx})',
-                    save_path=f"{results_dir}_data_full")
+                ex, rlab, clab,
+                title=f'example data RDM (searchlight #{sl_idx}, cosine dissim)\n{caption}',
+                save_path=f"{results_dir}_data_{data_rdm_scope}")
     
         plt.show(block=False)
     
@@ -596,6 +768,14 @@ for sub in subjects:
                 path_to_save=path_to_save_smooth, centers=centers)
         else:
             data_RDMs = np.load(smooth_npy)
+    if data_rdm_scope == "within_only":
+        # 'within_only' reads the SAME `_full` cache as 'full_no_diag' and keeps
+        # the within-half columns, so switching scope costs no recomputation.
+        assert data_RDMs.shape[1] == within_mask.size, (
+            f"cached data RDM has {data_RDMs.shape[1]} cells but the within-half "
+            f"mask expects {within_mask.size}")
+        data_RDMs = data_RDMs[:, within_mask]
+
     print(f"[data RDM] scope={data_rdm_scope}, cells per searchlight = {data_RDMs.shape[1]}")
 
     #
@@ -607,10 +787,29 @@ for sub in subjects:
     # matches the current data RDM layout — full ravel of the (n, n) A block
     # in 'across_only' mode, strict lower-tri of the (2n, 2n) full block in
     # 'full_no_diag' mode.
-    def _model_regressor(m):
-        if data_rdm_scope == "across_only":
-            return np.asarray(model_RDM_dir[m]).ravel()
-        return _lower_tri_flat(model_RDM_full_dir[m])
+    # Pre-flight: every design that is about to be fitted must be full rank,
+    # otherwise the OLS returns NaN and the maps are written as all-zero.
+    # Checked here, once, before any searchlight OLS runs.
+    print("\n=== design checks ===")
+    bad = []
+    _to_check = [(f"single '{m}'", [m]) for m in selected_models]
+    _to_check += [(f"combo '{c['name']}'", c["regressors"])
+                  for c in config.get("combo_models", [])
+                  if config.get("run_combo_models", bool(config.get("combo_models")))]
+    for label, regs in _to_check:
+        ok, msg = design_rank_report(
+            regs, np.stack([_model_regressor(m) for m in regs], axis=1))
+        print(f"  {'OK  ' if ok else 'FAIL'} {label:44s} {msg}")
+        if not ok:
+            bad.append(f"{label}: {msg}")
+    if bad:
+        raise ValueError(
+            "Rank-deficient design(s) — evaluate_model would return NaN for "
+            "every regressor and the saved maps would be all-zero:\n  "
+            + "\n  ".join(bad)
+            + f"\n(current data_rdm_scope = {data_rdm_scope!r}; instruction "
+              "models carry no variance in the across-half block and need "
+              "'full_no_diag')")
 
     RSA_results = {}
     run_single_models = config.get("run_single_models", True)
@@ -630,7 +829,7 @@ for sub in subjects:
     # import pdb; pdb.set_trace()
     run_combo_models = config.get("run_combo_models", bool(config.get("combo_models")))
     if run_combo_models:
-        combo_list = config["combo_models"]
+        combo_list = combo_cfg
         for combo in combo_list:
             combo_model_name = combo["name"]
             models_to_combine = combo["regressors"]

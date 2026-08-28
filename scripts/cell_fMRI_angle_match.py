@@ -143,9 +143,10 @@ mpl.rcParams['font.size'] = 9
 mpl.rcParams['pdf.fonttype'] = 42
 
 # ── Paths (defaults; override with --master-csv / --out) ─────────────
+# >>> RERUN-CHECK: hardcoded upstream run dir -- update after re-running cell_gradient_master_table.py
 MASTER_DIR = Path(
     '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_humans'
-    '/derivatives/group/cell_gradient_master/2026-08-22_12-18-21'
+    '/derivatives/group/cell_gradient_master/2026-08-28_15-19-35' #2026-08-22_12-18-21
 )
 DEFAULT_MASTER_CSV = MASTER_DIR / 'per_cell_master.csv'
 DEFAULT_OUT = MASTER_DIR / 'final_splits'

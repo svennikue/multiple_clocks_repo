@@ -1,0 +1,55 @@
+{
+  "name_of_RSA": "within_th_only_intr-vs-exe",
+  "load_EVs_from": "DSR_loc-fut-rews-state-dur-type",
+  "regression_version": "01",
+  "TR": 5,
+  "smoothing": false,
+  "fwhm": 5,
+  "searchlight_mask": "grey_matter",
+  "data_rdm_scope": "within_only",
+  "run_single_models": true,
+  "run_combo_models": true,
+  "selected_models": [
+    "rewDSR",
+    "rewDSR_instr",
+    "curr_rew",
+    "curr_rew_instr",
+    "next_rew",
+    "next_rew_instr",
+    "two_next_rew",
+    "two_next_rew_instr",
+    "three_next_rew",
+    "three_next_rew_instr"
+  ],
+  "combo_models": [
+    {
+      "name": "rewDSR_vs_instr",
+      "regressors": [
+        "rewDSR",
+        "rewDSR_instr"
+      ]
+    },
+    {
+      "name": "instr_split",
+      "regressors": [
+        "curr_rew_instr",
+        "next_rew_instr",
+        "two_next_rew_instr",
+        "three_next_rew_instr"
+      ]
+    },
+    {
+      "name": "splitDSR_vs_instr",
+      "regressors": [
+        "curr_rew",
+        "curr_rew_instr",
+        "next_rew",
+        "next_rew_instr",
+        "two_next_rew",
+        "two_next_rew_instr",
+        "three_next_rew",
+        "three_next_rew_instr"
+      ]
+    }
+  ]
+}

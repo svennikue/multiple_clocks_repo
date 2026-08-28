@@ -60,11 +60,22 @@ from nilearn.image import new_img_like, smooth_img
 # ---------------------------------------------------------------------
 # Settings & paths
 # ---------------------------------------------------------------------
+# `CELL_TABLE` supplies the per-cell LAG STATISTICS only. Its MNI columns are
+# frozen at the per-lag *base* run, because `relabel_per_cell` refreshes the
+# `roi` column and nothing else -- so on 2026-08-28 they were up to 43 mm stale
+# (session 52 still carried the retired placeholder coordinate). Coordinates are
+# therefore taken from ROI_TABLE, the canonical anatomy table written by
+# scripts/cell_to_roi_july26.py.
+# >>> RERUN-CHECK: hardcoded upstream run dir -- update after re-running per_lag_encoding.py
 CELL_TABLE = Path(
     '/Users/xpsy1114/Documents/projects/multiple_clocks/data'
     '/ephys_humans/derivatives/group/per_lag_encoding'
-    '/2026-08-04_07-25-15_reload_from_2026-06-30_18-21-57_relabelled-final'
+    '/2026-08-28_10-18-21_reload_from_2026-06-30_18-21-57_relabelled'
     '/per_cell_ALL_ROIs.csv'
+)
+ROI_TABLE = Path(
+    '/Users/xpsy1114/Documents/projects/multiple_clocks/data'
+    '/ephys_humans/derivatives/neurons_with_ROI_labels.csv'
 )
 HARMONIC_ROOT = Path(
     '/Users/xpsy1114/Documents/projects/multiple_clocks/data'
@@ -267,9 +278,51 @@ def group_preference(profiles, subjects, weighting, rng):
 # ---------------------------------------------------------------------
 # Build the master per-cell table
 # ---------------------------------------------------------------------
+def refresh_coordinates(cells, roi_table=ROI_TABLE, verbose=True):
+    """Replace the per-cell CSV's MNI columns with the canonical ones.
+
+    Joined on (subject, cell idx) -- the same keys
+    `mc.analyse.roi_relabel.relabel_per_cell` uses. Fails loudly rather than
+    silently keeping stale coordinates: the gradient analysis is entirely about
+    where a cell sits, so a stale coordinate is not a cosmetic problem.
+    """
+    t = pd.read_csv(roi_table)[['subject', 'cell idx',
+                                'MNI_x_final', 'MNI_y_final', 'MNI_z_final']]
+    t.columns = ['subject_id', 'cell_idx', '_x', '_y', '_z']
+    t['subject_id'] = t['subject_id'].astype(str)
+    t['cell_idx'] = pd.to_numeric(t['cell_idx'], errors='coerce')
+    if t.duplicated(['subject_id', 'cell_idx']).any():
+        raise ValueError(f'{roi_table} has duplicate (subject, cell idx) keys')
+
+    out = cells.copy()
+    out['subject_id'] = out['subject_id'].astype(str)
+    out['cell_idx'] = pd.to_numeric(out['cell_idx'], errors='coerce')
+    out = out.merge(t, on=['subject_id', 'cell_idx'], how='left')
+
+    missing = int(out['_x'].isna().sum())
+    if missing:
+        raise ValueError(
+            f'{missing} of {len(out)} cells have no row in {roi_table.name}; '
+            'the per-cell table and the anatomy table are out of sync.')
+
+    shift = np.linalg.norm(
+        out[['MNI_x', 'MNI_y', 'MNI_z']].to_numpy(float)
+        - out[['_x', '_y', '_z']].to_numpy(float), axis=1)
+    for c in 'xyz':
+        out[f'MNI_{c}'] = out[f'_{c}']
+    out = out.drop(columns=['_x', '_y', '_z'])
+    if verbose:
+        print(f'  coordinates refreshed from {roi_table.name}: '
+              f'{len(out)} cells, median shift {np.nanmedian(shift):.2f} mm, '
+              f'max {np.nanmax(shift):.1f} mm, '
+              f'{int((shift > 1).sum())} cells moved > 1 mm')
+    return out
+
+
 def build_master():
     src = pd.read_csv(CELL_TABLE)
     cells = src[src.roi == CELL_ROI].copy()
+    cells = refresh_coordinates(cells)
     prof_cols = [f'r_lag{a:03d}_noctrl' for a in LAGS_DEG]
     R = cells[prof_cols].to_numpy(float)
     keep = np.isfinite(R).any(1)

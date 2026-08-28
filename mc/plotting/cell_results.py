@@ -125,8 +125,20 @@ ROI_COLORS_SHOWGIRL2 = {
 
 # Colours that sit outside the Showgirl2 palette.
 _EXTRA_ROI_COLORS = {
-    'HC_anterior': '#a30d6c',   # magenta (CLAUDE.md override)
-    'PHC':         '#23677E',   # teal    (CLAUDE.md override)
+    # CLAUDE.md assigns #23677E to HC_anterior and #a30d6c to lOFC. This
+    # module previously had those two swapped (HC_anterior was magenta),
+    # which disagreed with the project standard and with
+    # scripts/cell_to_roi_july26.py. Corrected 2026-08-28.
+    'HC_anterior': '#23677E',   # teal
+    'lOFC':        '#a30d6c',   # magenta
+    'PHC':         '#7BB594',   # Showgirl2 index 5 (defined below)
+    # Non-target ROIs: reported by the anatomy pipeline but not analysed.
+    'Visual':      '#bdbdbd',
+    'Thalamus':    '#7d3c98',
+    'Amygdala':    '#e67e22',
+    'medial_CC':   '#4a4a4a',
+    'Insula':      '#1abc9c',
+    'leftover':    '#888888',
 }
 
 
@@ -3604,3 +3616,95 @@ def plot_roi_lag_curves(curves_per_roi, lags_deg,
         _save_pdf_png(fig, save_stem)
         return None
     return fig, axes
+
+
+# =============================================================================
+# GLASS-BRAIN CELL SCATTERS
+# =============================================================================
+# Single place to define how recorded units are drawn on a glass brain, so the
+# marker size, projection and DPI are consistent across every figure in the
+# anatomy pipeline (`scripts/cell_to_roi_july26.py`) rather than repeated at
+# each call site. ROI colours come from `get_roi_colour`, i.e. the CLAUDE.md
+# Showgirl2 mapping.
+
+GLASS_DISPLAY_MODE = "lyrz"      # left / sagittal-y / right / axial-z
+GLASS_MARKER_SIZE = 40
+GLASS_DPI = 200
+GLASS_FIGSIZE = (14, 4)
+GLASS_DEFAULT_COLOUR = "#0e3d3a"  # dark green, CLAUDE.md "observed value"
+
+
+def glass_brain_cells(groups, out_path=None, title=None,
+                      marker_size=GLASS_MARKER_SIZE, dpi=GLASS_DPI,
+                      figsize=GLASS_FIGSIZE, display_mode=GLASS_DISPLAY_MODE,
+                      legend=False, legend_loc="lower right",
+                      legend_ncol=1, legend_bbox=None, contours=None,
+                      also_pdf=False, fig=None, close=True):
+    """Scatter one or more groups of MNI coordinates on a glass brain.
+
+    Parameters
+    ----------
+    groups : sequence of (label, coords) or (label, coords, colour), or a
+        mapping {label: coords}. `coords` is an (N, 3) array of MNI152 mm
+        coordinates. When no colour is given the ROI colour is looked up with
+        `get_roi_colour(label)`; a label that is not an ROI falls back to
+        `GLASS_DEFAULT_COLOUR`.
+    out_path : path to write. `.png` is written at `dpi`; with `also_pdf` a
+        sibling `.pdf` is written too. None -> nothing is saved.
+    legend : draw a legend keyed by group label.
+    contours : optional sequence of (img, colour) drawn under the markers,
+        e.g. an atlas mask outline.
+
+    Returns the matplotlib figure (already closed unless `close=False`).
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    from nilearn.plotting import plot_glass_brain
+
+    if isinstance(groups, dict):
+        groups = list(groups.items())
+
+    if fig is None:
+        fig = plt.figure(figsize=figsize)
+    gb = plot_glass_brain(None, display_mode=display_mode, figure=fig,
+                          title=title)
+
+    for img, ccol in (contours or []):
+        gb.add_contours(img, levels=[0.5], colors=ccol, linewidths=1.0)
+
+    handles = []
+    for entry in groups:
+        if len(entry) == 3:
+            label, coords, colour = entry
+        else:
+            label, coords = entry
+            colour = None
+        coords = np.asarray(coords, dtype=float)
+        if coords.ndim != 2 or coords.shape[0] == 0:
+            continue
+        coords = coords[~np.isnan(coords).any(axis=1)]
+        if coords.shape[0] == 0:
+            continue
+        if colour is None:
+            colour = get_roi_colour(label)
+            if colour == "#888888":
+                colour = GLASS_DEFAULT_COLOUR
+        gb.add_markers(coords, marker_color=colour, marker_size=marker_size)
+        handles.append(Line2D([0], [0], marker="o", linestyle="",
+                              markerfacecolor=colour, markeredgecolor="none",
+                              markersize=6, label=f"{label} (n={len(coords)})"))
+
+    if legend and handles:
+        fig.legend(handles=handles, loc=legend_loc, ncol=legend_ncol,
+                   bbox_to_anchor=legend_bbox, frameon=False, fontsize=8)
+
+    if out_path is not None:
+        out_path = str(out_path)
+        fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
+        if also_pdf:
+            stem = out_path.rsplit(".", 1)[0]
+            fig.savefig(f"{stem}.pdf", bbox_inches="tight")
+    if close:
+        plt.close(fig)
+    return fig

@@ -53,6 +53,17 @@ Outputs (into --out-dir):
     {mask}/{model}_loso_results.json   LOSO timecourse per k
     {mask}/{model}_loso_k{K}.npy       per-subject held-out beta x TR
     summary_table.csv                  one row per (mask, model)
+
+With --wholebrain, additionally (per model, for visualisation):
+    wholebrain/{model}_t.nii.gz                observed t, 4-D over TRs
+    wholebrain/{model}_1minusFWEp.nii.gz       1-p, FWE over whole brain x TRs
+    wholebrain/{model}_1minusp_uncorr.nii.gz   1-p, uncorrected
+    wholebrain/{model}_summary.json            peak stats
+    wholebrain_summary_table.csv               one row per model
+The whole-brain FWE null corrects over the entire brain mask and every
+included TR at once, so it is much stricter than the small-volume p above and
+the two must not be compared. The uncorrected map is for scrolling around the
+brain, not for claims.
 """
 import argparse, csv, glob, json, os, re, sys, time
 import numpy as np
@@ -107,6 +118,7 @@ def read_model_union(root, dir_pattern, model, trs, union_ijk):
 
 
 def adaptive_pblock(n_cols, max_elements=2e7):
+    """Permutations per block, so one block stays near `max_elements` floats."""
     return int(max(1, min(1000, max_elements // max(n_cols, 1))))
 
 
@@ -150,6 +162,43 @@ def voxel_fwe_p(T, nmt):
     return ((len(srt) - np.searchsorted(srt, T, side="left")) / len(srt)).astype(np.float32)
 
 
+def vol_from_cols(vals, fill, ref, ijk, n_tr):
+    """Scatter a (n_vox, n_tr) column array back into image space.
+
+    3-D when a single TR was analysed, 4-D (X, Y, Z, TR) when several were --
+    so the TR slider in fsleyes scrubs through the instruction period."""
+    ix, iy, iz = ijk
+    v = np.full(ref.shape[:3] + (n_tr,), fill, dtype=np.float32)
+    v[ix, iy, iz, :] = vals
+    return v[..., 0] if n_tr == 1 else v
+
+
+def write_wholebrain_maps(out_dir, model, Tobs, p_fwe, p_unc, p_unc_neg, nmt,
+                          ref, ijk, n_tr):
+    """Whole-brain volumes for visualisation: t, and both p images in the FSL
+    1-p convention (threshold at 0.95 for p < .05, at 0.999 for p < .001).
+
+    `_1minusFWEp` is corrected over the whole brain x all TRs -- far stricter
+    than the small-volume p in the mask folders. `_1minusp_uncorr` is NOT
+    corrected for anything; it is there to zoom around the brain, not to make
+    claims. With 1000 permutations its floor is p = 0.001.
+
+    A voxel no permutation ever beat gets p = 0 (so 1-p = 1); read that as
+    "p < 1/n_perm", the resolution limit, not as a real zero."""
+    hdr = ref.header.copy()
+    vols = [("t", Tobs, 0.0),
+            ("1minusFWEp", 1.0 - p_fwe, 0.0),
+            ("1minusp_uncorr", 1.0 - p_unc, 0.0)]
+    if p_unc_neg is not None:
+        vols += [("1minusFWEp_neg", 1.0 - voxel_fwe_p(-Tobs, nmt), 0.0),
+                 ("1minusp_uncorr_neg", 1.0 - p_unc_neg, 0.0)]
+    for suffix, vals, fill in vols:
+        nib.save(nib.Nifti1Image(vol_from_cols(vals, fill, ref, ijk, n_tr),
+                                 ref.affine, hdr),
+                 os.path.join(out_dir, f"{model}_{suffix}.nii.gz"))
+    np.save(os.path.join(out_dir, f"{model}_null_max_t.npy"), nmt.astype(np.float32))
+
+
 def write_maps(out_dir, model, Tobs, nmt, ref, ijk, n_tr):
     """Write the observed t-map and its voxel-wise FWE maps, both signs.
 
@@ -157,13 +206,8 @@ def write_maps(out_dir, model, Tobs, nmt, ref, ijk, n_tr):
     fsleyes and scrub the TR slider. Everything outside the mask is 0 in the
     t-map and p = 1 (so 1-p = 0) in the p-maps. Threshold the
     `_voxel1minusFWEp` maps at 0.95 for p_FWE < .05."""
-    shape3 = ref.shape[:3]
-    ix, iy, iz = ijk
-
     def _vol(vals, fill):
-        v = np.full(shape3 + (n_tr,), fill, dtype=np.float32)
-        v[ix, iy, iz, :] = vals
-        return v[..., 0] if n_tr == 1 else v
+        return vol_from_cols(vals, fill, ref, ijk, n_tr)
 
     p_pos = voxel_fwe_p(Tobs, nmt)
     p_neg = voxel_fwe_p(-Tobs, nmt)
@@ -176,6 +220,86 @@ def write_maps(out_dir, model, Tobs, nmt, ref, ijk, n_tr):
         nib.save(nib.Nifti1Image(_vol(vals, fill), ref.affine, hdr),
                  os.path.join(out_dir, f"{model}_{suffix}.nii.gz"))
     np.save(os.path.join(out_dir, f"{model}_null_max_t.npy"), nmt.astype(np.float32))
+
+
+def perm_wholebrain(A, T_obs, n_perm, seed, pblock, want_neg=False):
+    """Sign-flip permutation over every column of A, keeping BOTH the max-t
+    null (for FWE) and a per-column tally of exceedances (for uncorrected p).
+
+    The per-permutation t is computed with exactly the arithmetic of
+    `svc_loso_test.null_max_t` -- sign-flipping preserves sum(x^2), so
+    var = (S2 - n*M^2)/(n-1) -- which is algebraically the same one-sample t
+    as `tstat` computes for the observed map. That identity is asserted below
+    on the all-plus-one flip, so the permutation statistic and the empirical
+    statistic are verifiably the same statistic (CLAUDE.md rule 4).
+
+    Only the tallies are kept, never the (n_perm, n_vox) null itself, so
+    memory stays at `pblock` permutations regardless of n_perm.
+
+    Returns (null_max_t, count_ge, count_le) -- counts of permutations whose t
+    at that column was >= (resp. <=) the observed t. count_le is None unless
+    `want_neg`."""
+    n, n_cols = A.shape
+    S2 = (A ** 2).sum(0)
+
+    def _t_from_flips(F):
+        M = (F @ A) / n
+        var = (S2[None, :] - n * M ** 2) / (n - 1)
+        return np.where(var > 0, M * np.sqrt(n) / np.sqrt(np.where(var > 0, var, 1)), 0.0)
+
+    # identity flip must reproduce the observed t-map exactly
+    assert np.allclose(_t_from_flips(np.ones((1, n)))[0], T_obs, atol=1e-4), \
+        "permutation t and empirical tstat disagree on the identity sign-flip"
+
+    rng = np.random.RandomState(seed)
+    null_max = np.empty(n_perm)
+    cnt_ge = np.zeros(n_cols, dtype=np.int32)
+    cnt_le = np.zeros(n_cols, dtype=np.int32) if want_neg else None
+    for s0 in range(0, n_perm, pblock):
+        b = min(pblock, n_perm - s0)
+        T = _t_from_flips(rng.choice([-1.0, 1.0], size=(b, n)))
+        null_max[s0:s0 + b] = T.max(1)
+        cnt_ge += (T >= T_obs[None, :]).sum(0, dtype=np.int32)
+        if want_neg:
+            cnt_le += (T <= T_obs[None, :]).sum(0, dtype=np.int32)
+    return null_max, cnt_ge, cnt_le
+
+
+def run_wholebrain(D, ref, ijk, n_perm, seed, want_neg=False):
+    """Whole-brain t + FWE + uncorrected p, over voxels x TRs jointly.
+
+    FWE corrects over the WHOLE brain mask and all included TRs at once (max-t
+    null, Nichols & Holmes 2002) -- so it is much stricter than the
+    small-volume p in the mask folders and the two are not comparable.
+    Uncorrected p is that voxel-and-TR's own permutation p, for visualisation
+    only."""
+    n, n_vox, n_tr = D.shape
+    Tobs = tstat(D)
+    flat_obs = Tobs.reshape(-1)
+    A = D.reshape(n, -1)
+    nmt, cnt_ge, cnt_le = perm_wholebrain(
+        A, flat_obs, n_perm=n_perm, seed=seed,
+        pblock=adaptive_pblock(A.shape[1], max_elements=1e7), want_neg=want_neg)
+
+    p_unc = (cnt_ge / n_perm).reshape(n_vox, n_tr).astype(np.float32)
+    p_fwe = voxel_fwe_p(Tobs, nmt)
+    ix, iy, iz = ijk
+    pk = np.unravel_index(np.argmax(Tobs), Tobs.shape)
+    mni = nib.affines.apply_affine(ref.affine, [ix[pk[0]], iy[pk[0]], iz[pk[0]]])
+    tcrit = float(np.percentile(nmt, 95))
+    summary = dict(
+        n_vox=int(n_vox), n_tr=int(n_tr), n_subj=int(n), n_perm=int(n_perm),
+        seed=int(seed), peak_t=float(Tobs[pk]), peak_TR=int(pk[1]),
+        peak_mni=[int(round(float(v))) for v in mni],
+        peak_p_FWE=float((nmt >= Tobs[pk]).mean()), t_crit_FWE05=tcrit,
+        # counted straight off p_fwe so it always equals what you get by
+        # thresholding the _1minusFWEp map at 0.95 (the t_crit percentile and
+        # the exceedance proportion drift apart at low n_perm)
+        n_p_FWE_lt_05=int((p_fwe < 0.05).sum()),
+        n_p_unc_lt_001=int((p_unc <= 0.001).sum()),
+        max_t_by_TR=[float(v) for v in Tobs.max(0)])
+    p_unc_neg = (cnt_le / n_perm).reshape(n_vox, n_tr).astype(np.float32) if want_neg else None
+    return Tobs, nmt, p_fwe, p_unc, p_unc_neg, summary
 
 
 def loso(D, k_values, n_perm, seed):
@@ -217,6 +341,15 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--k", default="50,100,200")
     ap.add_argument("--no-cv", action="store_true")
+    ap.add_argument("--wholebrain", action="store_true",
+                    help="also write whole-brain t / FWE-p / uncorrected-p volumes")
+    ap.add_argument("--n-perm-wholebrain", type=int, default=1000,
+                    help="permutations for the whole-brain maps (default 1000)")
+    ap.add_argument("--wholebrain-neg", action="store_true",
+                    help="also write the negative-direction whole-brain p maps")
+    ap.add_argument("--wholebrain-models", default="",
+                    help="comma-separated subset to write whole-brain maps for "
+                         "(default: all). ~25 MB x 3 volumes per model.")
     ap.add_argument("--out-dir", required=True)
     args = ap.parse_args()
 
@@ -233,9 +366,14 @@ def main():
         masks[name] = dict(path=path, bool=m, n_vox=int(m.sum()))
         print(f"[mask] {name:8s} {m.sum():6d} in-brain voxels  ({path})", file=sys.stderr)
 
-    union = np.zeros(brain.shape, bool)
-    for v in masks.values():
-        union |= v["bool"]
+    # One read per model serves everything: whole brain when asked for, else
+    # just the union of the masks. Mask columns are a subset of whichever.
+    if args.wholebrain:
+        union = brain.copy()
+    else:
+        union = np.zeros(brain.shape, bool)
+        for v in masks.values():
+            union |= v["bool"]
     union_ijk = np.where(union)
     lin = {}
     for name, v in masks.items():
@@ -255,6 +393,15 @@ def main():
                                     "mask_all_32_subjects over all included TRs "
                                     f"({int(brain.sum())} voxels)"),
                    seed=args.seed, k_values=k_values, cv=not args.no_cv,
+                   wholebrain=bool(args.wholebrain),
+                   n_perm_wholebrain=args.n_perm_wholebrain,
+                   wholebrain_neg=bool(args.wholebrain_neg),
+                   wholebrain_note=(
+                       "whole-brain maps are corrected over the entire brain mask "
+                       "x all included TRs (max-t null); that FWE p is much "
+                       "stricter than, and not comparable to, the small-volume p "
+                       "in the mask folders. The uncorrected p maps are for "
+                       "visualisation only."),
                    numpy_seed=42,
                    multiple_comparison_note=(
                        "peak_p_FWE is corrected over voxels x TRs WITHIN each mask "
@@ -268,10 +415,43 @@ def main():
     for name in masks:
         os.makedirs(os.path.join(args.out_dir, name), exist_ok=True)
 
-    rows = []
+    wb_models = ([m for m in args.wholebrain_models.split(",") if m]
+                 if args.wholebrain_models else models)
+    if args.wholebrain:
+        os.makedirs(os.path.join(args.out_dir, "wholebrain"), exist_ok=True)
+        print(f"[info] whole-brain maps for {len(wb_models)} models, "
+              f"{brain.sum()} voxels x {len(trs)} TRs, "
+              f"{args.n_perm_wholebrain} perms", file=sys.stderr)
+
+    rows, wb_rows = [], []
     for mi, model in enumerate(models, 1):
         t0 = time.time()
         Du = read_model_union(args.root, args.dir_pattern, model, trs, union_ijk)
+
+        if args.wholebrain and model in wb_models:
+            wb_dir = os.path.join(args.out_dir, "wholebrain")
+            Tw, nmw, p_fwe, p_unc, p_unc_neg, wsum = run_wholebrain(
+                Du, ref, union_ijk, n_perm=args.n_perm_wholebrain,
+                seed=args.seed, want_neg=args.wholebrain_neg)
+            wsum["model"] = model
+            write_wholebrain_maps(wb_dir, model, Tw, p_fwe, p_unc, p_unc_neg,
+                                  nmw, ref, union_ijk, len(trs))
+            json.dump(wsum, open(os.path.join(wb_dir, f"{model}_summary.json"), "w"),
+                      indent=2)
+            wb_rows.append(dict(model=model, n_vox=wsum["n_vox"],
+                                peak_t=round(wsum["peak_t"], 3),
+                                peak_TR=wsum["peak_TR"],
+                                peak_mni="/".join(str(c) for c in wsum["peak_mni"]),
+                                p_FWE=wsum["peak_p_FWE"],
+                                t_crit_FWE05=round(wsum["t_crit_FWE05"], 3),
+                                n_p_FWE_lt_05=wsum["n_p_FWE_lt_05"],
+                                n_p_unc_lt_001=wsum["n_p_unc_lt_001"]))
+            print(f"  {'*' if wsum['peak_p_FWE'] < 0.05 else ' '} [{mi:2d}/{len(models)}] "
+                  f"WHOLEBRAIN {model:42s} t={wsum['peak_t']:5.2f} "
+                  f"TR{wsum['peak_TR']:<2d} p={wsum['peak_p_FWE']:.4f} "
+                  f"MNI={wsum['peak_mni']}", flush=True)
+            del Tw, nmw, p_fwe, p_unc, p_unc_neg
+
         for name, v in masks.items():
             cols = lin[name]
             D = np.ascontiguousarray(Du[:, cols, :])
@@ -312,6 +492,13 @@ def main():
                   f"p={svc['peak_p_FWE_neg']:.4f})", flush=True)
         del Du
         print(f"    -- {model} done in {time.time()-t0:.0f}s", file=sys.stderr, flush=True)
+
+    if wb_rows:
+        wb_csv = os.path.join(args.out_dir, "wholebrain_summary_table.csv")
+        with open(wb_csv, "w", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=list(wb_rows[0].keys()))
+            w.writeheader(); w.writerows(wb_rows)
+        print(f"-> {wb_csv}")
 
     csv_path = os.path.join(args.out_dir, "summary_table.csv")
     with open(csv_path, "w", newline="") as fh:

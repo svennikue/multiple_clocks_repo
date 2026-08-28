@@ -1,7 +1,9 @@
 # Archived — instruction-phase group-statistics alternatives
 
-Superseded by `scripts/svc_loso_test.py`, which produces the reported
-instruction-phase result.
+Superseded by `scripts/per_TR_loso.py` (statistics in `mc/analyse/loso.py`),
+which produces the reported instruction-phase result. That test previously
+lived in `scripts/svc_loso_test.py`, now archived under
+`scripts/old/per_TR_loso_pre_refactor/`.
 
 ## `group_stat_bootstrap_per_TR.py`
 

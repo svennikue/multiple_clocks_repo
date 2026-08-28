@@ -54,7 +54,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 from scipy.ndimage import label as _ndlabel
 
 from mc.plotting.cell_results import SHOWGIRL2_DISCRETE
-from svc_loso_test import tstat, null_max_t
+from mc.analyse.loso import tstat, null_max_t
 
 
 # ── Settings ─────────────────────────────────────────────────────────

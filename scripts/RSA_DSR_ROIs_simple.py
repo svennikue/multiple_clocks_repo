@@ -175,7 +175,12 @@ def _atlas_roi_name(roi):
 # '2026-05-18_16-33-05') to skip the heavy RSA + permutation loop and
 # just re-render the overview plots from the saved
 # results_summary*.csv files in OUT_BASE/<RELOAD_RUN>/.  None = run fresh.
-RELOAD_RUN = '2026-07-30_15-58-51-fixed_cells-fixed_perms' #'2026-07-30_15-58-51-fixed_cells-fixed_perms' #None #'2026-07-30_11-11-36' #'2026-06-22_16-17-15-final-DSR' #
+# 2026-08-27: set to None for the re-run on the rebuilt ROI table. ROI
+# membership determines which cells form each pseudo-population, so the
+# data RDMs themselves change and a reload would silently re-plot the old
+# result. Previous run kept for comparison:
+#   '2026-07-30_15-58-51-fixed_cells-fixed_perms'
+RELOAD_RUN = None
 
 # ── Cross-run perm cache lookup ───────────────────────────────────────
 # When True, before rebuilding any ROI's permutation RDMs the script
