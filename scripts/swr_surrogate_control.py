@@ -48,7 +48,7 @@ def run(sessions=None, analysis_name=ANALYSIS_NAME, n_surrogates=3, save_all=Tru
                 n_observed=int(qc.loc[p.pair_id, "n_events"]),
                 clean_s=float(qc.loc[p.pair_id, "clean_s"]))
             if not r: continue
-            r.update(session=sess, pair_id=p.pair_id, roi=p.get("pair_roi_native"))
+            r.update(session=sess, pair_id=p.pair_id, roi=p.get("pair_roi_atlas"))
             rows.append(r)
             print(f"  {p.pair_id:22s} chi={r['aperiodic_exponent']:.2f} "
                   f"r2={r['aperiodic_r2']:.2f} obs={r['rate_observed_hz']:.3f} "

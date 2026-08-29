@@ -102,30 +102,10 @@ _NATIVE_PATTERNS = [
 ]
 
 
-def native_roi_label(native_region, mni_y=None,
-                     hc_ant_mid_y=anat_atlas.HC_ANT_MID_Y):
-    """Normalise a site's own region string to a project ROI.
-
-    Hippocampus is split anterior/mid at the same y used for cells
-    (HC_ANT_MID_Y = -21.0, Poppenk & Moscovitch 2013), so native and atlas
-    ROIs are directly comparable.
-    """
-    if native_region is None or (isinstance(native_region, float)
-                                 and np.isnan(native_region)):
-        return None
-    s = str(native_region).strip().lower()
-    if not s or s in ("nan", "unknown", "none"):
-        return None
-    for roi, pats in _NATIVE_PATTERNS:
-        if any(p in s for p in pats):
-            if roi != "HC":
-                return roi
-            if mni_y is None or not np.isfinite(mni_y):
-                return "HC"
-            return "HC_anterior" if float(mni_y) >= hc_ant_mid_y else "HC_mid"
-    return None
-
-# Contact labels split into a probe/shaft name and a contact number.
+# Label parsing (probe + contact number). This is string handling, but it is
+# NOT anatomical inference -- it only splits `RT2bHa04` into probe `RT2bHa` and
+# contact 4 so contacts can be grouped by electrode. Where a contact *is* is
+# decided from its MNI coordinate alone.
 _CONTACT_RE = re.compile(r'^(?P<probe>.*?)[-_]?(?P<num>\d+)$')
 _NS_SUFFIX_RE = re.compile(r'-\d+$')
 
@@ -356,7 +336,8 @@ def build_macro_table(session, recording_site, subject_label, channels,
         merged = base.copy()
         for c in ["anat_label", "mni_x", "mni_y", "mni_z", "matter",
                   "native_region", "coord_source"]:
-            merged.setdefault(c, np.nan)
+            if c not in merged.columns:      # DataFrame has no .setdefault
+                merged[c] = np.nan
 
     merged["session"] = int(session)
     merged["subject_label"] = str(subject_label).strip().strip("'")
@@ -387,6 +368,53 @@ def build_macro_table(session, recording_site, subject_label, channels,
 # ATLAS LABELLING  (identical rules to the cell pipeline)
 # =============================================================================
 
+HPC_PROB_MIN = 25.0     # per cent; matches the maxprob-thr25 atlases
+
+
+def select_hpc_contacts(df, prob_min=HPC_PROB_MIN):
+    """Exactly ONE hippocampal contact per electrode, chosen by coordinate.
+
+    Location comes only from the MNI coordinate: `hpc_prob` is P(hippocampus)
+    from the Harvard-Oxford subcortical probability maps, so a contact deep in
+    the structure scores above one clipping its edge. Per probe the single
+    highest-probability contact is kept, provided it clears `prob_min`; every
+    other contact on that probe is `is_hpc = False` however hippocampal it looks.
+
+    No site-supplied region string is consulted. Those strings were previously
+    the primary criterion, but they are not comparable across sites, they are
+    absent altogether for six Baylor subjects, and they cannot rank two contacts
+    that are both "Hippocampus" -- which is what picking one per electrode needs.
+    `native_region` is still carried through the table as metadata; nothing reads
+    it.
+
+    Adds:
+        hpc_prob            P(hippocampus) in per cent at the contact
+        is_hpc              True for the single selected contact per probe
+        hpc_rank_in_probe   1 = selected, 2 = runner-up, ... (NaN if prob is NaN)
+    """
+    df = df.copy()
+    xyz = df[["mni_x", "mni_y", "mni_z"]].to_numpy(float)
+    df["hpc_prob"] = anat_atlas.hippocampal_probability(xyz)
+
+    df["is_hpc"] = False
+    df["hpc_rank_in_probe"] = np.nan
+    if "probe" not in df.columns:
+        return df
+
+    for probe, grp in df.groupby("probe", dropna=True):
+        cand = grp[grp["hpc_prob"].notna()]
+        if "resolved" in cand.columns:
+            cand = cand[cand["resolved"].fillna(False)]
+        if cand.empty:
+            continue
+        order = cand.sort_values("hpc_prob", ascending=False)
+        df.loc[order.index, "hpc_rank_in_probe"] = np.arange(1, len(order) + 1)
+        best = order.iloc[0]
+        if float(best["hpc_prob"]) >= prob_min:
+            df.loc[order.index[0], "is_hpc"] = True
+    return df
+
+
 def label_contacts_with_atlas(df, atlases=None):
     """Add `_juelich/_ho_cort/_ho_sub/_bn_label`, then `atlas_roi`,
     `atlas_source_label`, `atlas_reason` via anatomy_atlas.assign_atlas_roi.
@@ -394,8 +422,8 @@ def label_contacts_with_atlas(df, atlases=None):
     Mirrors the per-cell query block of cell_to_roi_july26.py exactly, so a
     contact and a cell at the same coordinate get the same ROI.
     """
-    # The atlas is a CROSS-CHECK, not the ROI criterion: `native_roi` (from each
-    # site's own segmentation) drives `is_hpc` and the bipolar pairing. So if the
+    # Location comes only from the MNI coordinate (see select_hpc_contacts).
+    # So if the
     # atlases are unavailable -- e.g. on a cluster node with no nilearn_data and
     # no network -- degrade gracefully rather than failing. This removes a 314 MB
     # dependency from the cluster run; contact selection is unaffected.
@@ -416,12 +444,13 @@ def label_contacts_with_atlas(df, atlases=None):
                   "atlas_roi", "atlas_source_label", "atlas_reason"]:
             df[c] = np.nan
         df["atlas_available"] = False
-        if "native_region" in df.columns:
-            df["native_roi"] = [native_roi_label(r, y) for r, y
-                                in zip(df["native_region"], df["mni_y"])]
-        else:
-            df["native_roi"] = None
-        df["is_hpc"] = df["native_roi"].isin(HPC_ROIS)
+        # Hippocampal selection is coordinate-based, so without an atlas it
+        # cannot be made at all. Fail visibly rather than fall back to labels.
+        for c in ("atlas_roi", "hpc_prob"):
+            if c not in df.columns:
+                df[c] = np.nan
+        df["is_hpc"] = False
+        df["hpc_rank_in_probe"] = np.nan
         df["roi_concordant"] = np.nan          # cannot be assessed without atlas
         return df
     ho_cort, ho_sub, juelich, brainnetome = atlases
@@ -458,19 +487,8 @@ def label_contacts_with_atlas(df, atlases=None):
     df = pd.concat([df, assigns], axis=1)
     df = df.drop(columns=["MNI_x_final", "MNI_y_final", "MNI_z_final"])
 
-    # Native-space ROI is the PRIMARY criterion for macro contacts.
-    if "native_region" in df.columns:
-        df["native_roi"] = [
-            native_roi_label(r, y)
-            for r, y in zip(df["native_region"], df["mni_y"])
-        ]
-    else:
-        df["native_roi"] = None
     df["atlas_available"] = True
-    df["is_hpc"] = df["native_roi"].isin(HPC_ROIS)
-    # The atlas ladder is a strict superset of native HC, so a native-HC
-    # contact that the atlas does NOT call HC would be an anomaly worth seeing.
-    df["roi_concordant"] = ~(df["is_hpc"] & ~df["atlas_roi"].isin(HPC_ROIS))
+    df = select_hpc_contacts(df)
     return df
 
 
@@ -520,7 +538,7 @@ def _pick_reference(probe_rows, anchor, scheme, max_gap_mm):
     if scheme == "white_matter":
         wm = others[
             others["matter"].astype(str).str.lower().str.contains("|".join(_WM_TOKENS))
-            & ~others["native_roi"].isin(_MTL_GREY)
+            & ~others["atlas_roi"].isin(_MTL_GREY)
         ]
         if len(wm):
             return wm.nsmallest(1, "_dist").iloc[0], "nearest white matter"
@@ -551,7 +569,7 @@ def build_bipolar_pairs(contacts, target_rois=HPC_ROIS,
                         suitable contact exists, but not every probe has one.
 
     Returns one row per (probe, target ROI family) with the anchor's native
-    ROI as `pair_roi_native`. The pair coordinate is the midpoint, which is
+    ROI as `pair_roi_atlas`. The pair coordinate is the midpoint, which is
     where the derivation is actually sensitive.
     """
     rows, skipped = [], []
@@ -559,7 +577,7 @@ def build_bipolar_pairs(contacts, target_rois=HPC_ROIS,
         grp = grp[grp["resolved"]].dropna(subset=["contact_no"])
         if grp.empty:
             continue
-        hpc = grp[grp["native_roi"].isin(target_rois)]
+        hpc = grp[grp["is_hpc"].fillna(False)]
         if hpc.empty:
             continue
 
@@ -583,12 +601,12 @@ def build_bipolar_pairs(contacts, target_rois=HPC_ROIS,
             "contact_no_b": ref.get("contact_no"),
             "hemisphere": anchor.get("hemisphere"),
             "matter_a": anchor.get("matter"), "matter_b": ref.get("matter"),
-            "native_roi_a": anchor.get("native_roi"),
-            "native_roi_b": ref.get("native_roi"),
+            "hpc_prob_a": anchor.get("hpc_prob"),
+            "hpc_prob_b": ref.get("hpc_prob"),
             "atlas_roi_a": anchor.get("atlas_roi"), "atlas_roi_b": ref.get("atlas_roi"),
             "native_region_a": anchor.get("native_region"),
             "native_region_b": ref.get("native_region"),
-            "pair_roi_native": anchor.get("native_roi"),
+            "pair_roi_atlas": anchor.get("atlas_roi"),
             "n_hpc_on_probe": int(len(hpc)),
             "mni_x": (anchor["mni_x"] + ref["mni_x"]) / 2.0,
             "mni_y": (anchor["mni_y"] + ref["mni_y"]) / 2.0,

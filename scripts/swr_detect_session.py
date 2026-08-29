@@ -112,7 +112,7 @@ def detect_session(session, analysis_name=ANALYSIS_NAME, save_all=True,
         clean_s = float(np.diff(iv, axis=1).sum()) if len(iv) else 0.0
 
         row = {"session": session, "pair_id": p.pair_id,
-               "pair_roi": p.get("pair_roi_native"),
+               "pair_roi": p.get("pair_roi_atlas"),
                "hemisphere": p.get("hemisphere"),
                "contaminated_frac": round(contam, 4),
                "clean_s": round(clean_s, 1),
@@ -139,7 +139,7 @@ def detect_session(session, analysis_name=ANALYSIS_NAME, save_all=True,
         if len(ev):
             ev.insert(0, "session", session)
             ev.insert(1, "pair_id", p.pair_id)
-            ev["pair_roi"] = p.get("pair_roi_native")
+            ev["pair_roi"] = p.get("pair_roi_atlas")
             ev["hemisphere"] = p.get("hemisphere")
             ev["subject_label"] = p.get("subject_label")
             all_ev.append(ev)

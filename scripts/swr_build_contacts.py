@@ -131,10 +131,10 @@ def build_contacts(sessions=None, save_all=True, verbose=False,
         manifest = manifest[manifest.session.isin([int(s) for s in sessions])]
 
     print(f"Loading atlases and source tables ({len(manifest)} sessions)...")
-    # The atlas is a CROSS-CHECK only: `native_roi` (each site's own
-    # segmentation) is what drives `is_hpc` and the bipolar pairing, and the
-    # pairs are byte-identical without it (verified on s38). So a missing atlas
-    # must not stop the run -- it is not needed on the cluster at all.
+    # The atlas is REQUIRED: hippocampal contacts are selected from the MNI
+    # coordinate alone (mc.analyse.contact_anatomy.select_hpc_contacts), so
+    # without it no contact can be chosen. Site-supplied region strings are not
+    # consulted. A missing atlas therefore yields zero pairs, loudly.
     atlases = False          # False = explicitly none (see label_contacts_with_atlas)
     if use_atlas:
         try:
@@ -193,7 +193,7 @@ def build_contacts(sessions=None, save_all=True, verbose=False,
 
         n_res = int(contacts["resolved"].sum())
         n_hpc = int(contacts["is_hpc"].sum())
-        n_hpc_pairs = int(pairs["pair_roi_native"].isin(ca.HPC_ROIS).sum()) if len(pairs) else 0
+        n_hpc_pairs = int(pairs["pair_roi_atlas"].isin(ca.HPC_ROIS).sum()) if len(pairs) else 0
         qc_rows.append({
             "session": session, "recording_site": site, "subject_label": label,
             "channel_source": chan_src, "n_channels": len(contacts),
@@ -256,7 +256,7 @@ def build_contacts(sessions=None, save_all=True, verbose=False,
     if all_rows:
         allc = pd.concat(all_rows, ignore_index=True)
         print("\n--- ROI counts across all resolved contacts ---")
-        print(allc.loc[allc.resolved, "native_roi"].value_counts().head(12).to_string())
+        print(allc.loc[allc.resolved, "atlas_roi"].value_counts().head(12).to_string())
 
         if save_all:
             gdir = os.path.join(swr_io.derivatives_dir(data_root), "group", "swr")

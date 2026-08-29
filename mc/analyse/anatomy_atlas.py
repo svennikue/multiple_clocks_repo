@@ -364,3 +364,66 @@ def assign_atlas_roi(row):
                             f"atlas_neighbor@{r_probe}mm")
 
     return ("leftover", "", "")
+
+
+# =============================================================================
+# HIPPOCAMPAL PROBABILITY (for ranking contacts, not labelling them)
+# =============================================================================
+# The max-prob atlases give a label, which cannot rank two contacts that are
+# both "hippocampus". Selecting ONE contact per electrode needs a continuous
+# measure, so this reads the Harvard-Oxford subcortical PROBABILITY maps and
+# returns P(hippocampus) at a coordinate: 0-100, the percentage of subjects in
+# whom that voxel was hippocampus. Deepest-in-the-structure therefore scores
+# highest, which is what "most hippocampal" should mean.
+
+_hc_prob_img = None
+_hc_prob_idx = None
+
+
+def _load_hc_prob():
+    """Harvard-Oxford subcortical probability maps, hippocampus volumes only."""
+    global _hc_prob_img, _hc_prob_idx
+    if _hc_prob_img is not None:
+        return _hc_prob_img, _hc_prob_idx
+    from nilearn import datasets as nldatasets
+    import nibabel as nib
+    atlas = nldatasets.fetch_atlas_harvard_oxford("sub-prob-2mm")
+    names = [str(n) for n in atlas.labels]
+    img = atlas.maps if hasattr(atlas.maps, "get_fdata") else nib.load(atlas.maps)
+    # `labels` carries a leading 'Background' entry that has no volume, so the
+    # 4-D index is label_index - 1. Indexing with the label position directly
+    # silently reads a neighbouring structure (it returned 0 % everywhere,
+    # including at the hippocampal centroid, which is how this was caught).
+    n_vol = img.shape[3] if img.ndim == 4 else 1
+    off = 1 if len(names) == n_vol + 1 else 0
+    idx = [i - off for i, n in enumerate(names) if "hippocampus" in n.lower()]
+    idx = [i for i in idx if 0 <= i < n_vol]
+    if not idx:
+        raise RuntimeError("No hippocampus volume in the HO subcortical "
+                           f"probability atlas; labels were {names}")
+    _hc_prob_img, _hc_prob_idx = img, idx
+    return _hc_prob_img, _hc_prob_idx
+
+
+def hippocampal_probability(coords):
+    """P(hippocampus) in per cent at each MNI152 coordinate.
+
+    `coords` is (N, 3) in mm. Left and right hippocampus volumes are combined
+    with `max`, since a contact is in one or the other. Coordinates outside the
+    volume return 0.
+    """
+    import nibabel as nib
+    img, idx = _load_hc_prob()
+    data = img.get_fdata()
+    inv = np.linalg.inv(img.affine)
+    coords = np.atleast_2d(np.asarray(coords, dtype=float))
+    out = np.zeros(len(coords))
+    for i, mni in enumerate(coords):
+        if np.any(np.isnan(mni)):
+            out[i] = np.nan
+            continue
+        v = np.round(nib.affines.apply_affine(inv, mni)).astype(int)
+        if np.any(v < 0) or np.any(v >= np.array(data.shape[:3])):
+            continue
+        out[i] = float(max(data[v[0], v[1], v[2], k] for k in idx))
+    return out

@@ -55,7 +55,7 @@ def check(sessions=None):
             _p(MISS, mod, f"needed for {needed_for}")
             problems.append(f"pip install {mod}")
     for mod, why in [("fooof", "stage 5 surrogate (falls back to log-log fit)"),
-                     ("nilearn", "atlas cross-check ONLY - not required"),
+                     ("nilearn", "REQUIRED - hippocampal contacts are chosen from MNI coords"),
                      ("h5py", "v7.3 .mat files")]:
         try:
             __import__(mod); _p(OK, mod, f"({why})")
@@ -163,9 +163,23 @@ def check(sessions=None):
         for x in warnings:
             print(f"   - {x}")
 
-    print("\n note: nilearn / nilearn_data are NOT required. The atlas is a")
-    print("       cross-check only; contact selection uses native-space labels")
-    print("       and produces identical bipolar pairs without it (verified).")
+    # Contact selection is coordinate-based since 2026-08-29, so the atlases are
+    # a hard requirement rather than a cross-check.
+    print("\n atlas check (REQUIRED - contacts are selected from MNI coords):")
+    try:
+        import mc.analyse.anatomy_atlas as _aa
+        import numpy as _np
+        p = _aa.hippocampal_probability(_np.array([[-26.0, -22.0, -14.0]]))[0]
+        if p > 50:
+            print(f"   OK   HarvardOxford sub-prob-2mm reachable "
+                  f"(P(hippocampus) at a canonical HC voxel = {p:.0f}%)")
+        else:
+            print(f"   FAIL sub-prob-2mm returned {p:.0f}% at a canonical HC voxel - "
+                  "wrong volume index or wrong atlas")
+    except Exception as _e:
+        print(f"   FAIL {type(_e).__name__}: {_e}")
+        print("        rsync ~/nilearn_data/fsl to the cluster and set NILEARN_DATA,")
+        print("        or the contact stage will select zero hippocampal contacts.")
 
     out = os.path.join(swr_io.derivatives_dir(R), "group", "swr")
     try:

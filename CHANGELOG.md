@@ -1,5 +1,123 @@
 # CHANGELOG
 
+## 2026-08-29 — mid-HC diagnosis: the "future-only" DSR is not a separate test, and the location result is a control-stack artefact
+
+Diagnostic pass on `DSR_RSA_simple_ROI/2026-08-27_19-18-20` (latest),
+`2026-07-30_15-58-51-fixed_cells-fixed_perms` and `2026-07-30_11-11-36`, to
+resolve why mid HC carries the strongest concurrent-future β (Fig 2d) while its
+cells are tuned to now / just-past (Fig 3c). No new runs; all numbers read from
+stored results.
+
+### 1. `dsr_fmri_fut` is a re-run of `dsr_fmri`, not an independent test
+
+On the 4,560 valid RDM cells (HC_mid, `split_halves_z` mask):
+
+    corr(dsr_fmri, dsr_fmri_fut) = 0.980
+
+Dropping lag 0 removes 1 of 12 lag-windows from a Hamming distance over the
+rolled 144-int trajectory, so the geometry barely moves. Consequences visible
+in both runs: `ctrl_dsrFULL` and `ctrl_dsrFUT` return **identical p_perm to 3
+dp** for every ROI (mPFC .022/.022, mOFC .866/.866, PCC .666/.666, HC_ant
+.103/.103, HC_mid .001/.001) and identical control βs to 4 dp.
+
+Also, lags 1 and 11 (30°, 330°) coincide with the current location on 39% of
+bins (the autocorrelation figure already in Methods), so "future only" still
+contains the present. **`ctrl_dsrFUT` cannot be cited as evidence that mid HC
+codes the future.** Either drop it or replace it with a genuinely disjoint
+model (e.g. lags 3–9 only).
+
+Related: `corr(dsr_fmri, location) = 0.408` but `corr(dsr_fmri_fut, location) =
+0.218` — dropping lag 0 does halve the location confound, yet the HC_mid β only
+moves 0.073 → 0.068. So the mid-HC effect is not simply location leaking in
+through lag 0.
+
+### 2. The lag decomposition resolves the Fig 2d / Fig 3c tension
+
+Joint quarter fit, `ctrl_dsrQUARTERS` in `2026-07-30_11-11-36` (4 quarters
+compete against each other plus location + bttn_curr). Quarter k = lags
+{3k, 3k+1, 3k+2}, i.e. curr = 0–60°, next = 90–150°, next2 = 180–240°,
+next3 = 270–330°:
+
+| ROI | curr | next | next2 | next3 |
+|---|---|---|---|---|
+| mPFC | .021 (p=.298) | .003 (p=.626) | .021 (p=.204) | .031 (p=.104) |
+| mOFC | .012 (p=.155) | −.020 | .005 | −.005 |
+| PCC | .021 (p=.200) | −.053 | −.005 | **.048 (p=.005)** |
+| HC_anterior | **.074 (p=.001)** | −.013 | .003 | .011 (p=.294) |
+| HC_mid | .046 (p=.059) | .020 (p=.243) | .010 (p=.477) | **.073 (p=.001)** |
+
+Single-model (no controls, latest run) shows the same shape for HC_mid:
+curr .076 (p=.001), next .033 (p=.026), next2 .026 (p=.054), next3 .088 (p=.001).
+
+**There is no contradiction.** Each quarter correlates 0.607 with the full DSR
+by construction, so a region that matches on 2 of 4 quarters yields a large
+full-DSR β. Mid HC's fit is carried by the two quarters flanking the present
+(now and just-past) — exactly the cell-level profile (0°, p=.0131; 330°,
+p=.0449). Anterior HC is purely present. The full-DSR regressor simply cannot
+report which lags carry it.
+
+### 3. Caveat: the decomposition does NOT confirm the mPFC 30/60° peak
+
+`dsr_fmri_informed` (lags 1,2 = 30°+60°, the pre-registered mPFC window) in
+`ctrl_dsrInformed`: mPFC β = +0.0196, **p = 0.130 (n.s.)**, while HC_anterior
+β = +0.0557 (p=.001) and HC_mid β = +0.0436 (p=.006). This is because
+`informed` correlates 0.873 with `curr_quarter` and 0.187 with `location` — it
+is largely a near-present model, which is why the hippocampi load on it.
+
+mPFC's DSR fit sits numerically in the later quarters (next2 p=.078, next3
+p=.072 single-model; next3 p=.104 joint) but nothing survives. With n = 65 mPFC
+cells this may be power, but at the RDM level the mPFC lag profile does **not**
+independently reproduce the cell-level 30/60° result. This should be stated
+rather than glossed — it is the weak point Jensen and Dorrell will find.
+
+### 4. The mid-HC location effect is a control-stack artefact, not a data change
+
+Same run, same cells (`2026-07-30_15-58-51-fixed_cells-fixed_perms`), location
+as the read-out sub-model:
+
+| combo | members | HC_mid | HC_ant |
+|---|---|---|---|
+| `ctrl_dsrFULL` | state, location, bttn_curr, dsr_fmri | **+.0330 (p=.025)** | **+.0403 (p=.009)** |
+| `fmri_ctrl_dsrFULL` | + **l2_norm, bttn_next** | +.0145 (p=.223) | +.0356 (p=.040) |
+
+Latest run carries only the second stack: HC_mid +.0153 (p=.215), HC_ant
++.0330 (p=.052).
+
+**The culprit is `l2_norm`**: `corr(location, l2_norm) = 0.588`. It is a second
+parameterisation of the same variable (graded negative distance to each of 9
+grid locations vs categorical location). Singly in HC_mid: location .0643
+(p=.001), l2_norm .0631 (p=.002) — near-identical. Jointly they split the
+variance and neither clears.
+
+Not a data change: the 07-31 and 08-27 runs return the same numbers despite
+HC_mid n going 143 → 145, and 07-30's `fmri_ctrl_dsrFULL` (+.0145) matches
+08-27's `ctrl_fMRI-state_dsrFULL` (+.0153).
+
+**Manuscript consequence.** Fig 3g's caption describes exactly `ctrl_dsrFULL`
+("controlling for future locations, position in sequence and current actions")
+— no l2_norm, no next button — while Fig 2d uses the stack that includes them.
+The two figures therefore use different control models, and the location claim
+survives only under the leaner one. Options, in order of preference:
+
+  (b) Test `location` + `l2_norm` jointly as one spatial-code contrast rather
+      than pitting two parameterisations of one variable against each other.
+      Correct given r = 0.59, and removes the arbitrariness.
+  (a) Harmonise on the full stack and report mid HC as n.s. (p=.215), ant HC
+      marginal (p=.052). The present-coding claim then rests on the cell-level
+      result and on the quarter split (HC_ant curr p=.001, HC_mid next3
+      p=.001), which is stronger evidence anyway.
+  (c) Drop l2_norm from the location model only — hard to justify while it
+      stays in the DSR model.
+
+### Next step
+
+`ctrl_dsrQUARTERS` is currently commented out in `RSA_DSR_ROIs_simple.py`
+(combo_models). The joint quarter numbers above come from the pre-relabelling
+cell set (mOFC 85 vs 74, HC_ant 162 vs 171, HC_mid 143 vs 145), so it needs a
+re-run on the current cells before it can go in the paper. That single figure
+answers [79], [102], [85], [107] and [109] in the co-author comments.
+
+
 ## 2026-08-28 (night) — `within_only` scope: the right fix for the instruction question
 
 The user's suggestion -- drop the across-half block entirely -- is better than
@@ -1726,3 +1844,216 @@ Gradient scripts now, in run order:
     gradient_split_vs_zero.py        vs-zero tests   -> gradient_split_vs_zero.csv
     gradient_fmri_z_projection.py    fMRI z-profile  -> fmri_angle_*.csv
     gradient_results_table.py        contrasts + merge -> gradient_results_summary.csv
+
+### 2026-08-28 — manuscript gradient-section change list
+
+`docs/manuscript_gradient_section_changes.md`. Every value in the
+ventral-to-dorsal gradient section, its Figure 3 legend and the Methods
+subsection, checked against the re-run results.
+
+Changes: 74/155 -> **87/158** in mask; 16 -> **19** sites; 42/32 -> **48/39**;
+median split -13.81 -> **-13.51 mm**; mPFC 60 deg t(31)=2.245 p=0.016 ->
+**t(32)=2.156 p=0.019**; mid HC 0 deg r .055 t(34)=2.27 p=.0147 -> **r .060
+t(35)=2.320 p=.0131**; mid HC 330 deg r .038 t(34)=2.072 p=.0229 -> **r .033
+t(35)=1.745 p=.0449** (weakens); Fig 3 legend mPFC 155/32 -> **158/33**, HC mid
+232/35 -> **233/36**, overlap 74/81 -> **87/71**.
+
+Unchanged: the 30 deg / 60 deg peaks, PC1 = [-0.04, -0.41, 0.91].
+
+Two items **unverified** because `harmonic_angle_maps.py` has not been re-run:
+the subject-wise centre-of-mass linear trend (t(32) = 2.78), and the Fig 3b range
+"~30 deg ventrally -> ~360/0 deg dorsally" -- my z-profile of the gradient mask
+reads ~59-87 deg at the ventral end, so the ventral figure looks too low, but that
+is a different computation (surface projection, per-sub-model t>=1.5) and should be
+re-derived rather than taken from my number.
+
+The sentence needing most work is the ventral/dorsal one: peaks unchanged, but the
+difference is not significant (site-level permutation p = 0.37) and the "consistent
+with the fMRI progression from 30-75 deg" clause should be replaced with the
+z-projection read-out (ventral 71 deg, dorsal 82 deg). Suggested wording in the doc.
+
+### 2026-08-28 (addendum 4) — gradient stats folded into cell_fMRI_angle_match.py
+
+Deleted `gradient_results_table.py`, `gradient_split_vs_zero.py` and
+`gradient_fmri_z_projection.py`. The two read-outs that are kept now live inside
+`scripts/cell_fMRI_angle_match.py`, so this part of the analysis is still the
+two scripts it always was (`cell_gradient_master_table.py` then
+`cell_fMRI_angle_match.py`).
+
+New outputs in `<run>/final_splits/`:
+
+    lagwise_vs_zero.csv        one-sided t vs zero at ALL 12 lags, CELL and
+                               SUBJECT level, for all three split schemes
+                               (168 rows). BH-FDR across the groups of a scheme
+                               within each (unit, lag).
+    fmri_z_readout.csv         per group: n cells, n sites, z min/max/mean, the
+                               fMRI angle at z mean, and the angle spanned across
+                               the group's z range.
+    fmri_angle_z_profile.csv   the map's vector-mean angle per 1 mm of MNI z
+                               (z -10 to +48), for plotting.
+
+Key values (pc1_ventral_dorsal), unchanged from the standalone scripts:
+
+    cell    ventral 30 deg  r .079  t 2.44  p .0093  q .0185
+    cell    dorsal  60 deg  r .081  t 2.21  p .0167  q .0334
+    subject ventral 30 deg  r .051  t 1.20  p .1297  q .2595
+    subject dorsal  60 deg  r .139  t 2.26  p .0226  q .0452
+    ventral  z -4.6 to 4.1 (mean 0.8)  fMRI 70.5 deg at mean, spans 72-89 deg
+    dorsal   z  1.2 to 9.8 (mean 2.8)  fMRI 81.6 deg at mean, spans 72-97 deg
+
+The cross-lag rows also show the specificity: ventral is flat at 60 deg
+(r = -0.002) and dorsal is weaker at 30 deg (r = 0.049) than at its own 60 deg.
+
+**Dropped, per user decision:** the ventral-vs-dorsal permutation contrast
+(argmax p = 0.37, circular mean p = 0.47) and the two continuous correlations.
+Note this removes the basis for stating that the ventral/dorsal difference is
+not significant -- that caveat now has no stored statistic behind it.
+
+Also fixed while wiring this in: `load_master_provenance` is now called
+unconditionally (the z-profile needs the harmonic-root and mask paths, not just
+the brain rendering).
+
+### 2026-08-28 (correction) — the fMRI 30 deg region is real; my read-outs were wrong
+
+I twice reported the wrong fMRI angle for the ventral/dorsal cell groups and, on
+that basis, wrongly advised that the manuscript's "consistent with the fMRI
+progression from 30-75 deg" was unsupported. **It is supported.**
+
+    circular median at the cells' own voxels   ventral  36 deg   dorsal  84 deg   <- correct
+    same, eighths map                          ventral  37 deg   dorsal  75 deg
+    vector mean at the cells' voxels           ventral  58 deg   dorsal  61 deg   <- misleading
+    whole-mask z-profile at group mean z       ventral  70 deg   dorsal  82 deg   <- wrong region
+
+Two compounding errors. (1) I summarised a broadly distributed circular variable
+(0-120 deg at the recording sites) with its **vector mean**, which pulls towards
+the middle and hid a 36->84 deg separation behind "58 vs 61". (2) Correcting that,
+I switched to a **whole-mask z-profile**, which averages the entire y (16-70) and
+x (+-14) extent of the gradient mask rather than the neighbourhood the electrodes
+occupy -- that region is dominated by 90-120 deg voxels.
+
+`fmri_z_readout.csv` now stores both, named so they cannot be confused:
+`fmri_at_cells_median_deg` / `_vec_mean_deg` / `_min_deg` / `_max_deg` (quote
+these) and `fmri_zprofile_at_z_*_deg` (context only). Added `_circ_median_deg`
+to `cell_fMRI_angle_match.py`.
+
+**Manuscript impact:** item 3 of the change list is withdrawn -- "theta = 30 deg to
+75 deg" should stay (measured 36-84 deg); only 74/155 -> 87/158 changes. The
+suggested rewording for the ventral/dorsal sentence now quotes 36 deg and 84 deg.
+
+## 2026-08-29 — SWR macro contacts rebuilt on the corrected anatomy
+
+`scripts/swr_build_contacts.py` re-run after the cell-anatomy work. Three fixes,
+then 28 -> 32 sessions with a hippocampal bipolar pair (78 -> 98 pairs).
+
+**1. Utah files resolved by declared identity** (from the 2026-08-27 work).
+`s47` had been using patient 202311's electrode file and yielded **0** hippocampal
+contacts; with its own file (202302) it yields 8 contacts / 3 pairs. `s24` moved
+from s23's file to its own (10 -> 8 contacts). Net +1 session.
+
+**2. `index_utah_mats_by_id` now prefers the file that carries the macro arrays.**
+It took the first file per patient, which for s04 is a bare top-level
+`ChannelMap.mat` with no `ElecMapRaw`/`ElecXYZMNIRaw`. Candidates are now scored on
+those keys. Also fixed `merged.setdefault(...)` in `build_macro_table` -- a
+DataFrame has no `setdefault`, a latent crash in the no-anatomy branch that only
+fired once a mat without macro arrays reached it.
+
+**3. Atlas fallback for `is_hpc` where the site segmentation is silent.**
+Six Baylor subjects (YEL, YEP, YEQ, YER, YEU, YFT) ship an electrode file whose
+`ROI_DK2005_3mm` column is **0 % populated**, against 91-98 % for every other
+subject. Reading only that column concluded "no hippocampal contact" and dropped
+**10 sessions** -- a property of the file, not the patient. `_hpc_with_atlas_fallback`
+now uses the probabilistic atlas where the site said nothing.
+
+    NULL / dead end: gating that fallback on `native_roi` (the MAPPED ROI) is
+    wrong -- it is None for every non-target region, so the atlas overruled 110
+    contacts the site had explicitly placed in white matter, fusiform gyrus and
+    the inferior lateral ventricle. Gate on `native_region`, the raw
+    segmentation string. Caught before it reached any result.
+
+    Final scope: 69 fallback contacts, ALL with `native_region == 'Unknown'`,
+    in 3 subjects (YEL, YER, YEU). Recovered s10, s11, s18, s25.
+    `hpc_source` ('native' / 'atlas_fallback' / 'none') is written per contact
+    so the fallback can be audited or excluded downstream.
+
+**Current state:** 32/60 sessions usable locally (18 baylor, 1 ucla, 9 utah ->
+now 22 baylor, 1 ucla, 9 utah), 98 hippocampal bipolar pairs.
+
+**Still excluded:** 26 sessions have **zero raw LFP files on this machine** --
+a data-location issue that should resolve on ceph, and the single biggest
+remaining gain. s16 (BY2-YEP) reads only 4 channels from its raw header, which
+looks like a wrong-nsx or header problem worth a look. s04 (UT1-202216) resolves
+its electrode file but 0 of 132 channels join: the table carries `bLACG6`-style
+anatomical labels while the raw header carries clinical names (`LCM1`...), so
+that join needs a channel-index bridge.
+
+### 2026-08-29 — hippocampal contacts: coordinate-only, one per electrode
+
+Per user decision, macro-contact location is now determined **solely from the MNI
+coordinate**. All inference of brain location from site-supplied region strings
+was removed.
+
+**Deleted:** `native_roi_label` (the region-string -> ROI mapper) and
+`_hpc_with_atlas_fallback` (yesterday's native/atlas hybrid). `native_region` is
+still carried in the table as metadata; nothing reads it. The white-matter
+reference picker now filters on `atlas_roi` rather than `native_roi`.
+
+**New:** `anatomy_atlas.hippocampal_probability(coords)` -- P(hippocampus) in per
+cent from the Harvard-Oxford subcortical PROBABILITY maps. A max-prob atlas gives
+a label, which cannot rank two contacts that are both "hippocampus"; picking one
+contact per electrode needs a continuous measure, and probability makes
+"deepest in the structure" the winner.
+
+    NULL / dead end: `fetch_atlas_harvard_oxford('sub-prob-2mm')` returns 22
+    labels but only 21 volumes -- 'Background' has no volume, so the 4-D index
+    is label_index - 1. Indexing by label position returns 0 % everywhere,
+    including at the hippocampal centroid. Caught by the sanity check.
+
+**New:** `contact_anatomy.select_hpc_contacts()` -- per probe, rank contacts by
+`hpc_prob` and keep the single highest, provided it clears `HPC_PROB_MIN = 25 %`
+(matching the maxprob-thr25 atlases used elsewhere). Adds `hpc_prob`,
+`hpc_rank_in_probe` and a strictly one-per-probe `is_hpc`.
+
+**Result:** 108 hippocampal contacts across 108 distinct (session, probe) pairs --
+**0 probes with more than one**, invariant verified. 32/60 sessions, 107 bipolar
+pairs (baylor 76, ucla 3, utah 28; one Utah probe has no valid reference
+partner). Selected contacts: P(hippocampus) median 61 %, IQR 42-84 %, min 26 %.
+
+Of the 128 runner-up contacts on those same probes, 56 would themselves clear
+25 % -- i.e. the old rule was admitting roughly twice as many contacts, several
+per electrode, which is what the one-per-probe constraint now prevents.
+
+`swr_build_contacts.py`: the atlas is no longer optional. Contact selection is
+coordinate-based, so without it no contact can be chosen, and the run yields zero
+pairs loudly rather than silently falling back to labels.
+
+### 2026-08-29 — docs and preflight updated for the coordinate-only rule
+
+`data/final_results/ripple_analysis/methods.md`:
+- **§4.1 rewritten.** Was "ROI: native-space primary"; now "from the MNI coordinate
+  alone". States why the earlier rule was dropped (0 %-populated column for six
+  Baylor subjects costing 10 sessions; not comparable across sites; cannot rank
+  contacts within a probe) and reports the concordance honestly: of 108 selected
+  contacts, 90 have a site label and **71 (79 %)** of those agree. The 19
+  disagreements are fusiform (6), amygdala (7), ventricle (5); they carry lower
+  confidence (median P(HC) 51 % vs 63 %). Flags the five ventricle contacts as
+  worth revisiting once ripple rates exist.
+- **§4.2 rewritten.** Anchor is now the highest-P(hippocampus) contact per probe,
+  not the most medial. Notes that 56 of 128 runner-ups would clear 25 %, so the
+  one-per-probe constraint is doing real work.
+- **§4.3** replaced with the current state: 108 contacts, 107 derivations, 32
+  sessions, 22 subjects; invariant verified; span median 5.48 mm. Flags that this
+  covers only 34 of 60 sessions locally, and that **s61-s63 are absent from the
+  config entirely**.
+- **§3.5** gains the Utah file-identity rule (`Fname` / `PatientIDStr`), why
+  coord-matching was dropped, and that s47 holds two different patients.
+
+`HOW_TO_RUN.md`: cluster prerequisites rewritten. **`nilearn_data` is now
+REQUIRED** (the old text said it was not) -- rsync `~/nilearn_data/fsl` (~34 MB)
+and set `NILEARN_DATA`, since `sub-prob-2mm` is a new dependency that will not be
+in an older cache. Added the rsync for Utah `Electrodes.mat` files, which live in
+three different subdirectory names and at the top level for s47/s53.
+
+`scripts/swr_check_inputs.py`: nilearn reclassified from "not required" to
+required, and the preflight now actively probes `hippocampal_probability()` at a
+canonical hippocampal voxel, failing loudly with the rsync instruction if the
+atlas is unreachable.

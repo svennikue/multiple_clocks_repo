@@ -569,6 +569,186 @@ def render_profiles(c, R, subj, consist, lab, order, tag, weighting, out_dir):
 
 
 # ── main ─────────────────────────────────────────────────────────────
+# =============================================================================
+# STATISTICS
+# =============================================================================
+# Two read-outs are written alongside the split figures, so the manuscript
+# numbers for this panel come from the same run that draws it.
+#
+#   lagwise_vs_zero.csv   one-sided t vs zero at every lag, at CELL and SUBJECT
+#                         level. Cells on one microwire bundle share a
+#                         coordinate exactly, so the subject-level row is the
+#                         conservative one; the cell-level row matches the
+#                         shading in the profile plots.
+#   fmri_z_readout.csv    where each group sits on the fMRI gradient, read from
+#                         the map's own z-profile rather than from single-voxel
+#                         lookups at cell coordinates (SPHERE_RADIUS_MM = 0
+#                         upstream): a single voxel inherits x/y variation and
+#                         noise, which is not the quantity a dorsoventral
+#                         gradient claim is about.
+#   fmri_angle_z_profile.csv  that profile itself, for plotting.
+
+FMRI_Z_SLAB_MM = 3.0      # half-width of the z window per profile step
+FMRI_Z_MIN_VOX = 20
+
+
+def bh_fdr(p):
+    """Benjamini-Hochberg q-values, returned in the input order."""
+    p = np.asarray(p, float)
+    n = len(p)
+    q = np.empty(n)
+    prev = 1.0
+    for rank, i in enumerate(np.argsort(p)[::-1]):
+        prev = min(prev, p[i] * n / (n - rank))
+        q[i] = prev
+    return q
+
+
+def _one_sided_t(values):
+    """One-sided (greater than zero) t-test on Fisher-z transformed r."""
+    from scipy import stats
+    v = pd.Series(values).dropna()
+    if len(v) < 2:
+        return np.nan, np.nan, len(v)
+    z = np.arctanh(np.clip(v.to_numpy(float), -0.999, 0.999))
+    t, p_two = stats.ttest_1samp(z, 0.0)
+    return float(t), float(p_two / 2 if t > 0 else 1 - p_two / 2), int(len(v))
+
+
+def lagwise_vs_zero(c, R, lab, order, rename, tag):
+    """One-sided tests against zero at every lag, cell and subject level.
+
+    FDR is Benjamini-Hochberg across the groups of this scheme within each
+    (unit, lag) -- the same family structure used for ROIs elsewhere in the
+    project.
+    """
+    subj = c['subject_id'].to_numpy()
+    rows = []
+    for unit in ('cell', 'subject'):
+        for g in order:
+            m = np.array([x == g for x in lab])
+            if not m.any():
+                continue
+            for k, lag in enumerate(L):
+                vals = (R[m, k] if unit == 'cell'
+                        else pd.Series(R[m, k]).groupby(subj[m]).mean())
+                t, p, n = _one_sided_t(vals)
+                rows.append(dict(
+                    scheme=tag, unit=unit, group=rename.get(g, g),
+                    lag_deg=int(lag), n=n,
+                    mean_r=float(pd.Series(vals).dropna().mean()),
+                    t=t, p_one_sided=p))
+    out = pd.DataFrame(rows)
+    if len(out):
+        out['p_fdr_across_groups'] = np.nan
+        for _, idx in out.groupby(['unit', 'lag_deg']).groups.items():
+            out.loc[idx, 'p_fdr_across_groups'] = bh_fdr(
+                out.loc[idx, 'p_one_sided'])
+    return out
+
+
+def fmri_z_profile(prov, dataset='quarters'):
+    """Vector-mean fMRI preferred angle per 1 mm step of MNI z.
+
+    Averaged over every gradient-mask voxel in a +-FMRI_Z_SLAB_MM slab, honouring
+    the symmetrise / smoothing settings recorded by the master run so the profile
+    matches the per-cell angles.
+    """
+    import nibabel as nib
+    root = Path(prov['harmonic_root'])
+    cos_i = nib.load(str(root / dataset / 'cos_group.nii.gz'))
+    sin_i = nib.load(str(root / dataset / 'sin_group.nii.gz'))
+    if prov.get('fmri_symmetrise'):
+        def _sym(img):
+            d = img.get_fdata()
+            return nib.Nifti1Image((d + d[::-1]) / 2.0, img.affine, img.header)
+        cos_i, sin_i = _sym(cos_i), _sym(sin_i)
+    if prov.get('fmri_smooth_fwhm_mm'):
+        from nilearn.image import smooth_img
+        cos_i = smooth_img(cos_i, prov['fmri_smooth_fwhm_mm'])
+        sin_i = smooth_img(sin_i, prov['fmri_smooth_fwhm_mm'])
+
+    C, S = cos_i.get_fdata(), sin_i.get_fdata()
+    msk = nib.load(str(prov['gradient_mask'])).get_fdata() > 0
+    idx = np.argwhere(msk)
+    z = nib.affines.apply_affine(cos_i.affine, idx)[:, 2]
+    cc, ss = C[tuple(idx.T)], S[tuple(idx.T)]
+
+    rows = []
+    for zz in np.arange(np.floor(z.min()), np.ceil(z.max()) + 1e-9, 1.0):
+        m = (z >= zz - FMRI_Z_SLAB_MM) & (z < zz + FMRI_Z_SLAB_MM)
+        if m.sum() < FMRI_Z_MIN_VOX:
+            continue
+        rows.append(dict(
+            z_mm=float(zz), n_voxels=int(m.sum()),
+            angle_deg=float(np.rad2deg(
+                np.arctan2(np.mean(ss[m]), np.mean(cc[m]))) % 360)))
+    return pd.DataFrame(rows)
+
+
+def _circ_median_deg(angles_deg):
+    """Circular median: the angle minimising total circular distance.
+
+    Reported alongside the vector mean because the fMRI angle at the recording
+    sites is broadly distributed (roughly 0-120 deg), and a vector mean of a
+    broad circular sample collapses towards the middle -- it read 58 vs 61 deg
+    for two groups whose medians are 32 and 83 deg. The median is the honest
+    summary here; the mean is kept only for continuity.
+    """
+    r = np.deg2rad(np.asarray(angles_deg, float))
+    r = r[np.isfinite(r)]
+    if not len(r):
+        return np.nan
+    d = np.abs(np.angle(np.exp(1j * (r[None, :] - r[:, None])))).sum(1)
+    return float(np.rad2deg(r[int(np.argmin(d))]) % 360)
+
+
+def fmri_z_readout(c, lab, order, rename, tag, prof):
+    """Per group: z extent, the fMRI angle AT THE CELLS, and the z-profile span.
+
+    Two different read-outs, deliberately both stored:
+
+      *_at_cells_*   the fMRI angle sampled at each cell's own voxel, summarised
+                     over the group. This is what "where do these cells sit on
+                     the gradient" means, and it is the number to quote.
+      *_zprofile_*   the whole-mask angle profile evaluated at the group's mean
+                     z. Useful as context for the gradient as a whole, but it
+                     averages over the full y and x extent of the mask (y 16-70),
+                     far beyond the electrodes, so it does NOT describe the cells.
+    """
+    # unwrap so interpolation does not jump across 0/360
+    unwrapped = np.rad2deg(np.unwrap(np.deg2rad(prof.angle_deg.to_numpy())))
+    at = lambda zz: float(np.interp(zz, prof.z_mm, unwrapped))
+    rows = []
+    for g in order:
+        m = np.array([x == g for x in lab])
+        if not m.any():
+            continue
+        sub = c[m]
+        zs = sub['MNI_z'].to_numpy(float)
+        a_lo, a_hi = at(zs.min()), at(zs.max())
+        fa = sub[FMRI_ANGLE_COLUMN].to_numpy(float)
+        fa = fa[np.isfinite(fa)]
+        vec_mean = (np.rad2deg(np.angle(np.mean(np.exp(1j * np.deg2rad(fa))))) % 360
+                    if len(fa) else np.nan)
+        rows.append(dict(
+            scheme=tag, group=rename.get(g, g), n_cells=int(m.sum()),
+            n_sites=len(sub[['MNI_x', 'MNI_y', 'MNI_z']].round(2)
+                        .drop_duplicates()),
+            z_min=float(zs.min()), z_max=float(zs.max()),
+            z_mean=float(zs.mean()),
+            # --- at the cells' own voxels (quote these) ---
+            fmri_at_cells_median_deg=_circ_median_deg(fa),
+            fmri_at_cells_vec_mean_deg=vec_mean,
+            fmri_at_cells_min_deg=float(fa.min()) if len(fa) else np.nan,
+            fmri_at_cells_max_deg=float(fa.max()) if len(fa) else np.nan,
+            # --- whole-mask z-profile (context only) ---
+            fmri_zprofile_at_z_mean_deg=at(zs.mean()),
+            fmri_zprofile_at_z_min_deg=a_lo,
+            fmri_zprofile_at_z_max_deg=a_hi))
+    return pd.DataFrame(rows)
+
+
 def parse_args(argv=None):
     p = argparse.ArgumentParser(
         description=__doc__.split('\n')[0],
@@ -603,9 +783,10 @@ def main(argv=None):
         raise KeyError(f"{args.master_csv} has no column {FMRI_ANGLE_COLUMN!r}")
     fmri = c[FMRI_ANGLE_COLUMN].to_numpy(float)
 
-    subjects_dir, prov = None, None
+    # provenance is needed for the fMRI z-profile too, not only for the brains
+    prov = load_master_provenance(args.master_csv)
+    subjects_dir = None
     if args.plot_brains:
-        prov = load_master_provenance(args.master_csv)
         from mne.datasets import fetch_fsaverage
         subjects_dir = os.path.dirname(fetch_fsaverage())
     else:
@@ -613,6 +794,8 @@ def main(argv=None):
               'PLOT_BRAINS = True at the top, or pass --brains.)')
 
     inm = c['in_gradient_mask'].to_numpy(bool)
+    zprof = fmri_z_profile(prov)
+    stat_rows, zread_rows = [], []
     per_cell = c[['neuron', 'subject_id', 'MNI_x', 'MNI_y', 'MNI_z',
                   'in_gradient_mask']].copy()
     per_cell['fmri_angle'] = fmri
@@ -636,16 +819,46 @@ def main(argv=None):
                          f'{tag} [{w}]: {sub}, outside=grey', subjects_dir,
                          axis_line, boundary_lines, out, prov)
         render_profiles(c, R, subj, consist, lab, order, tag, w, out)
+        stat_rows.append(lagwise_vs_zero(c, R, lab, order, rename, tag))
+        zread_rows.append(fmri_z_readout(c, lab, order, rename, tag, zprof))
 
     per_cell.to_csv(out / 'final_splits_per_cell.csv', index=False)
     summary = pd.DataFrame(summary_rows)
     summary.to_csv(out / 'final_splits_summary.csv', index=False)
+
+    stats_df = pd.concat(stat_rows, ignore_index=True)
+    stats_df.to_csv(out / 'lagwise_vs_zero.csv', index=False)
+    zread = pd.concat(zread_rows, ignore_index=True)
+    zread.to_csv(out / 'fmri_z_readout.csv', index=False)
+    zprof.to_csv(out / 'fmri_angle_z_profile.csv', index=False)
     pd.set_option('display.width', 240); pd.set_option('display.max_columns', 20)
     print('\n=== GROUP SUMMARY ===')
     print(summary.drop(columns=['boundary_rule', 'n_cells_total']).to_string(
         index=False))
+    rep = stats_df[(stats_df.scheme == 'pc1_ventral_dorsal')
+                   & (stats_df.lag_deg.isin([30, 60]))]
+    if len(rep):
+        print('\n=== vs zero at 30 / 60 deg (all lags in lagwise_vs_zero.csv) ===')
+        print(rep[['unit', 'group', 'lag_deg', 'n', 'mean_r', 't',
+                   'p_one_sided', 'p_fdr_across_groups']].round(4)
+              .to_string(index=False))
+    zr = zread[zread.scheme == 'pc1_ventral_dorsal']
+    if len(zr):
+        print('\n=== fMRI angle AT THE CELLS (quote these) ===')
+        print(zr[['group', 'n_cells', 'n_sites', 'z_min', 'z_max', 'z_mean',
+                  'fmri_at_cells_median_deg', 'fmri_at_cells_vec_mean_deg',
+                  'fmri_at_cells_min_deg', 'fmri_at_cells_max_deg']]
+              .round(1).to_string(index=False))
+        print('\n=== whole-mask z-profile at the same z (context only) ===')
+        print(zr[['group', 'fmri_zprofile_at_z_mean_deg',
+                  'fmri_zprofile_at_z_min_deg', 'fmri_zprofile_at_z_max_deg']]
+              .round(1).to_string(index=False))
+
     print(f'\nWrote {out / "final_splits_per_cell.csv"}')
     print(f'Wrote {out / "final_splits_summary.csv"}')
+    print(f'Wrote {out / "lagwise_vs_zero.csv"}')
+    print(f'Wrote {out / "fmri_z_readout.csv"}')
+    print(f'Wrote {out / "fmri_angle_z_profile.csv"}')
     print(f'All outputs in {out}')
 
 

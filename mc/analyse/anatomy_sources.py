@@ -522,7 +522,13 @@ def index_utah_mats_by_id(path_to_subject_folders=DEFAULT_SUBJECT_FOLDERS):
     the patient it names in its own `Fname` -- but returns the loaded mat, for
     callers that need the macro arrays rather than the microwire maps.
     """
-    out = {}
+    # Keys `load_utah_macros` needs. A folder can hold several files that all
+    # declare the same patient -- s04 keeps a bare ChannelMap.mat at its top
+    # level and the macro arrays one level down -- so score candidates and keep
+    # the most complete one rather than the first one found.
+    MACRO_KEYS = ("ElecMapRaw", "ElecXYZMNIRaw", "ElecTypeRaw", "ElecAtlasRaw")
+
+    best = {}
     for folder in sorted(os.listdir(path_to_subject_folders)):
         if not (folder.startswith("s") and folder[1:].isdigit()):
             continue
@@ -539,10 +545,14 @@ def index_utah_mats_by_id(path_to_subject_folders=DEFAULT_SUBJECT_FOLDERS):
                 if mat is None:
                     continue
                 pid = mat_patient_id(mat)
-                if pid and pid not in out:
-                    out[pid] = (f"{folder}/{sd}/{name}" if sd
-                                else f"{folder}/{name}", mat)
-    return out
+                if not pid:
+                    continue
+                score = sum(k in mat for k in MACRO_KEYS)
+                loc = f"{folder}/{sd}/{name}" if sd else f"{folder}/{name}"
+                if pid not in best or score > best[pid][0]:
+                    best[pid] = (score, loc, mat)
+    return {pid: (loc, mat) for pid, (score, loc, mat) in best.items()
+            if score > 0}
 
 
 def utah_micro_coord(patient_id, electrode_label, utah_index):
