@@ -22,6 +22,7 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import mc.analyse.swr_io as swr_io
+import mc.analyse.anatomy_sources as anat_src
 
 try:
     import fire
@@ -111,6 +112,8 @@ def check(sessions=None):
     if sessions is not None:
         sess_list = [int(s) for s in sessions]
 
+    _utah_index = anat_src.index_utah_mats_by_id(R)
+    _subj_map = swr_io.load_session_subject_map(R)
     rows = []
     for s in sess_list:
         cs = swr_io.session_config(s, cfg=cfg, data_root=R)
@@ -123,9 +126,16 @@ def check(sessions=None):
             swr_io.session_deriv_dir(s, R), "LFP", f"bipolar_pairs_{s:02d}.csv"))
         utah_mat = ""
         if site == "utah":
-            for n in ("Electrodes.mat", "ChannelMap.mat"):
-                if os.path.isfile(os.path.join(R, f"s{s:02d}", "electrodes", n)):
-                    utah_mat = n; break
+            # Resolve the way the pipeline does -- by the patient ID each file
+            # declares in its own `Fname` -- not by looking in one fixed
+            # subdirectory. s47/s53 keep theirs at the top level, s52/s54/s55
+            # under Registered*/, and s30/s42 have none of their own but share a
+            # patient with s29/s41, so a per-folder check reports them missing
+            # when the pipeline resolves them fine.
+            _lab = (_subj_map.get(s) or (None, None))[0]
+            pid = anat_src.subject_numeric_id(_lab) if _lab else None
+            if pid and pid in _utah_index:
+                utah_mat = os.path.basename(str(_utah_index[pid][0]))
         rows.append({"session": s, "site": site, "raw": len(files),
                      "beh": beh_ok, "pairs": pairs_ok,
                      "utah_mat": utah_mat or ("-" if site != "utah" else "MISSING")})
@@ -141,9 +151,9 @@ def check(sessions=None):
 
     utah_missing = d[(d.site == "utah") & (d.utah_mat == "MISSING") & (d.raw > 0)]
     if len(utah_missing):
-        _p(WARN, f"{len(utah_missing)} utah sessions without electrodes/*.mat",
+        _p(WARN, f"{len(utah_missing)} utah sessions with no electrode file for their patient",
            f"{list(utah_missing.session)[:8]}")
-        warnings.append("utah sessions missing electrodes/*.mat -> no contacts for them")
+        warnings.append("utah sessions with no electrode file for their patient -> no contacts")
 
     no_beh = d[(d.raw > 0) & ~d.beh]
     if len(no_beh):

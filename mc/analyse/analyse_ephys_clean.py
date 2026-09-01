@@ -102,22 +102,144 @@ def _discover_sessions(Data_folder, recday, kind):
     return sorted(loc_sessions & neu_sessions)
 
 
+# ---------------------------------------------------------------------------
+# normalisation: raw (25 ms bins) -> normalised (90 bins per state)
+# ---------------------------------------------------------------------------
+# Transcribed from the authors' own code — `partition` / `normalise` /
+# `raw_to_norm` in Basic_analysis.ipynb cell 21 of
+# github.com/mohamadyelgaby/mFC_schema — so the rodent recordings can be
+# normalised ourselves. Needed because the OSF release
+# (https://osf.io/3d9r2/) ships raw recordings ONLY: there are no normalised
+# `Neuron_*` / `Location_*` arrays there, and the ones in the private Drive
+# share cover 8 of the 25 recdays.
+#
+# CAVEAT, stated by the authors: the normalisation they settled on in the end
+# is NOT the one published here, and they have not shared it. Running this
+# code reproduces their shipped normalised arrays only to r ~ 0.88 (neurons)
+# and ~0.80 (locations), never exactly. So this is the closest available
+# approximation, not a reproduction — which is precisely why it must be
+# applied to ALL recdays uniformly rather than mixed with their files.
+RAW_BIN_MS         = 25     # raw recordings are binned at 25 ms
+BINS_PER_STATE     = 90     # -> 360 bins per ABCD loop
+STATES_PER_TRIAL   = 4
+
+
+def _partition(alist, indices):
+    """Split ``alist`` at ``indices`` — the authors' `partition`."""
+    return [np.asarray(alist[i:j]) for i, j in zip(indices[:-1], indices[1:])]
+
+
+def normalise_segment(xx, num_bins=BINS_PER_STATE, statistic='mean',
+                      rate_scaled=True):
+    """Resample one state's samples onto ``num_bins`` — the authors' `normalise`.
+
+    The short-segment rule is theirs and is load-bearing: a segment with fewer
+    samples than bins is stretched tenfold before binning, so it can fill the
+    90 bins at all.
+
+    ``rate_scaled`` controls the accompanying ``/ 10``. The authors' code always
+    divides, which is right for a FIRING RATE (ten copies each carrying a tenth
+    of the rate leaves the rate unchanged) and wrong for a categorical LOCATION
+    (it turns node 7 into 0.7). Their released Location_* arrays hold clean
+    integers, so they evidently do not divide there. Pass rate_scaled=False for
+    locations. Affects 1.12% of state segments (109/9720), across 38 sessions.
+    """
+    xx = np.asarray(xx, dtype=float)
+    lenxx = len(xx)
+    if lenxx == 0:
+        return np.full(num_bins, np.nan)
+    if lenxx < num_bins:
+        xx = np.repeat(xx, 10)
+        if rate_scaled:
+            xx = xx / 10
+        lenxx = lenxx * 10
+    return scipy.stats.binned_statistic(
+        np.arange(lenxx), xx, statistic, bins=num_bins)[0]
+
+
+def state_boundaries(trialtimes, raw_bin_ms=RAW_BIN_MS):
+    """Raw-bin indices of every state transition, flat across trials.
+
+    Exactly the authors' ``Trial_times_conc``: columns 0-3 of every trial
+    concatenated, then the final trial's column 4, converted from ms to raw
+    bins. Consecutive entries bracket one state, so state D of trial t runs to
+    the START of trial t+1 (in this dataset those two timestamps are equal).
+    """
+    tt = np.asarray(trialtimes)
+    return np.hstack((np.concatenate(tt[:, :-1]), tt[-1, -1])) // raw_bin_ms
+
+
+def raw_to_norm(raw, trialtimes, statistic='mean', rate_scaled=None,
+                num_bins=BINS_PER_STATE, num_states=STATES_PER_TRIAL):
+    """Normalise one session's raw recording to (…, n_trials, 360).
+
+    ``raw`` is ``(n_neurons, n_raw_bins)`` (a Neuron_raw array) or
+    ``(n_raw_bins,)`` (a Location_raw array); the returned array keeps that
+    leading structure, i.e. ``(n_neurons, n_trials, 360)`` or
+    ``(n_trials, 360)``.
+
+    ``statistic`` is passed to ``binned_statistic``: 'mean' for firing rates,
+    'max' for locations (the authors' ``take_max``) — a mean of node IDs would
+    be meaningless. NOTE this choice is not documented by the authors and is
+    the one place this function guesses; see `--location-statistic`.
+
+    ``rate_scaled`` defaults to True for 'mean' and False otherwise, so
+    locations are not divided by 10 by the short-segment rule (see
+    ``normalise_segment``). Pass it explicitly to override.
+
+    No smoothing: the authors smooth (sigma=10) only in the
+    ``raw_to_norm(return_mean=True)`` branch that averages over trials, not in
+    the per-trial arrays the RSA uses.
+    """
+    if rate_scaled is None:
+        rate_scaled = (statistic == 'mean')
+    edges = state_boundaries(trialtimes)
+    raw = np.asarray(raw)
+    flat = raw.reshape(1, -1) if raw.ndim == 1 else raw
+
+    out = []
+    for row in flat:
+        segs = _partition(list(row), list(edges))
+        binned = np.asarray([normalise_segment(s, num_bins, statistic, rate_scaled)
+                             for s in segs])
+        # Drop a trailing partial trial so the reshape is exact (the authors do
+        # the same); with well-formed trialtimes there is never one to drop.
+        binned = binned[:len(binned) - len(binned) % num_states]
+        out.append(binned.reshape(-1, num_bins * num_states))
+
+    out = np.asarray(out)
+    return out[0] if raw.ndim == 1 else out
+
+
 def cross_view_session_ids(raw_data, norm_data):
-    """For each recday present in both views, return the intersection of session
-    ids on disk. Sessions missing from the normalised view are the original
-    authors' implicit "bad session" flag, so this is the safest cleaning gate.
+    """For each recday present in both views, return the usable session ids.
+
+    A session is dropped unless it is present AND non-empty in both views.
+    The original authors flag a bad session in two different ways, and both
+    have to be caught:
+      - the normalised file is simply absent from the release, or
+      - the file exists but holds an empty array (shape ``(0,)``).
+    ah04_05122021_06122021_3, ah04_09122021_10122021_3 and
+    me10_09122021_10122021_8 are the second kind — checking only for a missing
+    file lets them through as zero-length sessions and blows up pooling.
     """
     out = {}
     for recday in raw_data:
         if recday not in norm_data:
             continue
-        raw_ids  = set(raw_data[recday]['session_ids'])
-        norm_ids = set(norm_data[recday]['session_ids'])
-        out[recday] = sorted(raw_ids & norm_ids)
+        usable = {}
+        for view in (raw_data, norm_data):
+            entry = view[recday]
+            usable[id(view)] = {
+                sid for sid, loc, neu in zip(entry['session_ids'],
+                                             entry['locations'],
+                                             entry['neurons'])
+                if np.size(loc) > 0 and np.size(neu) > 0}
+        out[recday] = sorted(set.intersection(*usable.values()))
     return out
 
 
-def load_ephys_data(Data_folder, recdays=None, raw=True):
+def load_ephys_data(Data_folder, recdays=None, raw=True, norm_folder=None):
     """Load the ephys recordings for the requested recdays.
 
     ``recdays`` defaults to ``discover_recdays(Data_folder)`` (the manifest).
@@ -125,6 +247,10 @@ def load_ephys_data(Data_folder, recdays=None, raw=True):
                      used by ``reg_across_tasks``.
     ``raw=False`` -> the already-normalised recordings binned to 360 bins/trial
                      (90 per state). Used by ``reg_across_tasks_DSR``.
+
+    ``norm_folder`` (raw=False only) reads the normalised arrays from a folder
+    other than ``Data_folder`` — used to load a self-normalised set out of
+    derivatives/ without touching the authors' released files.
 
     Sessions are discovered from the filesystem: only sessions that have BOTH
     a matching ``Location*`` and ``Neuron*`` file (and a ``trialtimes_*`` file)
@@ -139,11 +265,16 @@ def load_ephys_data(Data_folder, recdays=None, raw=True):
     kind = 'raw' if raw else 'norm'
     loc_prefix = 'Location_raw_' if raw else 'Location_'
     neu_prefix = 'Neuron_raw_'  if raw else 'Neuron_'
+    # The normalised view can live somewhere other than the raw release — see
+    # scripts/normalise_rodent_ephys.py, which writes a self-normalised set into
+    # derivatives/ rather than overwriting the authors' files. Task_data,
+    # trialtimes and the optional extras always come from ``Data_folder``.
+    view_folder = Data_folder if (raw or norm_folder is None) else norm_folder
 
     data = {}
     for recday in recdays:
         rewards_configs = np.load(os.path.join(Data_folder, f'Task_data_{recday}.npy'))
-        sessions = _discover_sessions(Data_folder, recday, kind)
+        sessions = _discover_sessions(view_folder, recday, kind)
         # only keep sessions that also have a trialtimes file (always present for raw,
         # but check explicitly so a missing trialtimes file fails loudly here, not later)
         sessions = [s for s in sessions
@@ -159,8 +290,8 @@ def load_ephys_data(Data_folder, recdays=None, raw=True):
 
         locations, neurons, timings = [], [], []
         for s in sessions:
-            locations.append(np.load(os.path.join(Data_folder, f'{loc_prefix}{recday}_{s}.npy')))
-            neurons.append(np.load(os.path.join(Data_folder, f'{neu_prefix}{recday}_{s}.npy')))
+            locations.append(np.load(os.path.join(view_folder, f'{loc_prefix}{recday}_{s}.npy')))
+            neurons.append(np.load(os.path.join(view_folder, f'{neu_prefix}{recday}_{s}.npy')))
             timings.append(np.load(os.path.join(Data_folder, f'trialtimes_{recday}_{s}.npy')))
 
         entry = {
@@ -691,8 +822,40 @@ def _upper_no_diag(matrix):
     return matrix[np.triu_indices(matrix.shape[0], k=1)]
 
 
+def degenerate_data_vector(data_vector):
+    """True when an RDM vector carries no information the GLM could fit.
+
+    Two cases, both of which make every regression coefficient meaningless:
+      - every entry is NaN, or
+      - the finite entries are all identical (zero variance).
+
+    Both arise for a recday with a SINGLE neuron: the population RDM is a
+    correlation distance across neurons, and with one feature per column every
+    pair collapses to the same value. me10_20122021_21122021 (1 neuron) hits
+    this — its RDM is uniformly 1.0, so OLS returns exactly 0.0 for every
+    regressor and that 0.0 was entering the group t-test as if it were a
+    measurement. It is not a small effect; it is no effect at all.
+
+    This is a validity condition, not a data-dependent cut-off: it asks whether
+    the quantity is defined, never how big it is, so it cannot select on the
+    result.
+    """
+    v = np.asarray(data_vector, dtype=float).ravel()
+    finite = v[np.isfinite(v)]
+    return finite.size == 0 or np.ptp(finite) == 0
+
+
 def _evaluate_dsr_variant(model_vectors, data_vector, order):
-    """Run the shared z-scored RSA GLM for one DSR vector variant."""
+    """Run the shared z-scored RSA GLM for one DSR vector variant.
+
+    Returns NaN coefficients for a degenerate data vector (see
+    ``degenerate_data_vector``) so the recday drops out of the group test —
+    ``methods_results_stats`` already filters non-finite coefficients.
+    """
+    if degenerate_data_vector(data_vector):
+        nan = np.full(len(order), np.nan)
+        return {'coefs': nan, 't_vals': nan.copy(), 'p_vals': nan.copy(),
+                'label_regs': order, 'degenerate': True}
     stacked = np.stack([model_vectors[k] for k in order], axis=1)
     t_vals, betas, p_vals = my_RSA.evaluate_model(stacked, np.asarray(data_vector))
     return {
@@ -1049,7 +1212,12 @@ def reg_across_task_halves_DSR(task_configs, locations_all, neurons, timings_all
 
     order = combo_order or ['dsr', 'dsr_fmri', 'stat', 'loc', 'phas', 'midn']
     stacked = np.stack([model_RDMs[k] for k in order], axis=1)
-    t_vals, betas, p_vals = my_RSA.evaluate_model(stacked, np.asarray(data_vec))
+    if degenerate_data_vector(data_vec):
+        # Same guard as the full_z path — see degenerate_data_vector.
+        nan = np.full(len(order), np.nan)
+        t_vals, betas, p_vals = nan, nan.copy(), nan.copy()
+    else:
+        t_vals, betas, p_vals = my_RSA.evaluate_model(stacked, np.asarray(data_vec))
 
     return {
         'across_halves': {

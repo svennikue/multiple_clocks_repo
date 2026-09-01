@@ -156,6 +156,77 @@ def _combo_panels(sub_models):
                                                 dsr + state + location + other)], groups
 
 
+def _bh_fdr(pvals):
+    """Benjamini-Hochberg q-values; NaNs pass through as NaN."""
+    p = np.asarray(pvals, dtype=float)
+    q = np.full(p.shape, np.nan)
+    ok = np.isfinite(p)
+    if not ok.any():
+        return q
+    pv = p[ok]
+    n = pv.size
+    order = np.argsort(pv)
+    ranked = pv[order] * n / np.arange(1, n + 1)
+    ranked = np.minimum.accumulate(ranked[::-1])[::-1]
+    out = np.empty(n)
+    out[order] = np.clip(ranked, 0, 1)
+    q[ok] = out
+    return q
+
+
+def _single_model_panels(models):
+    """Panels for the single-model figure: one column per model.
+
+    Same grouping convention as `_combo_panels` so the two figures read
+    identically -- every DSR variant, `state` and `location` get their own
+    panel; everything else shares one 'Other models' panel, in the order
+    the models occur in the results table.
+    """
+    dsr = [m for m in models if 'dsr' in str(m).lower()
+           or str(m).endswith('_quarter')]
+    state = [m for m in models if m == 'state']
+    location = [m for m in models if m == 'location']
+    special = set(dsr + state + location)
+    other = [m for m in models if m not in special]
+
+    col_labels, groups = [], []
+    # All DSR variants share ONE panel: they are the same model family on a
+    # common scale, and with ~7 of them a panel each would mean seven
+    # identical colourbars. Columns stay one-per-model either way.
+    if dsr:
+        start = len(col_labels)
+        col_labels.extend(_label_submodel(m) for m in dsr)
+        groups.append((tuple(range(start, len(col_labels))), 'RdBu_r', 'DSR'))
+    if state:
+        groups.append(((len(col_labels),), 'RdBu_r', 'State'))
+        col_labels.append(_label_submodel(state[0]))
+    if location:
+        groups.append(((len(col_labels),), 'RdBu_r', 'Location'))
+        col_labels.append(_label_submodel(location[0]))
+    if other:
+        start = len(col_labels)
+        col_labels.extend(_label_submodel(m) for m in other)
+        groups.append((tuple(range(start, len(col_labels))), 'RdBu_r',
+                       'Other models'))
+    ordered = dsr + state + location + other
+    return list(zip(col_labels, ordered)), groups
+
+
+def _single_model_matrices(df, rois, models, model_col, q_col):
+    """T / Q matrices for the single-model figure."""
+    T = np.full((len(rois), len(models)), np.nan)
+    Q = np.full((len(rois), len(models)), np.nan)
+    for j, m in enumerate(models):
+        for i, roi in enumerate(rois):
+            row = df[(df[model_col] == m) & (df.roi == roi)]
+            if row.empty:
+                continue
+            T[i, j] = row['t'].iloc[0]
+            if q_col is not None and q_col in row.columns:
+                Q[i, j] = row[q_col].iloc[0]
+    return T, Q
+
+
 def _heatmap_width_cm(n_columns):
     """Keep the existing column proportions and grow for extra regressors."""
     # Existing figures use 7.5 cm for three columns and 9.5 cm for five;
@@ -188,6 +259,8 @@ def make_publication_figures(
     panels_all: list = None,
     panels_core: list = None,
     hist_panels: list = None,
+    single_csv: str = 'results_summary.csv',
+    plot_single_models: bool = True,
     verbose: bool = True,
 ):
     """Build ROI × regressor heatmaps + per-ROI perm-β histograms.
@@ -202,6 +275,15 @@ def make_publication_figures(
         Which test slice of the summary CSV to plot (e.g. ``'split_halves_z'``).
     out_subdir : str
         Sub-folder of ``run_dir`` for the outputs.
+    single_csv : str
+        Single-model results table (one row per ROI x model, no joint fit).
+        ``RSA_DSR_ROIs_simple.py`` writes a ``model`` column here;
+        ``State_RSA_ROIs_simple.py`` writes ``combo``/``sub_model`` plus a
+        ``branch`` column -- both are handled.
+    plot_single_models : bool
+        Also draw the single-model heatmap (one column per model, same
+        format as the per-combo heatmaps). Skipped silently if the table
+        is absent.
     """
     run_dir = Path(run_dir)
     if roi_colours is None:
@@ -276,6 +358,83 @@ def make_publication_figures(
             print(f"[pub-figs] wrote combo={combo} "
                   f"({len(rois)} ROIs × {n_columns} regressors; "
                   f"colour scale {vmin:g}…{vmax:g})")
+
+    # ── Single-model heatmap (one column per model) ───────────────────
+    # Same layout as the per-combo heatmaps, but every model is fitted on
+    # its own rather than as one column of a joint GLM. Read straight from
+    # the single-model table; nothing is refitted here.
+    if plot_single_models:
+        single_path = run_dir / single_csv
+        if not single_path.exists():
+            if verbose:
+                print(f"[pub-figs] no {single_csv} — skipping single-model figure")
+        else:
+            sdf = pd.read_csv(single_path)
+            if 'roi' in sdf.columns:
+                sdf['roi'] = sdf['roi'].map(lambda r: ROI_NAME_MAP.get(r, r))
+            if 'test' in sdf.columns:
+                sdf = sdf[sdf.test == test_variant]
+            # DSR script -> 'model'; State script -> 'sub_model' (+ 'branch')
+            model_col = 'model' if 'model' in sdf.columns else 'sub_model'
+            branches = (list(dict.fromkeys(sdf['branch'].dropna().tolist()))
+                        if 'branch' in sdf.columns else [None])
+            for branch in branches:
+                bdf = sdf if branch is None else sdf[sdf.branch == branch]
+                if bdf.empty:
+                    continue
+                s_rois = [r for r in roi_order if r in bdf.roi.unique()]
+                models = list(dict.fromkeys(bdf[model_col].dropna().tolist()))
+                if not s_rois or not models:
+                    continue
+                panels, groups = _single_model_panels(models)
+                ordered_models = [m for _, m in panels]
+                s_q_col = _pick_q_column(bdf)
+                T, Q = _single_model_matrices(
+                    bdf, s_rois, ordered_models, model_col, s_q_col)
+
+                # The single-model tables carry no FDR column of their own in
+                # the DSR pipeline, so correct here across every cell drawn
+                # and say so in the title. Where the pipeline already
+                # provides q-values (State), use those untouched.
+                if s_q_col in (None, 'p_perm'):
+                    P = np.full_like(T, np.nan)
+                    for j, m in enumerate(ordered_models):
+                        for i, roi in enumerate(s_rois):
+                            row = bdf[(bdf[model_col] == m) & (bdf.roi == roi)]
+                            if not row.empty and 'p_perm' in row.columns:
+                                P[i, j] = row['p_perm'].iloc[0]
+                    Q = _bh_fdr(P.ravel()).reshape(P.shape)
+                    star_note = ('stars = BH-FDR q across the '
+                                 f'{len(s_rois)}x{len(ordered_models)} cells shown')
+                else:
+                    star_note = f'stars = BH-FDR q ({s_q_col})'
+
+                col_labels = [lab for lab, _ in panels]
+                vmin, vmax = _dsr_colour_limit(T, panels)
+                tag = 'single_models' if branch is None else f'single_models_{branch}'
+                safe_tag = re.sub(r'[^A-Za-z0-9_.-]+', '_', tag)
+                title_branch = '' if branch is None else f' [{branch}]'
+                plot_roi_tstat_heatmap(
+                    T, s_rois, col_labels,
+                    q_matrix=Q,
+                    panel_groups=groups,
+                    title=(f'single-model RSA{title_branch} — {test_variant}  '
+                           f'({star_note})'),
+                    cbar_label='t vs 0',
+                    fig_size_cm=(_heatmap_width_cm(len(col_labels)), 8.0),
+                    vmin=vmin, vmax=vmax,
+                    save_path=str(out_dir /
+                                  f'heatmap_roi_x_{safe_tag}_{test_variant}'),
+                )
+                # keep the plotted numbers auditable next to the figure
+                pd.DataFrame(T, index=s_rois, columns=col_labels).to_csv(
+                    out_dir / f'heatmap_roi_x_{safe_tag}_{test_variant}_t.csv')
+                pd.DataFrame(Q, index=s_rois, columns=col_labels).to_csv(
+                    out_dir / f'heatmap_roi_x_{safe_tag}_{test_variant}_q.csv')
+                if verbose:
+                    print(f"[pub-figs] wrote {tag} "
+                          f"({len(s_rois)} ROIs x {len(col_labels)} models; "
+                          f"{star_note})")
 
     # ── Per-ROI perm-β histograms ─────────────────────────────────────
     perm_dir = run_dir / 'perm_null_draws'

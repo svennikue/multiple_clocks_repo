@@ -1,1 +1,6 @@
 /CLAUDE.md
+logs/
+*.log
+*.out
+*.err
+*.sbatch

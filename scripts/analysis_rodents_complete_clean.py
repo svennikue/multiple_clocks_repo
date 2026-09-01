@@ -81,9 +81,26 @@ for each model is carried to the group level and tested with a one-sided
 one-sample t-test against zero across recdays, BH-FDR corrected across the
 four models. Written to `key_analysis_stats.json`.
 
-NOTE ON n: the 8 recdays come from 5 animals (ah03, ah04 ×3, me08, me10,
-me11 ×2), so the group test treats recording days, not animals, as
-independent units.
+NOTE ON n: a "recday" is a RECORDING UNIT, not an animal — it is named
+`{mouse}_{day1}_{day2}` and is two days that were spike-sorted together
+(6 task configurations, 3 per day). The 8 recdays analysed here come from
+5 animals:
+
+    ah03 ×1, ah04 ×3, me08 ×1, me10 ×1, me11 ×2
+
+so n = 8 recdays / 5 mice, and the group test treats recording DAYS, not
+animals, as independent units.
+
+These 8 are what the private Drive share provided — they are NOT the whole
+dataset. The public release (https://osf.io/3d9r2/) has 25 combined ABCD
+recdays from 7 mice; ab03 (×3) and ah07 (×3) are absent here entirely.
+`scripts/download_rodent_ephys_data.py` fetches the missing 17 (~2.0 GB).
+
+Before using them: OSF ships RAW recordings only, so the normalised 360-bin
+view this analysis runs on has to be rebuilt from Neuron_raw + trialtimes for
+the new recdays — and then for ALL recdays with the same function, otherwise
+the preprocessing difference lines up with the mouse split and confounds the
+group test. See the caveat at the top of the download script.
 
 FIGURES (example recday = most neurons unless EXAMPLE_RECDAY is set)
     - fig 1: DSR overview (modelled neurons + DSR model RDM + group betas
@@ -111,6 +128,16 @@ import mc.analyse.analyse_ephys_clean as ae
 # ── Settings ──────────────────────────────────────────────────────────
 DATA_FOLDER = '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_recordings_200423/'
 OUT_BASE    = f"{DATA_FOLDER}derivatives/rodent_DSR_RSA/"
+
+# Where the NORMALISED (90 bins/state) arrays come from.
+#   None  -> the authors' released files in DATA_FOLDER: 8 recdays / 5 mice.
+#   path  -> a self-normalised set from scripts/normalise_rodent_ephys.py:
+#            up to 25 recdays / 7 mice, one uniform preprocessing.
+# Set this to the derivatives/normalised_* folder to analyse the full release.
+# The two must never be mixed — the authors' final normalisation differs from
+# their published code and cannot be reproduced (r ~ 0.88), so a mixed set puts
+# a preprocessing difference exactly on the mouse/recday split.
+NORM_FOLDER = '/Users/xpsy1114/Documents/projects/multiple_clocks/data/ephys_recordings_200423/derivatives/normalised_loc-max_2026-09-01_12-30-15'
 
 NUMBER_PHASE_NEURONS = 3       # von Mises phase-tuned neurons per state (κ = 10/n = 3.33)
 N_CONDS_PER_CONFIG   = 12      # timepoints per task config; 360/12 = 30 bins (30°) each.
@@ -161,6 +188,15 @@ DSR_DISPLAY_KEY      = 'dsr_fmri' if 'dsr_fmri' in MODEL_ORDER_DSR else 'dsr'
 #   None          — no residualisation.
 PHASE_RESIDUALISE    = 'cosine_2h'
 
+# Phase-residualisation bases to compare, so the justification for using
+# PHASE_RESIDUALISE is READ OUT OF THE SCRIPT rather than asserted. Each basis
+# is run through the identical per-recday pipeline and group test; the result
+# lands in key_analysis_stats.json['phase_residualisation_comparison'].
+# The criterion is stated there: the chosen basis is the one that drives the
+# Subgoal Progress regressor to a null group effect. Set to [] to skip (costs
+# one extra full pass per basis that is not PHASE_RESIDUALISE).
+PHASE_BASES_TO_COMPARE = ['cosine', 'cosine_2h']
+
 EXAMPLE_RECDAY = None           # None -> pick the recday with the most neurons
 N_JOBS         = -1             # joblib: -1 = all cores, 1 = serial (for debugging)
 
@@ -196,9 +232,25 @@ print(f"Run output: {OUT_DIR}")
 
 # ── Load + clean ──────────────────────────────────────────────────────
 print("Loading mouse data (raw + normalised) ...")
-mouse_data      = ae.load_ephys_data(DATA_FOLDER, raw=True)
-mouse_data_norm = ae.load_ephys_data(DATA_FOLDER, raw=False)
+# The recday list comes from whichever source provides the normalised view, so
+# pointing NORM_FOLDER at a self-normalised set automatically widens the
+# analysis to every recday that set contains.
+RECDAYS = ae.discover_recdays(NORM_FOLDER or DATA_FOLDER)
+print(f"  normalised view: {NORM_FOLDER or DATA_FOLDER}")
+mouse_data      = ae.load_ephys_data(DATA_FOLDER, recdays=RECDAYS, raw=True)
+mouse_data_norm = ae.load_ephys_data(DATA_FOLDER, recdays=RECDAYS, raw=False,
+                                     norm_folder=NORM_FOLDER)
 print(f"  loaded {len(mouse_data)} recdays: {list(mouse_data)}")
+
+# A recday is `{mouse}_{day1}_{day2}`, so the mouse id is the first field.
+# The group test runs over recdays, but the manuscript reports mice too —
+# derive both here so they can never drift apart.
+mouse_of_recday   = {rd: rd.split('_')[0] for rd in sorted(mouse_data)}
+recdays_per_mouse = {}
+for rd, m in mouse_of_recday.items():
+    recdays_per_mouse.setdefault(m, []).append(rd)
+print(f"  {len(mouse_data)} recdays from {len(recdays_per_mouse)} mice: "
+      + ', '.join(f"{m} x{len(v)}" for m, v in sorted(recdays_per_mouse.items())))
 
 # Sessions surviving into BOTH views — the original authors' implicit "bad
 # session" flag is "missing from the normalised view".
@@ -319,16 +371,25 @@ repeats_overview = {
 
 
 # ── Run both main analyses in parallel ────────────────────────────────
-print(f"\nDispatching {len(mouse_data)} recdays across {N_JOBS} workers ...")
-per_recday = Parallel(n_jobs=N_JOBS, verbose=5)(
-    delayed(ae.process_one_recday)(
-        recday,
-        cleaned['raw'][recday],  clean_meta['raw'][recday]['kept_session_ids'],
-        cleaned['norm'][recday], clean_meta['norm'][recday]['kept_session_ids'],
-        None, ANALYSIS_CONFIG,
+def run_all_recdays(config):
+    """Dispatch every recday through `process_one_recday` with `config`.
+
+    Factored out so the phase-basis comparison below runs through the IDENTICAL
+    code path as the primary analysis — only `phase_residualise` differs.
+    """
+    return Parallel(n_jobs=N_JOBS, verbose=5)(
+        delayed(ae.process_one_recday)(
+            recday,
+            cleaned['raw'][recday],  clean_meta['raw'][recday]['kept_session_ids'],
+            cleaned['norm'][recday], clean_meta['norm'][recday]['kept_session_ids'],
+            None, config,
+        )
+        for recday in sorted(mouse_data)
     )
-    for recday in sorted(mouse_data)
-)
+
+
+print(f"\nDispatching {len(mouse_data)} recdays across {N_JOBS} workers ...")
+per_recday = run_all_recdays(ANALYSIS_CONFIG)
 
 full_z_results = {r['recday']: r['dsr_by_pool']['mode_path']['full_z'] for r in per_recday}
 halves_results = {r['recday']: r['halves']['across_halves'] for r in per_recday
@@ -351,7 +412,10 @@ print(f"\nExample recday: {example_recday} "
 # ── Stats helpers (small, local) ──────────────────────────────────────
 def _print_stats(stats):
     print(f"\n=== {stats['pipeline']} ===")
-    print(f"  n_recdays: {stats['n_recdays']}")
+    unit = 'mice' if 'within-mouse' in stats['pipeline'] else 'recdays'
+    print(f"  n_{unit}: {stats['n_recdays']}"
+          + ('' if unit == 'mice' else
+             f" (from {len({rd.split('_')[0] for rd in stats['recdays']})} mice)"))
     print(f"  n_neurons: {stats['n_neurons_summary']}")
     print(f"  n_tasks:   {stats['n_tasks_summary']}")
     print(f"  {'model':18s} {'mean':>8s} {'sd':>8s} {'sem':>8s} "
@@ -372,12 +436,54 @@ def _coefs_and_fdr(stats):
     return coefs, fdr
 
 
+def _average_within_mouse(per_recday_results, n_neurons, n_tasks):
+    """Collapse per-recday results to one entry per mouse (mean of the betas).
+
+    Returns the same three structures `methods_results_stats` takes, so the
+    n = 5 robustness test runs through the IDENTICAL code path as the primary
+    n = 8 test — same one-sided ttest_1samp, same BH-FDR across the same four
+    models. Only the unit of observation changes.
+
+    Rationale: the 8 recdays are not exchangeable (ah04 contributes 3, me11 2),
+    so a strong effect in one animal can carry the recday-level test. Averaging
+    within animal first removes that. It is a ROBUSTNESS check, not a
+    replacement: n = 5 is underpowered, so read the effect size, not a null.
+    """
+    by_mouse = {}
+    for rd in per_recday_results:
+        # A degenerate recday (all-NaN betas — see degenerate_data_vector)
+        # must not drag its animal's mean to NaN.
+        if not np.all(np.isfinite(np.asarray(per_recday_results[rd]['coefs'],
+                                             dtype=float))):
+            continue
+        by_mouse.setdefault(rd.split('_')[0], []).append(rd)
+
+    res, neu, tsk = {}, {}, {}
+    for mouse, rds in sorted(by_mouse.items()):
+        coefs = np.mean([np.asarray(per_recday_results[rd]['coefs'], dtype=float)
+                         for rd in rds], axis=0)
+        res[mouse] = {'coefs':      coefs,
+                      'label_regs': per_recday_results[rds[0]]['label_regs']}
+        # neurons are counted per neuron-day, so they sum across a mouse's recdays
+        neu[mouse] = int(sum(n_neurons[rd] for rd in rds))
+        tsk[mouse] = int(sum(n_tasks[rd]   for rd in rds))
+    return res, neu, tsk
+
+
 # ── Main analysis 1: full DSR z-scored RDM ────────────────────────────
 stats_full_z = ae.methods_results_stats(
     full_z_results, n_neurons_per_recday, n_pooled_per_recday,
     model_label_order=MODEL_ORDER_DSR)
 stats_full_z['pipeline'] = 'DSR mode_path / all_trials / full_z'
 _print_stats(stats_full_z)
+
+# Robustness: same test, one value per ANIMAL instead of per recday.
+stats_full_z_by_mouse = ae.methods_results_stats(
+    *_average_within_mouse(full_z_results, n_neurons_per_recday, n_pooled_per_recday),
+    model_label_order=MODEL_ORDER_DSR)
+stats_full_z_by_mouse['pipeline'] = ('DSR mode_path / all_trials / full_z '
+                                     '(within-mouse average, n = mice)')
+_print_stats(stats_full_z_by_mouse)
 
 # Build example matrices from the pooled normalised view.
 cfg_ex, loc_ex, neu_ex, tim_ex = cleaned['norm'][example_recday]
@@ -407,6 +513,18 @@ ae.pub_figure_example_subject(
     recday_label=example_recday,
     save_stem=os.path.join(OUT_DIR, 'fig2_full_z'))
 
+# Same overview figure, but the box/scatter carries ONE POINT PER MOUSE. The
+# model panels are identical (they depend on the task, not on the group test);
+# only the betas and their FDR stars change.
+fzm_coefs, fzm_fdr = _coefs_and_fdr(stats_full_z_by_mouse)
+ae.pub_figure_dsr_overview(
+    dsr_model_activation=fz_model_acts[DSR_DISPLAY_KEY],
+    dsr_model_rdm=fz_model_rdms[DSR_DISPLAY_KEY],
+    coefs_by_model=fzm_coefs, model_order=MODEL_ORDER_FIG, fdr_pvals=fzm_fdr,
+    n_tasks=len(cfg_ex), n_conds_per_task=N_CONDS_PER_CONFIG,
+    recday_label=f'{example_recday} (n = {stats_full_z_by_mouse["n_recdays"]} mice)',
+    save_stem=os.path.join(OUT_DIR, 'fig1_full_z_by_mouse'))
+
 
 # ── Main analysis 2: across-task-halves (mode_path) ───────────────────
 stats_halves = ae.methods_results_stats(
@@ -414,6 +532,14 @@ stats_halves = ae.methods_results_stats(
     model_label_order=MODEL_ORDER_DSR)
 stats_halves['pipeline'] = 'DSR mode_path / across-task-halves'
 _print_stats(stats_halves)
+
+stats_halves_by_mouse = ae.methods_results_stats(
+    *_average_within_mouse(halves_results, n_neurons_per_recday,
+                           n_qualifying_per_recday),
+    model_label_order=MODEL_ORDER_DSR)
+stats_halves_by_mouse['pipeline'] = ('DSR mode_path / across-task-halves '
+                                     '(within-mouse average, n = mice)')
+_print_stats(stats_halves_by_mouse)
 
 # Example matrices: POST-clean PRE-pool (we need per-session structure for halves).
 cfg_pre, loc_pre, neu_pre, tim_pre = cleaned['norm'][example_recday]
@@ -445,9 +571,80 @@ if halves_mats is not None:
         recday_label=f'{example_recday} (across-halves, K={K_h})',
         x_axis_groups=[('run 1', K_h), ('run 2', K_h)],
         save_stem=os.path.join(OUT_DIR, 'fig2_across_halves'))
+
+    # One point per mouse (see the full_z by-mouse figure above).
+    hm_coefs, hm_fdr = _coefs_and_fdr(stats_halves_by_mouse)
+    ae.pub_figure_dsr_overview(
+        dsr_model_activation=h_model_acts[DSR_DISPLAY_KEY],
+        dsr_model_rdm=h_model_rdms[DSR_DISPLAY_KEY],
+        coefs_by_model=hm_coefs, model_order=MODEL_ORDER_DSR, fdr_pvals=hm_fdr,
+        n_tasks=K_display, n_conds_per_task=N_CONDS_PER_CONFIG,
+        recday_label=(f'{example_recday} (across-halves, '
+                      f'n = {stats_halves_by_mouse["n_recdays"]} mice)'),
+        x_axis_groups=[('Task half 1', K_h), ('Task half 2', K_h)],
+        save_stem=os.path.join(OUT_DIR, 'fig1_across_halves_by_mouse'))
 else:
     print(f"\nExample recday {example_recday} has no qualifying configs; "
           f"skipping across-halves figures.")
+
+
+# ── Phase-residualisation basis comparison ────────────────────────────
+# WHY THIS IS IN THE SCRIPT: PHASE_RESIDUALISE = 'cosine_2h' is a choice, and
+# the reason for it has to be checkable by whoever runs this next, not taken on
+# trust. The criterion, fixed in advance: the residualisation must drive the
+# Subgoal Progress regressor to a NULL group effect, because subgoal progress
+# is the dominant signal in this dataset and any residue of it would inflate
+# the action-plan fit. Whichever basis in PHASE_BASES_TO_COMPARE satisfies that
+# is the one to use.
+#
+# Each basis goes through run_all_recdays -> methods_results_stats, i.e. the
+# same functions as the primary analysis, so the numbers are directly
+# comparable. The basis equal to PHASE_RESIDUALISE reuses the primary results
+# instead of recomputing them.
+phase_comparison = {}
+if PHASE_BASES_TO_COMPARE:
+    print(f"\n{'=' * 70}\nPhase-residualisation comparison: {PHASE_BASES_TO_COMPARE}")
+    for basis in PHASE_BASES_TO_COMPARE:
+        if basis == PHASE_RESIDUALISE:
+            fz_res, hv_res = full_z_results, halves_results
+        else:
+            cfg_basis = dict(ANALYSIS_CONFIG, phase_residualise=basis)
+            print(f"\n-- re-running all recdays with phase_residualise={basis!r} ...")
+            pr = run_all_recdays(cfg_basis)
+            fz_res = {r['recday']: r['dsr_by_pool']['mode_path']['full_z'] for r in pr}
+            hv_res = {r['recday']: r['halves']['across_halves'] for r in pr
+                      if 'across_halves' in r['halves']}
+
+        st_fz = ae.methods_results_stats(fz_res, n_neurons_per_recday,
+                                         n_pooled_per_recday,
+                                         model_label_order=MODEL_ORDER_DSR)
+        st_hv = ae.methods_results_stats(hv_res, n_neurons_per_recday,
+                                         n_qualifying_per_recday,
+                                         model_label_order=MODEL_ORDER_DSR)
+        st_fz['pipeline'] = f'full_z / phase_residualise={basis}'
+        st_hv['pipeline'] = f'across-halves / phase_residualise={basis}'
+        _print_stats(st_fz)
+        _print_stats(st_hv)
+        phase_comparison[str(basis)] = {'full_z': st_fz, 'across_halves': st_hv}
+
+    # Compact read-out: the Subgoal Progress line is the whole argument.
+    print(f"\n{'-' * 70}\nSubgoal Progress (the residualisation criterion):")
+    print(f"  {'basis':14s} {'analysis':16s} {'beta':>8s} {'t':>8s} "
+          f"{'p_unc':>10s} {'p_fdr':>10s} {'sig':>5s}")
+    for basis, blocks in phase_comparison.items():
+        for name, st in blocks.items():
+            m = st['models']['phas']
+            print(f"  {basis:14s} {name:16s} {m['mean']:>8.4f} {m['t_group']:>8.3f} "
+                  f"{m['p_group_uncorrected']:>10.4g} {m['p_group_fdr']:>10.4g} "
+                  f"{'YES' if m['sig_fdr'] else 'no':>5s}")
+    print("  criterion: use the basis whose Subgoal Progress effect is NOT "
+          "significant.\n  Action Plan for reference:")
+    for basis, blocks in phase_comparison.items():
+        for name, st in blocks.items():
+            m = st['models']['dsr_fmri']
+            print(f"  {basis:14s} {name:16s} {m['mean']:>8.4f} {m['t_group']:>8.3f} "
+                  f"{m['p_group_uncorrected']:>10.4g} {m['p_group_fdr']:>10.4g} "
+                  f"{'YES' if m['sig_fdr'] else 'no':>5s}")
 
 
 # ── Figure 3: model schematics (variant-independent) ──────────────────
@@ -467,6 +664,9 @@ run_settings = {
     'run_tag':                 RUN_TAG,
     'timestamp':               datetime.now().isoformat(timespec='seconds'),
     'data_folder':             DATA_FOLDER,
+    'norm_folder':             NORM_FOLDER or DATA_FOLDER,
+    'norm_source':             ('authors_released' if NORM_FOLDER is None
+                                else 'self_normalised'),
     'n_conds_per_config':      N_CONDS_PER_CONFIG,
     'bins_per_cond':           360 // N_CONDS_PER_CONFIG,
     'degrees_per_cond':        360 / N_CONDS_PER_CONFIG,
@@ -481,16 +681,38 @@ run_settings = {
                                 * ae.LEN_STANDARDISED_PATH_DSR_FMRI],
     'random_seed':             42,
     'analysis_config':         ANALYSIS_CONFIG,
+    # Sample description. n_recdays is the unit of the group t-test; n_mice is
+    # what the manuscript quotes. A recday is `{mouse}_{day1}_{day2}`.
+    'sample': {
+        'n_recdays':         len(mouse_of_recday),
+        'n_mice':            len(recdays_per_mouse),
+        'recdays_per_mouse': recdays_per_mouse,
+        'mouse_of_recday':   mouse_of_recday,
+    },
 }
 
 stats_path = os.path.join(OUT_DIR, 'key_analysis_stats.json')
 with open(stats_path, 'w') as f:
-    json.dump({'settings':         run_settings,
-               'full_z':           stats_full_z,
-               'across_halves':    stats_halves,
-               'repeats_overview': repeats_overview},
+    json.dump({'settings':                run_settings,
+               'full_z':                  stats_full_z,
+               'across_halves':           stats_halves,
+               # Robustness tests: identical machinery, one value per animal.
+               'full_z_by_mouse':         stats_full_z_by_mouse,
+               'across_halves_by_mouse':  stats_halves_by_mouse,
+               'repeats_overview':        repeats_overview,
+               # Justification for PHASE_RESIDUALISE, recomputed every run.
+               'phase_residualisation_comparison': {
+                   'criterion': ('Use the basis that drives the Subgoal Progress '
+                                 'regressor to a null group effect; subgoal '
+                                 'progress dominates this dataset and any residue '
+                                 'would inflate the action-plan fit.'),
+                   'bases_compared': [str(b) for b in PHASE_BASES_TO_COMPARE],
+                   'basis_used':     str(PHASE_RESIDUALISE),
+                   'results':        phase_comparison,
+               }},
               f, indent=2)
 print(f"\nWrote stats: {stats_path}")
+print(f"  sample: {len(mouse_of_recday)} recdays from {len(recdays_per_mouse)} mice")
 print(f"  settings: {N_CONDS_PER_CONFIG} conds/config "
       f"({360 // N_CONDS_PER_CONFIG} bins = {360 / N_CONDS_PER_CONFIG:.0f}° each), "
       f"{NUMBER_PHASE_NEURONS} phase neurons, "

@@ -2271,3 +2271,24 @@ with open(json_path, 'w') as f:
               default=lambda o: float(o) if hasattr(o, 'item') else str(o))
 print(f"\nWrote {json_path}")
 print(f"Final outputs under: {OUT_DIR}")
+
+
+# ── Publication-ready ROI × regressor summary figures ────────────────
+# Same function the DSR pipeline and the standalone re-plot use, so a
+# fresh run and `python RSA_DSR_replot_addon.py <run_dir>` produce
+# identical outputs. Reads results_summary_combos.csv (one heatmap per
+# combo), results_summary.csv (one heatmap per branch, one column per
+# single model) and perm_null_draws/perm_*.pkl. No recomputation.
+#
+# NOTE on the single-model figure here: this script's all_cells branch is
+# fixed at `state_only`, so its single-model heatmap is one column wide.
+# The rich multi-model version appears in the DSR pipeline, whose
+# results_summary.csv carries every model in `models`.
+try:
+    _scripts_dir = os.path.dirname(os.path.abspath(__file__))
+    if _scripts_dir not in sys.path:
+        sys.path.insert(0, _scripts_dir)
+    from RSA_DSR_replot_addon import make_publication_figures
+    make_publication_figures(OUT_DIR, test_variant=PRIMARY_TEST)
+except Exception as _pub_exc:
+    print(f"[pub-figs] skipped ({type(_pub_exc).__name__}: {_pub_exc})")

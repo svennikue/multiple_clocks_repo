@@ -3,7 +3,7 @@
 # SLURM submitter for the SWR pipeline.
 #
 # Modelled on scripts/batch_on_ceph.sh (same condition-file idea, same
-# micromamba activation, same logs/<timestamp>/ layout) but with CPU resources
+# micromamba activation) but with CPU resources
 # instead of that script's `-p gpu --gres=gpu:1 --mem=128G`, which this pipeline
 # does not need and should not occupy.
 #
@@ -44,15 +44,29 @@ while IFS= read -r line; do
 done < "$CONDFILE"
 [ "${#job_array[@]}" -gt 0 ] || { echo "no conditions in $CONDFILE"; exit 1; }
 
+# Logs and every other output go WITH THE DATA, never into the repository.
+# `./logs/` (relative to the CWD, i.e. the checkout) was writing SLURM .out/.err/
+# .sbatch files into the git tree.
+if [ -n "${SWR_DATA_ROOT:-}" ]; then
+    DATA_ROOT="$SWR_DATA_ROOT"
+elif [ -d "/ceph/behrens/svenja/human_ABCD_ephys" ]; then
+    DATA_ROOT="/ceph/behrens/svenja/human_ABCD_ephys"
+elif [ -d "$HOME/Documents/projects/multiple_clocks/data/ephys_humans" ]; then
+    DATA_ROOT="$HOME/Documents/projects/multiple_clocks/data/ephys_humans"
+else
+    echo "cannot locate the data root; set SWR_DATA_ROOT" >&2; exit 1
+fi
+
 timestamp=$(date "+%Y-%m-%d_%Hh%M")
-logs_path="./logs/${timestamp}_${JOB}"
-mkdir -p "$logs_path"
+logs_path="${DATA_ROOT}/derivatives/group/swr/slurm_logs/${timestamp}_${JOB}"
+mkdir -p "$logs_path" || { echo "cannot create $logs_path" >&2; exit 1; }
 
 echo "job        : $JOB"
 echo "script     : $PYSCRIPT"
 echo "conditions : $CONDFILE  (${#job_array[@]} tasks)"
 echo "resources  : -p $PART -c $CPUS --mem=$MEM --time=$TIME"
 echo "env        : $ENVNAME"
+echo "data root  : $DATA_ROOT"
 echo "logs       : $logs_path"
 echo "-------------------------------------------------------------------------------"
 

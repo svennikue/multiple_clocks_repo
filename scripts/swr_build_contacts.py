@@ -213,9 +213,16 @@ def build_contacts(sessions=None, save_all=True, verbose=False,
             os.makedirs(out_dir, exist_ok=True)
             contacts.to_csv(os.path.join(out_dir, f"macro_contacts_{session:02d}.csv"),
                             index=False)
+            pair_path = os.path.join(out_dir, f"bipolar_pairs_{session:02d}.csv")
             if len(pairs):
-                pairs.to_csv(os.path.join(out_dir, f"bipolar_pairs_{session:02d}.csv"),
-                             index=False)
+                pairs.to_csv(pair_path, index=False)
+            elif os.path.isfile(pair_path):
+                # A session that yields no pairs now must not keep a file from an
+                # earlier run: swr_check_inputs counts files, so a stale one reads
+                # as "ready for stage 2" and stage 2 would run on outdated contacts.
+                os.remove(pair_path)
+                print(f"    s{session:02d}: removed stale {os.path.basename(pair_path)} "
+                      f"(this build produced no pairs)")
 
     qc = pd.DataFrame(qc_rows)
 

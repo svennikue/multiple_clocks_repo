@@ -300,6 +300,126 @@ def plot_model_rdm_pub(rdm, ev_labels, task_label_lookup, *,
     return fig
 
 
+# Diverging colormap for correlation matrices: era_brewer "Showgirl2"
+# read as red (negative) -> cream (zero) -> green (positive).
+SHOWGIRL2_DIVERGING = (
+    "#B74C2D", "#DC673E", "#CCB178", "#EAEDC4", "#C1DCBF", "#7BB594", "#448363",
+)
+
+
+def plot_model_correlation_matrix_pub(corr, model_labels, *,
+                                      save_stem=None, title=None,
+                                      vlim=None, font_pt=7,
+                                      fig_width_cm=4.0, fig_height_cm=4.0,
+                                      annot=True, colorbar=True,
+                                      cbar_label='Pearson r', show=True):
+    """Publication-ready heatmap of the correlations BETWEEN model RDMs.
+
+    Takes a **precomputed** correlation matrix — nothing is recomputed or
+    dropped here, the matrix is plotted exactly as passed in.
+
+    Parameters
+    ----------
+    corr          : (n, n) symmetric correlation matrix.
+    model_labels  : length-n display names, in the same order as ``corr``.
+    vlim          : symmetric colour limit (-vlim..vlim, centred on 0). If
+                    None, taken from the largest absolute off-diagonal
+                    value, rounded up to the next 0.1.
+    fig_width_cm,
+    fig_height_cm : printed size; fonts render at ``font_pt`` exactly when
+                    dropped into an A4 page at 100 %.
+
+    Only the strictly lower triangle is drawn (the diagonal is 1 by
+    definition and the upper triangle is its mirror), trimmed to an
+    (n-1) x (n-1) block so the cells stay as large as possible.
+
+    Saves ``<save_stem>.pdf`` and ``<save_stem>.png`` when ``save_stem``
+    is given.
+    """
+    corr = np.asarray(corr, dtype=float)
+    n = corr.shape[0]
+    if corr.shape[0] != corr.shape[1] or n != len(model_labels):
+        raise ValueError(f"corr shape {corr.shape} doesn't match {len(model_labels)} labels")
+
+    # strictly lower triangle, trimmed: rows 1..n-1 x cols 0..n-2
+    block = corr[1:, :-1].copy()
+    block[np.triu_indices(n - 1, k=1)] = np.nan
+    row_labels, col_labels = list(model_labels[1:]), list(model_labels[:-1])
+
+    if vlim is None:
+        off_diag = corr[~np.eye(n, dtype=bool)]
+        vlim = float(np.ceil(np.nanmax(np.abs(off_diag)) * 10) / 10)
+        vlim = max(vlim, 0.1)
+
+    cm_per_in = 2.54
+    rc = {
+        'font.family':     'sans-serif',
+        'font.sans-serif': ['Arial', 'DejaVu Sans'],
+        'font.size':       font_pt,
+        'axes.labelsize':  font_pt,
+        'axes.titlesize':  font_pt + 1,
+        'xtick.labelsize': font_pt,
+        'ytick.labelsize': font_pt,
+    }
+    with plt.rc_context(rc):
+        fig, ax = plt.subplots(
+            figsize=(fig_width_cm / cm_per_in, fig_height_cm / cm_per_in),
+            constrained_layout=True)
+        cmap_obj = mcolors.LinearSegmentedColormap.from_list(
+            'showgirl2_div', SHOWGIRL2_DIVERGING)
+        cmap_obj.set_bad(color='white')
+        norm = mcolors.TwoSlopeNorm(vmin=-vlim, vcenter=0.0, vmax=vlim)
+        im = ax.imshow(block, cmap=cmap_obj, norm=norm,
+                       interpolation='none', aspect='equal')
+
+        ax.set_xticks(np.arange(len(col_labels)))
+        ax.set_yticks(np.arange(len(row_labels)))
+        ax.set_xticklabels(col_labels, rotation=45, ha='right',
+                           rotation_mode='anchor')
+        ax.set_yticklabels(row_labels)
+        ax.tick_params(length=0, pad=1.5)
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+        # thin white grid so the cells read as separate tiles
+        ax.set_xticks(np.arange(-0.5, len(col_labels), 1), minor=True)
+        ax.set_yticks(np.arange(-0.5, len(row_labels), 1), minor=True)
+        ax.grid(which='minor', color='white', linewidth=0.6)
+        ax.tick_params(which='minor', length=0)
+
+        if annot:
+            for i in range(block.shape[0]):
+                for j in range(block.shape[1]):
+                    v = block[i, j]
+                    if not np.isfinite(v):
+                        continue
+                    txt = f"{v:.2f}".replace('0.', '.').replace('-.00', '.00')
+                    ax.text(j, i, txt, ha='center', va='center',
+                            fontsize=font_pt - 1,
+                            color='white' if abs(v) > 0.7 * vlim else 'black')
+
+        if title:
+            ax.set_title(title, loc='left')
+        if colorbar:
+            # slim horizontal bar tucked into the empty corner above the
+            # triangle, so it costs the heatmap no space at all
+            cax = ax.inset_axes([0.36, 0.88, 0.55, 0.05])
+            cbar = fig.colorbar(im, cax=cax, orientation='horizontal',
+                                ticks=[-vlim, 0, vlim])
+            cbar.ax.tick_params(labelsize=font_pt - 2, length=1.2, pad=1)
+            cbar.outline.set_visible(False)
+            cax.set_title(cbar_label, fontsize=font_pt - 1, pad=2)
+
+        if save_stem:
+            # no tight bbox: the saved panel is exactly
+            # fig_width_cm x fig_height_cm, constrained_layout shrinks the
+            # axes so the labels fit INSIDE that box.
+            fig.savefig(save_stem + '.pdf')
+            fig.savefig(save_stem + '.png', dpi=300)
+        if show:
+            plt.show()
+    return fig
+
+
 def plot_model_activation_examples(EVs, model_names, example_task,
                                    task_label_lookup, *,
                                    temp_order=None, save_stem=None,

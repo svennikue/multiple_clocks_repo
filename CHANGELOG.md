@@ -1,5 +1,237 @@
 # CHANGELOG
 
+## 2026-09-01 (later still) — Phase-residualisation choice is now self-documenting
+
+`PHASE_RESIDUALISE = 'cosine_2h'` was justified from a run on the old 8-recday
+set, and the justification lived only in a comment. It is now RECOMPUTED EVERY
+RUN: `PHASE_BASES_TO_COMPARE = ['cosine', 'cosine_2h']` sends each basis through
+the same `run_all_recdays` -> `methods_results_stats` path as the primary
+analysis, prints a read-out, and writes
+`key_analysis_stats.json['phase_residualisation_comparison']` with the
+criterion stated in the file. Costs one extra full pass per non-default basis.
+
+Criterion (fixed in advance): use the basis that removes the Subgoal Progress
+effect, since subgoal progress dominates this dataset and any residue would
+inflate the action-plan fit.
+
+Re-tested on the full 25 recdays / 7 mice — the original conclusion holds:
+
+| basis     | analysis      | Subgoal Progress beta | t(23) | q_FDR    | sig |
+|-----------|---------------|-----------------------|-------|----------|-----|
+| cosine    | full_z        | +0.0495               | +5.40 | 1.2e-05  | YES |
+| cosine    | across_halves | +0.0593               | +3.26 | 2.3e-03  | YES |
+| cosine_2h | full_z        | -0.0229               | -5.82 | 1.00     | no  |
+| cosine_2h | across_halves | -0.0520               | -3.60 | 0.999    | no  |
+
+A single harmonic leaves a significant positive subgoal-progress effect; two
+harmonics remove it. Rodent phase tuning (von Mises, kappa = 3.33) is sharp
+enough to carry second-harmonic structure that one harmonic leaves behind.
+
+Important for the manuscript: the choice does NOT manufacture the main effect.
+Action Plan is essentially unchanged either way — full_z 0.2259 (t = 9.23) with
+'cosine' vs 0.2324 (t = 9.57) with 'cosine_2h'; across-halves 0.2820 (t = 6.73)
+vs 0.2964 (t = 7.21). All significant at q < 1e-5.
+
+Caveat to state honestly: 'cosine_2h' does not leave Subgoal Progress at zero,
+it leaves it reliably NEGATIVE (t(23) = -5.82). The one-sided criterion "not
+significantly positive" is met, but describing it as "null" is inaccurate — it
+is better described as over-corrected. Worth pre-empting, since a reviewer can
+read it as over-residualisation.
+
+## 2026-09-01 (later) — Full OSF release downloaded + uniform self-normalisation
+
+The authors have now confirmed that **the normalisation they settled on is not
+the one published** in `Basic_analysis.ipynb`, and it has not been shared. That
+closes the earlier puzzle: the published `raw_to_norm` reproduces their released
+`Neuron_*` arrays only to r ~ 0.88 because it is a different method, not because
+we were running it wrong. Their released normalised files are therefore
+unreproducible, and the only self-consistent option is to normalise everything
+ourselves with one function.
+
+**Downloaded (OSF 3d9r2):** all 25 combined ABCD recdays, 7 mice
+(ab03, ah03, ah04, ah07, me08, me10, me11), 193 sessions, ~2.0 GB of
+`Neuron_raw` / `Location_raw` / `trialtimes` / `Task_data`. Was 8 recdays /
+5 mice. ab03 and ah07 are entirely new — they do not exist in the Drive share.
+
+**New: `scripts/normalise_rodent_ephys.py`** + `raw_to_norm`, `normalise_segment`,
+`state_boundaries` in `mc.analyse.analyse_ephys_clean`. Transcribed from the
+authors' published `partition`/`normalise`/`raw_to_norm`. Output:
+`derivatives/normalised_loc-max_<timestamp>/`, with a manifest and a settings
+JSON recording every parameter and per-session shape. The raw release is never
+modified.
+
+    25 recdays / 7 mice / 193 sessions / 1252 neurons, 0 NaNs, all (n, trials, 360)
+
+**Bug found and fixed in applying their code to Location.** Their `normalise`
+stretches a state segment shorter than 90 raw bins by `np.repeat(x,10)/10`. The
+`/10` is correct for a firing RATE and wrong for a categorical node ID — it
+turns node 7 into 0.7. Their released `Location_*` arrays hold clean integers,
+so they clearly do not divide there. `normalise_segment` now takes
+`rate_scaled`, defaulting to True for 'mean' and False otherwise. Affects 1.12%
+of state segments (109/9720) across 38 sessions; exact-bin agreement with the
+released Location files rose 92.3% -> 93.9%.
+
+**Undocumented choice, flagged:** the statistic for Location is not stated
+anywhere by the authors. `--location-statistic` defaults to `max` (their
+`take_max` option, and the only semantically sound one for node IDs). Agreement
+with their released files: median 93.3%, max 92.3%, min 93.0%, mean 88.3% — no
+statistic reproduces them, consistent with their method differing. Worth
+confirming with them.
+
+**CORRECTION to the earlier entry today.** The three "orphan" normalised
+sessions (`ah04_05122021_06122021_3`, `ah04_09122021_10122021_3`,
+`me10_09122021_10122021_8`) were downloaded and turn out to be **empty arrays**,
+shape `(0,)`. So they were a genuine bad-session flag after all, just encoded as
+an empty file rather than a missing one — the previous 61-session analysis was
+correct and nothing was being wrongly discarded. `cross_view_session_ids` now
+drops sessions that are absent OR empty in either view, so both encodings are
+caught.
+
+**`analysis_rodents_complete_clean.py`:** new `NORM_FOLDER` setting (now pointed
+at the run above); the recday list is taken from whichever source supplies the
+normalised view, so the analysis widens to 25 recdays automatically.
+`load_ephys_data` gained `norm_folder`. Also added a **within-mouse robustness
+test**: per-recday betas averaged within animal, then run through the IDENTICAL
+`methods_results_stats` path (same one-sided t-test, same BH-FDR), written to
+`key_analysis_stats.json` as `full_z_by_mouse` / `across_halves_by_mouse`.
+
+Not yet re-run: all previously reported rodent numbers are from the authors'
+normalised files at n = 8 recdays / 5 mice and are superseded.
+
+Low-yield recdays to keep an eye on when the results land:
+`me10_20122021_21122021` has 1 neuron and `me10_17122021_19122021` has 6, so
+their per-recday betas will be very noisy.
+
+## 2026-09-01 — Rodent data: the full release is on OSF, not the Drive share
+
+New: `scripts/download_rodent_ephys_data.py` — per-file downloader (never
+builds the multi-GB archive that makes the web download crash), verifies each
+file with `np.load`, retries with back-off, resumes after a crash.
+
+**Two sources, and they are not the same dataset.**
+
+| | recdays | mice | raw | normalised 360-bin |
+|---|---|---|---|---|
+| OSF `3d9r2` (public release) | 25 | 7 | yes | **no** |
+| private Google Drive share   | 14 | 5 | yes | yes, for 8 recdays |
+
+Our 8 recdays came from the Drive. A recday is `{mouse}_{day1}_{day2}` — a
+recording UNIT (two days spike-sorted together, 6 task configs), not an animal;
+the 8 are ah03 x1, ah04 x3, me08 x1, me10 x1, me11 x2 = **8 recdays / 5 mice**.
+The analysis docstring previously implied 8 animals; corrected, and
+`key_analysis_stats.json` now carries a `settings.sample` block with
+`n_recdays`, `n_mice`, `recdays_per_mouse`.
+
+**Missing: 17 recdays, ~2.0 GB, including two entire mice.** `ab03` (3 recdays)
+and `ah07` (3 recdays) are absent from the Drive share altogether. On disk vs on
+OSF, per mouse: ab03 0/3, ah03 1/2, ah04 3/5, ah07 0/3, me08 1/3, me10 1/4,
+me11 2/5. Five of the 25 (`combined_ABCDonly_notone_days.npy`) were recorded
+without the state tones — a different sensory regime, kept separable via
+`--tone-only`.
+
+**Blocker on using them: OSF ships raw only.** The DSR analysis runs on the
+normalised view (n_neurons x n_trials x 360, 90 bins/state), which OSF does not
+include.
+
+The authors' normalisation code IS public — `raw_to_norm` / `normalise` in
+`Basic_analysis.ipynb` cell 21 of github.com/mohamadyelgaby/mFC_schema:
+
+    Trial_times_conc = np.hstack((np.concatenate(tt[:,:-1]), tt[-1,-1])) // 25
+    segments  = partition(raw_neuron, Trial_times_conc)      # one per state
+    per_state = binned_statistic(arange(L), seg, 'mean', bins=90)[0]
+                # with: if len(seg) < 90 -> seg = np.repeat(seg,10)/10 first
+    Neuron_norm = per_state.reshape(n_states//4, 360)        # NO smoothing
+                # (smoothing_sigma=10 applies only to raw_to_norm(return_mean=True))
+
+Running it verbatim still does NOT reproduce the shipped `Neuron_*` files.
+Over 18 sessions from 6 recdays: **mean r = 0.877** (range 0.75-0.97) for
+neurons, **0.785** for locations, **zero exact matches**, and the trial count is
+off by one in 8/18 sessions.
+
+Cross-checked against OSF, not just the Drive: `Neuron_raw`, `Location_raw` and
+`trialtimes` for ah03_18082021_19082021 (sessions 0, 2) and me08_10092021_11092021
+(sessions 0, 2) are BIT-IDENTICAL between the two sources, and re-running the
+authors' code on the freshly downloaded OSF raw gives exactly the same r
+(0.8605 / 0.8050 / 0.9088 / 0.9648). So the mismatch is not a Drive-vs-OSF
+artefact — the released raw is the same everywhere, and it still is not the
+array that produced the released normalised files.
+
+Why it cannot match: the bin values are exact rationals whose NUMERATORS agree
+with ours but whose DENOMINATORS do not. For ah03_18082021_19082021_0, trial 0,
+bin 0 the shipped value is 11/13 = `raw[5:18].mean()`, while their code on the
+shipped raw gives 11/9 = `raw[0:9].mean()`. Same spikes, wider window, offset
+start. I.e. **the published `Neuron_raw` is not the exact array that was fed to
+`raw_to_norm`** — there is an alignment/binning difference upstream of the
+released files. The off-by-one trial counts point the same way. So the recipe is
+recoverable; the authors' exact output is not.
+
+Consequence: do NOT mix the authors' normalised arrays for the old 8 with a
+home-made version for the new 17 — the preprocessing difference lines up
+exactly with the mouse/recday split and would confound the group test. Rebuild the normalised view from raw
+for ALL 25 recdays with the `raw_to_norm` recipe above — that is now the only
+self-consistent option, since the authors' own output cannot be reproduced.
+
+**Fixed (Drive, changes results): 3 orphan normalised sessions restored.**
+`Location/Neuron_ah04_05122021_06122021_3`, `..._ah04_09122021_10122021_3` and
+`..._me10_09122021_10122021_8` existed on the Drive but had never been
+downloaded. `cross_view_session_ids` drops sessions absent from the normalised
+view assuming absence is the authors' implicit "bad session" flag; for these
+three it was a download gap, so they were being discarded for no reason.
+Downloaded 2026-09-01. Session counts now:
+
+    ah04_05122021_06122021   7 -> 8
+    ah04_09122021_10122021   7 -> 8
+    me10_09122021_10122021   8 -> 9
+
+Raw and normalised session lists now agree exactly for all 8 recdays (64
+sessions, 504 neurons), i.e. the cross-view gate is currently a no-op. **The
+analysis must be re-run — every number from before 2026-09-01 was computed on
+61 sessions.**
+
+Note on where raw is used: with `run_continuous: False` (the setting in
+`analysis_rodents_complete_clean.py`) the raw branch of `process_one_recday` is
+skipped entirely, so no reported result is computed from the raw files. They are
+loaded only to build the `cross_view_session_ids` gate.
+
+Indexing notes: gdown cannot enumerate the Drive folder (Google's folder HTML
+caps at 50 entries per folder, the folder has 5037 files) — the script scrapes
+`embeddedfolderview` instead. OSF is walked via its public API and cached as
+`_osf_index.json`.
+
+## 2026-08-29 — fMRI RSA: collinearity between the model RDMs of `DSR-contr_except_prev_but`
+
+New: `scripts/plot_model_RDM_correlations.py` + `mc.plotting.results.plot_model_correlation_matrix_pub`.
+Correlates the *model* RDMs of one combo GLM with each other (design
+collinearity check for the RSA), and plots them as a 4 x 4 cm publication panel.
+
+The model RDMs are built with the SAME code path as the searchlight RSA
+(`pair_correct_tasks` -> per-model metric -> upper triangle, `diagonal_included:
+false`), and, because the config sets `masked_conds: true`, restricted to the
+same RDM cells the GLM is fit on — `make_category_masks(...,
+mask_only_path_rew_combos=True)` keeps only same-type pairs (path-path and
+reward-reward): 1,560 of 3,160 cells. No cells are dropped anywhere else.
+
+Combo `DSR-contr_except_prev_but` (`rsa_config_quarters_DSR_controls.json`,
+EVs `DSR_loc-fut-rews-state-dur-type`), n = 32 subjects with a local EV pickle,
+group value = Fisher-z mean of the per-subject Pearson r:
+
+|              | DSR   | location | A-state | l2_norm | next_buttons |
+|--------------|-------|----------|---------|---------|--------------|
+| location     |  .531 |          |         |         |              |
+| A-state      | -.009 |  -.024   |         |         |              |
+| l2_norm      |  .294 |   .570   |  -.018  |         |              |
+| next_buttons |  .269 |   .199   |  -.014  |  .265   |              |
+| buttons_out  |  .269 |   .163   |   .015  |  .224   |  .162        |
+
+SD across subjects <= .054 everywhere, i.e. the design geometry is essentially
+identical in every subject. Highest collinearity is location <-> l2_norm (.57)
+and DSR <-> location (.53) — both expected (the DSR is built from the location
+vectors; l2_norm is a graded version of location). A-state is orthogonal to
+everything (|r| <= .024).
+
+Outputs (mean/SD csv, per-subject matrices npy, settings json, pdf + png):
+`data/derivatives/group/model_RDM_correlations_DSR-contr_except_prev_but_29-08-2026/`
+
 ## 2026-08-29 — mid-HC diagnosis: the "future-only" DSR is not a separate test, and the location result is a control-stack artefact
 
 Diagnostic pass on `DSR_RSA_simple_ROI/2026-08-27_19-18-20` (latest),
@@ -2057,3 +2289,71 @@ three different subdirectory names and at the top level for s47/s53.
 required, and the preflight now actively probes `hippocampal_probability()` at a
 canonical hippocampal voxel, failing loudly with the rsync instruction if the
 atlas is unreachable.
+
+## 2026-08-29 — first full cluster run, and repo-hygiene fixes
+
+**Cluster result: 50/60 sessions, 173 bipolar derivations** (baylor 131, ucla 11,
+utah 34), against 32 sessions / 107 pairs on the development machine. The
+one-per-electrode invariant holds at every site (`n_hpc == n_pairs`). Baylor's
+131 contacts give 128 `n_hpc_pairs` because 3 anchors are assigned EC by the atlas
+ladder despite clearing the P(hippocampus) threshold -- the HC/EC border case.
+
+**⚠ NEVER write into the repository.** `scripts/batch_swr_on_ceph.sh` used
+`logs_path="./logs/..."`, relative to the CWD, so SLURM `.out`/`.err`/`.sbatch`
+files were written into the git tree -- and an earlier run's had been *committed*.
+It now resolves the data root (`$SWR_DATA_ROOT`, then ceph, then the local path)
+and writes to `<data_root>/derivatives/group/swr/slurm_logs/`. The tracked `logs/`
+directory was removed and `logs/ *.log *.out *.err *.sbatch` added to `.gitignore`.
+Swept the rest of the SWR scripts: no other relative output paths.
+
+**Stale `bipolar_pairs` files could send stage 2 down the wrong path.**
+`swr_check_inputs.py` counts pair FILES on disk, not sessions that produced pairs
+in the latest build, so a file left over from an earlier run reads as "ready for
+stage 2". That is the 52-vs-50 discrepancy in the cluster output: 52 files, 50
+sessions with pairs, so 2 files are stale. `swr_build_contacts.py` now deletes a
+session's pair file when that build produces none, and logs the removal.
+
+**The Utah preflight warning was misleading.** It looked only in
+`s{NN}/electrodes/` and reported sessions 30, 42 and 53 as missing an electrode
+file. The pipeline resolves by the patient ID each file declares in its own
+`Fname`, across several subdirectory names -- s30 and s42 have no file of their own
+but share a patient with s29 and s41 and resolve fine. The check now uses
+`index_utah_mats_by_id`, the same path the pipeline uses.
+
+**Still to diagnose (9 sessions):** excluded as "no channel matched an electrode
+table". Locally this was 2 (s04 Utah, s16 Baylor); on ceph it is 9, so more raw
+data has exposed more channel-naming mismatches. Plus s39, which has no `.ns2`
+files on ceph at all.
+
+### 2026-09-01 — Utah channel join: two naming conventions, only one supported
+
+The cluster run left 9 sessions at "no channel matched an electrode table", six of
+them Utah with exactly 132 channels and **0** resolved (s04, s41, s42, s47, s48,
+s53) -- including s47 and s48, which resolve fine on the development machine.
+
+**Cause.** `build_macro_table` keyed the Utah join on `^chan(\d+)$` only. Utah
+recordings use two naming conventions and both occur in this dataset:
+
+    s01 / s02 / s23   chanN 128/132 | label 0/132     <- the old key works
+    s04               chanN  15/132 | label 89/132    <- every channel dropped
+
+The channel names and the electrode-table labels are the *same vocabulary*
+(`LAMG`, `LANT`, `LCM`, `LINS`, `LPHIP`, `bLACG`, `bLAHIP`, `bLMCG` appear in
+both), so this is a rename, not different anatomy.
+
+**Fix.** The Utah branch now builds both candidate keys and uses whichever
+resolves more channels. Trailing analog channels (`EyeX`, `EyeY`, `Pupil`, `BP`)
+fail to match under either key and are reported unresolved -- never matched on
+position, which the s02 132-names-vs-128-columns case rules out.
+
+Locally: Utah resolved 809 -> **898**, HC contacts 29 -> 31, sessions **32 -> 33**
+(s04 recovered). One-per-probe invariant still holds.
+
+**New:** `scripts/swr_diagnose_channels.py` prints, per session, the channel
+source, the first channel names, how many match each candidate key, and the
+electrode table's labels -- so a join failure shows the mismatch instead of just
+reporting zero. Prints only; writes nothing.
+
+Not addressed yet: s16 (BY2-YEP) reads only 4 channels from its raw header;
+s50/s51 (UCLA) are Blackrock but the UCLA join expects `.ncs` filename stems;
+s39 has no `.ns2` files on ceph.

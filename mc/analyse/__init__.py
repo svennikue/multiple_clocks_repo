@@ -15,6 +15,7 @@ import mc.analyse.helpers_human_cells
 import mc.analyse.plotting_cells
 import mc.analyse.my_RSA
 import mc.analyse.loso
+import mc.analyse.model_rdm_correlations
 
 #import mc.set_clocks
 #import mc.set_location_matrix

@@ -180,6 +180,11 @@ def _atlas_roi_name(roi):
 # data RDMs themselves change and a reload would silently re-plot the old
 # result. Previous run kept for comparison:
 #   '2026-07-30_15-58-51-fixed_cells-fixed_perms'
+# 2026-08-31: None so the new `-noL2` combo is actually fitted. The heavy
+# part (permuted data RDMs) is NOT recomputed: REUSE_PERMS_FROM_PREVIOUS_RUNS
+# below matches on a fingerprint of (cells, n_perms, seed, phase, configs,
+# shuffle_mode) - combo_models is not part of it - so the cached pickles
+# from 2026-08-27_19-18-20 are symlinked in and only the OLS re-runs.
 RELOAD_RUN = None
 
 # ── Cross-run perm cache lookup ───────────────────────────────────────
@@ -198,10 +203,11 @@ LINK_REUSED_PERMS = True   # False → copy instead of symlink (safer on weird F
 # RSA_REPLOT_PUB_FIG3_ONLY=1 to read the saved run configs below and rewrite
 # only OUT_BASE/<run>/pub_figures/fig3_human_model_schematics.{pdf,jpg}.
 # This deliberately does not load neurons, build data RDMs, or run RSA.
-REPLOT_PUB_FIG3_RUNS = [
-    '2026-06-26_11-30-30-final-State',
-    '2026-06-22_16-17-15-final-DSR',
-]
+REPLOT_PUB_FIG3_RUNS = ['2026-08-27_19-18-20']
+    
+#     '2026-06-26_11-30-30-final-State',
+#     '2026-06-22_16-17-15-final-DSR',
+# ]
 REPLOT_PUB_FIG3_MATRIX_CM = 2.0
 REPLOT_PUB_FIG3_EXAMPLE_REPEAT = 8
 
@@ -326,11 +332,20 @@ models = [
 # L2-norm is the negative-distance-from-current-location-to-each-of-9-grid-
 # locations regressor, mirroring the fMRI version in
 # create_fMRI_model_RDMs_on_clean_beh.py (cosine RDM, 9-feature vector).
-_CTRLS_FINAL = ['location', 'bttn_curr', 'bttn_next', 'l2_norm']
+# 2026-08-31: l2_norm taken OUT of the shared stack and named per combo, so
+# that '-noL2' can drop it while every other combo keeps identical membership.
+# Why it matters: l2_norm (graded negative distance to each of 9 grid nodes)
+# correlates r = 0.588 with the categorical `location` RDM - two
+# parameterisations of one variable. Fitting both splits the spatial variance
+# and removes the mid-HC location effect (HC_mid location beta .033 p=.025
+# without l2_norm -> .015 p=.223 with it). '-noL2' is the stack the published
+# Fig 3g caption describes, so both can now be reported side by side.
+_CTRLS_FINAL = ['location', 'bttn_curr', 'bttn_next']
 combo_models = {
-    'ctrl_fMRI_dsrFULL': _CTRLS_FINAL + ['dsr_fmri'],
-    'ctrl_fMRI-state_dsrFULL': _CTRLS_FINAL + ['state', 'dsr_fmri'],
-    'ctrl_dsrFUT': _CTRLS_FINAL + ['dsr_fmri_fut']
+    'ctrl_fMRI_dsrFULL': _CTRLS_FINAL + ['dsr_fmri', 'l2_norm'],
+    'ctrl_fMRI-state_dsrFULL': _CTRLS_FINAL + ['state', 'dsr_fmri', 'l2_norm'],
+    'ctrl_fMRI-state_dsrFULL-noL2': _CTRLS_FINAL + ['state', 'dsr_fmri'],
+    'ctrl_dsrFUT': _CTRLS_FINAL + ['dsr_fmri_fut', 'l2_norm']
     # 'fmri_ctrl_dsrFULL': _CTRLS_FINAL + ['dsr_fmri', 'l2_norm', 'bttn_next'],
     # 'ctrl_dsrFUT': _CTRLS_FINAL + ['dsr_fmri_fut'],
     # 'ctrl_dsrInformed': _CTRLS_FINAL + ['dsr_fmri_informed'],
@@ -404,7 +419,9 @@ FDR_TEST      = 'split_halves_z'    # primary variant. Data RDM is built
 # FDR_COMBOS    = ['ctrl_dsrFULL', 'ctrl_dsrFULL_phase', 'ctrl_dsrFULL_state-phase']         
 # FDR_SUBMODELS = ['state']       
 # settings for DSR.
-FDR_COMBOS    = ['ctrl_fMRI_dsrFULL', 'ctrl_fMRI-state_dsrFULL', 'ctrl_dsrFUT']         # DSR + bttn + location + L2 + state
+FDR_COMBOS    = ['ctrl_fMRI_dsrFULL', 'ctrl_fMRI-state_dsrFULL',
+                 'ctrl_fMRI-state_dsrFULL-noL2', 'ctrl_dsrFUT']
+# DSR + bttn + location (+ l2_norm) (+ state); -noL2 drops l2_norm only.
 FDR_SUBMODELS = ['dsr_fmri']       
 
 FDR_ALPHA     = 0.05

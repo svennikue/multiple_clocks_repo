@@ -294,11 +294,35 @@ def build_macro_table(session, recording_site, subject_label, channels,
             anat = pd.DataFrame()
         else:
             anat = load_utah_macros(utah_mat)
-            # channels.npy is 'chan1'..'chanN' plus trailing analog channels
-            # (EyeX, EyeY, Pupil, BP). Match on the integer, never on order.
+            # Utah recordings use TWO naming conventions, and both occur here.
+            # Most sessions name channels `chan1..chanN`, which join to the
+            # amplifier-channel column; others carry the clinical label instead
+            # (`LAMG1`, `bLACG6`), which joins to the electrode label directly.
+            # The two vocabularies are the same set of electrodes, so this is a
+            # rename, not different anatomy.
+            #
+            # Measured: s01/s02/s23 match `chanN` 128/132 and labels 0/132;
+            # s04 matches `chanN` 15/132 and labels 89/132. Requiring `chanN`
+            # dropped every channel of the label-named sessions, which is why
+            # six Utah sessions resolved 0 of 132 channels on the cluster.
+            #
+            # channels.npy also carries trailing analog channels (EyeX, EyeY,
+            # Pupil, BP); under either key those simply fail to match and are
+            # reported unresolved, never matched on position.
             base["utah_chan"] = base["ns_label"].str.extract(
                 r'^chan(\d+)$', expand=False).astype(float)
-        key = "utah_chan"
+            base["utah_label"] = base["ns_label"].astype(str).str.strip()
+            n_by_chan = (int(base["utah_chan"].isin(anat["utah_chan"].dropna()).sum())
+                         if "utah_chan" in anat.columns else 0)
+            _al = anat["anat_label"].astype(str).str.strip()
+            n_by_label = int(base["utah_label"].isin(set(_al)).sum())
+            if n_by_label > n_by_chan:
+                anat = anat.assign(utah_label=_al)
+                key = "utah_label"
+            else:
+                key = "utah_chan"
+        if utah_mat is None:
+            key = "utah_chan"
 
     elif site == 'ucla':
         table = (ucla_macros or {}).get(str(subject_label).strip().strip("'"))
