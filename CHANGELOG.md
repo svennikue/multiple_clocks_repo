@@ -2448,3 +2448,112 @@ s47 now reads `s47/Electrodes.mat` (202302) and s48 reads
 `swr_diagnose_channels.py`, and had already drifted -- the degenerate-cache check
 was only in one, so the diagnostic reported s16 differently from the build. Moved
 to `contact_anatomy.load_channel_list()`; both call it.
+
+### 2026-09-01 — ripple QC figures
+
+**New:** `scripts/swr_plot_ripples.py` -> `<session>/LFP-ripples/<run>/figures/`
+  grand_average_ripple    mean waveform + ripple-locked TFR (the checkpoint)
+  examples_best           clearest accepted events
+  examples_borderline     accepted events nearest the threshold
+  examples_rejected       what the spectral criterion discards
+
+Validated on s02 (239 ripples, 0.168 Hz, Chen ~0.17-0.24): the TFR shows a tight
+narrowband peak at ~95 Hz centred on t = 0, inside 80-120 Hz -- a real ripple, not
+a broadband artifact.
+
+Two plotting corrections made while building it:
+- the mean of the BAND-PASSED signal is near zero however strong the ripples are,
+  because ripple phase is not locked across events. Plot the mean ripple
+  ENVELOPE; the first version showed a flat red line and looked like a failure.
+- events too close to a recording edge were skipped after selection, leaving holes
+  in the example grid. Select from cuttable events instead.
+
+**Two things for the user to judge from these figures:**
+1. The borderline accepted events (z = 3.0-3.1) show near-continuous 80-120 Hz
+   activity with only a modest increase in the detected window. Whether
+   `PEAK_SD = 3.0` is too permissive is a judgement call these panels make visible.
+2. Several REJECTED events look like clean ripples (e.g. z = 7.6 at 90 Hz).
+   Strict spectral rejection is 32.1% here against Chen's 23.4% +- 9.9%; the
+   relaxed variant gives 18.2%. Worth deciding which is primary before the full run.
+
+**PSD questions answered:** the notch is adaptive (`notch_ratio_threshold = 2.0`),
+so sessions differ by design -- s02 had a 60 Hz line-noise ratio of **16958x**,
+notched to a residual of **0.014x**, while a session with no line noise is left
+untouched and shows a smooth 1/f. A narrowband peak INSIDE the ripple band (the
+~90 Hz spike on one s01 contact) is not addressed by the notch and is a genuine
+concern for that contact.
+
+### 2026-09-01 — QC consolidated into swr_qc_report.py, plus a numeric checkpoint
+
+**`swr_plot_ripples.py` deleted, merged into `swr_qc_report.py`.** That script
+already produced the 6-panel checkpoint figure, so a second plotting script was
+duplication. `swr_qc_report.py report --session=N` now also writes
+`figures/examples_{best,borderline,rejected}.pdf`.
+
+**New: a numeric checkpoint.** "Looks fine" does not scale to 56 sessions, so the
+methods.md section 6 criteria are now evaluated numerically against Chen's
+reference values, with FAIL (outside a hard range -- do not analyse as is) and
+CHECK (outside the reference range -- look at it) verdicts:
+
+    rate_hz              hard 0.05-0.60   ref 0.17-0.24
+    spectral_reject_pct  hard 5-50        ref 13.5-33.3   (Chen 23.4 +- 9.9)
+    peak_freq_hz         hard 80-120      ref 85-115
+    duration_ms          hard 38-500      ref 40-120
+    clean_frac           hard 0.33-1.0    ref 0.50-1.0
+    ripple_gain          hard >1.2        ref >1.5
+
+`ripple_gain` is the mean ripple-band envelope at the peak over its value at the
+window edges -- a detector triggering on broadband noise gives ~1, so it turns
+"the grand average looks like a ripple" into a number.
+
+    swr_qc_report.py report  --session=N   figure + grids + metrics
+    swr_qc_report.py metrics --session=N   metrics only (fast, for the cluster)
+    swr_qc_report.py group                 aggregate every session -> triage table
+
+**Bug found by the new metric:** `clean_frac` was medianed over *all* derivations
+including ones already excluded for contamination, so s02 reported 0.361 (a CHECK)
+when the analysed pair actually keeps 0.586. An excluded pair must not drag down the
+session it was excluded from. `qc_metrics` now filters on `excluded` first.
+
+s02 after the fix: rate 0.168 (CHECK, two ripples below Chen's 0.17), rejection
+32.1%, peak 100 Hz, duration 56 ms, clean 0.586, ripple gain 2.98. No FAILs.
+
+**PEAK_SD = 3.0 is kept, and the visual worry about it was wrong.** Events at the
+threshold look unconvincing on the example grids, but that is a plotting artifact:
+the band-passed trace is scaled x9-x34 to share an axis with broadband, which
+magnifies the ongoing band activity as much as the burst. Measured per event
+(envelope at peak / envelope at +-0.20-0.25 s), the z=3.0-3.5 bin has median gain
+2.65 with 1% below 1.5 -- these are real bursts. Raising to 3.5 would drop 94 of 238
+events (0.168 -> 0.098 Hz, well below Chen) for +0.26 gain. Recorded in methods.md
+section 6.3 with the full table.
+
+**NULL / dead ends (do not re-run):** rate over *total* recording time is 0.098 Hz
+and is the wrong number -- Chen's denominator is artifact-free time, giving 0.168.
+
+**Fixed a misleading plot title.** `qc_psd.png` said "Bipolar derivations after
+notch" whether or not the notch had fired, so a session with no line noise looked
+like a filter failure. It now reads either "notch applied at 60, 120, 180 Hz" or
+"no notch needed (line-noise ratio below threshold)".
+
+**Group QC across the 8-session development set — no FAILs, all usable.**
+
+    session  clean  dur_ms  peak_Hz  rate_Hz  gain  reject%  verdict  n
+      s02    0.586    56     100.0   0.168   2.98   32.1     CHECK   239
+      s03    0.546    61      97.5   0.190   3.12   36.7     CHECK  1057
+      s06    0.686    58     100.0   0.198   3.00   28.1     PASS    692
+      s09    0.643    56      97.5   0.154   2.92   35.0     CHECK   592
+      s12    0.685    58      97.5   0.158   2.94   41.1     CHECK   378
+      s13    0.675    58      97.5   0.176   2.80   36.8     CHECK   327
+      s14    0.564    58      95.0   0.180   2.87   34.3     CHECK   301
+      s38    0.608    59      97.5   0.206   2.97   31.9     PASS    608
+
+Rate 0.154-0.206 (Chen 0.17-0.24), peak frequency 95-100 Hz, duration 56-61 ms,
+ripple gain 2.80-3.12. Those four are tight across sessions, sites and montages,
+which is the real evidence that detection is stable.
+
+The one systematic deviation is spectral rejection: 6 of 8 sessions above Chen's
+upper bound, mean 34.5% strict vs 21.6% relaxed. Relaxed matches Chen almost
+exactly -- and that is NOT a reason to switch, because picking the criterion that
+best reproduces another paper's number after seeing which one does is post-hoc.
+Strict stays primary as pre-declared; relaxed remains the sensitivity analysis on
+19% more events (5006 vs 4194). See methods.md section 6.2.

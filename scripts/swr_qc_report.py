@@ -28,6 +28,7 @@ import sys
 import json
 
 import numpy as np
+from scipy import signal
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
@@ -64,6 +65,303 @@ def _snippets(sig, peaks, half):
     if not len(p):
         return np.zeros((0, 2 * half))
     return np.stack([sig[q - half:q + half] for q in p])
+
+
+PAD_S = 0.25          # window either side of the ripple peak, seconds
+RIPPLE_C = "#B74C2D"  # era_brewer Showgirl2 rust
+BROAD_C = "#3d3d3d"
+SHADE_C = "#F3D9D2"
+
+
+def _bandpass(x, fs, lo, hi):
+    b, a = signal.butter(4, [lo / (fs / 2), hi / (fs / 2)], btype="band")
+    return signal.filtfilt(b, a, x)
+
+
+def _load(session, data_root, analysis_name):
+    clean = os.path.join(swr_io.session_deriv_dir(session, data_root),
+                         "LFP-clean", analysis_name)
+    rip = os.path.join(swr_io.session_deriv_dir(session, data_root),
+                       "LFP-ripples", analysis_name)
+    sig = np.load(os.path.join(clean, "continuous.npy"), mmap_mode="r")
+    meta = json.load(open(os.path.join(clean, "meta.json")))
+    ev = pd.read_csv(os.path.join(rip, "ripple_events.csv"))
+    return sig, meta, ev, rip
+
+
+def _cut(sig, row, pair_idx, fs, pad_s=PAD_S):
+    """Broadband snippet centred on the RMS peak, and where the event sits."""
+    half = int(round(pad_s * fs))
+    pk = int(row.peak_sample)
+    lo, hi = pk - half, pk + half
+    if lo < 0 or hi > sig.shape[1]:
+        return None, None, None
+    seg = np.asarray(sig[pair_idx, lo:hi], dtype=float)
+    t = (np.arange(len(seg)) - half) / fs
+    win = ((int(row.start_sample) - pk) / fs, (int(row.stop_sample) - pk) / fs)
+    return t, seg, win
+
+
+def _panel(ax, t, seg, win, fs, title, sub):
+    ax.axvspan(win[0], win[1], color=SHADE_C, lw=0, zorder=0)
+    ax.plot(t, seg, color=BROAD_C, lw=0.6, zorder=2, label="broadband")
+    rip = _bandpass(seg, fs, *det.RIPPLE_BAND) if hasattr(det, "RIPPLE_BAND") \
+        else _bandpass(seg, fs, 80.0, 120.0)
+    scale = (np.percentile(np.abs(seg), 99) /
+             max(np.percentile(np.abs(rip), 99), 1e-9))
+    ax.plot(t, rip * scale, color=RIPPLE_C, lw=0.8, zorder=3,
+            label="80-120 Hz (scaled to fit)")
+    ax.set_title(title, fontsize=8, pad=3)
+    ax.text(0.02, 0.02, sub + f"  x{scale:.0f}", transform=ax.transAxes,
+            fontsize=6.5, va="bottom", ha="left", color="#666")
+    ax.set_xlim(t[0], t[-1])
+    ax.set_xticks([-0.2, 0, 0.2])
+    ax.tick_params(labelsize=7)
+
+
+def _grid(sig, ev, pairs, fs, out_stem, suptitle, n=9):
+    # Select from events that can actually be cut: one too close to a recording
+    # edge used to leave a hole in the grid.
+    ok = []
+    for _, r in ev.iterrows():
+        if r.pair_id not in pairs:
+            continue
+        t, seg, win = _cut(sig, r, pairs.index(r.pair_id), fs)
+        if t is not None:
+            ok.append(r)
+        if len(ok) == n:
+            break
+    ev = pd.DataFrame(ok)
+    if not len(ev):
+        print(f"    (no events for {os.path.basename(out_stem)})")
+        return
+    ncol = 3
+    nrow = int(np.ceil(len(ev) / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(17.4 / 2.54, 3.6 * nrow / 2.54),
+                             squeeze=False)
+    for ax in axes.ravel():
+        ax.axis("off")
+    for k, (_, r) in enumerate(ev.iterrows()):
+        pi = pairs.index(r.pair_id)
+        t, seg, win = _cut(sig, r, pi, fs)
+        if t is None:
+            continue
+        ax = axes.ravel()[k]
+        ax.axis("on")
+        _panel(ax, t, seg, win, fs, f"{r.pair_id}  t={r.t_peak_s:.1f}s",
+               f"z={r.rms_peak_z:.1f}  {1000*r.duration_s:.0f} ms  "
+               f"{r.peak_freq_hz:.0f} Hz")
+        if k % ncol == 0:
+            ax.set_ylabel("µV")
+        if k >= len(ev) - ncol:
+            ax.set_xlabel("time from ripple peak (s)")
+    h, l = axes.ravel()[0].get_legend_handles_labels()
+    fig.legend(h, l, frameon=False, fontsize=7.5, ncol=2,
+               loc="lower center", bbox_to_anchor=(0.5, -0.015))
+    fig.suptitle(suptitle, fontsize=9, y=1.0)
+    fig.tight_layout(rect=(0, 0.03, 1, 0.97))
+    for ext in ("png", "pdf"):
+        fig.savefig(f"{out_stem}.{ext}", dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    print(f"    wrote {os.path.basename(out_stem)}.png/.pdf  ({len(ev)} events)")
+
+
+
+def _example_grids(session, clean_dir, ev, n=9):
+    """Best / borderline / rejected example events, as separate grids.
+
+    The 6-panel QC figure shows a handful of events; these three grids show the
+    events whose classification is actually a judgement call -- the ones nearest
+    the threshold, and the ones the spectral criterion threw out.
+    """
+    import json as _json
+    sig = np.load(os.path.join(clean_dir, "continuous.npy"), mmap_mode="r")
+    meta = _json.load(open(os.path.join(clean_dir, "meta.json")))
+    fs, pairs = float(meta["fs"]), list(meta["pair_ids"])
+    out = os.path.join(os.path.dirname(clean_dir.rstrip("/")), "")  # unused
+    figdir = _FIGDIR[0]
+    acc = ev[ev.passed.fillna(False)] if "passed" in ev.columns else ev
+    rej = ev[~ev.passed.fillna(False)] if "passed" in ev.columns else ev.iloc[:0]
+    _grid(sig, acc.sort_values("rms_peak_z", ascending=False), pairs, fs,
+          os.path.join(figdir, "examples_best"),
+          f"s{session:02d} - clearest accepted ripples (highest RMS z)", n)
+    _grid(sig, acc.sort_values("rms_peak_z"), pairs, fs,
+          os.path.join(figdir, "examples_borderline"),
+          f"s{session:02d} - accepted ripples CLOSEST TO THRESHOLD "
+          f"- judge the threshold on these", n)
+    if len(rej):
+        _grid(sig, rej.sort_values("rms_peak_z", ascending=False), pairs, fs,
+              os.path.join(figdir, "examples_rejected"),
+              f"s{session:02d} - REJECTED by the spectral criterion", n)
+
+
+
+# =============================================================================
+# QUANTITATIVE CHECKPOINT
+# =============================================================================
+# The figure has to be looked at, but "looks fine" does not scale to 56 sessions.
+# These are the same checkpoint criteria as methods.md section 6, evaluated
+# numerically so a cluster run can be triaged before anyone opens a PDF.
+#
+# Reference values are Chen et al. 2025 (J Neurosci 45:e1502252025):
+#   ripple rate                0.17-0.24 Hz
+#   spectral rejection         23.4% +- 9.9%   -> 13.5-33.3%
+#   duration                   38-500 ms by construction; median ~50-90 ms
+#   peak frequency             inside the 80-120 Hz detection band
+#
+# A FAIL means the session should not enter the statistics as it stands. A CHECK
+# means it is outside the reference range but not obviously broken -- look at it.
+
+QC_RULES = {
+    "rate_hz":            (0.05, 0.60, 0.17, 0.24),
+    "spectral_reject_pct": (5.0, 50.0, 13.5, 33.3),
+    "peak_freq_hz":       (80.0, 120.0, 85.0, 115.0),
+    "duration_ms":        (38.0, 500.0, 40.0, 120.0),
+    "clean_frac":         (0.33, 1.00, 0.50, 1.00),
+    "ripple_gain":        (1.20, 99.0, 1.50, 99.0),
+}
+
+
+def _verdict(name, value):
+    """FAIL outside the hard range, CHECK outside the reference range, else PASS."""
+    if value is None or not np.isfinite(value):
+        return "FAIL", "not computable"
+    hard_lo, hard_hi, ref_lo, ref_hi = QC_RULES[name]
+    if value < hard_lo or value > hard_hi:
+        return "FAIL", f"outside {hard_lo}-{hard_hi}"
+    if value < ref_lo or value > ref_hi:
+        return "CHECK", f"outside reference {ref_lo}-{ref_hi}"
+    return "PASS", ""
+
+
+def _ripple_gain(sig, ev, pairs, fs, n=200):
+    """Mean ripple-band envelope at the peak divided by its value at the window
+    edges. A real ripple population gives a clear bump; a detector triggering on
+    broadband noise gives ~1."""
+    from scipy.signal import hilbert
+    half = int(round(PAD_S * fs))
+    env = []
+    for _, r in ev.head(n).iterrows():
+        if r.pair_id not in pairs:
+            continue
+        t, seg, _ = _cut(sig, r, pairs.index(r.pair_id), fs)
+        if t is None:
+            continue
+        env.append(np.abs(hilbert(_bandpass(seg, fs, 80.0, 120.0))))
+    if len(env) < 5:
+        return np.nan
+    env = np.array(env).mean(0)
+    edge = max(int(0.05 * fs), 1)
+    base = np.concatenate([env[:edge], env[-edge:]]).mean()
+    return float(env[half] / base) if base > 0 else np.nan
+
+
+def qc_metrics(session, analysis_name=ANALYSIS_NAME, save=True):
+    """Numeric checkpoint for one session -> qc_metrics.csv (one row per rule)."""
+    import json as _json
+    session = int(session)
+    R = swr_io.get_data_root()
+    clean_dir = os.path.join(swr_io.session_deriv_dir(session, R),
+                             "LFP-clean", analysis_name)
+    rip_dir = os.path.join(swr_io.session_deriv_dir(session, R),
+                           "LFP-ripples", analysis_name)
+    ev_p = os.path.join(rip_dir, "ripple_events.csv")
+    if not os.path.isfile(ev_p):
+        return None
+    ev = pd.read_csv(ev_p)
+    acc = ev[ev.passed.fillna(False)] if "passed" in ev.columns else ev
+    if not len(acc):
+        return None
+    meta = _json.load(open(os.path.join(clean_dir, "meta.json")))
+    fs, pairs = float(meta["fs"]), list(meta["pair_ids"])
+
+    ch_p = os.path.join(rip_dir, "channel_qc.csv")
+    ch = pd.read_csv(ch_p) if os.path.isfile(ch_p) else pd.DataFrame()
+    # a pair that is already excluded must not drag the session metrics down --
+    # its whole point is that it was too contaminated to analyse
+    if "excluded" in ch.columns:
+        ch = ch[~ch.excluded.fillna(False)]
+    rate = float(ch.rate_hz.median()) if "rate_hz" in ch.columns else np.nan
+    clean = np.nan
+    for c in ("clean_frac", "clean_fraction", "frac_clean"):
+        if c in ch.columns:
+            clean = float(ch[c].median()); break
+    if not np.isfinite(clean) and "clean_s" in ch.columns:
+        clean = float((ch.clean_s / float(meta["duration_s"])).median())
+
+    sig = np.load(os.path.join(clean_dir, "continuous.npy"), mmap_mode="r")
+    vals = {
+        "rate_hz": rate,
+        "spectral_reject_pct": 100.0 * float((~ev.passed.fillna(False)).mean()),
+        "peak_freq_hz": float(acc.peak_freq_hz.median()),
+        "duration_ms": float(acc.duration_s.median() * 1000.0),
+        "clean_frac": clean,
+        "ripple_gain": _ripple_gain(sig, acc, pairs, fs),
+    }
+    rows = []
+    for k, v in vals.items():
+        verdict, why = _verdict(k, v)
+        rows.append(dict(session=session, metric=k, value=v,
+                         verdict=verdict, note=why,
+                         hard_lo=QC_RULES[k][0], hard_hi=QC_RULES[k][1],
+                         ref_lo=QC_RULES[k][2], ref_hi=QC_RULES[k][3]))
+    out = pd.DataFrame(rows)
+    out["n_ripples"] = len(acc)
+    out["n_derivations"] = len(ch) if len(ch) else np.nan
+
+    print(f"\n  quantitative checkpoint  (s{session:02d}, {len(acc)} ripples, "
+          f"{len(ch)} derivation(s)):")
+    for _, r in out.iterrows():
+        mark = {"PASS": "  ok  ", "CHECK": " check", "FAIL": " FAIL "}[r.verdict]
+        print(f"   [{mark}] {r.metric:22s} {r.value:8.3f}   {r.note}")
+    if save:
+        out.to_csv(os.path.join(rip_dir, "qc_metrics.csv"), index=False)
+        print(f"   -> {os.path.join(rip_dir, 'qc_metrics.csv')}")
+    return out
+
+
+def qc_group(analysis_name=ANALYSIS_NAME, sessions=None, save=True):
+    """Aggregate every session's qc_metrics.csv into one triage table."""
+    R = swr_io.get_data_root()
+    if sessions is None:
+        cfg = swr_io.load_config(R)
+        sessions = sorted(int(k) for k in cfg.keys())
+    frames = []
+    for s in sessions:
+        p = os.path.join(swr_io.session_deriv_dir(int(s), R), "LFP-ripples",
+                         analysis_name, "qc_metrics.csv")
+        if os.path.isfile(p):
+            frames.append(pd.read_csv(p))
+    if not frames:
+        print("no qc_metrics.csv found -- run qc_metrics per session first")
+        return None
+    allm = pd.concat(frames, ignore_index=True)
+    wide = allm.pivot(index="session", columns="metric", values="value")
+    verd = allm.pivot(index="session", columns="metric", values="verdict")
+    wide["worst"] = verd.apply(
+        lambda r: "FAIL" if (r == "FAIL").any() else
+                  ("CHECK" if (r == "CHECK").any() else "PASS"), axis=1)
+    wide["n_ripples"] = allm.groupby("session").n_ripples.first()
+
+    print("\n" + "=" * 78)
+    print(" QUANTITATIVE QC ACROSS SESSIONS")
+    print("=" * 78)
+    print(wide.round(3).to_string())
+    print("\n verdicts: " + str(dict(wide.worst.value_counts())))
+    for m in QC_RULES:
+        bad = verd.index[verd[m].isin(["FAIL"])].tolist() if m in verd else []
+        if bad:
+            print(f"   FAIL on {m}: " + ", ".join(f"s{int(x):02d}" for x in bad))
+    if save:
+        out = os.path.join(swr_io.derivatives_dir(R), "group", "swr")
+        os.makedirs(out, exist_ok=True)
+        allm.to_csv(os.path.join(out, "qc_metrics_all_sessions.csv"), index=False)
+        wide.to_csv(os.path.join(out, "qc_metrics_summary.csv"))
+        print(f"\n saved -> {out}/qc_metrics_summary.csv")
+    return None      # fire renders a returned DataFrame as an attribute listing
+
+
+_FIGDIR = [None]
 
 
 def qc_report(session, analysis_name=ANALYSIS_NAME, max_events=800):
@@ -202,6 +500,8 @@ def qc_report(session, analysis_name=ANALYSIS_NAME, max_events=800):
     fig.suptitle(f"s{session:02d} ripple detection QC — "
                  f"{int(passed.shape[0])} ripples, "
                  f"{len(g)} derivations", fontsize=12, y=0.98)
+    _FIGDIR[0] = os.path.join(rip_dir, "figures")
+    os.makedirs(_FIGDIR[0], exist_ok=True)
     out = os.path.join(rip_dir, "qc_ripples")
     fig.savefig(out + ".png", dpi=300, bbox_inches='tight')
     fig.savefig(out + ".pdf", bbox_inches='tight')
@@ -214,11 +514,22 @@ def qc_report(session, analysis_name=ANALYSIS_NAME, max_events=800):
           f"{passed.peak_freq_hz.quantile(.75):.1f})")
     print(f"  duration : median {passed.duration_s.median()*1000:.0f} ms")
     print(f"  rate     : median {g.rate_hz.median():.3f} Hz across {len(g)} derivations")
+
+    _example_grids(session, clean_dir, events)
+
+    qc_metrics(session, analysis_name)      # prints its own checkpoint
     return None
+
+
+def _metrics_cli(session, analysis_name=ANALYSIS_NAME):
+    """qc_metrics returns a DataFrame so qc_report can reuse it; fire would render
+    that as an attribute listing instead of the printed table."""
+    qc_metrics(int(session), analysis_name)
 
 
 if __name__ == "__main__":
     if fire is not None:
-        fire.Fire(qc_report)
+        fire.Fire({'report': qc_report, 'metrics': _metrics_cli,
+                   'group': qc_group})
     else:
         qc_report(38)

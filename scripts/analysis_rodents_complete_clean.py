@@ -462,6 +462,15 @@ def _print_stats_order(stats, order):
               f"{(s['p_group_fdr'] or 1):>10.4g} {'*' if s['sig_fdr'] else '':>4s}")
 
 
+def _coefs_and_fdr_order(stats, order):
+    """_coefs_and_fdr for a combo whose model set differs from MODEL_ORDER_DSR."""
+    coefs = {m: np.asarray([stats['models'][m]['coefs_by_recday'][rd]
+                            for rd in stats['recdays']])
+             for m in order}
+    fdr = {m: stats['models'][m]['p_group_fdr'] for m in order}
+    return coefs, fdr
+
+
 def _coefs_and_fdr(stats):
     coefs = {m: np.asarray([stats['models'][m]['coefs_by_recday'][rd]
                             for rd in stats['recdays']])
@@ -718,6 +727,31 @@ for combo_name, spec in SUPPLEMENTARY_COMBOS.items():
         'phase_residualise': spec['phase_residualise'],
         'results':           blocks,
     }
+
+    # Figures, matching the primary ones so the supplement can show the same
+    # panel. The DSR panel uses whichever action-plan variant this combo fits.
+    disp = 'dsr' if 'dsr' in order else 'dsr_fmri'
+    for name, K, groups in (('full_z', len(cfg_ex), None),
+                            ('across_halves', None, None)):
+        if name == 'across_halves':
+            if halves_mats is None:
+                continue
+            acts, rdms, K, groups = (h_model_acts, h_model_rdms, K_display,
+                                     [('Task half 1', K_h), ('Task half 2', K_h)])
+        else:
+            acts, rdms = fz_model_acts, fz_model_rdms
+        for unit, key in (('', name), ('_by_mouse', f'{name}_by_mouse')):
+            co, fd = _coefs_and_fdr_order(blocks[key], order)
+            ae.pub_figure_dsr_overview(
+                dsr_model_activation=acts[disp], dsr_model_rdm=rdms[disp],
+                coefs_by_model=co, model_order=order, fdr_pvals=fd,
+                n_tasks=K, n_conds_per_task=N_CONDS_PER_CONFIG,
+                recday_label=(f'{example_recday} — {combo_name}'
+                              + (f' (n = {blocks[key]["n_recdays"]} mice)'
+                                 if unit else '')),
+                x_axis_groups=groups,
+                save_stem=os.path.join(OUT_DIR,
+                                       f'figS_{combo_name}_{name}{unit}'))
 
 
 # ── Figure 3: model schematics (variant-independent) ──────────────────

@@ -70,7 +70,7 @@ def _settings_dict(session, analysis_name):
     }
 
 
-def _qc_psd(sig, fs, pair_ids, out_png):
+def _qc_psd(sig, fs, pair_ids, out_png, notch_hz=None):
     """Welch PSD of every derivation, with the notch frequencies marked.
 
     The check that matters: no residual peak at 60/120/180, and no edge
@@ -91,7 +91,15 @@ def _qc_psd(sig, fs, pair_ids, out_png):
     ax.set_xlim(0, 250)
     ax.set_xlabel("Frequency (Hz)")
     ax.set_ylabel(r"PSD ($\mu$V$^2$/Hz)")
-    ax.set_title(f"Bipolar derivations after notch (n={P.shape[0]})", fontsize=11)
+    # Say what actually happened. The notch is adaptive, so on a session with no
+    # line noise nothing is removed -- titling that "after notch" made it look
+    # as though a filter had failed rather than not been needed.
+    if notch_hz:
+        applied = ", ".join(f"{float(f):.0f}" for f in notch_hz)
+        note = f"notch applied at {applied} Hz"
+    else:
+        note = "no notch needed (line-noise ratio below threshold)"
+    ax.set_title(f"Bipolar derivations, {note} (n={P.shape[0]})", fontsize=11)
     ax.legend(fontsize=9, frameon=False)
     fig.tight_layout()
     fig.savefig(out_png, dpi=200)
@@ -175,7 +183,8 @@ def extract_session(session, analysis_name=ANALYSIS_NAME, save_all=True,
         pairs.to_csv(os.path.join(out_dir, "pairs.csv"), index=False)
 
         res = _qc_psd(sig, pp.TARGET_FS, list(pairs.pair_id),
-                      os.path.join(out_dir, "qc_psd.png"))
+                      os.path.join(out_dir, "qc_psd.png"),
+                      notch_hz=meta.get("notch_applied_hz"))
         meta["line_noise_residual"] = res
         print("  residual line noise (1.0 = fully removed): "
               + ", ".join(f"{k}={v:.2f}" for k, v in res.items()))
