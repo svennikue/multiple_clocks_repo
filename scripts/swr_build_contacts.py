@@ -78,7 +78,15 @@ def _load_channels(session, data_root):
     lfp_dir = os.path.join(swr_io.session_deriv_dir(session, data_root), "LFP")
     p = os.path.join(lfp_dir, "channels.npy")
     if os.path.isfile(p):
-        return [str(c) for c in np.load(p, allow_pickle=True)], "channels.npy"
+        cached = [str(c) for c in np.load(p, allow_pickle=True)]
+        # A cache that is entirely placeholder names is worse than no cache:
+        # s16 stores exactly ['empty-064','empty-128','empty-192','empty-256'],
+        # which shadowed a 232-channel recording and made the session unusable.
+        # Fall through to the raw header in that case.
+        if cached and not all(c.lower().startswith("empty") for c in cached):
+            return cached, "channels.npy"
+        print(f"    s{session:02d}: ignoring degenerate channels.npy "
+              f"({len(cached)} names, all placeholders) -- reading the raw header")
 
     cfg_s = swr_io.session_config(session, data_root=data_root)
     files, kind, _ = swr_io.discover_raw_files(session, cfg_s, data_root=data_root)
@@ -259,6 +267,28 @@ def build_contacts(sessions=None, save_all=True, verbose=False,
     ].sum().to_string())
     print(f"\nsessions with >=1 hippocampal bipolar pair: "
           f"{int((qc.n_hpc_pairs > 0).sum())}/{len(qc)}")
+
+    # Subject-level availability. Sessions are the analysis unit but subjects are
+    # the sample: several subjects contributed 2-3 sessions, so a session count
+    # overstates independent coverage.
+    sub = qc.dropna(subset=["subject_label"]).copy()
+    sub["has_lfp"] = sub["n_channels"] > 0
+    by_sub = sub.groupby("subject_label").agg(
+        sessions=("session", "size"),
+        sessions_with_lfp=("has_lfp", "sum"),
+        sessions_with_hpc=("n_hpc_pairs", lambda x: int((x > 0).sum())),
+        hpc_pairs=("n_hpc_pairs", "sum"))
+    n_lfp = int((by_sub.sessions_with_lfp > 0).sum())
+    n_hpc = int((by_sub.sessions_with_hpc > 0).sum())
+    print("\n--- subject-level coverage (the sample, not the analysis unit) ---")
+    print(f"  subjects in the manifest              : {len(by_sub)}")
+    print(f"  with LFP available                    : {n_lfp}")
+    print(f"  of those, with a usable HPC derivation: {n_hpc}"
+          f"  ({100 * n_hpc / max(n_lfp, 1):.0f}% of subjects with LFP)")
+    lost = by_sub[(by_sub.sessions_with_lfp > 0) & (by_sub.sessions_with_hpc == 0)]
+    if len(lost):
+        print(f"  subjects with LFP but NO hippocampal contact ({len(lost)}): "
+              + ", ".join(sorted(lost.index.astype(str))))
 
     if all_rows:
         allc = pd.concat(all_rows, ignore_index=True)

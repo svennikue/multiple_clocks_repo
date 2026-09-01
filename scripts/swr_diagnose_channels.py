@@ -95,13 +95,23 @@ def diagnose(sessions=None, data_root=None):
         print(f"  first 10 names : {chans[:10]}")
 
         if site == "utah":
-            hit = sum(bool(re.match(r'^chan\d+$', c)) for c in chans)
-            print("  match ^chan<N>$ : " + f"{hit}/{len(chans)}"
-                  + ("   <-- THE JOIN KEY FAILS" if hit == 0 else ""))
             pid = anat_src.subject_numeric_id(lab) if lab else None
             if pid in utah_idx:
                 loc, mat = utah_idx[pid]
                 t = ca.load_utah_macros(mat)
+                # the two candidate keys the join now chooses between
+                amp = set(t["utah_chan"].dropna().astype(int)) if "utah_chan" in t else set()
+                by_chan = sum(1 for c in chans
+                              if re.match(r'^chan\d+$', c)
+                              and int(c[4:]) in amp)
+                tl = set(str(x).strip() for x in t["anat_label"])
+                by_label = sum(1 for c in chans if c in tl)
+                print(f"  join by chanN  : {by_chan}/{len(chans)}")
+                print(f"  join by label  : {by_label}/{len(chans)}"
+                      + ("   <-- this key wins" if by_label > by_chan else ""))
+                if max(by_chan, by_label) == 0:
+                    print("  ** NEITHER KEY MATCHES - the channel list and the "
+                          "electrode table use different vocabularies **")
                 print(f"  electrode table: {loc}  ({len(t)} rows)")
                 print(f"    labels       : {[str(x) for x in t['anat_label'].head(6)]}")
                 if "utah_chan" in t.columns:

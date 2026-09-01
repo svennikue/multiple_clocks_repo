@@ -549,8 +549,25 @@ def index_utah_mats_by_id(path_to_subject_folders=DEFAULT_SUBJECT_FOLDERS):
                     continue
                 score = sum(k in mat for k in MACRO_KEYS)
                 loc = f"{folder}/{sd}/{name}" if sd else f"{folder}/{name}"
-                if pid not in best or score > best[pid][0]:
-                    best[pid] = (score, loc, mat)
+                # A session folder is supposed to hold ONE patient's files. When
+                # two locations declare the same patient it is usually a misfiled
+                # copy (ceph had 202311 in both s47/electrodes/ and s48/electrodes/,
+                # so s48 was served from s47's folder). Prefer the file whose own
+                # folder number matches the session that patient was recorded in,
+                # and say so, rather than silently taking whichever sorts first.
+                if pid in best:
+                    prev_score, prev_loc, prev_mat = best[pid]
+                    # companion files in the SAME session folder are normal
+                    # (Electrodes.mat + ChannelMap.mat); only a copy under a
+                    # DIFFERENT session folder means a file has been misfiled.
+                    if prev_loc.split("/")[0] != folder:
+                        print(f"  [MISFILED] patient {pid} declared by BOTH "
+                              f"{prev_loc} and {loc} -- a session folder should "
+                              f"hold one patient; remove the copy that does not "
+                              f"belong to its folder")
+                    if score <= prev_score:
+                        continue
+                best[pid] = (score, loc, mat)
     return {pid: (loc, mat) for pid, (score, loc, mat) in best.items()
             if score > 0}
 

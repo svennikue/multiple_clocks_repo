@@ -2357,3 +2357,66 @@ reporting zero. Prints only; writes nothing.
 Not addressed yet: s16 (BY2-YEP) reads only 4 channels from its raw header;
 s50/s51 (UCLA) are Blackrock but the UCLA join expects `.ncs` filename stems;
 s39 has no `.ns2` files on ceph.
+
+### 2026-09-01 — cluster diagnostic: the 9 failures split into four causes
+
+`swr_diagnose_channels.py` on ceph resolved every remaining failure to a cause.
+
+**(a) Clinical channel names, fixed by the dual-key join** — s04, s41, s42, s48.
+Their channels are `LCM1` / `RMPFC1` / `RINS1`, not `chanN` (only 14-16 of 132
+match). s04 verified: `join by chanN 0/132, join by label 89/132`.
+
+**(b) Electrode file never reached ceph** — s47 and s53 report "electrode table:
+NONE for patient 202302 / 202422". Both files exist locally
+(`s47/Electrodes.mat`, `s53/Electrodes.mat`, 8 MB each) and are the TOP-LEVEL
+Utah files. The rsync include pattern missed them. Nothing to fix in code.
+
+**(c) Degenerate channel cache** — s16's `channels.npy` holds exactly
+`['empty-064','empty-128','empty-192','empty-256']`, shadowing a 232-channel
+recording. `_load_channels` now ignores a cache whose names are all placeholders
+and falls through to the raw header.
+
+**(d) UCLA Blackrock sessions have no bridge** — s50/s51 read `chan129..chan256`
+from an `.ns3` header while their xlsx lists `LAI-1` / `LA1`. Unlike Utah, the two
+vocabularies do NOT overlap, and the localizations xlsx carries no channel-number
+column, so there is nothing to join on. The other UCLA sessions are Neuralynx,
+where the `.ncs` filename IS the electrode name. **These two need a channel map
+from UCLA; they cannot be recovered from the files we hold.**
+
+Plus s39, which has no `.ns2` files on ceph at all.
+
+Diagnostic now prints both candidate key match counts and says which wins, rather
+than only testing `chanN`.
+
+### 2026-09-01 — misfiled-file warning, subject-level coverage, UCLA verdict
+
+**s47 is clean locally, not on ceph.** `s47/Electrodes.mat` declares 202302
+(correct for session 47) and `s47/electrodes/Electrodes.mat` is now absent here,
+so each folder holds one patient. ceph still carries the misfiled 202311 copy
+under `s47/electrodes/`, which is why s48 was served from s47's folder -- both
+declare 202311 and the index took whichever sorted first.
+
+`index_utah_mats_by_id` now prints `[MISFILED] patient X declared by BOTH a and b`
+when the two locations are in DIFFERENT session folders. Companion files in the
+same folder (`Electrodes.mat` + `ChannelMap.mat`) are normal and no longer warn --
+the first version flagged all 16 patients, which would have trained the reader to
+ignore it.
+
+**UCLA s50/s51 cannot be recovered from the files we hold.** The cell pipeline
+never needed a channel bridge: UCLA cells are named `elec2`, `elec36`, and were
+matched to the localizations xlsx **by coordinate** (`ucla_file_micro`), inheriting
+`source_electrode` such as `RAI_micro-1`. The macro LFP has no coordinates of its
+own to match with -- it has channel names (`chan129..chan256`) and needs a mapping
+to xlsx electrode names (`LAI-1`, `LA1`). Those vocabularies do not overlap, and
+the xlsx carries no channel-number column (checked). The other UCLA sessions are
+Neuralynx, where the `.ncs` filename IS the electrode name, which is why they work.
+**These two need a channel map from UCLA.**
+
+**Subject-level coverage now reported by `swr_build_contacts.py`**, since several
+subjects contribute 2-3 sessions and a session count overstates independent
+coverage. Locally: 24 subjects, 24 with LFP, **23 with a usable hippocampal
+derivation (96 %)**; the one exception is BY2-YEP, whose only session with data
+(s16) has the degenerate channel cache.
+
+s39 has no LFP file at all (confirmed by the user: never received). It is reported
+as excluded rather than treated as a failure.

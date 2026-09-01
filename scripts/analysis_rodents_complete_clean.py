@@ -197,6 +197,26 @@ PHASE_RESIDUALISE    = 'cosine_2h'
 # one extra full pass per basis that is not PHASE_RESIDUALISE).
 PHASE_BASES_TO_COMPARE = ['cosine', 'cosine_2h']
 
+# Additional model combinations to run and report alongside the primary one, so
+# the supplementary analyses are reproducible from THIS script rather than from
+# a separate legacy run. Each entry is a full re-run of every recday through the
+# same pipeline, with only `combo_order` and `phase_residualise` changed.
+# Results land in key_analysis_stats.json['supplementary_model_combos'].
+#
+# 'pipelineA_original_dsr' is El-Gaby's own action-plan parameterisation
+# (`dsr`: 12 future lags x 9 locations x 3 phases = 324 simulated neurons),
+# fitted WITHOUT phase residualisation and with the location x phase
+# ('midnight') control, i.e. subgoal progress is handled as a GLM regressor
+# rather than removed from the data. `dsr_fmri` is deliberately absent: it
+# correlates r ~ 0.6 with `dsr` and the two cannibalise each other's beta.
+# Set to {} to skip (costs one extra full pass per entry).
+SUPPLEMENTARY_COMBOS = {
+    'pipelineA_original_dsr': {
+        'combo_order':       ['dsr', 'stat', 'loc', 'phas', 'midn'],
+        'phase_residualise': None,
+    },
+}
+
 EXAMPLE_RECDAY = None           # None -> pick the recday with the most neurons
 N_JOBS         = -1             # joblib: -1 = all cores, 1 = serial (for debugging)
 
@@ -428,6 +448,20 @@ def _print_stats(stats):
               f"{(s['p_group_fdr'] or 1):>9.4f} {'*' if s['sig_fdr'] else '':>4s}")
 
 
+def _print_stats_order(stats, order):
+    """_print_stats for a combo whose model set differs from MODEL_ORDER_DSR."""
+    print(f"\n=== {stats['pipeline']} ===")
+    unit = 'mice' if 'within-mouse' in stats['pipeline'] else 'recdays'
+    print(f"  n_{unit}: {stats['n_recdays']}")
+    print(f"  {'model':18s} {'n':>3s} {'mean':>8s} {'t':>7s} {'p_unc':>10s} "
+          f"{'p_fdr':>10s} {'sig':>4s}")
+    for m in order:
+        s = stats['models'][m]
+        print(f"  {s['label']:18s} {s['n']:>3d} {s['mean']:>8.3f} "
+              f"{(s['t_group'] or 0):>7.2f} {(s['p_group_uncorrected'] or 1):>10.4g} "
+              f"{(s['p_group_fdr'] or 1):>10.4g} {'*' if s['sig_fdr'] else '':>4s}")
+
+
 def _coefs_and_fdr(stats):
     coefs = {m: np.asarray([stats['models'][m]['coefs_by_recday'][rd]
                             for rd in stats['recdays']])
@@ -647,6 +681,45 @@ if PHASE_BASES_TO_COMPARE:
                   f"{'YES' if m['sig_fdr'] else 'no':>5s}")
 
 
+# ── Supplementary model combinations ──────────────────────────────────
+# Same recdays, same cleaning, same group test — only the fitted model set (and
+# whether the data were phase-residualised) differs. This is what makes the
+# supplementary analyses auditable: nothing here comes from a separate script.
+supplementary = {}
+for combo_name, spec in SUPPLEMENTARY_COMBOS.items():
+    order = list(spec['combo_order'])
+    print(f"\n{'=' * 70}\nSupplementary combo {combo_name!r}: {order}, "
+          f"phase_residualise={spec['phase_residualise']!r}")
+    cfg_c = dict(ANALYSIS_CONFIG, combo_order=order,
+                 phase_residualise=spec['phase_residualise'])
+    pr = run_all_recdays(cfg_c)
+    fz = {r['recday']: r['dsr_by_pool']['mode_path']['full_z'] for r in pr}
+    hv = {r['recday']: r['halves']['across_halves'] for r in pr
+          if 'across_halves' in r['halves']}
+
+    blocks = {}
+    for name, res, ntask in (('full_z', fz, n_pooled_per_recday),
+                             ('across_halves', hv, n_qualifying_per_recday)):
+        st = ae.methods_results_stats(res, n_neurons_per_recday, ntask,
+                                      model_label_order=order)
+        st['pipeline'] = f'{combo_name} / {name}'
+        _print_stats_order(st, order)
+        blocks[name] = st
+
+        st_m = ae.methods_results_stats(
+            *_average_within_mouse(res, n_neurons_per_recday, ntask),
+            model_label_order=order)
+        st_m['pipeline'] = f'{combo_name} / {name} (within-mouse average, n = mice)'
+        _print_stats_order(st_m, order)
+        blocks[f'{name}_by_mouse'] = st_m
+
+    supplementary[combo_name] = {
+        'combo_order':       order,
+        'phase_residualise': spec['phase_residualise'],
+        'results':           blocks,
+    }
+
+
 # ── Figure 3: model schematics (variant-independent) ──────────────────
 ae.pub_figure_model_schematics(
     walked_path=ae._mode_path_360(loc_ex[0]),
@@ -709,7 +782,10 @@ with open(stats_path, 'w') as f:
                    'bases_compared': [str(b) for b in PHASE_BASES_TO_COMPARE],
                    'basis_used':     str(PHASE_RESIDUALISE),
                    'results':        phase_comparison,
-               }},
+               },
+               # El-Gaby's original DSR parameterisation and any other
+               # supplementary model set, run through the same pipeline.
+               'supplementary_model_combos': supplementary},
               f, indent=2)
 print(f"\nWrote stats: {stats_path}")
 print(f"  sample: {len(mouse_of_recday)} recdays from {len(recdays_per_mouse)} mice")
