@@ -67,61 +67,6 @@ def _settings_dict(sessions, v2026_folder):
     }
 
 
-def _load_channels(session, data_root):
-    """Channel names in LFP-array order.
-
-    Prefers the cached channels.npy, but that only exists for the handful of
-    sessions the old preprocessing ever ran on. Falls back to reading the
-    channel list straight out of the raw file header, so contact anatomy can
-    be built for every session with raw data -- not just the preprocessed ten.
-    """
-    lfp_dir = os.path.join(swr_io.session_deriv_dir(session, data_root), "LFP")
-    p = os.path.join(lfp_dir, "channels.npy")
-    if os.path.isfile(p):
-        cached = [str(c) for c in np.load(p, allow_pickle=True)]
-        # A cache that is entirely placeholder names is worse than no cache:
-        # s16 stores exactly ['empty-064','empty-128','empty-192','empty-256'],
-        # which shadowed a 232-channel recording and made the session unusable.
-        # Fall through to the raw header in that case.
-        if cached and not all(c.lower().startswith("empty") for c in cached):
-            return cached, "channels.npy"
-        print(f"    s{session:02d}: ignoring degenerate channels.npy "
-              f"({len(cached)} names, all placeholders) -- reading the raw header")
-
-    cfg_s = swr_io.session_config(session, data_root=data_root)
-    files, kind, _ = swr_io.discover_raw_files(session, cfg_s, data_root=data_root)
-    if not files:
-        return [], "none"
-
-    if kind == 'neuralynx':
-        stems = [os.path.splitext(os.path.basename(f))[0] for f in files[0]]
-        return stems, "ncs filenames"
-
-    try:
-        import neo
-        # Use the format DETECTED from disk, not the config's. s50/s51 are
-        # marked `LFP_file_format: ncs` but are Blackrock .ns3, so int('ncs')
-        # raised and both sessions silently produced no contacts. Take the
-        # extension of the file discover_raw_files actually found.
-        nsx = cfg_s.get('LFP_file_format', 3)
-        try:
-            nsx = int(nsx)
-        except (TypeError, ValueError):
-            nsx = None
-        ext = os.path.splitext(files[0])[1].lstrip('.')          # e.g. 'ns3'
-        if ext.startswith('ns') and ext[2:].isdigit():
-            nsx = int(ext[2:])
-        if nsx is None:
-            nsx = 3
-        reader = neo.io.BlackrockIO(filename=files[0], nsx_to_load=nsx)
-        names = [str(e) for e in reader.header['signal_channels']]
-        return [n.split(",")[0].strip("('") for n in names], "raw header"
-    except Exception as e:
-        print(f"    s{session:02d}: could not read channel names from raw: "
-              f"{type(e).__name__}: {e}")
-        return [], "none"
-
-
 def build_contacts(sessions=None, save_all=True, verbose=False,
                    use_atlas=True):
     swr_io.start_log(os.path.join(swr_io.derivatives_dir(swr_io.get_data_root()), "group", "swr"), "swr_build_contacts")
@@ -168,7 +113,8 @@ def build_contacts(sessions=None, save_all=True, verbose=False,
         site = str(m.recording_site).lower()
         label = str(m.subject_label).strip().strip("'") if pd.notna(m.subject_label) else None
 
-        channels, chan_src = _load_channels(session, data_root)
+        channels, chan_src, _ = ca.load_channel_list(
+            session, data_root, verbose=verbose)
         if not channels:
             qc_rows.append({"session": session, "recording_site": site,
                             "n_channels": 0, "n_resolved": 0, "n_hpc": 0,
@@ -247,6 +193,14 @@ def build_contacts(sessions=None, save_all=True, verbose=False,
         elif int(r.get("n_channels", 0)) == 0:
             rep.exclude(u, "no channel list could be read "
                            "(no channels.npy and raw header unreadable)",
+                        site=r.recording_site)
+        elif int(r.get("n_channels", 0)) < 8:
+            # s16 is the only session whose LFP is the NSP-2 amplifier with no
+            # NSP-1 counterpart; both its files carry 4 placeholder channels
+            # ('empty-064'...). That is missing data, not a join failure.
+            rep.exclude(u, f"only {int(r.n_channels)} channels in the recording "
+                           "(placeholder/second-amplifier file; the real "
+                           "amplifier's data is not present)",
                         site=r.recording_site)
         elif int(r.get("n_resolved", 0)) == 0:
             rep.exclude(u, "no channel matched an electrode table "

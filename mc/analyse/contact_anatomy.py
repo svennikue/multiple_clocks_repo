@@ -258,6 +258,54 @@ def load_ucla_macros(v2026_folder):
 # JOIN ANATOMY TO ACTUAL LFP CHANNELS
 # =============================================================================
 
+def load_channel_list(session, data_root, verbose=False):
+    """Channel names in LFP-array order, and where they came from.
+
+    Prefers the cached `channels.npy`, falling back to the raw file header so
+    contact anatomy can be built for every session with raw data, not only the
+    handful the old preprocessing ever ran on.
+
+    A cache whose names are ALL placeholders is treated as absent: s16 stores
+    exactly ['empty-064','empty-128','empty-192','empty-256'], which shadowed a
+    232-channel recording and cost the whole session. Returns
+    `(names, source, path)`.
+    """
+    import mc.analyse.swr_io as swr_io
+
+    lfp_dir = os.path.join(swr_io.session_deriv_dir(session, data_root), "LFP")
+    cached_path = os.path.join(lfp_dir, "channels.npy")
+    if os.path.isfile(cached_path):
+        cached = [str(c) for c in np.load(cached_path, allow_pickle=True)]
+        if cached and not all(str(c).lower().startswith("empty") for c in cached):
+            return cached, "channels.npy", cached_path
+        if verbose:
+            print(f"    s{int(session):02d}: ignoring degenerate channels.npy "
+                  f"({len(cached)} names, all placeholders) -- reading the raw header")
+
+    cfg_s = swr_io.session_config(session, data_root=data_root)
+    files, kind, _ = swr_io.discover_raw_files(session, cfg_s, data_root=data_root)
+    if not files:
+        return [], "none", ""
+    if kind == "neuralynx":
+        return ([os.path.splitext(os.path.basename(f))[0] for f in files[0]],
+                "ncs filenames", os.path.dirname(files[0][0]))
+    try:
+        import neo
+        # Use the format DETECTED on disk, not the config's: s50/s51 are marked
+        # `LFP_file_format: ncs` but are Blackrock .ns3.
+        ext = os.path.splitext(files[0])[1].lstrip(".")
+        nsx = int(ext[2:]) if ext.startswith("ns") and ext[2:].isdigit() else 3
+        reader = neo.io.BlackrockIO(filename=files[0], nsx_to_load=nsx)
+        names = [str(e) for e in reader.header["signal_channels"]]
+        return ([n.split(",")[0].strip("('") for n in names],
+                f"raw header ({ext})", files[0])
+    except Exception as e:
+        if verbose:
+            print(f"    s{int(session):02d}: could not read channel names from raw: "
+                  f"{type(e).__name__}: {e}")
+        return [], "none", ""
+
+
 def build_macro_table(session, recording_site, subject_label, channels,
                       baylor_macros=None, utah_mat=None, ucla_macros=None):
     """One row per LFP channel in `channels` (the `channels.npy` order).

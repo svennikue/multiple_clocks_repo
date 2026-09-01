@@ -41,29 +41,6 @@ except ImportError:
 print("ARGS:", sys.argv)
 
 
-def _channels(session, data_root):
-    """Mirror of swr_build_contacts._load_channels, plus the file it read."""
-    lfp = os.path.join(swr_io.session_deriv_dir(session, data_root), "LFP")
-    p = os.path.join(lfp, "channels.npy")
-    if os.path.isfile(p):
-        return [str(c) for c in np.load(p, allow_pickle=True)], "channels.npy", p
-
-    cfg_s = swr_io.session_config(session, data_root=data_root)
-    files, kind, _ = swr_io.discover_raw_files(session, cfg_s, data_root=data_root)
-    if not files:
-        return [], "none", ""
-    if kind == "neuralynx":
-        return ([os.path.splitext(os.path.basename(f))[0] for f in files[0]],
-                "ncs filenames", os.path.dirname(files[0][0]))
-    import neo
-    ext = os.path.splitext(files[0])[1].lstrip(".")
-    nsx = int(ext[2:]) if ext.startswith("ns") and ext[2:].isdigit() else 3
-    reader = neo.io.BlackrockIO(filename=files[0], nsx_to_load=nsx)
-    names = [str(e) for e in reader.header["signal_channels"]]
-    return ([n.split(",")[0].strip("('") for n in names],
-            f"raw header ({ext})", files[0])
-
-
 def diagnose(sessions=None, data_root=None):
     R = data_root or swr_io.get_data_root()
     mf = pd.read_csv(os.path.join(swr_io.derivatives_dir(R), "group", "swr",
@@ -84,7 +61,7 @@ def diagnose(sessions=None, data_root=None):
         site = str(row.recording_site.iloc[0]).lower() if len(row) else "?"
         lab = (str(row.subject_label.iloc[0]).strip().strip("'")
                if len(row) and pd.notna(row.subject_label.iloc[0]) else None)
-        chans, src, path = _channels(s, R)
+        chans, src, path = ca.load_channel_list(s, R)
 
         print("\n" + "=" * 74)
         print(f" s{s:02d}  {site}  {lab}")

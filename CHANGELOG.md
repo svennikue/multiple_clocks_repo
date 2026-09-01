@@ -2420,3 +2420,31 @@ derivation (96 %)**; the one exception is BY2-YEP, whose only session with data
 
 s39 has no LFP file at all (confirmed by the user: never received). It is reported
 as excluded rather than treated as a failure.
+
+### 2026-09-01 — remaining SWR failures resolved or classified
+
+After the dual-key join and the two rsyncs, the ceph diagnostic shows **6 of 9
+recovered**:
+
+    s04  join by label 89/132      s47  join by chanN 91/132  (own file now present)
+    s41  join by label 88/132      s48  join by label 90/132  (own file, not s47's)
+    s42  join by label 88/132      s53  join by chanN 82/132  (own file now present)
+
+s47 now reads `s47/Electrodes.mat` (202302) and s48 reads
+`s48/electrodes/Electrodes.mat` (202311) -- each session on its own patient.
+
+**The remaining three are missing data, not defects:**
+
+- **s16** -- its two `.ns3` files are both the **NSP-2** amplifier and each carries
+  4 placeholder channels (`empty-064`...). The raw header gives the same 4 as the
+  cache, so this was never a degenerate cache: the NSP-1 files simply are not
+  present. Checked every session: **s16 is the only one with NSP-2 and no NSP-1**
+  (all others are NSP-1 only), so `files[0]` is not picking the wrong amplifier
+  anywhere else. Exclusion reason now says so rather than "channel list unreadable".
+- **s39** -- no LFP file was ever received.
+- **s50 / s51** -- need a channel map from UCLA (see the previous entry).
+
+**Refactor:** `_load_channels` existed twice, in `swr_build_contacts.py` and
+`swr_diagnose_channels.py`, and had already drifted -- the degenerate-cache check
+was only in one, so the diagnostic reported s16 differently from the build. Moved
+to `contact_anatomy.load_channel_list()`; both call it.
