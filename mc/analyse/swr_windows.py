@@ -326,3 +326,172 @@ def windows_error_correct(beh, lock_s=REWARD_LOCK_S, skip_first=True):
 
 DESIGNS["discovery"] = windows_discovery
 DESIGNS["error_correct"] = windows_error_correct
+
+
+def windows_feedback(uncov, lock_s=1.0, min_gap_s=None):
+    """Windows locked to each uncovering's FEEDBACK, split correct vs error.
+
+    Replaces the earlier `windows_error_correct`, which could only mark a whole
+    repeat as containing an error because per-uncover feedback was not thought to
+    be in the derivatives. It is: `mc.analyse.swr_behaviour.uncover_events`
+    reconstructs every attempt and its outcome in session seconds, validated
+    against the stimulus PC's own log at 99.8% of correct uncoverings.
+
+    `lock_s` is short on purpose (1 s). Correct and incorrect feedback are
+    followed by different behaviour -- after a correct uncovering the subject
+    moves on, after an error they usually retry -- so a long window would compare
+    two different behavioural states rather than two kinds of feedback. Windows
+    are additionally truncated at the next uncovering so they never contain the
+    following event.
+    """
+    if not len(uncov):
+        return pd.DataFrame()
+    u = uncov.sort_values("t_s").reset_index(drop=True)
+    nxt = u.t_s.shift(-1).to_numpy()
+    end = np.minimum(u.t_s.to_numpy() + lock_s,
+                     np.where(np.isfinite(nxt), nxt, np.inf))
+    rows = pd.DataFrame({
+        "start_s": u.t_s.to_numpy(),
+        "end_s": end,
+        "condition": np.where(u.correct == 1, "correct", "error"),
+        "feedback": np.where(u.correct == 1, "correct", "error"),
+        "phase": np.where(u.is_discovery == 1, "discovery", "later"),
+        "state": u.state.to_numpy(),
+        "grid_no": u.grid_no.to_numpy(int),
+        "rep_overall": u.rep_overall.to_numpy(int),
+        "is_test": (u.correct == 0).to_numpy(),
+    })
+    if min_gap_s:
+        rows = rows[(rows.end_s - rows.start_s) >= min_gap_s]
+    return _finalise(rows)
+
+
+def windows_first_D(beh, pre_s=0.0, post_s=2.0):
+    """The single moment the plan first becomes knowable, per grid.
+
+    The fMRI result this is modelled on peaks exactly when the fourth reward is
+    revealed, so this isolates that one event: the FIRST arrival at D in a grid,
+    against every later arrival at D in the same grid. Unlike the 4x2 discovery
+    design it makes no use of A/B/C, which keeps it a single pre-declared
+    contrast rather than a table to search.
+    """
+    b = add_phase(beh)
+    rows = []
+    for (blk, grid), g in b.groupby(['session_no', 'grid_no']):
+        g = g.sort_values('rep_overall')
+        first_rep = int(g.rep_overall.iloc[0])
+        for _, r in g.iterrows():
+            t = float(r['t_D'])
+            if not np.isfinite(t):
+                continue
+            is_first = int(r['rep_overall']) == first_rep
+            rows.append({
+                "start_s": t - pre_s, "end_s": t + post_s,
+                "condition": "first_D" if is_first else "later_D",
+                "discovery": "first" if is_first else "later",
+                "is_test": bool(is_first),
+                "grid_no": int(grid), "rep_overall": int(r['rep_overall']),
+            })
+    return _finalise(pd.DataFrame(rows))
+
+
+DESIGNS["first_D"] = windows_first_D
+# `feedback` is deliberately NOT in DESIGNS: it takes the uncover-event table
+# rather than `beh`, so it cannot go through build_windows' (beh, design) call.
+
+
+def add_phase3(beh):
+    """Three phases, separating exploring from planning from executing.
+
+    `add_phase` collapses everything before the first correct solve into
+    "exploration", which merges two behaviourally different things: searching
+    for rewards whose identity is still unknown, and knowing all four rewards
+    but not yet executing them in order without error.
+
+        explore    the first traversal of a grid -- the rewards are being found
+                   for the first time, D is not yet known
+        plan       after the first traversal, before the first error-free solve
+                   -- all four rewards are known, the route is not yet reliable
+        execute    from the first error-free solve onward
+    """
+    b = beh.copy()
+    out = []
+    for (blk, grid), g in b.groupby(['session_no', 'grid_no']):
+        g = g.sort_values('rep_overall').copy()
+        first_rep = int(g.rep_overall.iloc[0])
+        solved = g[g.correct.astype(int) == 1]
+        first_solved = int(solved.rep_overall.iloc[0]) if len(solved) else np.inf
+        ph = np.where(g.rep_overall.to_numpy() == first_rep, "explore",
+                      np.where(g.rep_overall.to_numpy() < first_solved,
+                               "plan", "execute"))
+        g['phase3'] = ph
+        out.append(g)
+    return pd.concat(out).sort_index()
+
+
+def windows_phase3(beh, min_pause_s=0.5):
+    """Pause windows labelled explore / plan / execute.
+
+    Pauses rather than whole repeats, because whole repeats differ enormously in
+    movement and duration between the phases while the gap between traversals is
+    the closest thing this task has to a rest period.
+
+    The pause is labelled by the phase of the repeat that FOLLOWS it, so a pause
+    labelled "plan" is one the subject entered already knowing all four rewards.
+    """
+    b = add_phase3(beh)
+    rows = []
+    for (blk, grid), g in b.groupby(['session_no', 'grid_no']):
+        g = g.sort_values('rep_overall')
+        for (_, a), (_, c) in zip(g.iloc[:-1].iterrows(), g.iloc[1:].iterrows()):
+            t0, t1 = float(a['t_D']), float(c['t_A'])
+            if not (np.isfinite(t0) and np.isfinite(t1)) or t1 - t0 < min_pause_s:
+                continue
+            rows.append({
+                "start_s": t0, "end_s": t1,
+                "condition": c['phase3'], "phase3": c['phase3'],
+                "repeat_number": int(c['rep_overall']),
+                "grid_no": int(grid), "rep_overall": int(c['rep_overall']),
+            })
+    return _finalise(pd.DataFrame(rows))
+
+
+def windows_informative(uncov, lock_s=1.0):
+    """Feedback split by whether it could actually change behaviour.
+
+    SK's point: feedback is not equally useful at all times. While the rewards
+    are still being discovered, a *correct* uncovering is the informative one --
+    it reveals where the next reward is. Once the route is known, a *correct*
+    uncovering tells the subject nothing new, and it is an *error* that carries
+    the information, because it says the plan just went wrong.
+
+        informative     correct during discovery, error afterwards
+        uninformative   error during discovery, correct afterwards
+
+    This is the diagonal of the same feedback x phase table as `windows_feedback`
+    and is reported separately rather than instead: the main effect and this
+    interaction answer different questions.
+    """
+    if not len(uncov):
+        return pd.DataFrame()
+    u = uncov.sort_values("t_s").reset_index(drop=True)
+    nxt = u.t_s.shift(-1).to_numpy()
+    end = np.minimum(u.t_s.to_numpy() + lock_s,
+                     np.where(np.isfinite(nxt), nxt, np.inf))
+    disc = u.is_discovery.to_numpy().astype(bool)
+    corr = (u.correct.to_numpy() == 1)
+    informative = (disc & corr) | (~disc & ~corr)
+    rows = pd.DataFrame({
+        "start_s": u.t_s.to_numpy(), "end_s": end,
+        "condition": np.where(informative, "informative", "uninformative"),
+        "informative": np.where(informative, "informative", "uninformative"),
+        "feedback": np.where(corr, "correct", "error"),
+        "phase": np.where(disc, "discovery", "later"),
+        "grid_no": u.grid_no.to_numpy(int),
+        "rep_overall": u.rep_overall.to_numpy(int),
+        "is_test": informative,
+    })
+    return _finalise(rows)
+
+
+DESIGNS["phase3"] = windows_phase3

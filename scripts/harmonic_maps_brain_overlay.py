@@ -77,6 +77,11 @@ except Exception as _exc:
     print(f"[warn] cell_mask_overlap unavailable: {_exc}")
     HAS_CMO = False
 
+# Binary masks (the ROI gate and the DSR outline) are projected with the same
+# ribbon "projfrac-max" recipe used for the standalone main-effect figure, so
+# the outline drawn here is pixel-identical to the filled main-effect panel.
+import dsr_main_effect_surface as dsurf
+
 
 # ── Settings ─────────────────────────────────────────────────────────
 # Keep this flag aligned with ``harmonic_angle_maps.py``. True reads maps in
@@ -109,7 +114,18 @@ DSR_MAIN_EFFECT_OUTLINE_PATH = Path(
     'DSR_main_effect_mask.nii.gz')
 DSR_MAIN_EFFECT_OUTLINE_COLOR = 'black'
 # Number of cortical-mesh rings included in the contour.  One is a thin line.
-DSR_MAIN_EFFECT_OUTLINE_WIDTH = 1
+DSR_MAIN_EFFECT_OUTLINE_WIDTH = 2
+
+# ── Binary-mask surface projection (ROI gate + DSR outline) ──────────
+# The old code used nilearn's default vol_to_surf, which averages the volume
+# along a +-3 mm normal and then got thresholded at 0.5.  That eroded the
+# elongated medial-wall cluster into disconnected gyral patches ("two
+# islands").  Sampling the strongest value inside the cortical ribbon instead
+# (FreeSurfer's --projfrac-max), then closing a couple of mesh rings,
+# recovers the shape seen in the volumetric FSLeyes view.
+MASK_RIBBON_DEPTHS = dsurf.RIBBON_DEPTHS
+MASK_CLOSE_RINGS = 2
+MASK_MIN_PATCH_VERTICES = 40
 
 OUT_ROOT = BASE_HARMONIC / 'brain_overlays_with_mPFC_cells'
 OUT_ROOT.mkdir(parents=True, exist_ok=True)
@@ -268,8 +284,10 @@ RENDER_FILTER = {
     # 'datasets':   ('quarters',),    # example: uncomment to restrict datasets
 }
 # RENDER_FILTER = None
-BRAIN_SIZE    = (1000, 900)
-SURF_ALPHA    = 0.30
+# Surface geometry/appearance is shared with the DSR main-effect figure so
+# the two panels are directly comparable — change it in one place only.
+BRAIN_SIZE    = dsurf.BRAIN_SIZE
+SURF_ALPHA    = dsurf.SURF_ALPHA
 OVERLAY_ALPHA = 0.75
 
 
@@ -282,30 +300,6 @@ def _ensure_fsaverage():
     fs_dir = fetch_fsaverage()
     _FSAVERAGE_PATH = os.path.dirname(fs_dir)
     return _FSAVERAGE_PATH
-
-def _set_brain_surface_alpha(brain, alpha):
-    """Older MNE Brain versions don't accept alpha=... in the constructor.
-    Walk the underlying VTK actors and set opacity directly."""
-    try:
-        renderer = brain._renderer
-    except AttributeError:
-        return
-    fig = (getattr(renderer, 'plotter', None)
-           or getattr(renderer, 'figure', None))
-    if fig is None:
-        return
-    actors = getattr(fig, 'actors', None)
-    if actors is None and hasattr(fig, 'renderer'):
-        actors = getattr(fig.renderer, 'actors', None)
-    if not actors:
-        return
-    iterable = actors.values() if hasattr(actors, 'values') else actors
-    for actor in iterable:
-        try:
-            actor.GetProperty().SetOpacity(float(alpha))
-        except Exception:
-            continue
-
 
 def _jitter(coords, mm, seed=0):
     if coords.size == 0 or mm <= 0:
@@ -403,17 +397,12 @@ def load_cells():
 
 
 def _make_brain(hemi, subjects_dir, title=None):
-    try:
-        brain = Brain(subject='fsaverage', hemi=hemi, surf='pial',
-                      background='white', size=BRAIN_SIZE,
-                      subjects_dir=subjects_dir, alpha=SURF_ALPHA,
-                      title=title)
-    except TypeError:
-        brain = Brain(subject='fsaverage', hemi=hemi, surf='pial',
-                      background='white', size=BRAIN_SIZE,
-                      subjects_dir=subjects_dir, title=title)
-        _set_brain_surface_alpha(brain, SURF_ALPHA)
-    return brain
+    """Translucent pial glass brain — the SAME surface, size, background and
+    cortex shading as the DSR main-effect panel, so the gradient overlay and
+    the main-effect figure can sit side by side without looking like two
+    different renderings.  Style lives in ``dsr_main_effect_surface`` only.
+    """
+    return dsurf.make_brain(hemi, 'pial', subjects_dir)
 
 
 def _bilaterally_symmetrise(img):
@@ -437,6 +426,38 @@ def _unit_agreement_path(nii_path):
             / 'amplitude.nii.gz')
 
 
+_MESH_CACHE = {}
+
+
+def _hemi_meshes(hemi, subjects_dir):
+    """Cached (white, pial, faces) for one fsaverage hemisphere."""
+    if hemi not in _MESH_CACHE:
+        _MESH_CACHE[hemi] = dsurf.load_hemi_meshes(hemi, subjects_dir)
+    return _MESH_CACHE[hemi]
+
+
+def _project_binary_mask(mask_img, hemi, subjects_dir):
+    """Boolean surface texture for a binary volume mask (ribbon projfrac-max).
+
+    Returns ``None`` when the mask does not reach this hemisphere's ribbon.
+    """
+    if mask_img is None:
+        return None
+    white, pial, faces = _hemi_meshes(hemi, subjects_dir)
+    texture = dsurf.project_ribbon(mask_img, white, pial, agg='max',
+                                   depths=MASK_RIBBON_DEPTHS)
+    mask = texture >= 0.5
+    if not mask.any():
+        return None
+    mask = dsurf.close_mesh(mask, faces, MASK_CLOSE_RINGS)
+    mask, n_drop, n_pat = dsurf.drop_small_patches(
+        mask, faces, MASK_MIN_PATCH_VERTICES)
+    if n_drop:
+        print(f"    [{hemi}] dropped {n_drop} speckle vertices "
+              f"in {n_pat} patches (<{MASK_MIN_PATCH_VERTICES} vertices)")
+    return mask
+
+
 def _add_mask_outline(brain, mask_img, hemi, subjects_dir):
     """Project a binary volume mask and add its boundary as a black line.
 
@@ -447,15 +468,11 @@ def _add_mask_outline(brain, mask_img, hemi, subjects_dir):
     if mask_img is None:
         return
     try:
-        surf_path = os.path.join(
-            subjects_dir, 'fsaverage', 'surf', f'{hemi}.pial')
-        texture = _surface.vol_to_surf(
-            mask_img, surf_path, interpolation='nearest').astype(float)
-        vertices = np.flatnonzero(texture >= 0.5)
-        if not vertices.size:
+        mask = _project_binary_mask(mask_img, hemi, subjects_dir)
+        if mask is None:
             print(f"  [outline] DSR mask has no surface vertices on {hemi}")
             return
-        outline = Label(vertices=vertices, hemi=hemi,
+        outline = Label(vertices=np.flatnonzero(mask), hemi=hemi,
                         name='DSR_main_effect_outline')
         brain.add_label(outline, color=DSR_MAIN_EFFECT_OUTLINE_COLOR,
                         alpha=1.0,
@@ -495,11 +512,12 @@ def _project_and_transform(nii_path, amp_path, mode, hemi, subjects_dir,
     amp_txt = _surface.vol_to_surf(amp_img, surf_path,
                                     interpolation='nearest').astype(float)
     has_signal = amp_txt > AMP_EPS
-    roi_txt = None
+    roi_mask_surf = None
     if roi_mask_img is not None:
-        roi_txt = _surface.vol_to_surf(roi_mask_img, surf_path,
-                                        interpolation='nearest').astype(float)
-        has_signal = has_signal & (roi_txt >= 0.5)
+        roi_mask_surf = _project_binary_mask(roi_mask_img, hemi, subjects_dir)
+        if roi_mask_surf is None:
+            roi_mask_surf = np.zeros_like(has_signal)
+        has_signal = has_signal & roi_mask_surf
 
     if mode == 'abs_yellow_red':
         # Symmetric |angle| in degrees, 0 at yellow, 180 at dark red.
@@ -542,11 +560,8 @@ def _project_and_transform(nii_path, amp_path, mode, hemi, subjects_dir,
                 # ROI mask still applies.
                 has_signal = (amp_surf > AMP_EPS)
                 amp_txt = amp_surf   # for the gated-mode percentile below
-                if roi_mask_img is not None:
-                    roi_txt = _surface.vol_to_surf(
-                        roi_mask_img, surf_path,
-                        interpolation='nearest').astype(float)
-                    has_signal = has_signal & (roi_txt >= 0.5)
+                if roi_mask_surf is not None:
+                    has_signal = has_signal & roi_mask_surf
             # else: fall through to the direct-angle path
         # (E) Optional: keep only the top X% of amp within the mask
         if MASK_AMP_TOP_PCT is not None and np.any(has_signal):
@@ -730,6 +745,9 @@ def render_one(ds, map_name, mask_name, nii_path, amp_path, mode,
         mode_tag = f'{mode_tag}_bil'
     if SHOW_DSR_MAIN_EFFECT_OUTLINE and map_name == 'angle_deg':
         mode_tag = f'{mode_tag}_dsr_outline'
+    # Marks the ribbon projfrac-max mask projection so the new renderings do
+    # not overwrite the older vol_to_surf-projected figures.
+    mode_tag = f'{mode_tag}_ribbonmax'
     if not PLOT_CELLS:
         mode_tag = f'{mode_tag}_no_cells'
     stem = out_dir / f'{map_name}__{mask_name}__{mode_tag}__{hemi}_{view}'

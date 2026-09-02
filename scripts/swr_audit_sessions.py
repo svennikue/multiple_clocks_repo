@@ -45,6 +45,7 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import mc.analyse.swr_io as swr_io
 import mc.analyse.swr_report as swr_report
+import mc.analyse.swr_preproc as pre
 
 try:
     import fire
@@ -71,7 +72,7 @@ def _settings_dict(sessions):
     }
 
 
-def audit_one_session(session, cfg, subj_map, data_root):
+def audit_one_session(session, cfg, subj_map, data_root, check_clock=True):
     """Return (summary_row, block_rows, detail_dict) for one session."""
     session = int(session)
     warnings = []
@@ -109,11 +110,57 @@ def audit_one_session(session, cfg, subj_map, data_root):
     if cfg_blocks and n_beh_blocks and cfg_blocks != n_beh_blocks:
         warnings.append(f"block mismatch: yaml={cfg_blocks} behaviour={n_beh_blocks}")
 
+    # --- the clock gate --------------------------------------------------
+    # The warnings above are mostly bookkeeping: a null `segment`, a missing
+    # `blocks` key, a YAML block count that disagrees with the behaviour. None
+    # of those can corrupt a result, because the YAML is only a hint (SS3.3).
+    # What CAN corrupt a result is the behavioural clock not fitting inside the
+    # recording, which is how a multi-block session silently misassigns every
+    # event in block 2+. That is checked here by reading the file headers.
+    clock = {"clock_status": "not_checked", "min_head_margin_s": np.nan,
+             "min_tail_margin_s": np.nan}
+    if check_clock and n_files and beh is not None:
+        try:
+            blocks, _, _ = pre.session_block_table(session, data_root=data_root)
+            if len(blocks) and "head_margin_s" in blocks:
+                h = blocks["head_margin_s"].astype(float)
+                t = blocks["tail_margin_s"].astype(float)
+                clock["min_head_margin_s"] = float(np.nanmin(h)) if h.notna().any() else np.nan
+                clock["min_tail_margin_s"] = float(np.nanmin(t)) if t.notna().any() else np.nan
+                worst = np.nanmin([clock["min_head_margin_s"],
+                                   clock["min_tail_margin_s"]])
+                if not np.isfinite(worst):
+                    clock["clock_status"] = "unknown"
+                elif worst < 0:
+                    clock["clock_status"] = "FAILED"
+                    warnings.append(
+                        f"clock: behaviour falls OUTSIDE the recording by "
+                        f"{-worst:.1f}s -- block mapping is wrong")
+                elif worst < CLOCK_MARGIN_S and len(blocks) > 1:
+                    # The margin criterion exists to validate multi-block
+                    # OFFSETS. A single-block session has no offset to get
+                    # wrong -- behaviour and LFP share t=0 -- so a small
+                    # positive margin there just means the recording ran on
+                    # after the task ended, which is normal and not a warning.
+                    clock["clock_status"] = "tight"
+                    warnings.append(
+                        f"clock: only {worst:.1f}s margin across "
+                        f"{len(blocks)} blocks (< {CLOCK_MARGIN_S}s)")
+                else:
+                    clock["clock_status"] = "ok"
+            if len(blocks) > n_beh_blocks and n_beh_blocks:
+                clock["extra_files"] = int(len(blocks) - n_beh_blocks)
+        except Exception as e:
+            clock["clock_status"] = f"error: {type(e).__name__}"
+            warnings.append(f"clock: could not be checked ({type(e).__name__}: {e})")
+
     # --- status ----------------------------------------------------------
     if beh is None:
         status = "no_behaviour"
     elif n_files == 0:
         status = "no_raw_files"
+    elif clock["clock_status"] == "FAILED":
+        status = "clock_failed"
     elif warnings:
         status = "needs_review"
     else:
@@ -138,6 +185,9 @@ def audit_one_session(session, cfg, subj_map, data_root):
         "max_block_gap_s": max_gap,
         "multi_block": n_beh_blocks > 1,
         "status": status,
+        "clock_status": clock["clock_status"],
+        "min_head_margin_s": clock["min_head_margin_s"],
+        "min_tail_margin_s": clock["min_tail_margin_s"],
         "n_warnings": len(warnings),
         "warnings": "; ".join(warnings),
     }
@@ -162,7 +212,8 @@ def audit_one_session(session, cfg, subj_map, data_root):
     return row, block_rows, detail
 
 
-def audit_sessions(sessions=None, save_all=True, verbose=False, return_data=False):
+def audit_sessions(sessions=None, save_all=True, verbose=False,
+                   return_data=False, check_clock=True):
     """Audit every session and write the manifest.
 
     sessions    : list of ints, or None for every key in the YAML.
@@ -182,7 +233,8 @@ def audit_sessions(sessions=None, save_all=True, verbose=False, return_data=Fals
 
     summary, blocks, details = [], [], []
     for s in sessions:
-        row, brows, detail = audit_one_session(s, cfg, subj_map, data_root)
+        row, brows, detail = audit_one_session(s, cfg, subj_map, data_root,
+                                              check_clock=check_clock)
         summary.append(row)
         blocks.extend(brows)
         details.append(detail)
@@ -219,6 +271,29 @@ def audit_sessions(sessions=None, save_all=True, verbose=False, return_data=Fals
         for _, r in mb.iterrows():
             print(f"  s{int(r.session):02d}  blocks={int(r.n_beh_blocks)}  "
                   f"max_gap={r.max_block_gap_s:9.1f}s  files={int(r.n_raw_files)}")
+
+    # ---- triage: which warnings actually matter ------------------------
+    if "clock_status" in manifest:
+        print("\n--- CLOCK CHECK (the only warning that can corrupt a result) ---")
+        print(manifest.clock_status.value_counts().to_string())
+        bad = manifest[manifest.clock_status.isin(["FAILED", "tight", "unknown"])]
+        for _, r in bad.iterrows():
+            print(f"  s{int(r.session):02d}  {r.clock_status:8s} "
+                  f"head {r.min_head_margin_s:8.1f}s  tail {r.min_tail_margin_s:8.1f}s"
+                  f"  files={int(r.n_raw_files)} beh_blocks={int(r.n_beh_blocks)}")
+        if not len(bad):
+            print("  every session's behaviour fits inside its recording "
+                  f"with >= {CLOCK_MARGIN_S}s margin at both ends.")
+
+        cosmetic = manifest[(manifest.status == "needs_review")
+                            & (manifest.clock_status == "ok")]
+        if len(cosmetic):
+            print(f"\n--- {len(cosmetic)} sessions flagged, but the clock is fine ---")
+            print("  These are bookkeeping warnings -- a null `segment`, a missing")
+            print("  `blocks` key, a YAML block count that disagrees with the")
+            print("  behaviour. The YAML is a hint, not the authority (methods SS3.3),")
+            print("  so none of these can corrupt a result. Usable as they are:")
+            print("    " + ", ".join(f"s{int(x):02d}" for x in sorted(cosmetic.session)))
 
     flagged = manifest[manifest.status != 'ok']
     if len(flagged):

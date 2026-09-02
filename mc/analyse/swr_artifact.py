@@ -161,8 +161,15 @@ def detect_ied_janca(x, fs, band=IED_BAND_HZ, k=IED_K, seg_s=IED_SEG_S):
 # MASK ASSEMBLY
 # =============================================================================
 
-def artifact_mask(x, fs, pad_s=PAD_S, min_clean_s=MIN_CLEAN_S, k=IQR_K):
-    """Boolean bad-sample mask for one channel, plus a per-criterion breakdown."""
+def artifact_mask(x, fs, pad_s=PAD_S, min_clean_s=MIN_CLEAN_S, k=IQR_K,
+                  return_per=False):
+    """Boolean bad-sample mask for one channel, plus a per-criterion breakdown.
+
+    `return_per=True` additionally returns the individual criterion masks, so a
+    diagnostic figure can show *which* criterion removed a given stretch. This
+    matters because the criteria together discard 35-54% of a recording, and a
+    number in a table is not evidence that what was discarded was artifact.
+    """
     x = np.asarray(x, dtype=float)
     per = {}
 
@@ -194,6 +201,8 @@ def artifact_mask(x, fs, pad_s=PAD_S, min_clean_s=MIN_CLEAN_S, k=IQR_K):
 
     stats = {name: float(v.mean()) for name, v in per.items()}
     stats["combined_after_pad"] = float(bad.mean())
+    if return_per:
+        return bad, stats, per
     return bad, stats
 
 

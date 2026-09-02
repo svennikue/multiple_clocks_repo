@@ -38,6 +38,9 @@ from scipy.signal import butter, sosfiltfilt, hilbert
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import mc.analyse.swr_io as swr_io
 import mc.analyse.swr_detect as det
+import mc.plotting.ripple_figures as rfig
+import mc.analyse.swr_preproc as pre
+import mc.analyse.swr_artifact as art
 import era_brewer
 
 try:
@@ -364,7 +367,7 @@ def qc_group(analysis_name=ANALYSIS_NAME, sessions=None, save=True):
 _FIGDIR = [None]
 
 
-def qc_report(session, analysis_name=ANALYSIS_NAME, max_events=800):
+def _qc_report_one(session, analysis_name=ANALYSIS_NAME, max_events=800):
     swr_io.start_log(os.path.join(swr_io.session_deriv_dir(int(session), swr_io.get_data_root()), "LFP-ripples", analysis_name), "swr_qc_report")
     session = int(session)
     R = swr_io.get_data_root()
@@ -392,14 +395,21 @@ def qc_report(session, analysis_name=ANALYSIS_NAME, max_events=800):
     raw_sn, bp_sn, sw_sn = [], [], []
     sos_r = butter(4, [det.RIPPLE_BAND[0]/(fs/2), det.RIPPLE_BAND[1]/(fs/2)],
                    btype='band', output='sos')
-    sos_s = butter(4, [det.SHARPWAVE_BAND[0]/(fs/2), det.SHARPWAVE_BAND[1]/(fs/2)],
-                   btype='band', output='sos')
+    # The sharp wave is a slow deflection ~40-100 ms wide, so most of its energy
+    # sits below 20 Hz. The 8-40 Hz band-pass used previously high-passed it away:
+    # measured across the development set it gave a median |SNR| of 0.28 against
+    # 1.37 for a 20 Hz low-pass, i.e. it was showing essentially nothing.
+    sos_s = butter(4, rfig.SW_BAND_HZ/(fs/2), btype='low', output='sos')
     for i, p in pairs.iterrows():
         ev = passed[passed.pair_id == p.pair_id]
         if not len(ev):
             continue
         x = np.asarray(sig[i], float)
-        pk = ev.peak_sample.to_numpy(int)
+        # Average on the ripple trough, not the envelope peak: the envelope
+        # carries no phase, so an envelope-locked average cancels to ~7% of the
+        # single-event amplitude. Display only -- detection and stats are
+        # unaffected. See mc.plotting.ripple_figures.trough_lock.
+        pk = rfig.trough_lock(ev, sosfiltfilt(sos_r, x))
         if len(pk) > max_events:
             pk = np.random.RandomState(42).choice(pk, max_events, replace=False)
         raw_sn.append(_snippets(x, pk, half))
@@ -417,7 +427,8 @@ def qc_report(session, analysis_name=ANALYSIS_NAME, max_events=800):
     m, se = raw_sn.mean(0), raw_sn.std(0)/np.sqrt(len(raw_sn))
     ax.plot(t, m, color=ACC_COL, lw=1.2, label="raw")
     ax.fill_between(t, m-se, m+se, color=ACC_COL, alpha=0.25, lw=0)
-    ax.plot(t, sw_sn.mean(0), color=HC_COL, lw=1.2, label="8–40 Hz (sharp wave)")
+    ax.plot(t, sw_sn.mean(0), color=HC_COL, lw=1.2,
+            label=f"< {rfig.SW_BAND_HZ:g} Hz (sharp wave)")
     ax.axvline(0, color='0.6', ls=':', lw=0.8)
     ax.set_xlim(-250, 250); ax.set_xlabel("Time from ripple peak (ms)")
     ax.set_ylabel(r"Amplitude ($\mu$V)")
@@ -517,7 +528,332 @@ def qc_report(session, analysis_name=ANALYSIS_NAME, max_events=800):
 
     _example_grids(session, clean_dir, events)
 
+    # Chen et al. 2025 Fig 2a-b, and the sharp-wave assessment
+    raw_by_pair, coords, rois = {}, [], []
+    for i, p_ in pairs.iterrows():
+        if i >= sig.shape[0]:
+            continue
+        if not len(passed[passed.pair_id == p_.pair_id]):
+            continue
+        raw_by_pair[p_.pair_id] = np.asarray(sig[i], float)
+        if np.isfinite([p_.get("mni_x"), p_.get("mni_y"), p_.get("mni_z")]).all():
+            coords.append([p_.mni_x, p_.mni_y, p_.mni_z])
+            rois.append(p_.get("pair_roi", "HC_mid"))
+    if raw_by_pair:
+        st = session_stacks(session, analysis_name)      # computes and caches
+        if st is not None:
+            ok = np.isfinite(st["coords"]).all(1)
+            rfig.chen_panels(
+                st["mean"], np.nanmean(st["tfr"], axis=0), st["t_ms"],
+                st["ex_raw"] if st["ex_raw"].size else None,
+                st["ex_tfr"] if st["ex_tfr"].size else None,
+                coords=st["coords"][ok] if ok.any() else None,
+                rois=list(st["rois"][ok]) if ok.any() else None,
+                out_stem=os.path.join(_FIGDIR[0], "chen_fig2"),
+                title=f"s{session:02d}", n_contacts=len(st["mean"]),
+                ex_bp=st["ex_bp"] if st["ex_bp"].size else None)
+        sw = rfig.sharp_wave_figure(raw_by_pair, fs, passed,
+                                    out_stem=os.path.join(_FIGDIR[0], "sharp_wave"),
+                                    title=f"s{session:02d} sharp-wave assessment")
+        if len(sw):
+            sw.insert(0, "session", session)
+            sw.to_csv(os.path.join(rip_dir, "sharp_wave.csv"), index=False)
+            rfig.sharp_wave_examples(
+                raw_by_pair, fs, passed, sw,
+                out_stem=os.path.join(_FIGDIR[0], "sharp_wave_examples"),
+                title=f"s{session:02d}: ripples with a visible sharp wave")
+
+        # What the artifact rejection removed. 35-54% of a recording is deleted
+        # here, so it gets looked at rather than trusted.
+        masks, astats = {}, {}
+        for pid, x in raw_by_pair.items():
+            bad, st, per = art.artifact_mask(x, fs, return_per=True)
+            masks[pid] = {"bad": bad, "per": per}
+            astats[pid] = st
+        rfig.artifact_figure(raw_by_pair, fs, masks, astats,
+                             out_stem=os.path.join(_FIGDIR[0], "artifact_rejection"),
+                             title=f"s{session:02d}: what artifact rejection removed")
+        pd.DataFrame(astats).T.rename_axis("pair_id").reset_index().assign(
+            session=session).to_csv(
+            os.path.join(rip_dir, "artifact_criteria.csv"), index=False)
+
     qc_metrics(session, analysis_name)      # prints its own checkpoint
+    return None
+
+
+def sessions_with_ripples(analysis_name=ANALYSIS_NAME, data_root=None):
+    """Every session that has a ripple_events.csv on this machine."""
+    R = data_root or swr_io.get_data_root()
+    cfg = swr_io.load_config(R)
+    out = []
+    for k in sorted(int(x) for x in cfg.keys()):
+        p = os.path.join(swr_io.session_deriv_dir(k, R), "LFP-ripples",
+                         analysis_name, "ripple_events.csv")
+        if os.path.isfile(p):
+            out.append(k)
+    return out
+
+
+STACK_KEYS = ("mean", "tfr", "t_ms", "coords", "rois", "pair_id",
+              "n_events", "ex_raw", "ex_bp", "ex_tfr", "fs")
+
+
+def session_stacks(session, analysis_name=ANALYSIS_NAME, win_s=WIN_S,
+                   use_cache=True):
+    """Per-derivation ripple-locked mean trace and TFR for one session.
+
+    Cached to `ripple_stacks.npz` beside the events, because the TFR is the
+    expensive part of the whole QC stage -- one bandpass+Hilbert pass over the
+    full recording per frequency per derivation -- and the group figure would
+    otherwise repeat it for every session each time it is drawn.
+    """
+    R = swr_io.get_data_root()
+    clean_dir = os.path.join(swr_io.session_deriv_dir(session, R),
+                             "LFP-clean", analysis_name)
+    rip_dir = os.path.join(swr_io.session_deriv_dir(session, R),
+                           "LFP-ripples", analysis_name)
+    cache = os.path.join(rip_dir, "ripple_stacks.npz")
+    if use_cache and os.path.isfile(cache):
+        z = np.load(cache, allow_pickle=True)
+        got = {k: z[k] for k in z.files}
+        # A cache written before a format change is missing keys the callers
+        # index directly; rebuild rather than KeyError halfway through a run.
+        if all(k in got for k in STACK_KEYS):
+            return got
+        print("    (stale stacks cache, rebuilding)")
+
+    sig = np.load(os.path.join(clean_dir, "continuous.npy"), mmap_mode="r")
+    pairs = pd.read_csv(os.path.join(clean_dir, "pairs.csv"))
+    with open(os.path.join(clean_dir, "meta.json")) as f:
+        fs = float(json.load(f)["fs"])
+    ev = pd.read_csv(os.path.join(rip_dir, "ripple_events.csv"))
+    ev = ev[ev.passed.fillna(False)]
+    half = int(round(win_s * fs))
+
+    means, tfrs, coords, rois, ids, ns = [], [], [], [], [], []
+    ex_raw = ex_tfr = ex_bp = best_ex = None
+    best_z = -np.inf
+    t_ms = np.linspace(-win_s, win_s, 2 * half) * 1000
+    for i, p_ in pairs.iterrows():
+        if i >= sig.shape[0]:
+            continue
+        e = ev[ev.pair_id == p_.pair_id]
+        if len(e) < 30:
+            continue
+        raw = np.asarray(sig[i], float)
+        rb = rfig._bp(raw, fs, *rfig.RIPPLE_BAND)
+        pk = rfig.trough_lock(e, rb)
+        sn = rfig._snips(raw, pk, half)
+        if not len(sn):
+            continue
+        means.append(sn.mean(0)); ns.append(len(sn)); ids.append(p_.pair_id)
+        tf, t_ms, _ = rfig.ripple_tfr(raw, fs, pk, win_s=win_s)
+        tfrs.append(tf)
+        xyz = [p_.get("mni_x"), p_.get("mni_y"), p_.get("mni_z")]
+        coords.append(xyz if np.isfinite(xyz).all() else [np.nan] * 3)
+        rois.append(str(p_.get("pair_roi", "HC_mid")))
+        # Choose the event to feature by how clearly the ripple stands out from
+        # the slow background on that contact, not by raw RMS: the largest RMS
+        # event tends to sit on the contact with the biggest slow waves, which
+        # is exactly the one where the ripple is least visible. Score = ripple
+        # envelope at the peak / SD of the same window below 40 Hz.
+        env = np.abs(hilbert(rb))
+        slow = sosfiltfilt(butter(4, 40 / (fs / 2), btype="low", output="sos"), raw)
+        cand = pk[(pk - half >= 0) & (pk + half < len(raw))]
+        if len(cand):
+            sc = np.array([env[c] / (slow[c - half:c + half].std() + 1e-9)
+                           for c in cand])
+            j = int(np.argmax(sc))
+            if sc[j] > best_z:
+                best_z = sc[j]
+                best_ex = (i, int(cand[j]))
+
+    if best_ex is not None:
+        i, bpk = best_ex
+        raw = np.asarray(sig[i], float)
+        ex_raw = raw[bpk - half:bpk + half]
+        ex_bp = rfig._bp(raw, fs, *rfig.RIPPLE_BAND)[bpk - half:bpk + half]
+        ex_tfr, _, _ = rfig.ripple_tfr(raw, fs, [bpk], win_s=win_s)
+
+    if not means:
+        return None
+    out = dict(mean=np.stack(means), tfr=np.stack(tfrs), t_ms=t_ms,
+               coords=np.array(coords, float), rois=np.array(rois),
+               pair_id=np.array(ids), n_events=np.array(ns),
+               ex_raw=np.asarray(ex_raw if ex_raw is not None else []),
+               ex_bp=np.asarray(ex_bp if ex_bp is not None else []),
+               ex_tfr=np.asarray(ex_tfr if ex_tfr is not None else []),
+               fs=np.array([fs]))
+    os.makedirs(rip_dir, exist_ok=True)
+    np.savez_compressed(cache, **out)
+    return out
+
+
+def group_figure(sessions=None, analysis_name=ANALYSIS_NAME, win_s=WIN_S,
+                 use_cache=True):
+    """Chen Fig 2a-b pooled across sessions.
+
+    Averaged with one weight per derivation, not per event: a single contact
+    with a high ripple rate would otherwise dominate the grand average, and the
+    claim is about hippocampal contacts in general.
+    """
+    R = swr_io.get_data_root()
+    sessions = sessions or sessions_with_ripples(analysis_name, R)
+    means, tfrs, coords, rois = [], [], [], []
+    ex_raw = ex_tfr = ex_bp = t_ms = None
+    best_n = -1
+    for sess in sessions:
+        try:
+            st = session_stacks(sess, analysis_name, win_s, use_cache)
+        except (FileNotFoundError, OSError) as e:
+            print(f"  s{sess:02d}: skipped ({type(e).__name__})"); continue
+        if st is None:
+            continue
+        means.append(st["mean"]); tfrs.append(st["tfr"])
+        coords.append(st["coords"]); rois.append(st["rois"])
+        t_ms = st["t_ms"]
+        if st["ex_raw"].size and int(st["n_events"].sum()) > best_n:
+            best_n = int(st["n_events"].sum())
+            ex_raw, ex_tfr = st["ex_raw"], st["ex_tfr"]
+            ex_bp = st["ex_bp"] if st["ex_bp"].size else None
+        print(f"  s{sess:02d}: {len(st['mean'])} derivations")
+
+    if not means:
+        print("group_figure: nothing to pool"); return None
+    means = np.concatenate(means); tfrs = np.concatenate(tfrs)
+    coords = np.concatenate(coords); rois = np.concatenate(rois)
+    ok = np.isfinite(coords).all(1)
+    out_dir = os.path.join(swr_io.derivatives_dir(R), "group", "swr", "figures")
+    rfig.chen_panels(
+        means, np.nanmean(tfrs, axis=0), t_ms, ex_raw, ex_tfr,
+        coords=coords[ok] if ok.any() else None,
+        rois=list(rois[ok]) if ok.any() else None,
+        out_stem=os.path.join(out_dir, "chen_fig2_group"),
+        title=f"Hippocampal ripples, {len(means)} derivations "
+              f"across {len(sessions)} sessions",
+        n_contacts=len(means), ex_bp=ex_bp)
+    print(f"  pooled {len(means)} derivations from {len(sessions)} sessions")
+    return None
+
+
+def sharpwave_control(session, analysis_name=ANALYSIS_NAME, win_s=WIN_S):
+    """Is the sharp wave there before the bipolar subtraction?
+
+    The bipolar montage is a spatial derivative. The ripple is spatially focal
+    and survives it; the sharp wave is a broad low-frequency dipole largely
+    common to both contacts of a pair, so subtraction should remove it. That is
+    a testable claim rather than an excuse, and this tests it: take the events
+    already detected on the bipolar signal, and average the SAME time points on
+    each contact separately, before subtraction.
+
+    If a slow deflection appears in the monopolar traces and cancels in their
+    difference, the montage explains the missing sharp wave. If it is absent
+    monopolar too, it was never recorded and the events should not be called
+    sharp-wave ripples on any montage.
+
+    Detection is untouched -- this only re-averages existing event times.
+    """
+    session = int(session)
+    R = swr_io.get_data_root()
+    clean_dir = os.path.join(swr_io.session_deriv_dir(session, R),
+                             "LFP-clean", analysis_name)
+    rip_dir = os.path.join(swr_io.session_deriv_dir(session, R),
+                           "LFP-ripples", analysis_name)
+    pairs = pd.read_csv(os.path.join(clean_dir, "pairs.csv"))
+    with open(os.path.join(clean_dir, "meta.json")) as f:
+        fs = float(json.load(f)["fs"])
+    ev = pd.read_csv(os.path.join(rip_dir, "ripple_events.csv"))
+    ev = ev[ev.passed.fillna(False)]
+    bip = np.load(os.path.join(clean_dir, "continuous.npy"), mmap_mode="r")
+
+    cfg_s = swr_io.session_config(session, data_root=R)
+    _, kind, _ = swr_io.discover_raw_files(session, cfg_s, data_root=R)
+    print(f"  s{session:02d}: re-reading raw WITHOUT bipolar subtraction "
+          f"({kind}) ...")
+    mono, mmeta = pre.preprocess_session(session, pairs, data_root=R,
+                                         verbose=False, monopolar=True)
+    ch_ids = list(mmeta["pair_ids"])
+    n = min(mono.shape[1], bip.shape[1])
+    half = int(round(win_s * fs))
+
+    rows, prof = [], {}
+    for i, p_ in pairs.iterrows():
+        if i >= bip.shape[0]:
+            continue
+        e = ev[ev.pair_id == p_.pair_id]
+        if len(e) < 30:
+            continue
+        raw_b = np.asarray(bip[i], float)[:n]
+        pk = rfig.trough_lock(e, rfig._bp(raw_b, fs, *rfig.RIPPLE_BAND))
+        pk = pk[(pk - half >= 0) & (pk + half < n)]
+        # The monopolar rows are keyed the way the reader keys them: Blackrock
+        # by nsx position, Neuralynx by .ncs stem. Guessing from "is ns_pos
+        # non-NaN" silently missed every UCLA session.
+        if kind == "blackrock":
+            ka, kb = str(int(p_.ns_pos_a)), str(int(p_.ns_pos_b))
+        else:
+            ka, kb = str(p_.ns_label_a), str(p_.ns_label_b)
+        for tag, key, x in (("contact A", ka, None), ("contact B", kb, None),
+                            ("bipolar A-B", None, raw_b)):
+            if x is None:
+                if key not in ch_ids:
+                    print(f"    {p_.pair_id}: channel {key} not in monopolar set")
+                    continue
+                x = np.asarray(mono[ch_ids.index(key)], float)[:n]
+            pr = rfig.sharp_wave_profiles(x, fs, pk, win_s=win_s)
+            if pr is None:
+                continue
+            prof[f"{p_.pair_id} | {tag}"] = pr
+            rows.append(dict(session=session, pair_id=p_.pair_id, trace=tag,
+                             channel=key or p_.pair_id, n=pr["n"],
+                             deflection_uv=pr["deflection_uv"],
+                             flank_sd=pr["flank_sd"], snr=pr["snr"]))
+    if not rows:
+        print("  nothing to compare"); return None
+    tab = pd.DataFrame(rows)
+    out_dir = os.path.join(rip_dir, "figures")
+    rfig.monopolar_sharpwave_figure(
+        prof, out_stem=os.path.join(out_dir, "sharp_wave_monopolar"),
+        title=f"s{session:02d}: is the sharp wave present before bipolar subtraction?")
+    tab.to_csv(os.path.join(rip_dir, "sharp_wave_monopolar.csv"), index=False)
+
+    print("\n" + tab[["pair_id", "trace", "n", "deflection_uv", "snr"]]
+          .round(2).to_string(index=False))
+    # Compare deflection in microvolts, NOT SNR. Bipolar subtraction shrinks the
+    # flank noise as well as the signal, so its SNR can exceed the monopolar SNR
+    # even while the deflection itself collapses -- which is exactly the effect
+    # being tested. An earlier version compared SNR and concluded the opposite
+    # of what the amplitudes show.
+    mono = (tab[tab.trace != "bipolar A-B"].groupby("pair_id")
+            .deflection_uv.apply(lambda v: v.abs().mean()))
+    bip = (tab[tab.trace == "bipolar A-B"].set_index("pair_id")
+           .deflection_uv.abs())
+    comp = pd.DataFrame({"monopolar_uv": mono, "bipolar_uv": bip}).dropna()
+    if not len(comp):
+        print("\n  -> monopolar channels could not be matched; NO CONCLUSION.")
+        return None
+    comp["reduction_x"] = comp.monopolar_uv / comp.bipolar_uv.replace(0, np.nan)
+    print("\n  slow deflection, monopolar vs bipolar (microvolts):")
+    print("  " + comp.round(2).to_string().replace("\n", "\n  "))
+
+    HAS_SW_UV = 2.0        # a deflection this small is not a sharp wave
+    strong = comp[comp.monopolar_uv >= HAS_SW_UV]
+    if not len(strong):
+        print(f"\n  -> no contact shows a slow deflection above {HAS_SW_UV} uV even "
+              "before subtraction;\n     on these contacts there is no sharp wave "
+              "to lose.")
+    elif strong.reduction_x.median() >= 2.0:
+        print(f"\n  -> {len(strong)} contact(s) carry a slow deflection before "
+              f"subtraction\n     (median {strong.monopolar_uv.median():.1f} uV), "
+              f"reduced {strong.reduction_x.median():.1f}x by the bipolar "
+              "difference:\n     the montage explains the missing sharp wave.")
+    else:
+        print(f"\n  -> {len(strong)} contact(s) carry a slow deflection that the "
+              "bipolar difference\n     does NOT remove "
+              f"({strong.reduction_x.median():.1f}x): the montage is not the "
+              "explanation here.")
+    comp.to_csv(os.path.join(rip_dir, "sharp_wave_monopolar_summary.csv"))
+    print(f"  -> {os.path.join(rip_dir, 'sharp_wave_monopolar.csv')}")
     return None
 
 
@@ -527,9 +863,39 @@ def _metrics_cli(session, analysis_name=ANALYSIS_NAME):
     qc_metrics(int(session), analysis_name)
 
 
+def qc_report(session=None, analysis_name=ANALYSIS_NAME, max_events=800,
+              group=True):
+    """QC every session, or just one.
+
+    session : None (default) runs every session that has detection output on
+              this machine, then the group figure and the group triage table.
+              Pass --session=N for a single session.
+    """
+    if session is not None:
+        return _qc_report_one(int(session), analysis_name, max_events)
+
+    sess = sessions_with_ripples(analysis_name)
+    if not sess:
+        print("no sessions with ripple_events.csv found"); return None
+    print(f"QC across {len(sess)} sessions: "
+          + ", ".join(f"s{s:02d}" for s in sess) + "\n")
+    for s_ in sess:
+        print("=" * 74); print(f" s{s_:02d}"); print("=" * 74)
+        try:
+            _qc_report_one(s_, analysis_name, max_events)
+        except Exception as e:                    # one bad session must not
+            print(f"  s{s_:02d} FAILED: {type(e).__name__}: {e}")   # stop the rest
+    if group:
+        print("\n" + "=" * 74); print(" GROUP"); print("=" * 74)
+        group_figure(sess, analysis_name)
+        qc_group(analysis_name, sess)
+    return None
+
+
 if __name__ == "__main__":
     if fire is not None:
         fire.Fire({'report': qc_report, 'metrics': _metrics_cli,
-                   'group': qc_group})
+                   'group': qc_group, 'figure': group_figure,
+                   'sharpwave': sharpwave_control})
     else:
         qc_report(38)

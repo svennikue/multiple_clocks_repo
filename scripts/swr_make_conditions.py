@@ -48,7 +48,7 @@ def make(stage="both", analysis_name="swr_v1", out_dir=OUT_DIR,
     print(f"\n{len(mf)} sessions in manifest; {len(ok)} have raw files")
 
     # stage 2 needs bipolar_pairs; stage 3 needs continuous.npy
-    rows_pre, rows_det = [], []
+    rows_pre, rows_det, rows_qc = [], [], []
     for _, r in ok.iterrows():
         s = int(r.session)
         pairs = os.path.join(swr_io.session_deriv_dir(s, R), "LFP",
@@ -60,6 +60,13 @@ def make(stage="both", analysis_name="swr_v1", out_dir=OUT_DIR,
             rows_pre.append(arg)
         if os.path.isfile(cont):
             rows_det.append(arg)
+        # swr_qc_report takes a VERB before its flags, and the batch script
+        # passes each condition line verbatim to python, so the verb belongs in
+        # the line rather than on the submit command.
+        ev = os.path.join(swr_io.session_deriv_dir(s, R), "LFP-ripples",
+                          analysis_name, "ripple_events.csv")
+        if os.path.isfile(ev):
+            rows_qc.append(f"metrics {arg}")
 
     os.makedirs(out_dir, exist_ok=True)
     written = []
@@ -73,6 +80,11 @@ def make(stage="both", analysis_name="swr_v1", out_dir=OUT_DIR,
         with open(p, "w") as f:
             f.write("\n".join(rows_det) + "\n")
         written.append((p, len(rows_det), "stage 3 (detect)"))
+    if stage in ("both", "qc") and rows_qc:
+        p = os.path.join(out_dir, f"swr_qc_{analysis_name}.txt")
+        with open(p, "w") as f:
+            f.write("\n".join(rows_qc) + "\n")
+        written.append((p, len(rows_qc), "stage 4 (qc metrics)"))
 
     print()
     for p, n, what in written:

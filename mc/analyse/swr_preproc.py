@@ -328,7 +328,8 @@ def _load_ncs_channels(files, stems_wanted, duration_s, verbose=False):
     return np.stack([r[:n] for r in rows], axis=0)
 
 
-def preprocess_session(session, pairs, data_root=None, verbose=True):
+def preprocess_session(session, pairs, data_root=None, verbose=True,
+                       monopolar=False):
     """Build the continuous bipolar array for one session.
 
     Returns (signal, meta) where `signal` is (n_pairs, n_samples) float32 at
@@ -336,6 +337,14 @@ def preprocess_session(session, pairs, data_root=None, verbose=True):
 
     `pairs` is the session's bipolar_pairs table; only the channels those pairs
     reference are ever read from disk.
+
+    `monopolar=True` skips the bipolar subtraction and returns the individual
+    contacts instead, one row per unique channel, with `meta['pair_ids']` giving
+    the contact labels. This exists for the sharp-wave control: a bipolar
+    derivation is a spatial derivative and removes the spatially broad
+    low-frequency dipole that the sharp wave is, so the only way to ask whether
+    a sharp wave is present at all is to look before that subtraction. Detection
+    is never run on this -- it is a morphology check.
     """
     data_root = data_root or swr_io.get_data_root()
     cfg = swr_io.session_config(session, data_root=data_root)
@@ -375,12 +384,17 @@ def preprocess_session(session, pairs, data_root=None, verbose=True):
     raw_all = np.concatenate(per_block, axis=1)
     del per_block
 
-    # Bipolar first (removes most common-mode line noise), then notch.
-    sig = np.empty((len(pairs), raw_all.shape[1]), dtype=np.float32)
-    for i, (_, p) in enumerate(pairs.iterrows()):
-        ka = index_of[int(p.ns_pos_a) if kind == 'blackrock' else str(p.ns_label_a)]
-        kb = index_of[int(p.ns_pos_b) if kind == 'blackrock' else str(p.ns_label_b)]
-        sig[i] = raw_all[ka] - raw_all[kb]
+    if monopolar:
+        sig = np.ascontiguousarray(raw_all, dtype=np.float32)
+        row_ids = [str(w) for w in wanted]
+    else:
+        # Bipolar first (removes most common-mode line noise), then notch.
+        sig = np.empty((len(pairs), raw_all.shape[1]), dtype=np.float32)
+        for i, (_, p) in enumerate(pairs.iterrows()):
+            ka = index_of[int(p.ns_pos_a) if kind == 'blackrock' else str(p.ns_label_a)]
+            kb = index_of[int(p.ns_pos_b) if kind == 'blackrock' else str(p.ns_label_b)]
+            sig[i] = raw_all[ka] - raw_all[kb]
+        row_ids = list(pairs.pair_id)
     del raw_all
 
     sig, notch_applied, notch_ratios = notch_filter(sig, TARGET_FS)
@@ -392,12 +406,13 @@ def preprocess_session(session, pairs, data_root=None, verbose=True):
     meta = {
         "session": int(session),
         "fs": TARGET_FS,
-        "n_pairs": int(len(pairs)),
+        "n_pairs": int(sig.shape[0]),
+        "monopolar": bool(monopolar),
         "n_samples": int(sig.shape[1]),
         "duration_s": float(sig.shape[1] / TARGET_FS),
         "recording_site": cfg.get('recording_site'),
         "reader": kind,
-        "pair_ids": list(pairs.pair_id),
+        "pair_ids": list(row_ids),
         "blocks": blocks.to_dict("records"),
         "clock": "behavioural = cumulative file duration; sample = t*fs",
         "notch_candidates_hz": list(LINE_FREQS),

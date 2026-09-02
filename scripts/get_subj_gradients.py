@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Gradient analysis across subjects.
+Gradient analysis across subjects for linear trend.
 
 Loops over multiple file-sets (4 or 8 ordered conditions) and over all
 extraction modes (voxel / cluster_peak / cluster_com).

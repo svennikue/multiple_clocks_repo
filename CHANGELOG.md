@@ -2557,3 +2557,357 @@ exactly -- and that is NOT a reason to switch, because picking the criterion tha
 best reproduces another paper's number after seeing which one does is post-hoc.
 Strict stays primary as pre-declared; relaxed remains the sensitivity analysis on
 19% more events (5006 vs 4194). See methods.md section 6.2.
+
+### 2026-09-02 — Chen Fig 2 replication, and what it revealed about our averages
+
+**`swr_qc_report.py report` now runs every session by default** (`--session=N` for
+one), then draws the pooled group figure and prints the group triage table. New
+`mc/plotting/ripple_figures.py` holds the publication figures.
+
+**Three questions about ripple quality, answered with measurements.**
+
+1. **Amplitude was never off by an order of magnitude.** The comparison had been
+   between different traces. Chen's grand average is +-5 uV and their example
+   ripple is +-20-25 uV broadband; ours are +-2 to +-9 uV and +-20-50 uV. Mean
+   single-event ripple-band amplitude is 3.79 uV (range 1.46-9.07 across 14
+   derivations). The large numbers are the broadband trace in both papers.
+
+2. **Our grand average was cancelling itself.** Detection marks events at the
+   peak of the RMS *envelope*, which carries no phase, so the 80-120 Hz
+   oscillation sat at a random phase in every snippet:
+
+       envelope-locked (was)  0.50 uV in the average --  7% of single-event
+       trough-locked  (now)   7.18 uV in the average -- 95% of single-event
+
+   Trough-locking reproduces Chen's figure and lands on their +-5 uV scale.
+   DISPLAY ONLY -- detection, counts, rates and all statistics still use the
+   envelope peak. `trough_lock` is called from plotting code and nowhere else.
+
+3. **The sharp wave: present on some contacts, cancelled on others, absent on
+   the rest.** Two findings, the second of which corrected the first.
+
+   (a) The QC figure had been plotting an 8-40 Hz band-pass as "sharp wave",
+   which high-passes away a deflection 40-100 ms wide. Median |SNR| 0.28 vs 1.37
+   for a 20 Hz low-pass, now used.
+
+   (b) New control `swr_qc_report.py sharpwave --session=N` re-reads the raw
+   channels WITHOUT the bipolar subtraction (`preprocess_session(monopolar=True)`)
+   and averages the same event times on each contact separately. Detection never
+   runs on them. Ripple-locked deflection below 20 Hz, in uV:
+
+       session  derivation             monopolar  bipolar  reduction
+       s38      RT2aA03-RT2aA04             8.12     1.49      5.4x
+       s38      RT2cHbE02-RT2cHbE03         7.29     2.13      3.4x
+       s38      RT2bHa02-RT2bHa03           6.31     3.05      2.1x
+       s06      LPHIP1-LPHIP2               7.87     6.24      1.3x
+       s03      LMH-1-LMH-2                 3.42     6.58      0.5x
+       s03      LPH-1-LPH-2                 1.89     1.01      1.9x
+       s03      RMH-1-RMH-2                 1.07     0.61      1.8x
+       s06      bLAHIP1-bLAHIP2             0.28     0.57      0.5x
+       s02      bLHIP1-bLHIP2               0.11     0.15      0.7x
+
+   5 of 9 derivations carry a ripple-locked deflection >=2 uV before subtraction;
+   in 3 of those the bipolar difference removes most of it (2.1-5.4x); and in 4
+   derivations a >=2 uV deflection SURVIVES into the analysed bipolar signal.
+   The other 4 show nothing even monopolar -- s02, the development session, is
+   one of them, which is why the first look suggested it was missing everywhere.
+   Per-contact heterogeneity is what the anatomy predicts: the dipole reverses
+   across the CA1 pyramidal layer.
+
+   CAVEAT NOT YET RESOLVED: the "monopolar" trace is still referenced to the
+   amplifier reference, so a deflection shared by two neighbours is equally
+   consistent with a local sharp wave and with a global ripple-locked slow
+   potential. The discriminating test is the same average on a NON-hippocampal
+   contact from the same subject; `swr_build_contacts.py` does not emit those.
+
+   Reporting: call the events **ripples**. The evidence is the ripple band, not
+   morphology. Show the sharp wave per contact where it survives, never pooled
+   (signs cancel).
+
+   Two bugs fixed in this control before trusting it: the monopolar channel key
+   followed "is ns_pos non-NaN" instead of the reader, silently missing every
+   UCLA session; and the verdict compared SNR, which is not comparable across
+   montages because bipolar shrinks the flank noise along with the signal -- it
+   reported the opposite of what the microvolt amplitudes show.
+
+**NULL / dead ends (do not re-run):** averaging raw snippets on the envelope
+peak (cancels to 7%); using an 8-40 Hz band to show the sharp wave (SNR 0.28);
+judging the monopolar-vs-bipolar sharp wave by SNR rather than microvolts.
+
+**Speedup:** scipy `hilbert` FFTs at the signal's own length, which for a real
+recording is an awkward number -- 1.08 s per frequency for s02 against 0.14 s at
+`next_fast_len`, an 8x saving that matters because the TFR runs one pass per
+frequency per derivation. The zero-padding perturbs only the edges (median
+difference 8e-8 uV, interior max 1.1e-5 uV against a 0.35 uV median envelope).
+Adopted in the plotting TFR. NOT applied to `swr_detect._event_baseline_spectra`,
+which would change existing detection output -- available if detection is ever
+re-run from scratch.
+
+Per-session TFRs are cached to `ripple_stacks.npz`; the group figure reads those
+rather than recomputing, since the TFR is the expensive part of the QC stage.
+
+## 2026-09-02 — DSR main effect on the fsaverage surface; fixing the "two islands" artefact
+
+**Problem.** The surface overlay in `scripts/harmonic_maps_brain_overlay.py`
+drew the DSR main-effect boundary as two disconnected blobs, while the
+volumetric (FSLeyes) view of the same cluster is one elongated medial-wall
+band. Readers could not tell that the outline *is* the main effect.
+
+**Cause (visualisation only — no analysis was affected).**
+`nilearn.surface.vol_to_surf(vol, pial)` with a single mesh defaults to
+`kind='line'`: it averages the volume along the vertex normal over ±3 mm.
+Thresholding that mean at 0.5 demands that more than half of a 6 mm line lies
+inside the cluster, which erodes an elongated cluster that only grazes the
+cortical ribbon into disconnected gyral patches.
+
+**Fix.** Binary masks (the ROI gate and the DSR outline) are now projected
+with the FreeSurfer `--projfrac-max` recipe: sample at 11 depths strictly
+between the white and pial surfaces, take the max, then close 2 mesh rings and
+drop patches < 40 vertices (speckle only; counts printed and logged in the
+settings JSON). Continuous cos/sin maps are unchanged. Implemented in
+`scripts/dsr_main_effect_surface.py` and imported by
+`scripts/harmonic_maps_brain_overlay.py`; new figures carry a `_ribbonmax` tag
+so the old renderings are not overwritten.
+
+**Effect on the projected cluster (cluster-mass FWE p < 0.05):**
+
+| hemi | old vol_to_surf | ribbon-max raw | + 2-ring closing | final |
+|------|-----------------|----------------|------------------|-------|
+| lh   | 2333 vtx, 8 patches  | 3264 vtx, 13 patches | 3521 vtx, 6 patches | 3476 vtx, 4 patches |
+| rh   |  864 vtx, 1 patch    | 1058 vtx,  4 patches | 1164 vtx, 2 patches | 1160 vtx, **1 patch** |
+
+**Anatomical finding that resolves the figure.** The medial-wall part of the
+cluster is right-lateralised in its dorsal extent. On the **right** hemisphere
+the cortical ribbon intersects it as a *single* connected patch spanning
+z = 14–56 mm — the elongated band seen in the FSLeyes sagittal view. On the
+left, the ribbon intersection genuinely breaks in two (z = 15–36 and
+z = 37–49), which is the "two islands" look. **The rh medial view is therefore
+the honest and the visually clean panel**; the lh medial view additionally has
+the lateral-OFC cluster shining through the translucent pial surface, which
+adds spurious-looking speckle.
+
+**New script.** `scripts/dsr_main_effect_surface.py` renders the main effect on
+fsaverage in three modes — `cluster_t` (t inside the FWE cluster, red-yellow,
+black boundary), `dual` (t > 1.7 faded + FWE cluster opaque, the FSLeyes
+two-layer look, implemented as one MNE layer with per-vertex opacity because
+MNE keeps a single `data` overlay), and `binary` (solid fill). Outputs +
+`settings.json` in
+`data/derivatives/group/Main_Results_fMRI/dsr_main_effect_surface/<date>/`.
+
+The `dual` mode confirms the complaint about the FSLeyes screenshot: at
+t > 1.7 the sub-threshold layer covers most of the brain and, on a translucent
+surface, also shows through from the far hemisphere. Recommendation is
+`cluster_t` on the pial glass brain, which needs no second threshold.
+
+### 2026-09-02 (later) — diagnostic figures for everything we throw away
+
+Standing requirement from SK: visualise what is removed, never just count it.
+
+**New `figures/artifact_rejection.pdf`** (per session). Nothing previously
+visualised the artifact stage at all, despite it deleting 35-54% of every
+recording. Four panels: per-criterion flagged fraction; union + 1 s padding per
+derivation against the 2/3 exclusion line; when in the recording; and the
+removed stretches next to kept ones ON THE SAME Y-AXIS, marked by which criteria
+fired. `swr_artifact.artifact_mask(..., return_per=True)` now optionally returns
+the individual criterion masks so the marks are accurate.
+
+s38: removed stretches are +-250 uV IED-shaped spikes, kept windows are +-25 uV
+ordinary LFP. The 54% loss is real but it is not data. Individual criteria flag
+only 0.04-3.2% each (`artifact_criteria.csv`); the total is almost entirely the
++-1 s padding around several hundred crossings.
+
+**New `figures/sharp_wave_examples.pdf`.** Single ripples from the derivation
+with the largest surviving low-frequency deflection, broadband + <20 Hz + ripple
+band overlaid. On s38 RT2bHa02-RT2bHa03 the ripple sits on a clear slow wave.
+Deliberately a best-case display and labelled as such -- the typical case is the
+per-derivation table where 4 of 9 show nothing.
+
+**Example-ripple selection fixed.** The Chen panel picked the event with the
+largest RMS z, which reliably landed on the contact with the biggest slow waves,
+i.e. the one where the ripple is least visible. Now scored by ripple envelope at
+the peak / SD of the same window below 40 Hz -- how clearly the ripple stands out
+from its background. The example panel also carries the band-passed overlay now,
+because a single unaveraged hippocampal trace is busy (Chen's example is too).
+
+**`HOW_TO_RUN.md` section 4 rewritten** (I started a second run doc, then
+deleted it -- `HOW_TO_RUN.md` already covered this and better, including the
+cluster rsync steps). It now carries the new entry points, a table of which
+figure would invalidate what, and the warning not to expect a sharp wave under
+the grand average. Two stale `swr_qc_report.py --session=N` invocations fixed:
+the CLI now needs a verb.
+
+**Follow-up (same day).** `cluster_t` on the translucent pial surface, medial
+view, was chosen as the house style. `harmonic_maps_brain_overlay._make_brain`
+now delegates to `dsr_main_effect_surface.make_brain`, so surface, size,
+background, `cortex='low_contrast'` shading and `SURF_ALPHA` are defined once
+and cannot drift between the main-effect panel and the gradient overlay; the
+duplicated `_set_brain_surface_alpha` fallback moved there too. The gradient
+overlay is rendered for lh + rh medial only (`RENDER_FILTER`).
+
+### 2026-09-02 (later still) — repo cleanup, and the hypothesis tests
+
+**Archived 7 scripts** to `derivatives/group/swr/archived_scripts/` (also still
+in git history). Repo is down to 10 SWR scripts, all on the pipeline path.
+
+    swr_diagnose_blocks.py       block structure is resolved, recorded in session_blocks.csv
+    swr_diagnose_channels.py     the joins are fixed, contact_qc.csv reports the outcome
+    swr_collect_figures.py       swr_qc_report.py report now does every session + the group
+    swr_organise_box_download.py the download is done and sorted
+    swr_plot_discovery.py        superseded by swr_hypotheses.py
+    swr_build_windows.py         "
+    swr_h1_stats.py              "
+
+**Per-uncovering behaviour IS available** -- `windows_error_correct` carried a
+caveat saying it was not, which was wrong. New `mc/analyse/swr_behaviour.py`
+reconstructs every uncovering attempt and its outcome in session seconds from
+the 25 ms derivatives:
+
+  - clock: session_s = grid_onset + bin * 0.025, verified against
+    all_trial_times on s02 to within one bin (max 0.02 s)
+  - attempts: transitions into the uncover key in buttons_per_25ms_*
+  - correctness: the 4 reward times per repeat are the correct ones
+
+Validated against the stimulus PC's own BEH_*.mat on s47: truth 1903 attempts /
+1288 correct / 615 errors, reconstruction 1891 / 1285 / 606 = 99.4% of attempts
+and 99.8% of correct uncoverings. The raw .mat is NOT used directly: its
+BUTTON_PRESS_TIMES are on the stimulus PC clock (s54 starts at 509637 s, machine
+uptime), not the photodiode clock, and only 5 of those files exist locally.
+
+Sanity: s47 discovery repeats average 16 errors / 20 uncoverings / 9.4 s; later
+repeats 0.7 / 4.7 / 3.0 s.
+
+**New `scripts/swr_hypotheses.py`** -- four hypotheses, one script. H1 (ripples
+at the FIRST arrival at D) is primary and pre-declared, uncorrected; H2-H4 are
+secondary and FDR-corrected across themselves. Confounds handled by a
+log(artifact-free seconds) offset, a movement-key covariate in every model,
+fixed window lengths within design, pooled rates as summed counts over summed
+exposure, subject-level error bars, and circular-shift permutation as the
+primary inference.
+
+NOTE: the permutation null is NOT centred on zero (H1: -0.14). A log ratio of
+small counts is biased downward and first-D windows are few. That is exactly why
+inference is against the shifted null rather than against zero -- the null is
+built by the identical code and carries the identical bias.
+
+Bugs fixed while building: `n_events` vs `n_ripples`; `g.sem` returning the
+DataFrame *method* rather than the column (attribute shadowing); H2 keying on a
+`phase` column that windows_pauses does not emit (it is `phase_after`); H3
+building a window frame without going through `_finalise`, so it lacked
+duration_s.
+
+**Development-set hypothesis results (8 sessions, 6 subjects, 200 perms) --
+EXPLORATORY, not a result:**
+
+    H1  first_D vs later_D          +24.5%   z=+2.84  p=0.005   (primary)
+    H2  exploration vs later pause   -4.6%   z=-0.32  p=0.64   q=0.67
+    H3  rate -> later errors      b=-0.79    z=+1.81  p=0.055  q=0.16
+    H4  error vs correct feedback   -4.5%   z=-0.37  p=0.67   q=0.67
+
+H1 is in the predicted direction: 0.217 Hz at the first arrival at D vs 0.173 Hz
+at later arrivals in the same grid. Its GLM p is 0.22 -- the disagreement is
+because a cluster-robust SE over 6 clusters is itself unreliable, and the
+permutation is primary (section 13.2).
+
+H3 points the right way (more ripples after first-D -> fewer subsequent errors,
+holding discovery difficulty and pause length constant). WARNING for anyone
+reading the GLM output: it reports p < 0.0001 while the permutation reports
+0.055. The GLM treats 297 grid-derivations as independent when several share a
+session and therefore share ripples. TRUST THE PERMUTATION. Averaging
+derivations within a grid before the regression should be done before reporting.
+
+H2 and H4 are flat (|z| < 0.4). If that holds on the full set the reading is
+that the effect is specific to the moment the plan becomes knowable -- but that
+must not be written up as if a null had been predicted there.
+
+Figure bug fixed after the run: the H2 panel keyed on `phase` and collapsed to a
+single "pause" bar; the column is `phase_after`.
+
+### 2026-09-02 (cont.) — three more hypotheses, and a portable results bundle
+
+**Three hypotheses I had left untested, added.** SK asked for them and one of
+them (H6) already had its window builder written -- `windows_discovery` -- which
+I should have run in the first pass.
+
+    H5  explore / plan / execute as THREE phases. add_phase's "exploration"
+        merges searching for unknown rewards with knowing all four but not yet
+        executing reliably; new add_phase3 separates them.
+    H6  is D special BECAUSE it completes the plan? The interaction
+        (D - mean(A,B,C)) on the first traversal minus the same later.
+    H7  feedback that could change behaviour vs feedback that could not:
+        correct DURING discovery, error AFTER it, vs the other diagonal.
+
+Development-set (8 sessions, 6 subjects, 60 perms):
+
+    H5  plan vs execute pauses          -7.6%   z=-0.57  p=0.70
+    H6  (D - ABC) first vs later       +38.7%   z=+3.12  p=0.016  q=0.049
+    H7  informative vs uninformative    -3.0%   z=+0.27  p=0.43
+
+**H6 is the discriminating test and it comes out the right way.** Within the
+discovery traversal D carries +46% the ripple rate of A (GLM p=0.0016) and that
+advantage is GONE at later traversals (interaction p=0.0020). "D is special
+because it is last / ends the traversal" predicts a main effect of state with no
+interaction. It should probably be the primary contrast for the full run rather
+than H1, which is the same claim in a weaker form.
+
+**New `swr_hypotheses.py export`** -- one pickle (+ the same tables as CSVs) with
+everything needed to redo any of these statistics WITHOUT the LFP: ripple
+timestamps per derivation, artifact-free intervals, pairs with coordinates,
+behaviour per repeat, every uncovering attempt with its outcome, channel QC.
+1.9 MB for 8 sessions, so ~14 MB for the full set against tens of GB of LFP.
+
+WARNING recorded in the bundle's meta and in HOW_TO_RUN: a ripple rate is events
+per ARTIFACT-FREE second. Anything that divides by wall-clock time is wrong --
+that is why `intervals` is in the bundle.
+
+CLI is now `swr_hypotheses.py run` / `swr_hypotheses.py export` (fire needs a
+verb once there is more than one entry point).
+
+Fixed: the summary's "role" column still read "FDR across H2-H4" after the
+secondary set grew to six.
+
+### 2026-09-02 (cont.) — the audit now says which warnings matter, and s09 fails
+
+**Two cluster-run failures, both mine.**
+
+1. `swr_qc_report.py report` on ceph errored with "no value for the required
+   argument: session". The cluster copy is STALE -- the session=None default and
+   the dispatcher are local and unpushed.
+2. `batch_swr_on_ceph.sh qc_rep scripts/swr_qc_report.py report <condfile> ...`
+   -> "condition file not found: report". The batch script's third argument IS
+   the condition file; it runs `python <script> <condition line>` verbatim, so a
+   fire VERB has to be inside the condition lines, not on the submit command.
+   `swr_make_conditions.py` now also writes `swr_qc_<name>.txt` with the verb
+   already in each line: `metrics --session=2 --analysis_name=swr_v1`.
+
+**The audit could not tell a cosmetic warning from a dangerous one.** 17 of 60
+sessions came back `needs_review`, which is unusable as a signal because almost
+all of it is bookkeeping: a null `segment`, a missing `blocks` key, a YAML block
+count disagreeing with the behaviour. The YAML is a hint, not the authority
+(methods 3.3), so none of that can corrupt a result.
+
+`swr_audit_sessions.py` now runs the CLOCK GATE the plan always called for:
+read the raw file headers, map each behavioural block onto its recording, and
+report the head/tail margins. New columns `clock_status`,
+`min_head_margin_s`, `min_tail_margin_s`; new status `clock_failed`. The report
+separates "the clock is fine, the rest is bookkeeping" from "this one can
+corrupt a result".
+
+**It immediately found a real problem: s09 FAILS.** Block 2's offset is the
+cumulative duration of block 1 (1527.4 s), which is only valid if recording
+never stopped. Behaviour block 2 needs 1402.9 s and sits 53.4 s into a 1454.2 s
+file, so it overruns the end by 2.0 s. Every block-2 event in s09 is misaligned
+by up to ~2 s -- against 2 s analysis windows, that is total.
+
+**s09 is in the 8-session development set**, so the H1/H6 numbers reported
+earlier include one session with a broken clock. They need re-running without it.
+
+**A false alarm I introduced and removed in the same pass:** the >= 5 s margin
+criterion also flagged s38 as "tight" (3.0 s tail). s38 is SINGLE-block --
+behaviour and LFP share t=0, there is no offset to get wrong, and a small
+positive tail margin just means the recording ran on after the task. The
+criterion exists to validate multi-block OFFSETS and now only applies when
+there is more than one block.
+
+**I archived `swr_diagnose_blocks.py` this morning saying "block structure is
+resolved". That was wrong** -- s09 proves it. The capability is back, and better,
+as part of the audit rather than a separate script to remember to run.
