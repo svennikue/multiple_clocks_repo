@@ -1,8 +1,0 @@
-metrics --session=2 --analysis_name=swr_v1
-metrics --session=3 --analysis_name=swr_v1
-metrics --session=6 --analysis_name=swr_v1
-metrics --session=9 --analysis_name=swr_v1
-metrics --session=12 --analysis_name=swr_v1
-metrics --session=13 --analysis_name=swr_v1
-metrics --session=14 --analysis_name=swr_v1
-metrics --session=38 --analysis_name=swr_v1
