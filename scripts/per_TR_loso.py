@@ -88,6 +88,16 @@ def parse_args():
                     help="skip models whose outputs already exist in --out-dir; "
                          "the summary tables are still rebuilt from every model "
                          "present on disk")
+    ap.add_argument("--demean", action="store_true",
+                    help="subtract each subject's whole-brain mean, separately "
+                         "per TR, before any statistic is computed. Turns the "
+                         "test from 'is this voxel's beta above zero' into 'is "
+                         "it above this subject's own brain-wide level at this "
+                         "TR', which is what you want when a model carries a "
+                         "global offset. Implies reading the whole brain.")
+    ap.add_argument("--skip-input-check", action="store_true",
+                    help="do not verify that every beta map is complete before "
+                         "starting; only useful if the check is misfiring")
     ap.add_argument("--wholebrain", action="store_true",
                     help="also write whole-brain t / FWE-p / uncorrected-p volumes")
     ap.add_argument("--n-perm-wholebrain", type=int, default=1000)
@@ -118,7 +128,7 @@ def do_run(args):
 
     # One read per model serves everything: the whole brain when asked for,
     # else just the union of the masks. Each mask is a column subset of it.
-    if args.wholebrain:
+    if args.wholebrain or args.demean:
         union = brain.copy()
     else:
         union = np.zeros(brain.shape, bool)
@@ -132,6 +142,8 @@ def do_run(args):
               else L.discover_models(args.root, args.dir_pattern, trs[0]))
     wb_models = ([m for m in args.wholebrain_models.split(",") if m]
                  if args.wholebrain_models else models)
+    if not args.skip_input_check:
+        L.check_inputs(args.root, args.dir_pattern, models, trs)
     todo = models
     if args.resume:
         todo = [m for m in models
@@ -148,6 +160,15 @@ def do_run(args):
                for k, v in masks.items()},
         models=models, n_models=len(models), n_perm=args.n_perm, seed=args.seed,
         k_values=k_values, cv=not args.no_cv, numpy_seed=42,
+        demean=bool(args.demean),
+        demean_note=("each subject's whole-brain mean was subtracted separately "
+                     "per TR before any statistic, so t tests regional deviation "
+                     "from that subject's global level rather than deviation "
+                     "from zero. Applied to the data, hence identically to every "
+                     "permutation. A model-wide additive offset -- e.g. one "
+                     "induced by correlated instruction/execution regressors -- "
+                     "cannot survive it; a genuinely regional effect can."
+                     if args.demean else "not applied; t is against zero"),
         wholebrain=bool(args.wholebrain), n_perm_wholebrain=args.n_perm_wholebrain,
         wholebrain_neg=bool(args.wholebrain_neg),
         brain_mask_note=("group brain mask = intersection of mask_all_32_subjects "
@@ -173,12 +194,18 @@ def do_run(args):
     for mi, model in enumerate(todo, 1):
         t0 = time.time()
         Du = L.read_model_columns(args.root, args.dir_pattern, model, trs, union_ijk)
+        if args.demean:
+            # Per subject, per TR, over the whole brain mask. Done here, on the
+            # data, so run_svc / run_loso / run_wholebrain and every one of
+            # their sign-flip permutations see exactly the same array
+            # (CLAUDE.md rule 4) -- there is no separate permutation path.
+            Du -= Du.mean(axis=1, keepdims=True)
 
         if args.wholebrain and model in wb_models:
             wb_dir = os.path.join(args.out_dir, "wholebrain")
             Tw, nmw, p_fwe, p_unc, p_unc_neg, wsum = L.run_wholebrain(
                 Du, ref, union_ijk, n_perm=args.n_perm_wholebrain,
-                seed=args.seed, want_neg=args.wholebrain_neg)
+                seed=args.seed, want_neg=args.wholebrain_neg, trs=trs)
             wsum["model"] = model
             L.write_wholebrain_maps(wb_dir, model, Tw, p_fwe, p_unc, p_unc_neg,
                                     nmw, ref, union_ijk, len(trs))
@@ -194,7 +221,8 @@ def do_run(args):
             cols = cols_of[name]
             D = np.ascontiguousarray(Du[:, cols, :])
             ijk = tuple(a[cols] for a in union_ijk)
-            Tobs, nmt, svc = L.run_svc(D, ref, ijk, n_perm=args.n_perm, seed=args.seed)
+            Tobs, nmt, svc = L.run_svc(D, ref, ijk, n_perm=args.n_perm,
+                                       seed=args.seed, trs=trs)
             svc["model"], svc["mask"] = model, name
             L.write_mask_maps(os.path.join(args.out_dir, name), model, Tobs, nmt,
                               ref, ijk, len(trs))
@@ -202,7 +230,7 @@ def do_run(args):
                                              f"{model}_svc_summary.json"), "w"), indent=2)
             if not args.no_cv:
                 lo, held_by_k = L.run_loso(D, k_values, n_perm=args.n_perm,
-                                           seed=args.seed)
+                                           seed=args.seed, trs=trs)
                 for kk, held in held_by_k.items():
                     np.save(os.path.join(args.out_dir, name,
                                          f"{model}_loso_k{kk}.npy"), held)

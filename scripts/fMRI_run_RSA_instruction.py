@@ -33,10 +33,22 @@ Any model can then be built in two variants:
 The two variants are also correlated with each other and reported, so the
 shared variance between "what was seen" and "what will be done" is explicit.
 
-`rewDSR` can additionally be split into its four reward-step channels
-(curr / next / two_next / three_next) by slicing the A_reward vector into
-quarters — a literal split, so Hamming behaves identically to Hamming on
-rewDSR itself rather than on the 9-dim one-hot stored under those names.
+`rewDSR` at the A_reward anchor is four equal chunks, one per reward step
+(A, B, C, D). Two families of models are sliced out of it, both literal
+slices so that Hamming behaves identically to Hamming on rewDSR itself
+rather than on the 9-dim one-hot stored under those names:
+  SPLIT       one chunk each — A_rew, B_rew, C_rew, D_rew.
+              "which single future reward is this".
+  CUMULATIVE  the first k chunks — A_rew (A), AB_rew (A+B), ABC_rew (A+B+C),
+              ABCD_rew (A+B+C+D, i.e. the whole rewDSR vector). "how much of
+              the plan is already assembled". Because the chunks are equally
+              long, Hamming on a cumulative channel is exactly the mean of the
+              per-step Hammings it contains, so the family is strictly nested
+              and ABCD_rew IS rewDSR.
+Each of those has an `_instr` counterpart built the same way. The pre-rename
+names (curr_rew / next_rew / two_next_rew / three_next_rew / two_rew /
+three_rew) are rejected with a pointer to the new one — see
+`LEGACY_MODEL_NAMES`.
 
 DATA RDM SCOPE (config: `data_rdm_scope`)
     'across_only'  (default) only the TH1 x TH2 off-block, so every cell is
@@ -46,6 +58,28 @@ DATA RDM SCOPE (config: `data_rdm_scope`)
                    Nearly doubles the pairs the OLS sees, but the within-half
                    cells share run-level noise and are therefore biased
                    toward looking similar; that bias is NOT corrected.
+    'within_only'  only the two within-half blocks. Required for anything
+                   instruction-based: across halves a task is instructed in
+                   the reverse order, so instruction dissim is constant there
+                   and carries no variance at all.
+
+Individual models can override this and be fitted in more than one scope:
+  combo models    a `"scope"` key on the combo entry (string or list) — this
+                  is how `exe_split` is fitted once within and once across
+                  task halves in the same run.
+  single models   `"single_model_scopes"` in the config, e.g.
+                      {"execution": ["within_only", "across_only"],
+                       "instruction": ["within_only"]}
+                  applied by name: anything ending in `_instr` is
+                  'instruction', everything else 'execution'. Execution models
+                  carry variance in both blocks and are worth having both ways;
+                  instruction models are constant across halves and can only be
+                  fitted within.
+Outputs that come from such an override are suffixed `_within` / `_across` /
+`_full` so the variants never overwrite each other. All scopes are subsets of
+the same cached (2n x 2n) data RDM, so running several costs no extra
+searchlight work. (The legacy top-level `'across_only'` mode keeps its own
+(n x n) cache and cannot be mixed with per-model or per-combo scopes.)
 
 WHAT HAPPENS NEXT (this script does NOT do group statistics)
 ------------------------------------------------------------
@@ -120,19 +154,61 @@ def pair_correct_tasks(data_dict, keys_list):
 
 
 # Names, in canonical order, of the four channels that constitute a "literal split"
-# of rewDSR at the A_reward anchor (curr = chunk 0, next = 1, two_next = 2, three_next = 3).
-REWDSR_SPLIT_CHANNELS = ('curr_rew', 'next_rew', 'two_next_rew', 'three_next_rew')
+# of rewDSR at the A_reward anchor — one chunk each, so the name IS the reward
+# step it encodes (A_rew = chunk 0, B_rew = 1, C_rew = 2, D_rew = 3).
+REWDSR_SPLIT_CHANNELS = ('A_rew', 'B_rew', 'C_rew', 'D_rew')
+
+# Cumulative "first k rewards" channels: {name: number of leading chunks kept}.
+# k=1 is A_rew, already a split channel and the very same vector, so it is not
+# repeated here. k=4 (ABCD_rew) is the whole rewDSR vector. The family
+# A_rew -> AB_rew -> ABC_rew -> ABCD_rew is therefore strictly nested, and the
+# name spells out which rewards each model knows about.
+REWDSR_PREFIX_CHANNELS = {'AB_rew': 2, 'ABC_rew': 3, 'ABCD_rew': 4}
+
+# Everything that is sliced out of the rewDSR A_reward vector rather than read
+# from its own entry in model_EVs.
+REWDSR_DERIVED_CHANNELS = tuple(REWDSR_SPLIT_CHANNELS) + tuple(REWDSR_PREFIX_CHANNELS)
+
+# Names these models used to carry. They are NOT harmless typos: 'curr_rew',
+# 'next_rew', 'two_next_rew' and 'three_next_rew' are also real keys in
+# model_EVs, holding the 9-dim ONE-HOT version of the same idea. Left
+# unguarded, an old config would silently fall through to the standard path,
+# build the one-hot model instead of the rewDSR slice (mismatch 2/9 rather
+# than 1) and produce different numbers under an unchanged name. So they raise.
+LEGACY_MODEL_NAMES = {
+    'curr_rew': 'A_rew', 'next_rew': 'B_rew',
+    'two_next_rew': 'C_rew', 'three_next_rew': 'D_rew',
+    'two_rew': 'AB_rew', 'three_rew': 'ABC_rew',
+}
 
 
-# models in .json can be 
+def check_no_legacy_names(model_names, where):
+    """Raise if any name in `model_names` is a pre-rename model name."""
+    hits = {}
+    for m in model_names:
+        base, _ = strip_instr(m)
+        if base in LEGACY_MODEL_NAMES:
+            hits[m] = m.replace(base, LEGACY_MODEL_NAMES[base], 1)
+    if hits:
+        raise ValueError(
+            f"{where} uses pre-rename model name(s). Rename them in the config:\n  "
+            + "\n  ".join(f"{old!r} -> {new!r}" for old, new in sorted(hits.items()))
+            + "\n(the old split-channel names are also one-hot entries in "
+              "model_EVs, so leaving them in place would silently build a "
+              "DIFFERENT model rather than fail)")
+
+
+# models in .json can be
 # instr = visual instruction similarity
 # "selected_models": [
 #       "DSR", "rewDSR", "simple",
-#       "rewDSR_instr",                                                                                                                  
-#       "curr_rew", "curr_rew_instr",
-#       "next_rew", "next_rew_instr",
-#       "two_next_rew", "two_next_rew_instr",
-#       "three_next_rew", "three_next_rew_instr"
+#       "A_rew",    "A_rew_instr",        # split:      one reward step each
+#       "B_rew",    "B_rew_instr",
+#       "C_rew",    "C_rew_instr",
+#       "D_rew",    "D_rew_instr",
+#       "AB_rew",   "AB_rew_instr",       # cumulative: the first k reward steps
+#       "ABC_rew",  "ABC_rew_instr",
+#       "ABCD_rew", "ABCD_rew_instr"      # == rewDSR
 #   ]
 
 
@@ -301,28 +377,38 @@ def build_block_nuisance_RDM(n_pairs):
     return R
 
 
-def slice_rewDSR_into_split_channels(model_EVs, EV_keys, use_instruction=False):
+def slice_rewDSR_channels(model_EVs, EV_keys, use_instruction=False):
     """
-    Build (th1, th2) matrices for curr_rew / next_rew / two_next_rew / three_next_rew
-    as 12-element chunks of rewDSR at the A_reward anchor.
+    Build (th1, th2) matrices for every model that is a slice of rewDSR at the
+    A_reward anchor.
 
-    Doing it this way makes the four channels a LITERAL split of rewDSR:
-      * each chunk is a 12-vec of the raw location value (e.g. [4]*12)
-      * hamming dissim then behaves the same way as on rewDSR itself
-        (match -> 0, mismatch -> 1), rather than the 9-dim one-hot version
-        stored in model_EVs['curr_rew'] etc. (which gives mismatch = 2/9).
+    That vector is four equal chunks, one per reward step, each holding the raw
+    location value repeated (e.g. [5]*12 for A, then B, C, D). Two families are
+    cut out of it:
+      * SPLIT — one chunk each: A_rew, B_rew, C_rew, D_rew.
+      * CUMULATIVE — the first k chunks: AB_rew (A+B), ABC_rew (A+B+C),
+        ABCD_rew (the whole vector, i.e. rewDSR). A_rew (k=1) is literally the
+        first split channel, so it is not repeated in the cumulative dict.
+
+    Slicing rather than reading model_EVs['curr_rew'] etc. keeps every channel a
+    LITERAL piece of rewDSR: each chunk carries the raw location value, so
+    hamming behaves the same way as on rewDSR (match -> 0, mismatch -> 1)
+    instead of the 2/9 that the 9-dim one-hot stored under those names gives.
+    Because the chunks are equally long, hamming on a cumulative channel is
+    exactly the mean of the per-step hammings it contains.
 
     Parameters
     ----------
     use_instruction : bool
         If True, apply ``instruction_relabel_dict`` to the rewDSR sub-dict
         before pairing/slicing — produces the instruction-similarity variant
-        of the four split channels.
+        of every channel.
 
     Returns
     -------
     dict : {channel_name: (th1_mat, th2_mat)}
-        Each matrix has shape (n_pairs, 12).
+        Split channels have shape (n_pairs, chunk); cumulative channels
+        (n_pairs, k * chunk).
     """
     rewDSR_sub = {k: v for k, v in model_EVs['rewDSR'].items() if k.endswith('_A_reward')}
     if use_instruction:
@@ -339,7 +425,65 @@ def slice_rewDSR_into_split_channels(model_EVs, EV_keys, use_instruction=False):
     for i, name in enumerate(REWDSR_SPLIT_CHANNELS):
         out[name] = (th1_full[:, i * CHUNK:(i + 1) * CHUNK],
                      th2_full[:, i * CHUNK:(i + 1) * CHUNK])
+    for name, k in REWDSR_PREFIX_CHANNELS.items():
+        out[name] = (th1_full[:, :k * CHUNK], th2_full[:, :k * CHUNK])
     return out
+
+
+# ── Scope names ───────────────────────────────────────────────────────────
+# Canonical scope names plus the short aliases a config may use. A combo model
+# can carry its own "scope" (string or list) to be fitted in a scope other than
+# the config-level `data_rdm_scope` — used to run the same execution model once
+# within and once across task halves in a single pass.
+SCOPE_ALIASES = {
+    'across_only': 'across_only', 'across': 'across_only',
+    'within_only': 'within_only', 'within': 'within_only',
+    'full_no_diag': 'full_no_diag', 'full': 'full_no_diag',
+}
+# Suffix appended to the output map names of a combo that declares "scope",
+# so the within- and across-half fits of one combo never overwrite each other.
+SCOPE_TAGS = {'across_only': 'across', 'within_only': 'within', 'full_no_diag': 'full'}
+
+
+def normalise_scope(name):
+    assert name in SCOPE_ALIASES, (
+        f"unknown scope {name!r} — use one of {sorted(set(SCOPE_ALIASES))}")
+    return SCOPE_ALIASES[name]
+
+
+def combo_scopes(combo, default_scope):
+    """(scopes, tag_outputs) for one combo dict. A combo without a "scope" key
+    runs in the config-level scope and keeps its plain output names."""
+    if "scope" not in combo:
+        return [default_scope], False
+    raw = combo["scope"]
+    raw = [raw] if isinstance(raw, str) else list(raw)
+    return [normalise_scope(x) for x in raw], True
+
+
+def single_model_scopes(model, cfg_scopes, default_scope):
+    """(scopes, tag_outputs) for one SINGLE model.
+
+    `cfg_scopes` is the config's optional `single_model_scopes`, e.g.
+
+        "single_model_scopes": {"execution":   ["within_only", "across_only"],
+                                "instruction": ["within_only"]}
+
+    A model is 'instruction' iff its name ends in `_instr`, else 'execution'.
+    The asymmetry is forced by the design, not chosen: an execution model has
+    variance both within and across task halves and is worth fitting in both,
+    whereas an instruction model is constant across halves (there the same task
+    is instructed in the reverse order) and can only be fitted within-half.
+
+    Without the key, every single model runs in the config-level scope and keeps
+    its plain output name, exactly as before."""
+    if not cfg_scopes:
+        return [default_scope], False
+    key = 'instruction' if model.endswith(INSTR_SUFFIX) else 'execution'
+    raw = cfg_scopes.get(key, default_scope)
+    raw = [raw] if isinstance(raw, str) else list(raw)
+    return [normalise_scope(x) for x in raw], True
+
 
 def design_rank_report(names, X):
     """Report on a design that `evaluate_model` would silently fail on.
@@ -435,10 +579,12 @@ PLOTTING = True
 #                   information (constant by design) and its similarity offset
 #                   against the within-half block is what biases every
 #                   instruction regressor upward in 'full_no_diag'.
-data_rdm_scope = config.get("data_rdm_scope", "across_only")
-assert data_rdm_scope in ("across_only", "full_no_diag", "within_only"), (
-    f"data_rdm_scope must be 'across_only', 'full_no_diag' or 'within_only' "
-    f"— got {data_rdm_scope!r}")
+data_rdm_scope = normalise_scope(config.get("data_rdm_scope", "across_only"))
+# The legacy 'across_only' mode fits the (n x n) TH1 x TH2 block directly and
+# keeps its own data RDM cache. Every other scope is a subset of the strict
+# lower triangle of the assembled (2n x 2n) matrix, which is what makes
+# per-combo scope overrides free: they reuse the one cached full data RDM.
+legacy_across_block = (data_rdm_scope == "across_only")
 print(f"data_rdm_scope = {data_rdm_scope}")
 
 # this should better be: what kind of searchlight_mask do you want?
@@ -508,10 +654,13 @@ for sub in subjects:
     with open(f"{modelled_conditions_dir}/{sub}_modelled_EVs_{EV_string}.pkl", 'rb') as file:
         model_EVs = pickle.load(file)
     # Which models to build + evaluate. Driven by the config so we can swap
-    # between the original ['DSR', 'rewDSR', 'simple'] analysis and the new
-    # ['curr_rew', 'next_rew', 'two_next_rew', 'three_next_rew'] split_rew_DSR
-    # analysis without touching the script.
+    # between the original ['DSR', 'rewDSR', 'simple'] analysis, the split
+    # ['A_rew', 'B_rew', 'C_rew', 'D_rew'] one and the cumulative
+    # ['A_rew', 'AB_rew', 'ABC_rew', 'ABCD_rew'] one without touching the script.
     selected_models = config.get("selected_models", ['DSR', 'rewDSR', 'simple'])
+    check_no_legacy_names(selected_models, "config 'selected_models'")
+    for _c in config.get("combo_models", []):
+        check_no_legacy_names(_c["regressors"], f"combo model {_c['name']!r}")
     # Data EVs — one PE per instruction-phase condition at this TR, per task half.
     data_EVs, all_EV_keys = mc.analyse.my_RSA.load_data_EVs_instr_TRwise(
         data_dir, regression_version=regression_version, TR=TR,
@@ -541,24 +690,17 @@ for sub in subjects:
     # (n, n) across block preserves the existing PLOTTING / verification code.
     model_RDM_full_dir = {}
 
-    # Split-channel sources — one for execution rewDSR, one for instruction
-    # rewDSR. Each provides the same four (th1, th2) matrices; the models
-    # 'curr_rew' and 'curr_rew_instr' just draw from the different source.
+    # Sources for the models sliced out of rewDSR (split channels + cumulative
+    # first-k-rewards channels) — one dict for execution, one for instruction.
+    # 'A_rew' and 'A_rew_instr' are the same slice drawn from the two.
     split_th_by_channel = {}
     split_th_by_channel_instr = {}
-    _needs_split_exec  = any(strip_instr(m) == (base, False)[0] and not strip_instr(m)[1]
-                              for m in selected_models
-                              for base in REWDSR_SPLIT_CHANNELS)
-    _needs_split_instr = any(strip_instr(m) == (base, True)[0] and strip_instr(m)[1]
-                              for m in selected_models
-                              for base in REWDSR_SPLIT_CHANNELS)
-    # simpler: check each split channel explicitly
     _base_of = [strip_instr(m) for m in selected_models]
-    if any(base in REWDSR_SPLIT_CHANNELS and not is_instr for base, is_instr in _base_of):
-        split_th_by_channel = slice_rewDSR_into_split_channels(
+    if any(base in REWDSR_DERIVED_CHANNELS and not is_instr for base, is_instr in _base_of):
+        split_th_by_channel = slice_rewDSR_channels(
             model_EVs, EV_keys, use_instruction=False)
-    if any(base in REWDSR_SPLIT_CHANNELS and is_instr for base, is_instr in _base_of):
-        split_th_by_channel_instr = slice_rewDSR_into_split_channels(
+    if any(base in REWDSR_DERIVED_CHANNELS and is_instr for base, is_instr in _base_of):
+        split_th_by_channel_instr = slice_rewDSR_channels(
             model_EVs, EV_keys, use_instruction=True)
 
     # Every non-'simple' model in `selected_models` is built the same way:
@@ -568,7 +710,7 @@ for sub in subjects:
         base_name, is_instr = strip_instr(model)
         if base_name == 'simple':
             continue
-        if base_name in REWDSR_SPLIT_CHANNELS:
+        if base_name in REWDSR_DERIVED_CHANNELS:
             source = split_th_by_channel_instr if is_instr else split_th_by_channel
             m_th1, m_th2 = source[base_name]
         else:
@@ -580,7 +722,7 @@ for sub in subjects:
             a_rew_keys = [k.replace('_instruction_onset', '_A_reward') for k in EV_keys]
             m_th1, m_th2, _ = pair_correct_tasks(a_rew_sub, a_rew_keys)
         model_RDM_dir[model] = mc.analyse.my_RSA.compute_hamming_instruction_RDM(m_th1, m_th2)
-        if data_rdm_scope in ('full_no_diag', 'within_only'):
+        if not legacy_across_block:
             W1 = mc.analyse.my_RSA.compute_hamming_instruction_RDM(m_th1, m_th1)
             W2 = mc.analyse.my_RSA.compute_hamming_instruction_RDM(m_th2, m_th2)
             model_RDM_full_dir[model] = assemble_full_rdm_from_blocks(
@@ -589,7 +731,7 @@ for sub in subjects:
     # Simple — {-1, +1, NaN} based on same/different execution within the same task letter.
     if 'simple' in selected_models:
         model_RDM_dir['simple'] = mc.analyse.my_RSA.build_simple_instruction_RDM(th1_labels, th2_labels)
-        if data_rdm_scope in ('full_no_diag', 'within_only'):
+        if not legacy_across_block:
             all_labels = th1_labels + th2_labels
             model_RDM_full_dir['simple'] = mc.analyse.my_RSA.build_simple_instruction_RDM(
                 all_labels, all_labels)
@@ -622,30 +764,90 @@ for sub in subjects:
               f"appended to {sum(BLOCK_NUISANCE in c['regressors'] for c in combo_cfg)} "
               f"combo model(s)")
 
-    def _model_regressor(m):
-        """The 1-D vector the OLS actually sees, for the current scope."""
-        if data_rdm_scope == "across_only":
+    # ── Which scopes is each model actually fitted in? ───────────────────
+    # Union over its single-model scopes and every combo it takes part in.
+    # Resolved here, before anything is plotted, so the figures show exactly
+    # the cells that go into an OLS and nothing else.
+    single_scope_cfg = config.get("single_model_scopes", None)
+    run_single_models = config.get("run_single_models", True)
+    run_combo_models = config.get("run_combo_models", bool(combo_cfg))
+    scopes_per_model = {m: [] for m in selected_models}
+    if run_single_models:
+        for m in selected_models:
+            for sc in single_model_scopes(m, single_scope_cfg, data_rdm_scope)[0]:
+                if sc not in scopes_per_model[m]:
+                    scopes_per_model[m].append(sc)
+    if run_combo_models:
+        for c in combo_cfg:
+            for sc in combo_scopes(c, data_rdm_scope)[0]:
+                for m in c["regressors"]:
+                    if m in scopes_per_model and sc not in scopes_per_model[m]:
+                        scopes_per_model[m].append(sc)
+    for m, scs in scopes_per_model.items():
+        if not scs:                      # built but never fitted — still plot it
+            scopes_per_model[m] = [data_rdm_scope]
+    all_scopes_used = [sc for sc in ("within_only", "across_only", "full_no_diag")
+                       if any(sc in v for v in scopes_per_model.values())]
+    print("\n[scopes] " + ", ".join(
+        f"{m}: {'+'.join(SCOPE_TAGS[sc] for sc in scs)}"
+        for m, scs in scopes_per_model.items()))
+
+    def _scope_cells(scope):
+        """Boolean over the strict lower triangle of the (2n, 2n) matrix,
+        selecting the cells a given scope fits. The three scopes partition that
+        triangle: 'within_only' keeps the two within-half blocks, 'across_only'
+        their complement (which is exactly the n**2 cells of the across block),
+        'full_no_diag' keeps everything. Because they are masks over one and the
+        same vector, the model regressor and the cached data RDM are always
+        subset in the same order."""
+        if scope == "within_only":
+            return within_mask
+        if scope == "across_only":
+            return ~within_mask
+        return np.ones(within_mask.shape, dtype=bool)
+
+    def _model_regressor(m, scope=None):
+        """The 1-D vector the OLS actually sees, for `scope` (default: the
+        config-level scope)."""
+        scope = data_rdm_scope if scope is None else scope
+        if legacy_across_block:
+            assert scope == "across_only", (
+                f"combo scope {scope!r} needs the assembled (2n x 2n) model/data "
+                "RDMs, which the legacy top-level 'across_only' mode never "
+                "builds. Set data_rdm_scope to 'within_only' or 'full_no_diag' "
+                "and give the combo an explicit scope instead.")
             return np.asarray(model_RDM_dir[m]).ravel()
-        flat = _lower_tri_flat(model_RDM_full_dir[m])
-        return flat[within_mask] if data_rdm_scope == "within_only" else flat
+        return _lower_tri_flat(model_RDM_full_dir[m])[_scope_cells(scope)]
 
-    def _display_RDM(model):
-        """(matrix, row labels, col labels, caption) for plotting.
+    def _mask_2d_for_scope(scope):
+        """(2n, 2n) boolean, True for the cells `scope` fits. Display companion
+        to `_scope_cells`, which selects the same cells over the flat triangle."""
+        w = within_half_mask_2d(len(th1_labels))
+        return w if scope == "within_only" else (~w if scope == "across_only"
+                                                 else np.ones_like(w))
 
-        Shows the cells that ENTER THE OLS for the current scope; anything
-        excluded is NaN, which `plot_instruction_RDM` renders white. Plotting
-        the (n, n) across block regardless of scope -- as this script used to --
-        is misleading in 'within_only', where that block is not fitted at all
-        and is a constant 1.0 for every instruction model."""
-        if data_rdm_scope == "across_only":
+    def _display_RDM(model, scope):
+        """(matrix, row labels, col labels, caption) for plotting ONE model in
+        ONE scope.
+
+        Shows the cells that ENTER THE OLS for that scope; everything excluded
+        is NaN, which `plot_instruction_RDM` renders white. Plotting the (n, n)
+        across block regardless of scope -- as this script used to -- is
+        misleading in 'within_only', where that block is not fitted at all and
+        is a constant 1.0 for every instruction model."""
+        if legacy_across_block:
             return (np.asarray(model_RDM_dir[model], dtype=float),
                     th1_labels, th2_labels, "across block (TH1 x TH2)")
         M = np.array(model_RDM_full_dir[model], dtype=float)
         all_lab = th1_labels + th2_labels
-        if data_rdm_scope == "within_only":
-            M[~within_half_mask_2d(len(th1_labels))] = np.nan
-            return M, all_lab, all_lab, "within-half only; white = not fitted"
-        return M, all_lab, all_lab, "full 2n x 2n (W1 | A | W2)"
+        keep = _mask_2d_for_scope(scope)
+        M[~keep] = np.nan
+        caption = {"within_only": "within-half blocks only; white = not fitted",
+                   "across_only": "across-half block only; white = not fitted",
+                   "full_no_diag": "full 2n x 2n (W1 | A | W2)"}[scope]
+        # Both axes of the assembled matrix run over ALL conditions of BOTH
+        # halves, so the function's default 'task half 1/2' labels would lie.
+        return M, all_lab, all_lab, caption
 
     # ── Instruction-model verification + correlation with execution ──────
     # For every model ending in `_instr`, verify the 2x2 sub-block
@@ -654,6 +856,7 @@ for sub in subjects:
     # execution counterpart is also present, report Pearson r between the
     # two RDMs so you can see how much variance they share.
     instr_models_present = [m for m in selected_models if m.endswith(INSTR_SUFFIX)]
+    exec_instr_correlations = {}
     for im in instr_models_present:
         # Verify on the matrix that is actually fitted. The 2x2 uniformity
         # property is a statement about the across block; in 'within_only' the
@@ -669,41 +872,60 @@ for sub in subjects:
         with pd.option_context('display.width', 200,
                                 'display.max_rows', 100):
             print(block_df.round(4).to_string(index=False))
-        # Correlation with execution counterpart. In 'full_no_diag' mode we
-        # correlate over the actual OLS regressors (strict lower-tri of the
-        # (2n, 2n) block matrix); in 'across_only' mode we correlate over the
-        # ravel'd (n, n) A block, which is exactly the regressor the OLS sees.
+        # Correlation with execution counterpart, reported once per scope the
+        # instruction model is actually fitted in, and always over the vectors
+        # the OLS sees -- otherwise the number describes cells nobody fits.
         base_name = im[:-len(INSTR_SUFFIX)]
         if base_name in model_RDM_dir:
-            # Always over the vectors the OLS sees -- otherwise the number
-            # printed describes cells that are not being fitted.
-            exec_flat = _model_regressor(base_name)
-            instr_flat = _model_regressor(im)
-            scope_note = data_rdm_scope
-            m = np.isfinite(exec_flat) & np.isfinite(instr_flat)
-            r_pearson = float(np.corrcoef(exec_flat[m], instr_flat[m])[0, 1])
-            print(f"[correlation, {scope_note}] {base_name} (execution) vs {im} "
-                  f"(instruction): Pearson r = {r_pearson:+.4f}  "
-                  f"(n_cells = {int(m.sum())})")
+            for sc in scopes_per_model[im]:
+                exec_flat = _model_regressor(base_name, sc)
+                instr_flat = _model_regressor(im, sc)
+                m = np.isfinite(exec_flat) & np.isfinite(instr_flat)
+                r_pearson = float(np.corrcoef(exec_flat[m], instr_flat[m])[0, 1])
+                exec_instr_correlations[f"{base_name}_vs_{im}_{SCOPE_TAGS[sc]}"] = {
+                    "execution": base_name, "instruction": im, "scope": sc,
+                    "pearson_r": round(r_pearson, 4), "n_cells": int(m.sum())}
+                print(f"[correlation, {sc}] {base_name} (execution) vs {im} "
+                      f"(instruction): Pearson r = {r_pearson:+.4f}  "
+                      f"(n_cells = {int(m.sum())})")
         else:
             print(f"[correlation] {base_name} not in selected_models — "
                   f"skipping execution-vs-instruction correlation.")
     
     if PLOTTING == True:
-        # Plot each selected model RDM (plotted from the stored arrays — no
-        # recomputation). We always plot the (n, n) across block for readability.
-        # If we're in 'full_no_diag' mode, we ALSO plot the assembled (2n, 2n)
-        # matrix so you can visually verify the within- and across-run blocks.
+        # One figure per model PER SCOPE it is fitted in — plotted straight from
+        # the stored arrays, no recomputation. Cells outside the scope are NaN
+        # (white), so what you see is exactly what that OLS regressor contains.
+        # A model fitted both within and across halves therefore gets two
+        # figures, and they should look structured in both.
+        # Titles/labels are kept short on purpose: these panels are 4 x 4 cm at
+        # 9 pt Arial, so a two-line sentence would swamp the matrix. The long
+        # form lives in the print-out and the settings json instead.
+        SCOPE_CAPTION = {"within_only": "within-half",
+                         "across_only": "across-half",
+                         "full_no_diag": "full"}
         for model in selected_models:
-            if model == 'simple':
-                vmin, vmax, title = -1, 1, 'simple execution dissim'
-            else:
-                vmin, vmax, title = 0, 1, f'{model} A_reward hamming dissim'
-            M, rlab, clab, caption = _display_RDM(model)
-            mc.analyse.my_RSA.plot_instruction_RDM(
-                M, rlab, clab, title=f'{title}\n{caption}',
-                vmin=vmin, vmax=vmax,
-                save_path=f"{results_dir}_{model}_{data_rdm_scope}")
+            vmin, vmax = (-1, 1) if model == 'simple' else (0, 1)
+            for scope in scopes_per_model[model]:
+                M, rlab, clab, caption = _display_RDM(model, scope)
+                # Stats over the REGRESSOR (strict lower triangle of the fitted
+                # cells), not over the symmetric matrix the figure shows —
+                # otherwise every cell is counted twice. A regressor with one
+                # distinct value is constant and would sink the design.
+                reg = _model_regressor(model, scope)
+                reg = reg[np.isfinite(reg)]
+                print(f"[model RDM] {model:22s} [{SCOPE_TAGS[scope]:6s}] "
+                      f"{reg.size:4d} fitted cells, "
+                      f"{len(np.unique(np.round(reg, 6))):2d} distinct values, "
+                      f"range [{reg.min():.3f}, {reg.max():.3f}], "
+                      f"sd {reg.std():.3f}")
+                mc.analyse.my_RSA.plot_instruction_RDM(
+                    M, rlab, clab,
+                    title=f'{model}\n{SCOPE_CAPTION[scope]}',
+                    vmin=vmin, vmax=vmax,
+                    xlabel='', ylabel='',
+                    n_first_half=len(th1_labels),
+                    save_path=f"{results_dir}_{model}_{SCOPE_TAGS[scope]}")
 
         # Optional inspection plot: cosine dissim from one random searchlight.
         plot_example_data_RDM = config.get("plot_example_data_RDM", False)
@@ -713,70 +935,96 @@ for sub in subjects:
             vox_ids = np.asarray(neighbors[sl_idx])
             sl_data = data_concat[:, vox_ids]
             n_conds = sl_data.shape[0] // 2
-            # Same convention as the model figures: show the cells that enter
-            # the OLS for this scope, white out the rest.
-            if data_rdm_scope == "across_only":
+            # Same convention as the model figures: one panel per scope in use,
+            # showing the cells that enter that OLS and whiting out the rest.
+            if legacy_across_block:
+                ex_full = None
                 ex = mc.analyse.my_RSA.compute_cosine_instruction_RDM(
                     sl_data[:n_conds], sl_data[n_conds:])
-                rlab, clab, caption = th1_labels, th2_labels, "across block (TH1 x TH2)"
+                mc.analyse.my_RSA.plot_instruction_RDM(
+                    ex, th1_labels, th2_labels,
+                    title=f'example data RDM (searchlight #{sl_idx}, cosine dissim)\n'
+                          'across block (TH1 x TH2)',
+                    save_path=f"{results_dir}_data_across")
             else:
-                ex = np.array(mc.analyse.my_RSA.compute_cosine_instruction_RDM(
+                ex_full = np.array(mc.analyse.my_RSA.compute_cosine_instruction_RDM(
                     sl_data, sl_data), dtype=float)
-                rlab = clab = th1_labels + th2_labels
-                if data_rdm_scope == "within_only":
-                    ex[~within_half_mask_2d(len(th1_labels))] = np.nan
-                    caption = "within-half only; white = not fitted"
-                else:
-                    caption = "full 2n x 2n (W1 | A | W2)"
-            mc.analyse.my_RSA.plot_instruction_RDM(
-                ex, rlab, clab,
-                title=f'example data RDM (searchlight #{sl_idx}, cosine dissim)\n{caption}',
-                save_path=f"{results_dir}_data_{data_rdm_scope}")
+                all_lab = th1_labels + th2_labels
+                for scope in all_scopes_used:
+                    ex = ex_full.copy()
+                    ex[~_mask_2d_for_scope(scope)] = np.nan
+                    caption = {"within_only": "within-half blocks only; white = not fitted",
+                               "across_only": "across-half block only; white = not fitted",
+                               "full_no_diag": "full 2n x 2n (W1 | A | W2)"}[scope]
+                    mc.analyse.my_RSA.plot_instruction_RDM(
+                        ex, all_lab, all_lab,
+                        title=f'data, SL #{sl_idx}\n{SCOPE_CAPTION[scope]}',
+                        xlabel='', ylabel='',
+                        n_first_half=len(th1_labels),
+                        save_path=f"{results_dir}_data_{SCOPE_TAGS[scope]}")
     
         plt.show(block=False)
     
     #
     # Step 4: compute the data RDM per searchlight (cosine dissim).
-    #   'across_only'   : (n_conds, n_conds) off-block, ravel'd -> n_conds**2 cells
-    #   'full_no_diag'  : (2n, 2n) symmetric, strict lower tri -> 2n*(2n-1)//2 cells
+    #   legacy 'across_only' : (n_conds, n_conds) off-block, ravel'd
+    #   everything else      : (2n, 2n) symmetric, strict lower tri
     # The cache filename carries a '_full' suffix in the second case so the
-    # two variants live side-by-side and never overwrite each other.
+    # two variants live side-by-side and never overwrite each other. The
+    # assembled version is computed ONCE; 'within_only' and 'across_only' are
+    # then column subsets of it (`_scope_cells`), which is what lets one combo
+    # be fitted in several scopes without recomputing any searchlight.
     os.makedirs(data_rdm_dir, exist_ok=True)
-    scope_tag = "" if data_rdm_scope == "across_only" else "_full"
-    data_rdm_name = f"data_RDM{scope_tag}"
+    cache_tag = "" if legacy_across_block else "_full"
+    data_rdm_name = f"data_RDM{cache_tag}"
     data_rdm_npy = f"{data_rdm_dir}/{data_rdm_name}.npy"
     if not os.path.exists(data_rdm_npy):
-        if data_rdm_scope == "across_only":
-            data_RDMs = mc.analyse.my_RSA.get_instruction_RDM_per_searchlight(
+        if legacy_across_block:
+            data_RDMs_cached = mc.analyse.my_RSA.get_instruction_RDM_per_searchlight(
                 data_concat, centers, neighbors)
         else:
-            data_RDMs = mc.analyse.my_RSA.get_full_instruction_RDM_per_searchlight(
+            data_RDMs_cached = mc.analyse.my_RSA.get_full_instruction_RDM_per_searchlight(
                 data_concat, centers, neighbors)
         mc.analyse.handle_MRI_files.save_data_RDM_as_nifti(
-            data_RDMs, data_rdm_dir, data_rdm_name, ref_img, centers)
+            data_RDMs_cached, data_rdm_dir, data_rdm_name, ref_img, centers)
     else:
-        data_RDMs = np.load(data_rdm_npy)
+        data_RDMs_cached = np.load(data_rdm_npy)
 
     if smoothing == True:
-        smooth_name = f"data_RDM_smooth_fwhm{fwhm}{scope_tag}"
+        smooth_name = f"data_RDM_smooth_fwhm{fwhm}{cache_tag}"
         smooth_npy = f"{data_rdm_dir}/{smooth_name}.npy"
         if not os.path.exists(smooth_npy):
             path_to_save_smooth = f"{data_rdm_dir}/{smooth_name}"
             print(f"now smoothing the RDM and saving it here: {path_to_save_smooth}")
-            data_RDMs = mc.analyse.handle_MRI_files.smooth_RDMs(
-                data_RDMs, ref_img, fwhm, use_rsa_toolbox=False,
+            data_RDMs_cached = mc.analyse.handle_MRI_files.smooth_RDMs(
+                data_RDMs_cached, ref_img, fwhm, use_rsa_toolbox=False,
                 path_to_save=path_to_save_smooth, centers=centers)
         else:
-            data_RDMs = np.load(smooth_npy)
-    if data_rdm_scope == "within_only":
-        # 'within_only' reads the SAME `_full` cache as 'full_no_diag' and keeps
-        # the within-half columns, so switching scope costs no recomputation.
-        assert data_RDMs.shape[1] == within_mask.size, (
-            f"cached data RDM has {data_RDMs.shape[1]} cells but the within-half "
-            f"mask expects {within_mask.size}")
-        data_RDMs = data_RDMs[:, within_mask]
+            data_RDMs_cached = np.load(smooth_npy)
 
-    print(f"[data RDM] scope={data_rdm_scope}, cells per searchlight = {data_RDMs.shape[1]}")
+    if not legacy_across_block:
+        assert data_RDMs_cached.shape[1] == within_mask.size, (
+            f"cached data RDM has {data_RDMs_cached.shape[1]} cells but the "
+            f"(2n x 2n) lower triangle has {within_mask.size}")
+
+    _data_RDM_by_scope = {}
+    def get_data_RDMs(scope):
+        """Data RDMs for one scope, cut from the single cached matrix. Cached
+        per scope so a combo fitted in two scopes still loads nothing twice."""
+        if scope not in _data_RDM_by_scope:
+            if legacy_across_block:
+                assert scope == "across_only", (
+                    f"scope {scope!r} is not available in the legacy top-level "
+                    "'across_only' mode — set data_rdm_scope to 'within_only' "
+                    "or 'full_no_diag'.")
+                _data_RDM_by_scope[scope] = data_RDMs_cached
+            else:
+                _data_RDM_by_scope[scope] = data_RDMs_cached[:, _scope_cells(scope)]
+            print(f"[data RDM] scope={scope}, cells per searchlight = "
+                  f"{_data_RDM_by_scope[scope].shape[1]}")
+        return _data_RDM_by_scope[scope]
+
+    data_RDMs = get_data_RDMs(data_rdm_scope)
 
     #
     # Step 5: evaluate each single model against every searchlight data RDM.
@@ -792,13 +1040,18 @@ for sub in subjects:
     # Checked here, once, before any searchlight OLS runs.
     print("\n=== design checks ===")
     bad = []
-    _to_check = [(f"single '{m}'", [m]) for m in selected_models]
-    _to_check += [(f"combo '{c['name']}'", c["regressors"])
-                  for c in config.get("combo_models", [])
-                  if config.get("run_combo_models", bool(config.get("combo_models")))]
-    for label, regs in _to_check:
+    _to_check = []
+    if run_single_models:
+        for m in selected_models:
+            for sc in single_model_scopes(m, single_scope_cfg, data_rdm_scope)[0]:
+                _to_check.append((f"single '{m}' [{sc}]", [m], sc))
+    if run_combo_models:
+        for c in combo_cfg:
+            for sc in combo_scopes(c, data_rdm_scope)[0]:
+                _to_check.append((f"combo '{c['name']}' [{sc}]", c["regressors"], sc))
+    for label, regs, sc in _to_check:
         ok, msg = design_rank_report(
-            regs, np.stack([_model_regressor(m) for m in regs], axis=1))
+            regs, np.stack([_model_regressor(m, sc) for m in regs], axis=1))
         print(f"  {'OK  ' if ok else 'FAIL'} {label:44s} {msg}")
         if not ok:
             bad.append(f"{label}: {msg}")
@@ -808,32 +1061,44 @@ for sub in subjects:
             "every regressor and the saved maps would be all-zero:\n  "
             + "\n  ".join(bad)
             + f"\n(current data_rdm_scope = {data_rdm_scope!r}; instruction "
-              "models carry no variance in the across-half block and need "
-              "'full_no_diag')")
+              "models carry no variance in the across-half block, so they must "
+              "be fitted in 'within_only' — either as the config-level scope or "
+              "via a per-combo \"scope\")")
 
     RSA_results = {}
-    run_single_models = config.get("run_single_models", True)
     if run_single_models == True:
         for model in selected_models:
-            model_flat = _model_regressor(model)
-            RSA_results[model] = Parallel(n_jobs=3)(
-                delayed(mc.analyse.my_RSA.evaluate_model)(model_flat, d)
-                for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {model}")
-            )
-            mc.analyse.handle_MRI_files.save_my_RSA_results(
-                result_file=RSA_results[model], centers=centers,
-                file_path=results_dir, file_name=f"{model}",
-                mask=mask, number_regr=0, ref_image_for_affine_path=ref_img,
-            )
+            # With `single_model_scopes` in the config, each model is fitted once
+            # per scope it is entitled to — execution models within AND across
+            # task halves, instruction models within only — and the outputs carry
+            # a `_within` / `_across` / `_full` suffix so they cannot collide.
+            scopes, tag_outputs = single_model_scopes(
+                model, single_scope_cfg, data_rdm_scope)
+            for scope in scopes:
+                out_name = (f"{model}_{SCOPE_TAGS[scope]}"
+                            if tag_outputs else model)
+                model_flat = _model_regressor(model, scope)
+                RSA_results[out_name] = Parallel(n_jobs=3)(
+                    delayed(mc.analyse.my_RSA.evaluate_model)(model_flat, d)
+                    for d in tqdm(get_data_RDMs(scope),
+                                  desc=f"running GLM for all searchlights in {out_name}")
+                )
+                mc.analyse.handle_MRI_files.save_my_RSA_results(
+                    result_file=RSA_results[out_name], centers=centers,
+                    file_path=results_dir, file_name=f"{out_name}",
+                    mask=mask, number_regr=0, ref_image_for_affine_path=ref_img,
+                )
 
     # import pdb; pdb.set_trace()
-    run_combo_models = config.get("run_combo_models", bool(config.get("combo_models")))
+    # Regressor correlations of every combo, per scope — printed AND written to
+    # the settings summary json, so the collinearity of a fit is recoverable per
+    # subject without re-reading stdout.
+    combo_regressor_correlations = {}
     if run_combo_models:
         combo_list = combo_cfg
         for combo in combo_list:
             combo_model_name = combo["name"]
             models_to_combine = combo["regressors"]
-            print(f"running combo model {combo_model_name}")
             # check if these models have been computed in model_EVs
             missing = [m for m in models_to_combine if m not in model_RDM_dir]
             if missing:
@@ -845,34 +1110,54 @@ for sub in subjects:
                         # model_RDM_dir[m_int] = [model_RDM_dir[curr_m][0]*model_RDM_dir['path_rew'][0]]
                     else:
                         raise ValueError(f"Combo model {combo_model_name} not possible, as {missing} not computed")
-  
-            # Each model is either a (n_th1, n_th2) across block ('across_only'
-            # mode) or a (2n, 2n) block ('full_no_diag'). _model_regressor
-            # returns the correctly-shaped 1D vector for whichever mode we're in.
-            stacked_model_RDMs = np.stack(
-                [_model_regressor(m) for m in models_to_combine],
-                axis=1,
-            )
 
-            # How correlated are the regressors of this combo model with each other?
-            # NaN-safe pearson via pandas; then print a compact upper-triangle summary
-            # and save a heatmap alongside the results.
-            import pandas as _pd
-            corr = _pd.DataFrame(stacked_model_RDMs, columns=models_to_combine).corr().to_numpy()
-            print(f"\n[{combo_model_name}] pairwise Pearson r between regressor RDMs:")
-            for i in range(len(models_to_combine)):
-                for j in range(i + 1, len(models_to_combine)):
-                    print(f"    {models_to_combine[i]:>16s} vs {models_to_combine[j]:<16s}: r = {corr[i, j]:+.3f}")
-            mc.analyse.my_RSA.plot_model_correlations(
-                stacked_model_RDMs, models_to_combine,
-                save_path=f"{results_dir}_{combo_model_name}_regressor_corr",
-                show=True,
-            )
-              
-            estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs, d) for d in tqdm(data_RDMs, desc=f"running GLM for all searchlights in {combo_model_name}"))
-            for i, model in enumerate(models_to_combine):
-                # TODO: Change the type of similarity to not throw away half of the matrix.
-                mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_model_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
+            # A combo may declare its own "scope" (string or list) and is then
+            # fitted once per scope — e.g. the pure-execution split model once
+            # within and once across task halves. Those outputs carry a
+            # `_within` / `_across` / `_full` suffix so they cannot collide.
+            scopes, tag_outputs = combo_scopes(combo, data_rdm_scope)
+            for scope in scopes:
+                combo_out_name = (f"{combo_model_name}_{SCOPE_TAGS[scope]}"
+                                  if tag_outputs else combo_model_name)
+                print(f"running combo model {combo_out_name} (scope = {scope})")
+                combo_data_RDMs = get_data_RDMs(scope)
+
+                # Each regressor is subset from the (2n, 2n) block matrix with the
+                # same cell mask as the data RDM, so model and data always line up.
+                stacked_model_RDMs = np.stack(
+                    [_model_regressor(m, scope) for m in models_to_combine],
+                    axis=1,
+                )
+
+                # How correlated are the regressors of this combo model with each other?
+                # NaN-safe pearson via pandas; then print a compact upper-triangle summary
+                # and save a heatmap alongside the results.
+                import pandas as _pd
+                corr = _pd.DataFrame(stacked_model_RDMs, columns=models_to_combine).corr().to_numpy()
+                pairwise = {}
+                print(f"\n[{combo_out_name}] pairwise Pearson r between regressor RDMs:")
+                for i in range(len(models_to_combine)):
+                    for j in range(i + 1, len(models_to_combine)):
+                        pairwise[f"{models_to_combine[i]}~{models_to_combine[j]}"] = round(float(corr[i, j]), 4)
+                        print(f"    {models_to_combine[i]:>16s} vs {models_to_combine[j]:<16s}: r = {corr[i, j]:+.3f}")
+                combo_regressor_correlations[combo_out_name] = {
+                    "combo": combo_model_name,
+                    "scope": scope,
+                    "regressors": list(models_to_combine),
+                    "n_cells": int(stacked_model_RDMs.shape[0]),
+                    "pairwise_pearson_r": pairwise,
+                    "correlation_matrix": np.round(corr, 4).tolist(),
+                }
+                mc.analyse.my_RSA.plot_model_correlations(
+                    stacked_model_RDMs, models_to_combine,
+                    save_path=f"{results_dir}_{combo_out_name}_regressor_corr",
+                    show=True,
+                )
+
+                estimates_combined_model_rdms = Parallel(n_jobs=3)(delayed(mc.analyse.my_RSA.evaluate_model)(stacked_model_RDMs, d) for d in tqdm(combo_data_RDMs, desc=f"running GLM for all searchlights in {combo_out_name}"))
+                for i, model in enumerate(models_to_combine):
+                    # TODO: Change the type of similarity to not throw away half of the matrix.
+                    mc.analyse.handle_MRI_files.save_my_RSA_results(result_file=estimates_combined_model_rdms, centers=centers, file_path = results_dir, file_name= f"{model.upper()}-{combo_out_name}", mask=mask, number_regr = i, ref_image_for_affine_path=ref_img)
             
     
 
@@ -893,15 +1178,25 @@ for sub in subjects:
         "n_all_EVs": len(all_EV_keys),
         "n_selected_EVs": len(EV_keys),
         "models_evaluated": selected_models,
+        "run_single_models": run_single_models,
+        "scopes_per_model": scopes_per_model,
         "run_combo_models": run_combo_models,
-        "combo_models": config.get("combo_models", []),
+        "combo_models": combo_cfg,
+        "combo_scopes": {c["name"]: combo_scopes(c, data_rdm_scope)[0] for c in combo_cfg},
+        # Collinearity of every fit that was actually run, per combo per scope.
+        "combo_regressor_correlations": combo_regressor_correlations,
+        # Execution-vs-instruction shared variance, per model pair per scope.
+        "exec_vs_instr_correlations": exec_instr_correlations,
         "data_dir": data_dir,
         "results_dir": results_dir
     }
-    
+
     print("\n=== SETTINGS SUMMARY ===")
     for k, v in summary.items():
-        print(f"{k:>20}: {v}")
+        if k in ("combo_regressor_correlations", "exec_vs_instr_correlations"):
+            print(f"{k:>20}: {len(v)} entries (see json)")
+        else:
+            print(f"{k:>20}: {v}")
     
     # Save a copy alongside results for provenance
     with open(os.path.join(results_dir, f"{sub}_settings_summary.json"), "w") as f:

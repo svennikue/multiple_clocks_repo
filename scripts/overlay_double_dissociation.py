@@ -40,6 +40,87 @@ CALL_WEIGHTING = 'both'  # 'both', 'cell', or 'subject'
 ROIS_TO_OVERLAY = ['mPFC', 'HC_mid']
 STATS_ROIS = ['mPFC', 'HC_anterior', 'HC_mid']
 
+# Every t test in this script is a one-sample t on Fisher-z transformed CV r.
+# The mean r printed next to a t is the *same* effect expressed in r units, so
+# the reader always knows which r/z, p and q belong to which t.
+TEST_DEFINITIONS = {
+    "per_lag": (
+        "One-sample t of Fisher-z(CV r) > 0 at each of the 12 lags. "
+        "mean_fisher_z is the tested quantity, t_fisher_z_vs_0 is its t, "
+        "mean_raw_r is the untransformed cell/subject mean shown in the "
+        "figure, and r_from_fisher_z = tanh(mean_fisher_z) is the same "
+        "effect as the t, back-transformed to r."),
+    "subject_clustered_per_lag": (
+        "Same test as per_lag but always with one observation per subject "
+        "(Fisher-z averaged across that subject's cells), for all three "
+        "stats ROIs including HC_anterior which is not drawn in the overlay."),
+    "target_window": (
+        "Pre-defined window test. target_mean_vs_zero: mean Fisher-z over "
+        "the predicted lags vs 0. target_vs_other_lags: mean Fisher-z over "
+        "the predicted lags minus the mean over the other 10 lags, vs 0 "
+        "(this is the contrast the Fig 3c star refers to)."),
+    "prespecified_lag": (
+        "The same per-lag test, but only at the one lag fixed a priori per "
+        "ROI (see PRESPECIFIED_LAG_DEG). Because no search was performed, "
+        "the family is just the 3 ROIs."),
+    "peak_lag_permutation": (
+        "Every lag's observed t against a sign-flip permutation null of the "
+        "MAX t across lags. Use this when the reported lag was chosen by "
+        "looking at the curve; the FWE p already pays for that search."),
+}
+
+# Which correction is which. Each entry names the family of tests that were
+# corrected together, so a q or FWE p can never be read out of context.
+CORRECTION_FAMILIES = {
+    "q_within_roi_12_lags": (
+        "BH across the 12 lags of ONE ROI (and one weighting). 12 tests."),
+    "q_within_lag_across_overlay_rois": (
+        "BH across the overlay ROIs at ONE lag (and one weighting). "
+        "As many tests as there are overlay ROIs."),
+    "q_across_rois_and_lags": (
+        "BH across all stats ROIs x all 12 lags at once. 3 x 12 = 36 tests. "
+        "The most conservative scope."),
+    "q_across_rois": (
+        "BH across the stats ROIs for ONE window test or ONE pre-specified "
+        "lag, and one weighting. 3 tests (mPFC, HC_anterior, HC_mid)."),
+    "p_fwe_maxt_within_roi_12_lags": (
+        "Sign-flip permutation FWE across the 12 lags of one ROI: p is the "
+        "fraction of permutations whose MAX t over lags beats the observed "
+        "t. Correct scope for a lag chosen by looking at the curve, and less "
+        "conservative than BH because it keeps the lag-lag correlation."),
+    "p_fwe_maxt_across_rois_and_lags": (
+        "Same permutation, but the null is the max t over all 3 ROIs x 12 "
+        "lags. Scope for 'the strongest lag anywhere in the figure'."),
+}
+
+STAR_THRESHOLDS = ((0.001, "***"), (0.01, "**"), (0.05, "*"))
+
+# ---- Single-lag reporting --------------------------------------------
+# Reporting one lag instead of the two-lag window needs the multiple-
+# comparisons scope to match how the lag was chosen.
+#   (a) lag fixed a priori  -> correct across the 3 ROIs only (3 tests).
+#   (b) lag read off the curve -> must pay for the search over 12 lags. BH
+#       over 12 lags assumes near-independent tests, which is wrong here
+#       (neighbouring lags correlate at r ~ .22-.33), so a sign-flip
+#       permutation builds the null of the max t across lags instead. That
+#       is FWE-correct and less conservative than BH, because it inherits
+#       the real lag-lag correlation.
+# Changing PRESPECIFIED_LAG_DEG is a scientific decision that has to be made
+# before looking at the curve; the permutation route exists for when it wasn't.
+PRESPECIFIED_LAG_DEG = {'mPFC': 30, 'HC_anterior': 0, 'HC_mid': 0}
+N_PERM = 10000
+PERM_SEED = 42
+
+
+def _stars(q):
+    """Significance marker for a q value (n.s. if nothing survives)."""
+    if q is None or not np.isfinite(q):
+        return "n.s."
+    for cutoff, mark in STAR_THRESHOLDS:
+        if q < cutoff:
+            return mark
+    return "n.s."
+
 ROI_COLOURS = {
     'EC':              SHOWGIRL2_DISCRETE[0],
     'mPFC':            SHOWGIRL2_DISCRETE[1],
@@ -256,6 +337,9 @@ def _subject_clustered_lagwise_tests(records, rois):
                 "mean_subject_fisher_z": (
                     float(np.nanmean(z_subject_means[:, j]))
                     if n_subjects_valid else np.nan),
+                "r_from_fisher_z": (
+                    float(np.tanh(np.nanmean(z_subject_means[:, j])))
+                    if n_subjects_valid else np.nan),
                 "t_fisher_z_vs_0": t[j],
                 "df": n_subjects_valid - 1,
                 "p_one_sided": p_one[j],
@@ -266,13 +350,13 @@ def _subject_clustered_lagwise_tests(records, rois):
         # The primary correction treats the 12 circular lags within each ROI
         # as one family; the second column makes the whole 3 ROI × 12 lag
         # family available for readers who want that more conservative scope.
-        out["p_one_sided_fdr_12_lags"] = (
+        out["q_one_sided_within_roi_12_lags"] = (
             out.groupby("roi")["p_one_sided"].transform(_bh_fdr))
-        out["p_two_sided_fdr_12_lags"] = (
+        out["q_two_sided_within_roi_12_lags"] = (
             out.groupby("roi")["p_two_sided"].transform(_bh_fdr))
-        out["p_one_sided_fdr_all_stats_rois_lags"] = _bh_fdr(
+        out["q_one_sided_across_rois_and_lags"] = _bh_fdr(
             out["p_one_sided"].to_numpy())
-        out["p_two_sided_fdr_all_stats_rois_lags"] = _bh_fdr(
+        out["q_two_sided_across_rois_and_lags"] = _bh_fdr(
             out["p_two_sided"].to_numpy())
     return out
 
@@ -347,20 +431,203 @@ def _target_tests(records, rois, weightings):
                     "n_cells": records[roi]["curves"].shape[0],
                     "n_subjects": np.unique(records[roi]["subjects"]).size,
                     "mean_fisher_z_or_difference": float(np.mean(values)),
-                    "t": float(one.statistic),
+                    "r_from_fisher_z": float(np.tanh(np.mean(values))),
+                    "t_fisher_z": float(one.statistic),
                     "df": len(values) - 1,
                     "p_one_sided": float(one.pvalue),
                     "p_two_sided": float(two.pvalue),
                 })
     out = pd.DataFrame(rows)
     if not out.empty:
-        out["p_one_sided_fdr_across_rois"] = (
+        out["q_one_sided_across_rois"] = (
             out.groupby(["weighting", "test"])["p_one_sided"]
             .transform(_bh_fdr))
-        out["p_two_sided_fdr_across_rois"] = (
+        out["q_two_sided_across_rois"] = (
             out.groupby(["weighting", "test"])["p_two_sided"]
             .transform(_bh_fdr))
     return out
+
+
+def _tstat_gt0_vectorised(values):
+    """One-sample t vs 0 per lag; takes (n, lags) or (n_perm, n, lags)."""
+    n = values.shape[-2]
+    sd = values.std(axis=-2, ddof=1)
+    return values.mean(axis=-2) / (sd / np.sqrt(n))
+
+
+def _check_vectorised_t(values):
+    """Permutations must use the empirical estimator -- verify, don't assume."""
+    reference, _, _ = _tstat_gt0(values)
+    if not np.allclose(reference, _tstat_gt0_vectorised(values),
+                       equal_nan=True):
+        raise AssertionError(
+            "vectorised permutation t does not reproduce _tstat_gt0")
+
+
+def _prespecified_lag_tests(records, rois, weightings):
+    """Single lag per ROI, fixed a priori, corrected across the ROIs only."""
+    from scipy.stats import ttest_1samp
+    rows = []
+    for weighting in weightings:
+        for roi in rois:
+            if (roi not in PRESPECIFIED_LAG_DEG
+                    or records[roi]["curves"].size == 0):
+                continue
+            lag = PRESPECIFIED_LAG_DEG[roi]
+            j = LAGS_DEG_BASE.index(lag)
+            raw = _analysis_units(records[roi], weighting=weighting,
+                                  fisher=False)[:, j]
+            z = _analysis_units(records[roi], weighting=weighting,
+                                fisher=True)[:, j]
+            z = z[np.isfinite(z)]
+            one = ttest_1samp(z, 0, alternative="greater")
+            rows.append({
+                "weighting": weighting, "roi": roi, "lag_deg": lag,
+                "lag_choice": "pre-specified",
+                "n_units": len(z),
+                "n_cells": records[roi]["curves"].shape[0],
+                "n_subjects": np.unique(records[roi]["subjects"]).size,
+                "mean_raw_r": float(np.nanmean(raw)),
+                "mean_fisher_z": float(np.mean(z)),
+                "r_from_fisher_z": float(np.tanh(np.mean(z))),
+                "t_fisher_z_vs_0": float(one.statistic),
+                "df": len(z) - 1,
+                "p_one_sided": float(one.pvalue),
+                "p_two_sided": float(ttest_1samp(z, 0).pvalue),
+            })
+    out = pd.DataFrame(rows)
+    if not out.empty:
+        out["q_one_sided_across_rois"] = (
+            out.groupby("weighting")["p_one_sided"].transform(_bh_fdr))
+        out["q_two_sided_across_rois"] = (
+            out.groupby("weighting")["p_two_sided"].transform(_bh_fdr))
+    return out
+
+
+def _peak_lag_permutation_tests(records, rois, weightings,
+                                n_perm=N_PERM, seed=PERM_SEED):
+    """FWE p per lag from the null of the max t across lags.
+
+    Flipping the sign of a whole unit curve is the standard exchangeability
+    for a one-sample test and leaves that unit's lag-lag correlation intact,
+    so the max-t null already pays for the search across the 12 lags -- and,
+    in the second column, across the three ROIs as well. Subjects that
+    contribute cells to more than one ROI get the same sign flip in every
+    ROI, so the across-ROI null does not pretend they are independent.
+    """
+    rng = np.random.default_rng(seed)
+    rows = []
+    for weighting in weightings:
+        matrices, observed = {}, {}
+        for roi in rois:
+            if records[roi]["curves"].size == 0:
+                continue
+            z = _analysis_units(records[roi], weighting=weighting, fisher=True)
+            _check_vectorised_t(z)
+            matrices[roi] = z
+            observed[roi] = _tstat_gt0_vectorised(z)
+        if not matrices:
+            continue
+
+        shared_index = None
+        if weighting == "subject":
+            unit_subjects = {roi: np.unique(records[roi]["subjects"])
+                             for roi in matrices}
+            all_subjects = np.unique(np.concatenate(list(unit_subjects.values())))
+            shared_index = {roi: np.searchsorted(all_subjects, unit_subjects[roi])
+                            for roi in matrices}
+
+        null_within = {roi: [] for roi in matrices}
+        null_across, done = [], 0
+        while done < n_perm:
+            size = min(500, n_perm - done)
+            draws = (rng.choice([-1.0, 1.0], size=(size, all_subjects.size))
+                     if weighting == "subject" else None)
+            block_max = []
+            for roi, z in matrices.items():
+                signs = (draws[:, shared_index[roi]][:, :, None]
+                         if weighting == "subject"
+                         else rng.choice([-1.0, 1.0],
+                                         size=(size, z.shape[0], 1)))
+                t_null = _tstat_gt0_vectorised(z[None, :, :] * signs)
+                null_within[roi].append(t_null.max(axis=1))
+                block_max.append(t_null.max(axis=1))
+            null_across.append(np.max(np.stack(block_max), axis=0))
+            done += size
+        null_across = np.concatenate(null_across)
+
+        for roi, z in matrices.items():
+            within = np.concatenate(null_within[roi])
+            peak_lag = LAGS_DEG_BASE[int(np.argmax(observed[roi]))]
+            for j, lag in enumerate(LAGS_DEG_BASE):
+                t_obs = observed[roi][j]
+                rows.append({
+                    "weighting": weighting, "roi": roi, "lag_deg": lag,
+                    "n_units": z.shape[0],
+                    "mean_fisher_z": float(z[:, j].mean()),
+                    "r_from_fisher_z": float(np.tanh(z[:, j].mean())),
+                    "t_fisher_z_vs_0": float(t_obs),
+                    "df": z.shape[0] - 1,
+                    "is_observed_peak_lag": lag == peak_lag,
+                    "p_fwe_maxt_within_roi_12_lags": float(
+                        (1 + np.sum(within >= t_obs)) / (n_perm + 1)),
+                    "p_fwe_maxt_across_rois_and_lags": float(
+                        (1 + np.sum(null_across >= t_obs)) / (n_perm + 1)),
+                })
+    return pd.DataFrame(rows)
+
+
+def _json_safe(value):
+    """numpy scalars and NaN are not valid JSON."""
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, (np.floating, float)):
+        return None if not np.isfinite(value) else float(value)
+    if isinstance(value, np.ndarray):
+        return [_json_safe(v) for v in value]
+    return value
+
+
+def _json_rows(table):
+    """One dict per test, with p and every FDR q nested under the same row.
+
+    Keeping p and all q variants inside the row (instead of as sibling
+    columns) is what makes the file readable: whatever t you look at, its
+    effect size, its p and each of its q values sit next to it.
+    """
+    rows = []
+    for record in table.to_dict("records"):
+        row, p_block, q_block = {}, {}, {}
+        for key, value in record.items():
+            value = _json_safe(value)
+            if key.startswith("p_"):
+                p_block[key[2:]] = value
+            elif key.startswith("q_"):
+                q_block[key[2:]] = value
+            else:
+                row[key] = value
+        row["p"] = p_block
+        row["fdr_q"] = q_block
+        rows.append(row)
+    return rows
+
+
+def _md_table(table, columns, floatfmt=4):
+    """Markdown table for the named columns, numbers right-aligned."""
+    header = f"| {' | '.join(columns)} |"
+    rule = f"| {' | '.join(['---:'] * len(columns))} |"
+    lines = [header, rule]
+    for record in table.to_dict("records"):
+        cells = []
+        for column in columns:
+            value = record[column]
+            if isinstance(value, (float, np.floating)):
+                cells.append("n/a" if not np.isfinite(value)
+                             else f"{value:.{floatfmt}f}")
+            else:
+                cells.append(str(value))
+        lines.append(f"| {' | '.join(cells)} |")
+    return lines
 
 
 def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY,
@@ -452,18 +719,20 @@ def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY,
                     "n_cells": record["curves"].shape[0],
                     "n_subjects": np.unique(record["subjects"]).size,
                     "lag_deg": lag, "mean_raw_r": mean_r[j],
-                    "mean_fisher_z": mean_z[j], "t_fisher_vs_0": t[j],
+                    "mean_fisher_z": mean_z[j],
+                    "r_from_fisher_z": float(np.tanh(mean_z[j])),
+                    "t_fisher_z_vs_0": t[j],
                     "df": C.shape[0] - 1, "p_one_sided": p_one[j],
                     "p_two_sided": p_two[j],
                 })
     tbl = pd.DataFrame(rows)
-    tbl["p_one_sided_fdr_12_lags"] = (
+    tbl["q_one_sided_within_roi_12_lags"] = (
         tbl.groupby(["weighting", "roi"])["p_one_sided"].transform(_bh_fdr))
-    tbl["p_two_sided_fdr_12_lags"] = (
+    tbl["q_two_sided_within_roi_12_lags"] = (
         tbl.groupby(["weighting", "roi"])["p_two_sided"].transform(_bh_fdr))
-    tbl["p_one_sided_fdr_across_overlay_rois"] = (
+    tbl["q_one_sided_within_lag_across_overlay_rois"] = (
         tbl.groupby(["weighting", "lag_deg"])["p_one_sided"].transform(_bh_fdr))
-    tbl["p_two_sided_fdr_across_overlay_rois"] = (
+    tbl["q_two_sided_within_lag_across_overlay_rois"] = (
         tbl.groupby(["weighting", "lag_deg"])["p_two_sided"].transform(_bh_fdr))
     tbl.to_csv(out_dir / "overlay_per_lag_table.csv", index=False)
 
@@ -478,61 +747,178 @@ def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY,
     target = _target_tests(records, STATS_ROIS, weightings)
     target.to_csv(out_dir / "overlay_target_window_tests.csv", index=False)
 
-    report = [
-        "# Cell-weighted versus subject-balanced overlay", "",
-        f"Input: `{per_cell_csv}`", "",
-        "Subject-balanced visualization averages raw r across cells within "
-        "each subject, then averages subjects. Subject-level tests Fisher-"
-        "transform each cell r, average z within subject, and test those "
-        "subject means. Target-window FDR is across mPFC, HC_anterior, and "
-        "HC_mid, matching the three predicted-lag ROI family.", "",
-        "## Key curve values", "",
-        "| weighting | ROI | units | 0° | 30° | 60° | 330° |",
-        "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
-    ]
-    for current_weighting in weightings:
-        for roi in rois:
-            d = tbl[(tbl.weighting == current_weighting) & (tbl.roi == roi)]
-            by_lag = d.set_index("lag_deg")
-            report.append(
-                f"| {current_weighting} | {roi} | {int(d.n_units.iloc[0])} | "
-                f"{by_lag.loc[0, 'mean_raw_r']:.4f} | "
-                f"{by_lag.loc[30, 'mean_raw_r']:.4f} | "
-                f"{by_lag.loc[60, 'mean_raw_r']:.4f} | "
-                f"{by_lag.loc[330, 'mean_raw_r']:.4f} |")
-    report += ["", "## Pre-defined target-window tests", "",
-               "One-sided tests ask whether the predicted window is greater "
-               "than the ten other lags.", "",
-               "| weighting | ROI | target | n | t(df) | p | FDR p |",
-               "| --- | --- | --- | ---: | ---: | ---: | ---: |"]
-    focus = target[target.test == "target_vs_other_lags"]
-    for _, r in focus.iterrows():
-        report.append(
-            f"| {r.weighting} | {r.roi} | {r.target_lags_deg}° | "
-            f"{int(r.n_units)} | {r.t:.2f}({int(r.df)}) | "
-            f"{r.p_one_sided:.5f} | {r.p_one_sided_fdr_across_rois:.5f} |")
-    report += ["", "## Files", "",
-               "- `overlay_meanR_wrapped_subject_weighted.pdf`: standalone "
-               "subject-balanced publication overlay.",
-               "- `overlay_meanR_weighting_comparison.pdf`: matched cell- "
-               "versus subject-weighted comparison.",
-               "- `overlay_per_lag_table.csv`: per-lag means and Fisher tests.",
-               "- `overlay_subject_clustered_lagwise_ttests.csv`: lag-wise "
-               "Fisher-z t-tests after averaging cells within subject for "
-               "mPFC, HC_anterior, and HC_mid.",
-               "- `overlay_target_window_tests.csv`: predicted-window tests."]
-    (out_dir / "WEIGHTING_RESULTS.md").write_text("\n".join(report) + "\n")
+    # Two ways to report a single lag rather than the two-lag window.
+    prespecified = _prespecified_lag_tests(records, STATS_ROIS, weightings)
+    prespecified.to_csv(
+        out_dir / "overlay_prespecified_lag_tests.csv", index=False)
+    peak_perm = _peak_lag_permutation_tests(records, STATS_ROIS, weightings)
+    peak_perm.to_csv(
+        out_dir / "overlay_peak_lag_permutation.csv", index=False)
 
-    config = {
+    # ---------- Settings, machine-readable and human-readable results ----
+    settings = {
         "per_cell_csv": str(per_cell_csv), "source": source,
         "control_mode": ctrl_mode, "weighting": weighting,
-        "overlay_rois": list(rois), "target_test_fdr_rois": STATS_ROIS,
+        "overlay_rois": list(rois), "stats_rois": STATS_ROIS,
+        "target_windows_deg": {"mPFC": [30, 60], "HC_anterior": [0, 330],
+                               "HC_mid": [0, 330]},
+        "prespecified_lag_deg": PRESPECIFIED_LAG_DEG,
+        "permutation": {"n_perm": N_PERM, "seed": PERM_SEED,
+                        "scheme": "sign-flip of whole unit curves, max t "
+                                  "across lags"},
         "lags_deg": LAGS_DEG_BASE,
+        "analysis_unit": {
+            "cell": "one observation per cell",
+            "subject": "cells averaged within subject, then one observation "
+                       "per subject",
+        },
         "subject_balancing": "mean Fisher z within subject, then t across subjects",
         "visual_subject_balancing": "mean raw r within subject, then mean across subjects",
     }
-    (out_dir / "overlay_config.json").write_text(json.dumps(config, indent=2))
-    print("Wrote figures + table into", out_dir)
+    (out_dir / "overlay_config.json").write_text(json.dumps(settings, indent=2))
+
+    results = {
+        "input": str(per_cell_csv),
+        "settings": settings,
+        "how_to_read": (
+            "Every entry is one t test. mean_fisher_z (or "
+            "mean_fisher_z_or_difference) is the quantity the t was computed "
+            "on; r_from_fisher_z is that same effect back-transformed to r; "
+            "mean_raw_r is the untransformed mean that the figure plots. "
+            "'p' holds the uncorrected p values, 'fdr_q' the Benjamini-"
+            "Hochberg q values -- one entry per correction family, described "
+            "in 'fdr_families'."),
+        "test_definitions": TEST_DEFINITIONS,
+        "correction_families": CORRECTION_FAMILIES,
+        "target_window_tests": _json_rows(target),
+        "prespecified_lag_tests": _json_rows(prespecified),
+        "peak_lag_permutation_tests": _json_rows(peak_perm),
+        "per_lag_tests": _json_rows(tbl),
+        "subject_clustered_per_lag_tests": _json_rows(subject_lagwise),
+    }
+    (out_dir / "overlay_results.json").write_text(json.dumps(results, indent=2))
+
+    focus = target[target.test == "target_vs_other_lags"].copy()
+    focus["t(df)"] = [f"{r.t_fisher_z:.2f}({int(r.df)})"
+                      for r in focus.itertuples()]
+    focus["star"] = [_stars(q) for q in focus["q_one_sided_across_rois"]]
+
+    report = [
+        "# Double dissociation overlay: results", "",
+        f"Input: `{per_cell_csv}`", "",
+        "All t tests are one-sample t tests on Fisher-z transformed CV r. "
+        "`mean_fisher_z` is what the t was computed on, `r_from_fisher_z` is "
+        "the same effect back-transformed to r, and `mean_raw_r` is the "
+        "untransformed mean drawn in the figure. Cell-weighted rows treat "
+        "each cell as an observation; subject-balanced rows average cells "
+        "within a subject first, so n = subjects.", "",
+        "## FDR families", "",
+        "Several BH corrections are reported side by side; they differ only "
+        "in which tests were corrected together.", "",
+        "| column | family |", "| --- | --- |",
+    ]
+    report += [f"| `{name}` | {text} |" for name, text in CORRECTION_FAMILIES.items()]
+    report += [
+        "", f"Stars: `***` q < .001, `**` q < .01, `*` q < .05.", "",
+        "## Pre-defined target-window tests (the Fig 3c stars)", "",
+        TEST_DEFINITIONS["target_window"], "",
+        "Rows below are the `target_vs_other_lags` contrast, one-sided, "
+        "FDR-corrected across the three ROIs.", "",
+    ]
+    report += _md_table(
+        focus, ["weighting", "roi", "target_lags_deg", "n_units", "df",
+                "mean_fisher_z_or_difference", "r_from_fisher_z",
+                "t(df)", "p_one_sided", "q_one_sided_across_rois", "star"],
+        floatfmt=5)
+    report += ["", "Both window tests (against zero and against the other "
+               "lags) are in `overlay_target_window_tests.csv` and in "
+               "`overlay_results.json`.", ""]
+
+    # ---- reporting one lag instead of the window ----------------------
+    prespecified = prespecified.copy()
+    prespecified["star"] = [_stars(q)
+                            for q in prespecified["q_one_sided_across_rois"]]
+    report += [
+        "## Reporting a single lag instead of the window", "",
+        "Which correction applies depends entirely on how the lag was "
+        "chosen, so both routes are given.", "",
+        "### (a) Lag fixed a priori", "",
+        TEST_DEFINITIONS["prespecified_lag"], "",
+        "Current pre-specified lags: "
+        + ", ".join(f"{roi} = {lag}°"
+                    for roi, lag in PRESPECIFIED_LAG_DEG.items())
+        + ". This only holds if the choice really was made before looking.",
+        "",
+    ]
+    report += _md_table(
+        prespecified,
+        ["weighting", "roi", "lag_deg", "n_units", "df", "mean_raw_r",
+         "mean_fisher_z", "r_from_fisher_z", "t_fisher_z_vs_0",
+         "p_one_sided", "q_one_sided_across_rois", "star"], floatfmt=5)
+
+    peak_rows = peak_perm[peak_perm.is_observed_peak_lag].copy()
+    peak_rows["star"] = [_stars(p) for p in
+                         peak_rows["p_fwe_maxt_within_roi_12_lags"]]
+    report += [
+        "", "### (b) Lag read off the curve", "",
+        TEST_DEFINITIONS["peak_lag_permutation"],
+        f"{N_PERM} sign-flip permutations, seed {PERM_SEED}. Rows below are "
+        "each ROI's observed peak lag; all 12 lags are in "
+        "`overlay_peak_lag_permutation.csv`.", "",
+    ]
+    report += _md_table(
+        peak_rows,
+        ["weighting", "roi", "lag_deg", "n_units", "df", "mean_fisher_z",
+         "r_from_fisher_z", "t_fisher_z_vs_0",
+         "p_fwe_maxt_within_roi_12_lags",
+         "p_fwe_maxt_across_rois_and_lags", "star"], floatfmt=5)
+    report.append("")
+
+    lag_columns = ["roi", "lag_deg", "n_units", "df", "mean_raw_r",
+                   "mean_fisher_z", "r_from_fisher_z", "t_fisher_z_vs_0",
+                   "p_one_sided", "q_one_sided_within_roi_12_lags",
+                   "q_one_sided_within_lag_across_overlay_rois"]
+    for current_weighting in weightings:
+        unit = ("cell-weighted" if current_weighting == "cell"
+                else "subject-balanced")
+        report += [f"## Per-lag tests ({unit})", "",
+                   TEST_DEFINITIONS["per_lag"], ""]
+        report += _md_table(
+            tbl[tbl.weighting == current_weighting], lag_columns, floatfmt=4)
+        report.append("")
+
+    report += ["## Per-lag tests, subject-clustered, all three stats ROIs", "",
+               TEST_DEFINITIONS["subject_clustered_per_lag"], ""]
+    report += _md_table(
+        subject_lagwise,
+        ["roi", "lag_deg", "n_cells", "n_subjects_valid", "df",
+         "mean_subject_raw_r", "mean_subject_fisher_z", "r_from_fisher_z",
+         "t_fisher_z_vs_0", "p_one_sided", "q_one_sided_within_roi_12_lags",
+         "q_one_sided_across_rois_and_lags"], floatfmt=4)
+
+    report += ["", "## Files", "",
+               "- `overlay_results.json`: every test above, with its effect "
+               "size, p and all q values in one record.",
+               "- `overlay_config.json`: settings this run used.",
+               "- `overlay_target_window_tests.csv`: predicted-window tests.",
+               "- `overlay_prespecified_lag_tests.csv`: single a-priori lag "
+               "per ROI, BH across the 3 ROIs.",
+               "- `overlay_peak_lag_permutation.csv`: every lag with its "
+               "sign-flip max-t FWE p, for reporting a peak lag.",
+               "- `overlay_per_lag_table.csv`: per-lag means and Fisher tests "
+               "for the overlay ROIs, cell- and subject-weighted.",
+               "- `overlay_subject_clustered_lagwise_ttests.csv`: lag-wise "
+               "Fisher-z t tests after averaging cells within subject for "
+               "mPFC, HC_anterior, and HC_mid.",
+               "- `overlay_meanR_wrapped_subject_weighted.pdf`: standalone "
+               "subject-balanced publication overlay.",
+               "- `overlay_meanR_weighting_comparison.pdf`: matched cell- "
+               "versus subject-weighted comparison.", ""]
+    (out_dir / "RESULTS.md").write_text("\n".join(report) + "\n")
+    stale = out_dir / "WEIGHTING_RESULTS.md"
+    if stale.exists():
+        stale.unlink()
+    print("Wrote figures, RESULTS.md and overlay_results.json into", out_dir)
 
 
 def main():

@@ -126,6 +126,73 @@ def discover_models(root, dir_pattern, tr):
             (FILE_RE.match(f) for f in sorted(os.listdir(d))) if m]
 
 
+def _expected_uncompressed_size(path):
+    """Bytes a complete NIfTI should occupy, taken from its own header."""
+    hdr = nib.load(path).header
+    n_vox = int(np.prod(hdr.get_data_shape()))
+    return int(hdr.get_data_offset()) + n_vox * int(hdr.get_data_dtype().itemsize)
+
+
+def _is_truncated(path):
+    """True if `path` is a short or unreadable nifti.
+
+    A gzip trailer records the uncompressed size, so comparing it against what
+    the nifti header implies flags a cut-off file in constant time -- a
+    truncated .gz still has a perfectly readable header, which is exactly why
+    it survives until `get_fdata`. Only the files that fail that cheap test are
+    confirmed by really decompressing, so a multi-member gzip (whose trailer
+    describes its last member alone) cannot raise a false alarm."""
+    try:
+        want = _expected_uncompressed_size(path)
+    except Exception:
+        return True
+    if not path.endswith(".gz"):
+        return os.path.getsize(path) < want
+    with open(path, "rb") as fh:
+        fh.seek(-4, os.SEEK_END)
+        isize = int(np.frombuffer(fh.read(4), dtype="<u4")[0])
+    if isize == want % 2 ** 32:
+        return False
+    import gzip
+    try:
+        with gzip.open(path, "rb") as fh:
+            while fh.read(1 << 20):
+                pass
+        return False
+    except Exception:
+        return True
+
+
+def check_inputs(root, dir_pattern, models, trs):
+    """Fail fast on missing or truncated inputs, before hours of work.
+
+    An interrupted transfer leaves niftis that open fine and read their header
+    fine, and only die deep inside `get_fdata` -- so the run crashes partway,
+    after it has already paid for whichever models happened to be intact. This
+    costs a second and turns that into a message before anything starts."""
+    bad = []
+    for model in models:
+        for tr in trs:
+            p = os.path.join(root, dir_pattern.format(tr=tr),
+                             BETA_STEM.format(model=model))
+            try:
+                f = resolve_nii(p)
+            except FileNotFoundError:
+                bad.append(("missing", p))
+                continue
+            if _is_truncated(f):
+                bad.append(("truncated", f))
+    n = len(models) * len(trs)
+    if bad:
+        print(f"[error] {len(bad)} of {n} input files unusable:", file=sys.stderr)
+        for why, p in bad:
+            print(f"  {why:9s} {p}", file=sys.stderr)
+        raise RuntimeError(
+            f"{len(bad)} of {n} input files are missing or truncated; "
+            "re-transfer them (or pass --skip-input-check to proceed anyway)")
+    print(f"[info] input check: all {n} beta maps complete", file=sys.stderr)
+
+
 def _load_with_retry(path, retries=4, wait=10):
     """nib.load, retried on transient failure.
 
@@ -244,8 +311,12 @@ def perm_wholebrain(A, T_obs, n_perm, seed, pblock, want_neg=False):
 
 
 # ---------------------------------------------------------------- tests ----
-def run_svc(D, ref, ijk, n_perm, seed):
+def run_svc(D, ref, ijk, n_perm, seed, trs=None):
     """SVC peak test in one mask, both signs.
+
+    `trs` are the real TR numbers behind D's third axis; peaks are reported in
+    those, not in the position along the axis, so a run over a subset of TRs
+    still names the TR it actually found.
 
     The negative peak reuses the SAME null -- sign-flipping makes the null of
     max(-t) identical to the null of max(t) -- as a second one-sided test. It
@@ -254,6 +325,7 @@ def run_svc(D, ref, ijk, n_perm, seed):
 
     Returns (Tobs, null_max_t, summary_dict)."""
     n, n_vox, n_tr = D.shape
+    trs = list(range(n_tr)) if trs is None else list(trs)
     Tobs = tstat(D)
     flat = D.reshape(n, -1)
     nmt = null_max_t(flat, n_perm=n_perm, seed=seed,
@@ -271,18 +343,19 @@ def run_svc(D, ref, ijk, n_perm, seed):
     return Tobs, nmt, dict(
         n_vox=int(n_vox), n_tr=int(n_tr), n_subj=int(n),
         peak_t=t_p, peak_p_FWE=float((nmt >= t_p).mean()),
-        peak_TR=int(pk_p[1]), peak_mni=mni_p,
+        peak_TR=int(trs[pk_p[1]]), peak_mni=mni_p,
         peak_t_neg=float(-t_n), peak_p_FWE_neg=float((nmt >= t_n).mean()),
-        peak_TR_neg=int(pk_n[1]), peak_mni_neg=mni_n,
+        peak_TR_neg=int(trs[pk_n[1]]), peak_mni_neg=mni_n,
         t_crit_FWE05=tcrit,
         n_supra_FWE05=int((Tobs >= tcrit).sum()),
         n_supra_FWE05_neg=int((-Tobs >= tcrit).sum()),
+        trs=[int(t) for t in trs],
         peak_voxel_t_by_TR=[float(v) for v in Tobs[pk_p[0], :]],
         max_t_by_TR=[float(v) for v in Tobs.max(0)],
         n_perm=int(n_perm), seed=int(seed))
 
 
-def run_loso(D, k_values, n_perm, seed):
+def run_loso(D, k_values, n_perm, seed, trs=None):
     """Leave-one-subject-out cross-validated timecourse, per selection size k.
 
     Voxels are ranked by their by-TR t on n-1 subjects and the held-out
@@ -292,6 +365,7 @@ def run_loso(D, k_values, n_perm, seed):
 
     Returns (results_dict, {k: held_out_array (n_subj, n_tr)})."""
     n, n_vox, n_tr = D.shape
+    trs = list(range(n_tr)) if trs is None else list(trs)
     out, held_by_k = {}, {}
     for k in k_values:
         kk = min(k, n_vox)
@@ -304,7 +378,8 @@ def run_loso(D, k_values, n_perm, seed):
         t = tstat(held)
         nm = null_max_t(held, n_perm=n_perm, seed=seed + 100 + kk)
         out[str(kk)] = dict(
-            k=int(kk), mean=[float(v) for v in held.mean(0)],
+            k=int(kk), trs=[int(t) for t in trs],
+            mean=[float(v) for v in held.mean(0)],
             sem=[float(v) for v in held.std(0, ddof=1) / np.sqrt(n)],
             t=[float(v) for v in t],
             p_FWE=[float((nm >= v).mean()) for v in t],
@@ -313,7 +388,7 @@ def run_loso(D, k_values, n_perm, seed):
     return out, held_by_k
 
 
-def run_wholebrain(D, ref, ijk, n_perm, seed, want_neg=False):
+def run_wholebrain(D, ref, ijk, n_perm, seed, want_neg=False, trs=None):
     """Whole-brain t + FWE p + uncorrected p, over voxels x TRs jointly.
 
     FWE corrects over the ENTIRE brain mask and all included TRs at once, so it
@@ -321,6 +396,7 @@ def run_wholebrain(D, ref, ijk, n_perm, seed, want_neg=False):
     comparable. Uncorrected p is that voxel-and-TR's own permutation p, for
     visualisation only."""
     n, n_vox, n_tr = D.shape
+    trs = list(range(n_tr)) if trs is None else list(trs)
     Tobs = tstat(D)
     A = D.reshape(n, -1)
     nmt, cnt_ge, cnt_le = perm_wholebrain(
@@ -334,7 +410,8 @@ def run_wholebrain(D, ref, ijk, n_perm, seed, want_neg=False):
     mni = nib.affines.apply_affine(ref.affine, [ix[pk[0]], iy[pk[0]], iz[pk[0]]])
     summary = dict(
         n_vox=int(n_vox), n_tr=int(n_tr), n_subj=int(n), n_perm=int(n_perm),
-        seed=int(seed), peak_t=float(Tobs[pk]), peak_TR=int(pk[1]),
+        seed=int(seed), peak_t=float(Tobs[pk]), peak_TR=int(trs[pk[1]]),
+        trs=[int(t) for t in trs],
         peak_mni=[int(round(float(v))) for v in mni],
         peak_p_FWE=float((nmt >= Tobs[pk]).mean()),
         t_crit_FWE05=float(np.percentile(nmt, 95)),
@@ -568,7 +645,8 @@ def plot_per_TR_timecourses(out_dir, models, masks=None, k="100",
         for model in models:
             rec = load_loso(out_dir, mask, model, k)
             mean = np.asarray(rec["mean"]); sem = np.asarray(rec["sem"])
-            p = np.asarray(rec["p_FWE"]); x = np.arange(len(mean))
+            p = np.asarray(rec["p_FWE"])
+            x = np.asarray(rec.get("trs") or range(len(mean)))
             col = CHANNEL_COLOURS.get(base_channel(model), "#666666")
             ax.plot(x, mean, "-o", color=col, ms=3, lw=1.4)
             ax.fill_between(x, mean - sem, mean + sem, color=col, alpha=0.18, lw=0)
@@ -578,15 +656,15 @@ def plot_per_TR_timecourses(out_dir, models, masks=None, k="100",
                         mec=OBSERVED_MARKER_COLOUR, mew=1.0, zorder=5)
             t = np.asarray(rec["t"])
             peak_rows.append(dict(mask=mask, model=model, k=int(rec["k"]),
-                                  peak_TR=int(np.argmax(t)),
+                                  peak_TR=int(x[int(np.argmax(t))]),
                                   peak_t=round(float(t.max()), 3),
                                   p_at_peak=float(p[int(np.argmax(t))]),
                                   n_sig_TR=int(sig.sum())))
         ax.axhline(0, color="#999999", lw=0.8, ls="--")
         ax.set_title(ROI_DISPLAY_NAMES.get(mask, mask), pad=14)
         ax.set_xlabel("instruction period (s)")
-        ax.set_xticks(range(0, 12, 2))
-        _draw_schedule(ax)
+        ax.set_xticks([v for v in x if v % 2 == 0])
+        _draw_schedule(ax, x_max=int(x.max()) + 1)
     axes[0].set_ylabel("held-out beta\n(LOSO cross-validated)")
     handles = [Line2D([], [], color=c, marker="o", ms=3, lw=1.4,
                       label=CHANNEL_LABELS[n]) for n, c in CHANNEL_COLOURS.items()]

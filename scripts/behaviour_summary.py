@@ -95,6 +95,59 @@ def _describe(x):
     }
 
 
+# ── Grid geometry and routes ─────────────────────────────────────────
+_GRID_XY = {
+    1: (0, 2), 2: (1, 2), 3: (2, 2),
+    4: (0, 1), 5: (1, 1), 6: (2, 1),
+    7: (0, 0), 8: (1, 0), 9: (2, 0),
+}
+
+
+def _collapse_locations(values):
+    """Convert sampled locations into a route without dwell duplicates."""
+    route = []
+    for value in values:
+        if pd.isna(value):
+            continue
+        try:
+            loc = int(value)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= loc <= 9 and (not route or loc != route[-1]):
+            route.append(loc)
+    return tuple(route)
+
+
+def _read_location_trace(path):
+    """Load one 25-ms location trace.
+
+    The traces are stored as a single very wide row, which ``read_csv``
+    parses column by column and is therefore ~50x slower than reading the
+    line directly.
+    """
+    with open(path) as handle:
+        text = handle.read()
+    return np.fromstring(text.replace('\n', ','), sep=',')
+
+
+def _grid_distance(start, stop):
+    """Minimum number of steps between two locations of the 3 x 3 grid.
+
+    Movements are to the four neighbouring squares only — no diagonals and
+    no wrap-around — so the step-minimum equals the Manhattan distance.
+    """
+    return (abs(_GRID_XY[start][0] - _GRID_XY[stop][0])
+            + abs(_GRID_XY[start][1] - _GRID_XY[stop][1]))
+
+
+def _route_metrics(route):
+    """{n_steps, min_steps, is_shortest} for one reward-to-reward route."""
+    n_steps = len(route) - 1
+    min_steps = _grid_distance(route[0], route[-1])
+    return {'n_steps': int(n_steps), 'min_steps': int(min_steps),
+            'is_shortest': bool(n_steps == min_steps)}
+
+
 # ── fMRI side ─────────────────────────────────────────────────────────
 def fmri_loop_table(df, sub):
     """One row per (task_half, instruction, loc-tuple, repeat)."""
@@ -146,9 +199,44 @@ def fmri_loop_table(df, sub):
     return pd.DataFrame(rows)
 
 
+def fmri_shortest_path_table(df, sub):
+    """One row per walk between two consecutive rewards.
+
+    A walk is "shortest" when the number of steps taken equals the grid
+    distance between the two rewards.  The walk towards A starts at the D
+    reward of the preceding repeat; the very first A of a configuration is
+    skipped, because the location the subject starts from is not stored.
+    """
+    rows = []
+    for keys, block in df.groupby(['task_half', 'instruction',
+                                   'task_config_seq'], sort=False):
+        block = block.sort_values('t_curr_loc')
+        prev_state, prev_reward = None, None
+        for (repeat, state), seg in block.groupby(['repeat', 'state'],
+                                                  sort=False):
+            reward = seg['curr_rew'].dropna()
+            route = _collapse_locations(seg['curr_loc'])
+            if reward.empty or not route:
+                continue
+            if prev_reward is not None:
+                full_route = _collapse_locations((prev_reward, *route))
+                rows.append({
+                    'subject':         sub,
+                    'task_half':       int(keys[0]),
+                    'instruction':     keys[1],
+                    'task_config_seq': keys[2],
+                    'repeat':          int(repeat),
+                    'segment':         f'{prev_state}-{state}',
+                    **_route_metrics(full_route),
+                })
+            prev_state, prev_reward = state, int(reward.iloc[0])
+    return pd.DataFrame(rows)
+
+
 def fmri_summarise():
     paths = sorted(glob.glob(FMRI_BEH_GLOB))
     per_loop_all = []
+    per_path_all = []
     per_subject = []
     for path in paths:
         sub = os.path.basename(path).split('_')[0]
@@ -160,6 +248,8 @@ def fmri_summarise():
             print(f"  {sub}: no usable loops — skipped.")
             continue
         per_loop_all.append(loop_df)
+        path_df = fmri_shortest_path_table(df, sub)
+        per_path_all.append(path_df)
 
         # Per-subject collapse.
         subj_loop = loop_df['loop_time'].to_numpy()
@@ -188,6 +278,9 @@ def fmri_summarise():
         per_subject.append({
             'subject':            sub,
             'n_loops':            int(len(loop_df)),
+            'n_reward_to_reward_paths': int(len(path_df)),
+            'shortest_path_percent': float(
+                100.0 * path_df['is_shortest'].mean()) if len(path_df) else None,
             'n_unique_configs':   int(loop_df['task_config_seq'].nunique()),
             'n_repeats_max':      int(loop_df['repeat'].max()) + 1,
             'loop_time_mean':     float(np.nanmean(subj_loop)),
@@ -220,6 +313,9 @@ def fmri_summarise():
     subj_df   = pd.DataFrame(per_subject)
     subj_df.to_csv(os.path.join(OUT_DIR, 'fmri_per_subject.csv'), index=False)
     all_loops.to_csv(os.path.join(OUT_DIR, 'fmri_loops.csv'), index=False)
+    all_paths = pd.concat(per_path_all, ignore_index=True)
+    all_paths.to_csv(os.path.join(OUT_DIR, 'fmri_shortest_paths.csv'),
+                     index=False)
 
     # Group-level summary.
     means = subj_df['loop_time_mean'].to_numpy()
@@ -240,6 +336,10 @@ def fmri_summarise():
         int(r_): _describe(loop_by_rep[r_].to_numpy())
         for r_ in sorted(loop_by_rep.columns)
     }
+    # Equal weight per subject, as everywhere else in this script.
+    shortest_by_repeat = (
+        all_paths.groupby(['subject', 'repeat'])['is_shortest'].mean()
+                 .unstack('repeat'))
 
     group = {
         'n_subjects':            int(len(subj_df)),
@@ -265,6 +365,14 @@ def fmri_summarise():
         },
         'completeness_n_configs': _describe(
             subj_df['n_unique_configs'].to_numpy()),
+        'shortest_path_percent': _describe(
+            subj_df['shortest_path_percent'].to_numpy()),
+        'shortest_path_percent_pooled': float(
+            100.0 * all_paths['is_shortest'].mean()),
+        'shortest_path_percent_by_repeat': {
+            int(r_): _describe(100.0 * shortest_by_repeat[r_].to_numpy())
+            for r_ in sorted(shortest_by_repeat.columns)
+        },
     }
     return subj_df, all_loops, group
 
@@ -299,6 +407,68 @@ def exclude_ephys_attempts(tbl):
     return tbl.loc[keep].copy()
 
 
+def ephys_shortest_path_table(raw_attempts, kept_index, folder, sub_number):
+    """One row per walk between two consecutive rewards, correct repeats only.
+
+    Routes come from the 25-ms location traces.  ``timings_rewards`` holds,
+    per attempt and in the original unfiltered attempt order, the trace
+    sample at which the attempt started (the preceding D) and at which A, B,
+    C and D were reached.
+    """
+    rows = []
+    for grid_value, raw_grid in raw_attempts.groupby('grid_no', sort=False):
+        grid_no = int(grid_value)
+        raw_grid = raw_grid.sort_index()
+        timing_path = os.path.join(
+            folder, f'timings_rewards_grid{grid_no}_sub{sub_number}.csv')
+        locations_path = os.path.join(
+            folder, f'locations_per_25ms_grid{grid_no}_sub{sub_number}.csv')
+        if not (os.path.isfile(timing_path)
+                and os.path.isfile(locations_path)):
+            continue
+        timings = pd.read_csv(timing_path, header=None).to_numpy()
+        locations = _read_location_trace(locations_path)
+        if len(raw_grid) != len(timings):
+            continue
+        for position, (source_index, attempt) in enumerate(
+                raw_grid.iterrows()):
+            if source_index not in kept_index or attempt['correct'] != 1:
+                continue
+            if not 0 <= attempt['rep_correct'] <= 9:
+                continue
+            endpoints = timings[position]
+            if not np.all(np.isfinite(endpoints)):
+                continue
+            for column, (start_state, stop_state) in enumerate(
+                    zip('DABC', 'ABCD')):
+                # The walk into A starts at the previous D, so it only counts
+                # when the preceding attempt was itself a retained, completed
+                # repeat that this attempt continues from.
+                if start_state == 'D':
+                    previous_index = raw_grid.index[position - 1]
+                    if (position == 0
+                            or previous_index not in kept_index
+                            or raw_grid.iloc[position - 1]['correct'] != 1
+                            or timings[position - 1][-1] != endpoints[0]):
+                        continue
+                start = int(endpoints[column])
+                stop = int(endpoints[column + 1])
+                if start < 0 or stop < start or stop >= len(locations):
+                    continue
+                route = _collapse_locations(locations[start:stop + 1])
+                if len(route) < 2:
+                    continue
+                rows.append({
+                    'subject':     attempt['subject'],
+                    'session_no':  int(attempt['session_no']),
+                    'grid_no':     grid_no,
+                    'rep_correct': int(attempt['rep_correct']),
+                    'segment':     f'{start_state}-{stop_state}',
+                    **_route_metrics(route),
+                })
+    return pd.DataFrame(rows)
+
+
 def ephys_error_fraction_by_repeat(attempts):
     """Pooled incorrect-attempt fraction at each of the 10 task repeats.
 
@@ -329,6 +499,7 @@ def ephys_summarise():
     ])
     per_session = []
     all_attempts = []
+    all_paths = []
     for d in sub_dirs:
         sub = d[1:]
         path = os.path.join(EPHYS_DERIV, d, 'cells_and_beh',
@@ -340,9 +511,12 @@ def ephys_summarise():
             print(f"  s{sub}: unexpected n_cols={df.shape[1]} — skipped.")
             continue
         df.columns = EPHYS_BEH_COLS
-        tbl = ephys_loop_table(df, sub)
-        tbl = exclude_ephys_attempts(tbl)
+        raw_tbl = ephys_loop_table(df, sub)
+        tbl = exclude_ephys_attempts(raw_tbl)
         all_attempts.append(tbl)
+        path_df = ephys_shortest_path_table(
+            raw_tbl, set(tbl.index), os.path.dirname(path), sub)
+        all_paths.append(path_df)
 
         correct = tbl[tbl['correct'] == 1]
         if correct.empty:
@@ -363,6 +537,9 @@ def ephys_summarise():
         per_session.append({
             'subject':                  sub,
             'n_attempts':               n_attempts,
+            'n_reward_to_reward_paths': int(len(path_df)),
+            'shortest_path_percent':    float(
+                100.0 * path_df['is_shortest'].mean()) if len(path_df) else None,
             'n_correct':                n_correct,
             'completion_rate':          float(n_correct / n_attempts),
             'n_incorrect_attempts':     n_incorr,
@@ -392,6 +569,13 @@ def ephys_summarise():
     sess_df = pd.DataFrame(per_session)
     sess_df.to_csv(os.path.join(OUT_DIR, 'ephys_per_session.csv'), index=False)
     all_df.to_csv(os.path.join(OUT_DIR, 'ephys_attempts.csv'), index=False)
+    all_path_df = pd.concat(all_paths, ignore_index=True)
+    all_path_df.to_csv(os.path.join(OUT_DIR, 'ephys_shortest_paths.csv'),
+                       index=False)
+    # Equal weight per session, as everywhere else in this script.
+    shortest_by_repeat = (
+        all_path_df.groupby(['subject', 'rep_correct'])['is_shortest'].mean()
+                   .unstack('rep_correct'))
 
     # Group summary.  Drop any NaN slopes (sessions with <2 correct reps).
     slopes = sess_df['learning_slope'].to_numpy(dtype=float)
@@ -442,6 +626,14 @@ def ephys_summarise():
             sess_df['n_unique_loc_configs'].to_numpy()),
         'n_configs_solved':     _describe(
             sess_df['n_configs_solved'].to_numpy()),
+        'shortest_path_percent': _describe(
+            sess_df['shortest_path_percent'].to_numpy(dtype=float)),
+        'shortest_path_percent_pooled': float(
+            100.0 * all_path_df['is_shortest'].mean()),
+        'shortest_path_percent_by_rep_correct': {
+            int(r_): _describe(100.0 * shortest_by_repeat[r_].to_numpy())
+            for r_ in sorted(shortest_by_repeat.columns)
+        },
         'rep_correct_overflow_note': (
             "rep_correct nominally runs 0-9 (10 correct repeats/grid). "
             "12 trials across 9 sessions have rep_correct == 10 "
@@ -452,11 +644,6 @@ def ephys_summarise():
 
 
 # ── Sample trajectory figures ────────────────────────────────────────
-_GRID_XY = {
-    1: (0, 2), 2: (1, 2), 3: (2, 2),
-    4: (0, 1), 5: (1, 1), 6: (2, 1),
-    7: (0, 0), 8: (1, 0), 9: (2, 0),
-}
 # Same location palette as the task schematic: dark blue/teal at locations
 # 1, 4, 7; pale blue/green at 3, 6, 9.  The grid itself therefore carries
 # the location identity, without printing a number in every square.
@@ -473,21 +660,6 @@ _STATE_OUTLINE_COLOURS = {
     'C': '#C7C6E2',  # light purple
     'D': '#6B60AA',  # dark purple
 }
-
-
-def _collapse_locations(values):
-    """Convert sampled locations into a route without dwell duplicates."""
-    route = []
-    for value in values:
-        if pd.isna(value):
-            continue
-        try:
-            loc = int(value)
-        except (TypeError, ValueError):
-            continue
-        if 1 <= loc <= 9 and (not route or loc != route[-1]):
-            route.append(loc)
-    return tuple(route)
 
 
 def _fmri_reward_layout(group):
@@ -604,8 +776,7 @@ def ephys_trajectory_candidates():
                 skipped.append(f'{subject}, grid {grid_no}: trace file missing')
                 continue
             timings = pd.read_csv(timing_path, header=None).to_numpy()
-            locations = pd.read_csv(
-                locations_path, header=None).iloc[0].dropna().to_numpy()
+            locations = _read_location_trace(locations_path)
             if len(raw_grid) != len(timings):
                 skipped.append(
                     f'{subject}, grid {grid_no}: {len(raw_grid)} attempts but '
@@ -1177,6 +1348,11 @@ if fmri_group is not None:
         os.path.join(PLOT_DIR, 'fmri_subj_mean_hist.png'),
         floor_values=fmri_subj['floor_loop_time_mean'].to_numpy())
     _plot_hist(
+        fmri_subj['shortest_path_percent'].to_numpy(dtype=float),
+        'fMRI — shortest paths between consecutive rewards',
+        '% of reward-to-reward paths that were shortest',
+        os.path.join(PLOT_DIR, 'fmri_shortest_path_percent_hist.png'))
+    _plot_hist(
         fmri_subj['slack_mean'].to_numpy(),
         'fMRI — per-subject voluntary slack (observed − floor)',
         'slack [s]',
@@ -1255,6 +1431,11 @@ if eph_group is not None:
         ephys_actual, ephys_x, ephys_errors_by_repeat,
         os.path.join(PLOT_DIR, 'ephys_loop_time_sem_with_error_fraction'))
     _plot_hist(
+        eph_sess['shortest_path_percent'].to_numpy(dtype=float),
+        'Cells — shortest paths between consecutive rewards',
+        '% of reward-to-reward paths that were shortest',
+        os.path.join(PLOT_DIR, 'ephys_shortest_path_percent_hist.png'))
+    _plot_hist(
         eph_sess['completion_rate'].to_numpy(),
         'Ephys — session completion rate',
         'fraction correct',
@@ -1296,6 +1477,18 @@ combined = {
                          "that (cfg, repeat). Ephys: t_D − t_A per attempt.",
             'session':   "Defined by the rewarded-location tuple "
                          "(loc_A, loc_B, loc_C, loc_D).",
+            'shortest_path_percent':
+                "Percentage of walks between two consecutive rewards "
+                "(D->A, A->B, B->C, C->D) that took the minimum possible "
+                "number of steps, i.e. the Manhattan distance on the "
+                "4-connected 3x3 grid. fMRI: steps from the cleaned "
+                "behavioural table; cells: steps from the 25-ms location "
+                "traces, correct repeats (rep_correct 0-9) only. The D->A "
+                "walk is only counted when the preceding repeat was itself "
+                "completed, and the first A of a task configuration is "
+                "excluded because its starting location is not a reward. "
+                "Group values weight each subject/session equally; "
+                "'_pooled' weights each walk equally.",
             'fmri_exclude': sorted(FMRI_EXCLUDE),
             'ephys_scope':  "All sessions with cells_and_beh/all_trial_times_*.csv (n=63).",
             'ephys_loop_time_repeat_axis': "rep_correct (0-9), correct trials only.",

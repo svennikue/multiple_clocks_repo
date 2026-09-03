@@ -60,6 +60,21 @@ ANALYSIS_NAME = "swr_audit"
 # recording with this much margin at each end.
 CLOCK_MARGIN_S = 5.0
 
+# A behavioural clock can overrun the end of the recording for two completely
+# different reasons, and only one of them is a problem:
+#
+#   truncation   the recording was stopped a second or two before the task
+#                ended, so the last event or two has no data. Harmless: such a
+#                window gets zero artifact-free exposure and is dropped by the
+#                GLM automatically (verified: clean_exposure returns 0.0 past
+#                the last interval, and fit_count_glm filters exposure_s > 0).
+#   mis-mapping  the block structure itself is wrong, so events are assigned to
+#                the wrong stretch of recording. Corrupts everything downstream.
+#
+# The two are told apart by magnitude: a few seconds is a stopped recording,
+# minutes means the mapping is wrong.
+TRUNCATION_TOL_S = 5.0
+
 
 def _settings_dict(sessions):
     return {
@@ -131,11 +146,17 @@ def audit_one_session(session, cfg, subj_map, data_root, check_clock=True):
                                    clock["min_tail_margin_s"]])
                 if not np.isfinite(worst):
                     clock["clock_status"] = "unknown"
-                elif worst < 0:
+                elif worst < -TRUNCATION_TOL_S:
                     clock["clock_status"] = "FAILED"
                     warnings.append(
                         f"clock: behaviour falls OUTSIDE the recording by "
                         f"{-worst:.1f}s -- block mapping is wrong")
+                elif worst < 0:
+                    clock["clock_status"] = "truncated"
+                    warnings.append(
+                        f"clock: recording stops {-worst:.1f}s before the "
+                        f"behaviour does; the trailing events have no data and "
+                        f"are dropped automatically (zero exposure)")
                 elif worst < CLOCK_MARGIN_S and len(blocks) > 1:
                     # The margin criterion exists to validate multi-block
                     # OFFSETS. A single-block session has no offset to get
@@ -161,6 +182,8 @@ def audit_one_session(session, cfg, subj_map, data_root, check_clock=True):
         status = "no_raw_files"
     elif clock["clock_status"] == "FAILED":
         status = "clock_failed"
+    elif clock["clock_status"] == "truncated":
+        status = "needs_review"
     elif warnings:
         status = "needs_review"
     else:
@@ -276,7 +299,8 @@ def audit_sessions(sessions=None, save_all=True, verbose=False,
     if "clock_status" in manifest:
         print("\n--- CLOCK CHECK (the only warning that can corrupt a result) ---")
         print(manifest.clock_status.value_counts().to_string())
-        bad = manifest[manifest.clock_status.isin(["FAILED", "tight", "unknown"])]
+        bad = manifest[manifest.clock_status.isin(
+            ["FAILED", "truncated", "tight", "unknown"])]
         for _, r in bad.iterrows():
             print(f"  s{int(r.session):02d}  {r.clock_status:8s} "
                   f"head {r.min_head_margin_s:8.1f}s  tail {r.min_tail_margin_s:8.1f}s"
@@ -284,6 +308,13 @@ def audit_sessions(sessions=None, save_all=True, verbose=False,
         if not len(bad):
             print("  every session's behaviour fits inside its recording "
                   f"with >= {CLOCK_MARGIN_S}s margin at both ends.")
+        else:
+            print(f"  FAILED    = mapping is wrong (overrun > {TRUNCATION_TOL_S}s). "
+                  "Do not analyse.")
+            print(f"  truncated = recording stopped < {TRUNCATION_TOL_S}s before the "
+                  "task ended. Usable:")
+            print("              the trailing windows get zero exposure and are "
+                  "dropped by the GLM.")
 
         cosmetic = manifest[(manifest.status == "needs_review")
                             & (manifest.clock_status == "ok")]

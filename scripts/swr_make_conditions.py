@@ -30,12 +30,19 @@ except ImportError:
 
 print("ARGS:", sys.argv)
 
-OUT_DIR = "condition_files"
+# Condition files are GENERATED STATE, not code: their contents depend on which
+# stages have already finished on the machine you are running on. Keeping them
+# in the git repo meant a laptop's short list could be pulled over the cluster's
+# correct one. They now live with the data.
+OUT_DIR = None
 
 
 def make(stage="both", analysis_name="swr_v1", out_dir=OUT_DIR,
          include_needs_review=True):
     R = swr_io.get_data_root()
+    if out_dir is None:
+        out_dir = os.path.join(swr_io.derivatives_dir(R), "group", "swr",
+                               "condition_files")
     gdir = os.path.join(swr_io.derivatives_dir(R), "group", "swr")
     mf_p = os.path.join(gdir, "session_manifest.csv")
     if not os.path.isfile(mf_p):
@@ -80,6 +87,9 @@ def make(stage="both", analysis_name="swr_v1", out_dir=OUT_DIR,
         with open(p, "w") as f:
             f.write("\n".join(rows_det) + "\n")
         written.append((p, len(rows_det), "stage 3 (detect)"))
+    if stage in ("both", "qc") and not rows_qc:
+        print("\n  NOTE stage-4 list is empty: no ripple_events.csv yet.")
+        print("       Run stage 3 first, then re-run this to build the qc list.")
     if stage in ("both", "qc") and rows_qc:
         p = os.path.join(out_dir, f"swr_qc_{analysis_name}.txt")
         with open(p, "w") as f:
@@ -89,6 +99,12 @@ def make(stage="both", analysis_name="swr_v1", out_dir=OUT_DIR,
     print()
     for p, n, what in written:
         print(f"  {what:20s} {n:3d} sessions -> {p}")
+    print("\n  Each list contains only the sessions whose PREVIOUS stage has")
+    print("  already finished on this machine, so the lists grow as you go:")
+    print("     extract  needs bipolar_pairs_NN.csv   (swr_build_contacts.py)")
+    print("     detect   needs continuous.npy         (swr_extract_continuous.py)")
+    print("     qc       needs ripple_events.csv      (swr_detect_session.py)")
+    print("  Re-run this script after each stage to pick up what just finished.")
     if stage in ("both", "detect") and not rows_det:
         print("\n  NOTE stage-3 list is empty: no continuous.npy yet.")
         print("       Run stage 2 first, then re-run this to build the detect list.")

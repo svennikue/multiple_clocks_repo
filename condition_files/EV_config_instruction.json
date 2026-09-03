@@ -1,0 +1,18 @@
+{
+  "name": "instr",
+  "comment": "One GLM per instruction epoch. Each GLM holds 10 EVs per task half (one per task) named {task}_{direction}_instruction_onset. Timings from mc/latest_experiment/3x3_fMRI_part1.py lines 697-712: the show_rewards routine is non-slip timed to 12 s, the first pass shows each coin for 1.5 s, the second pass for 1 s from 6 s, and all coins stop being drawn at 10 s.",
+  "regress_buttons": true,
+  "segments": [
+    {"name": "see_A_first",                   "onset": 0.0,  "duration": 1.5},
+    {"name": "see_B_first",                   "onset": 1.5,  "duration": 1.5},
+    {"name": "see_C_first",                   "onset": 3.0,  "duration": 1.5},
+    {"name": "see_D_first",                   "onset": 4.5,  "duration": 1.5},
+    {"name": "see_A_second",                  "onset": 6.0,  "duration": 1.0},
+    {"name": "see_B_second",                  "onset": 7.0,  "duration": 1.0},
+    {"name": "see_C_second",                  "onset": 8.0,  "duration": 1.0},
+    {"name": "see_D_second",                  "onset": 9.0,  "duration": 1.0},
+    {"name": "collapsed_first_instruction",   "onset": 0.0,  "duration": 6.0},
+    {"name": "collapsed_second_instruction",  "onset": 6.0,  "duration": 4.0},
+    {"name": "empty_screen",                  "onset": 10.0, "duration": 2.0}
+  ]
+}

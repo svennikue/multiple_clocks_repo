@@ -280,26 +280,109 @@ def build_simple_instruction_RDM(th1_labels, th2_labels):
     return R
 
 
-def plot_instruction_RDM(rdm, th1_labels, th2_labels, title, vmin=None, vmax=None, cmap='coolwarm', save_path=None):
+CM = 1 / 2.54                 # matplotlib works in inches; we design in cm
+PUB_FONT = 'Arial'
+PUB_FONT_MIN = 9              # smallest font allowed on a publication panel
+
+
+def _save_panel(fig, save_path, dpi=300):
+    """Save a fixed-size panel as both vector (.pdf) and raster (.png).
+
+    Deliberately does NOT use bbox_inches='tight' -- that re-crops the figure
+    and silently changes its physical size, which defeats designing to an exact
+    cm footprint. The layout engine is expected to fit the content instead.
+    """
+    if save_path is None:
+        return
+    stem = save_path[:-4] if save_path[-4:].lower() in ('.png', '.pdf') else save_path
+    fig.savefig(f"{stem}.png", dpi=dpi)
+    fig.savefig(f"{stem}.pdf")
+
+
+def plot_instruction_RDM(rdm, th1_labels, th2_labels, title, vmin=None, vmax=None, cmap='coolwarm', save_path=None,
+                         xlabel='task half 2', ylabel='task half 1',
+                         panel_cm=4.0, fontsize=PUB_FONT_MIN, tick_labels='auto',
+                         n_first_half=None):
     """
     Plot a precomputed (n1, n2) RDM. Does NOT recompute anything.
     NaN cells are rendered transparent (over a white background) so exclusions are visible.
+
+    xlabel/ylabel default to the TH1 x TH2 across-block wording. Pass them
+    explicitly for an assembled (2n, 2n) matrix, where both axes run over ALL
+    conditions of both halves and the default labels would be wrong.
+
+    Sized for a `panel_cm` x `panel_cm` subpanel in Arial at `fontsize` (9 pt
+    floor, per the project figure standard). At 4 cm there is room for roughly
+    six tick labels per axis, so `tick_labels`:
+        'auto'  (default) per-condition labels when they fit, otherwise one
+                label per task half at the block centre
+        'all'   force per-condition labels (use with a larger panel_cm)
+        'none'  no tick labels
+    `n_first_half` says where the TH1/TH2 boundary is for the block labels and
+    the separator lines; defaults to half the matrix when it is square.
     """
-    fig, ax = plt.subplots()
+    rdm = np.asarray(rdm, dtype=float)
+    n_rows, n_cols = rdm.shape
+    # How many labels fit: a rotated 9 pt label needs ~0.4 cm of axis per tick.
+    max_ticks = max(2, int(panel_cm * 0.55 / 0.4))
+    if tick_labels == 'auto':
+        if max(n_rows, n_cols) <= max_ticks:
+            tick_labels = 'all'
+        elif n_first_half is not None:
+            tick_labels = 'blocks'
+        else:
+            # No half boundary was declared, so this is not an assembled
+            # (2n x 2n) matrix -- the across block has TH1 down the rows and
+            # TH2 along the columns, and splitting each axis into TH1/TH2
+            # would label it wrongly. Thin the real labels instead.
+            tick_labels = 'thin'
+
+    fig, ax = plt.subplots(figsize=(panel_cm * CM, panel_cm * CM),
+                           constrained_layout=True)
     cmap_obj = plt.get_cmap(cmap).copy()
     cmap_obj.set_bad(color='white')
     im = ax.imshow(np.ma.masked_invalid(rdm), aspect='equal', cmap=cmap_obj, vmin=vmin, vmax=vmax)
-    ax.set_xticks(np.arange(len(th2_labels)))
-    ax.set_yticks(np.arange(len(th1_labels)))
-    ax.set_xticklabels(th2_labels, rotation=45, ha='right', fontsize=8)
-    ax.set_yticklabels(th1_labels, fontsize=8)
-    ax.set_xlabel('task half 2')
-    ax.set_ylabel('task half 1')
-    ax.set_title(title)
-    fig.colorbar(im, ax=ax)
-    fig.tight_layout()
-    if save_path is not None:
-        fig.savefig(save_path, dpi=150)
+
+    if tick_labels == 'all':
+        ax.set_xticks(np.arange(n_cols)); ax.set_yticks(np.arange(n_rows))
+        ax.set_xticklabels(th2_labels, rotation=90, fontsize=fontsize, fontname=PUB_FONT)
+        ax.set_yticklabels(th1_labels, fontsize=fontsize, fontname=PUB_FONT)
+    elif tick_labels == 'blocks':
+        # One tick per task half, at the block centre, plus a separator line so
+        # the block structure stays readable without 20 unreadable labels.
+        h = n_first_half if n_first_half is not None else n_rows // 2
+        ax.set_xticks([h / 2 - .5, h + h / 2 - .5]); ax.set_yticks([h / 2 - .5, h + h / 2 - .5])
+        ax.set_xticklabels(['TH1', 'TH2'], fontsize=fontsize, fontname=PUB_FONT)
+        ax.set_yticklabels(['TH1', 'TH2'], fontsize=fontsize, fontname=PUB_FONT, rotation=90, va='center')
+        ax.axhline(h - .5, color='k', lw=.6); ax.axvline(h - .5, color='k', lw=.6)
+    elif tick_labels == 'thin':
+        # Every kth real label, so nothing collides at the 9 pt floor. Tick
+        # marks are drawn for every condition, only the text is thinned.
+        def _thin(labels, n):
+            k = int(np.ceil(n / max_ticks))
+            return [str(l) if i % k == 0 else '' for i, l in enumerate(labels[:n])]
+        ax.set_xticks(np.arange(n_cols)); ax.set_yticks(np.arange(n_rows))
+        ax.set_xticklabels(_thin(th2_labels, n_cols), rotation=90, fontsize=fontsize, fontname=PUB_FONT)
+        ax.set_yticklabels(_thin(th1_labels, n_rows), fontsize=fontsize, fontname=PUB_FONT)
+    else:
+        ax.set_xticks([]); ax.set_yticks([])
+    ax.tick_params(length=1.5, pad=1)
+
+    ax.set_xlabel(xlabel, fontsize=fontsize, fontname=PUB_FONT)
+    ax.set_ylabel(ylabel, fontsize=fontsize, fontname=PUB_FONT)
+    ax.set_title(title, fontsize=fontsize, fontname=PUB_FONT)
+    cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.02)
+    if vmin is not None and vmax is not None:
+        # Only the two end ticks, formatted as short as the values allow. The
+        # default ticks ('0.0', '0.5', '1.0') are wider than the space a 4 cm
+        # panel leaves to the right of the colorbar and get clipped, because
+        # _save_panel keeps the exact figure size rather than cropping to fit.
+        cbar.set_ticks([vmin, vmax])
+        cbar.ax.set_yticklabels([f"{v:g}" for v in (vmin, vmax)])
+    cbar.ax.tick_params(labelsize=fontsize, length=1.5, pad=1)
+    for t in cbar.ax.get_yticklabels():
+        t.set_fontname(PUB_FONT)
+    _save_panel(fig, save_path)
     return fig, ax
 
 
@@ -1336,11 +1419,19 @@ def evaluate_model(model_rdm, data_rdm):
 
 
 def plot_model_correlations(stacked_model_RDMs, model_names,
-                            figsize=(8, 6), cmap='coolwarm', annot=True,
+                            cmap='coolwarm', annot=True,
                             fmt='.2f', vmin=-1, vmax=1, cmap_center=0,
-                            show=True, save_path=None, conditions_masking = None):
+                            show=True, save_path=None, conditions_masking = None,
+                            panel_cm=4.0, fontsize=PUB_FONT_MIN):
     """
     Plot Pearson correlations between model RDMs.
+
+    Sized as a `panel_cm` square subpanel in Arial at `fontsize` (9 pt floor,
+    per the project figure standard). The panel is grown beyond `panel_cm` when
+    the matrix has too many models for a 9 pt annotation to fit in a cell —
+    the font floor wins over the target size, because a correlation matrix
+    whose numbers cannot be read is not worth printing. Pass `annot=False` to
+    keep the 4 cm footprint with more than ~2 models. Saved as .pdf and .png.
 
     Parameters
     ----------
@@ -1348,8 +1439,6 @@ def plot_model_correlations(stacked_model_RDMs, model_names,
         Each column should be a vectorized model RDM (e.g. upper-triangle).
     model_names : list of str, length n_models
         Labels for the models (used on x/y ticks).
-    figsize : tuple
-        Figure size.
     cmap : str
         Colormap name (diverging recommended, e.g. 'bwr' or 'coolwarm').
     annot : bool
@@ -1361,7 +1450,14 @@ def plot_model_correlations(stacked_model_RDMs, model_names,
     show : bool
         Whether to call plt.show().
     save_path : str or None
-        If provided, saves the figure to this path.
+        If provided, saves the figure there (extension added by `_save_panel`).
+        With `conditions_masking`, the condition name is appended per panel.
+    conditions_masking : dict or None
+        {condition_name: row mask} — renders one panel per condition.
+    panel_cm : float
+        Target panel edge length in cm.
+    fontsize : int
+        Font size in pt for every text element; 9 is the project floor.
 
     Returns
     -------
@@ -1370,70 +1466,38 @@ def plot_model_correlations(stacked_model_RDMs, model_names,
     fig, ax : matplotlib objects
         Figure and axes (for further customization).
     """
-    if conditions_masking:
-        for cond in conditions_masking:
-            X = np.asarray(stacked_model_RDMs)
-            X = X[conditions_masking[cond]]
-    
-            if X.ndim != 2:
-                raise ValueError("stacked_model_RDMs must be 2D (n_entries, n_models).")
-            if X.shape[1] != len(model_names):
-                raise ValueError("Length of model_names must match number of model columns.")
-        
-            # correlation matrix (columns are variables)
-            corr = np.corrcoef(X, rowvar=False)
-        
-            fig, ax = plt.subplots(figsize=figsize)
-            im = ax.imshow(corr, interpolation='nearest', cmap=cmap, vmin=vmin, vmax=vmax)
-        
-            # ticks / labels
-            ax.set_xticks(np.arange(len(model_names)))
-            ax.set_yticks(np.arange(len(model_names)))
-            ax.set_xticklabels(model_names, rotation=45, ha='right', rotation_mode='anchor')
-            ax.set_yticklabels(model_names)
-        
-            # annotations
-            if annot:
-                # choose contrasting text color depending on background brightness
-                for i in range(corr.shape[0]):
-                    for j in range(corr.shape[1]):
-                        val = corr[i, j]
-                        txt = format(val, fmt)
-                        # white text for strong colors, black otherwise
-                        text_color = 'white' if abs(val) > 0.5 else 'black'
-                        ax.text(j, i, txt, ha='center', va='center', color=text_color, fontsize=9)
-        
-            # colorbar and layout
-            cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-            cbar.set_label('Pearson r', rotation=270, labelpad=12)
-        
-            ax.set_title(f"Model RDM correlations (Pearson r), only {cond}")
-            plt.tight_layout()
-        
-            if save_path:
-                plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        
-            if show:
-                plt.show()
-    else:
-        X = np.asarray(stacked_model_RDMs)
+    def _render(X, title, path):
+        X = np.asarray(X)
         if X.ndim != 2:
             raise ValueError("stacked_model_RDMs must be 2D (n_entries, n_models).")
         if X.shape[1] != len(model_names):
             raise ValueError("Length of model_names must match number of model columns.")
-    
+
         # correlation matrix (columns are variables)
         corr = np.corrcoef(X, rowvar=False)
-    
-        fig, ax = plt.subplots(figsize=figsize)
+
+        # Panel size: grown from `panel_cm` so that `fontsize` pt text actually
+        # fits -- a 9 pt "-0.35" is ~1.0 cm wide, so an annotated cell needs
+        # ~1.15 cm, and the tick labels need room proportional to their length.
+        # The old code instead shrank annotations to 4 pt, unreadable in print.
+        # This is a diagnostic panel, not a 4 x 4 cm subpanel: legibility at
+        # 9 pt wins over a fixed footprint.
+        n = len(model_names)
+        cell_cm = 1.15 if annot else 0.5
+        label_cm = max(len(str(s)) for s in model_names) * 0.19   # ~9 pt Arial
+        side_cm = max(panel_cm, n * cell_cm + label_cm + 1.4)
+        fig, ax = plt.subplots(figsize=(side_cm * CM, side_cm * CM),
+                               constrained_layout=True)
         im = ax.imshow(corr, interpolation='nearest', cmap=cmap, vmin=vmin, vmax=vmax)
-    
+
         # ticks / labels
-        ax.set_xticks(np.arange(len(model_names)))
-        ax.set_yticks(np.arange(len(model_names)))
-        ax.set_xticklabels(model_names, rotation=45, ha='right', rotation_mode='anchor')
-        ax.set_yticklabels(model_names)
-    
+        ax.set_xticks(np.arange(n))
+        ax.set_yticks(np.arange(n))
+        ax.set_xticklabels(model_names, rotation=45, ha='right', rotation_mode='anchor',
+                           fontsize=fontsize, fontname=PUB_FONT)
+        ax.set_yticklabels(model_names, fontsize=fontsize, fontname=PUB_FONT)
+        ax.tick_params(length=1.5, pad=1)
+
         # annotations
         if annot:
             # choose contrasting text color depending on background brightness
@@ -1443,19 +1507,35 @@ def plot_model_correlations(stacked_model_RDMs, model_names,
                     txt = format(val, fmt)
                     # white text for strong colors, black otherwise
                     text_color = 'white' if abs(val) > 0.5 else 'black'
-                    ax.text(j, i, txt, ha='center', va='center', color=text_color, fontsize=4)
-    
+                    ax.text(j, i, txt, ha='center', va='center', color=text_color,
+                            fontsize=fontsize, fontname=PUB_FONT)
+
         # colorbar and layout
-        cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cbar.set_label('Pearson r', rotation=270, labelpad=12)
-    
-        ax.set_title('Model RDM correlations (Pearson r)')
-        plt.tight_layout()
-    
-        if save_path:
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    
+        # No colorbar label: the title already says "regressor r", and a rotated
+        # label ran off the right edge at 9 pt.
+        cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.02)
+        cbar.ax.tick_params(labelsize=fontsize, length=1.5, pad=1)
+        for t in cbar.ax.get_yticklabels():
+            t.set_fontname(PUB_FONT)
+
+        ax.set_title(title, fontsize=fontsize, fontname=PUB_FONT)
+        _save_panel(fig, path)
+
         if show:
-            plt.show() 
+            plt.show()
+        return corr, fig, ax
+
+    if conditions_masking:
+        # one panel per masked condition. Each gets its own file — the old code
+        # wrote every condition to the same save_path, so only the last survived.
+        for cond in conditions_masking:
+            corr, fig, ax = _render(
+                np.asarray(stacked_model_RDMs)[conditions_masking[cond]],
+                f"regressor r, only {cond}",
+                None if save_path is None else f"{save_path}_{cond}")
+    else:
+        # Short title on purpose: at 9 pt the old sentence was wider than the
+        # panel and got clipped.
+        corr, fig, ax = _render(stacked_model_RDMs, 'regressor r', save_path)
 
     return corr, fig, ax

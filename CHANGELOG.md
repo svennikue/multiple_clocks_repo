@@ -1,5 +1,416 @@
 # CHANGELOG
 
+## 2026-09-03 (instruction-phase RSA) — cumulative reward-prefix models + per-combo RDM scope
+
+`scripts/fMRI_run_RSA_instruction.py` gained a second family of models sliced
+out of `rewDSR` at the `A_reward` anchor, and combo models can now declare the
+task-half scope they are fitted in.
+
+**Cumulative "first k rewards" models.** The `rewDSR` A_reward vector is four
+equal 12-element chunks, one per reward step (A, B, C, D), each holding the raw
+location value repeated. Alongside the existing per-step SPLIT channels
+(`curr_rew` = A, `next_rew` = B, `two_next_rew` = C, `three_next_rew` = D) the
+script now also builds the CUMULATIVE prefixes:
+
+| model | chunks | rewards | width |
+|---|---|---|---|
+| `A_rew` | 0 | A | 12 |
+| `AB_rew` | 0–1 | A, B | 24 |
+| `ABC_rew` | 0–2 | A, B, C | 36 |
+| `ABCD_rew` | 0–3 | A, B, C, D | 48 |
+
+**Models renamed** so the name states which rewards the model knows about. The
+per-step SPLIT channels became `A_rew` / `B_rew` / `C_rew` / `D_rew` and the
+cumulative ones `A_rew` / `AB_rew` / `ABC_rew` / `ABCD_rew`; `ABCD_rew` is the
+whole rewDSR vector, so `rewDSR` and `ABCD_rew` are numerically identical.
+The pre-rename names are **rejected with an error**, not silently accepted:
+`curr_rew`, `next_rew`, `two_next_rew` and `three_next_rew` are *also* real keys
+in `model_EVs` holding the 9-dim ONE-HOT version of the same idea, so an
+un-updated config would have fallen through to the standard path and quietly
+built a different model (mismatch 2/9 instead of 1) under an unchanged name.
+See `LEGACY_MODEL_NAMES` / `check_no_legacy_names`.
+`condition_files/rsa_instruction_full.json` was updated to the new names so it
+keeps building exactly the models it built before.
+
+Because the chunks are equally long, Hamming on a cumulative model is *exactly*
+the mean of the per-step Hammings it contains — verified numerically on sub-02
+(max abs difference 1.1e-16). So the family is strictly nested and `rewDSR` **is**
+the k = 4 member; no separate model had to be defined for it. Each has an
+`_instr` counterpart built through `instruction_relabel_dict` as before, and the
+2×2 sub-block uniformity check passes for `two_rew_instr` / `three_rew_instr`.
+
+**Per-model scope.** A combo entry may carry `"scope"` (a string or a list),
+and single models are governed by a config-level `single_model_scopes`,
+e.g. `{"execution": ["within_only", "across_only"], "instruction":
+["within_only"]}` — applied by name, anything ending in `_instr` counts as
+instruction. Both override `data_rdm_scope`; the resulting output maps are
+suffixed `_within` / `_across` / `_full`. The asymmetry is forced by the design:
+an execution model has variance in both blocks, an instruction model is constant
+across halves. All scopes are now column masks over the strict
+lower triangle of the *same* cached (2n × 2n) data RDM — `within_only` keeps the
+two within-half blocks (90 cells for n = 10), `across_only` their complement
+(100 cells, exactly the across block), `full_no_diag` all 190 — so fitting one
+combo in several scopes costs no extra searchlight computation. The legacy
+top-level `'across_only'` mode still uses its own (n × n) cache and refuses to be
+mixed with per-combo scopes.
+
+**New config** `condition_files/rsa_instruction_cumulative_rew.json`
+(`data_rdm_scope: "within_only"`, since every instruction model is degenerate
+across halves). Single models: all 14, each execution one fitted within AND
+across halves, each `_instr` one within only. Combos: `first_exe_vs_instr`, `two_exe_vs_instr`,
+`three_exe_vs_instr`, `four_exe_vs_instr` (each = execution vs instruction
+variant of the same k), `instr_split` (the four instruction step channels), and
+`exe_split` (the four execution step channels) fitted **both** within and across
+task halves.
+
+All designs are full rank (sub-02, TR4). Execution-vs-instruction shared
+variance within half: `A_rew` r = +0.15, `AB_rew` r = +0.16,
+`ABC_rew` r = +0.26, `ABCD_rew` r = +0.23. Regressors of `exe_split` are far
+more collinear across halves (r = +0.46 to +0.73) than within (r = −0.10 to
++0.45), which is worth keeping in mind when comparing the two `exe_split` fits.
+
+**Reporting.** Model RDMs are now plotted once per scope each model is actually
+fitted in (cells outside the scope NaN/white), instead of always showing the
+across block; the same holds for the example data-RDM panel. Each figure is
+accompanied by a printed line giving the number of fitted cells, distinct
+values, range and sd, so a degenerate regressor is visible without opening the
+png. Regressor correlations — per combo, per scope — and the
+execution-vs-instruction correlations are now written into
+`{sub}_settings_summary.json` (`combo_regressor_correlations`,
+`exec_vs_instr_correlations`) rather than only printed to stdout.
+
+Also removed the dead `_needs_split_exec` / `_needs_split_instr` expressions that
+had already been superseded by the explicit `_base_of` check.
+
+## 2026-09-03 (new instruction-period first-level GLMs) — 11 epoch-wise instruction GLMs
+
+`scripts/create_EVs_instruction_period.py` + `condition_files/EV_config_instruction.json`.
+Same shape as the existing `01-TR{k}` per-TR instruction GLMs, but the epochs
+are defined by what is on screen rather than by TR. 11 GLMs per task half, each
+with 10 EVs (one per task) + the button nuisance:
+
+| k | epoch | window | dur |
+|---|---|---|---|
+| 0–3 | see_{A,B,C,D}_first | 0–1.5, 1.5–3, 3–4.5, 4.5–6 | 1.5 s |
+| 4–7 | see_{A,B,C,D}_second | 6–7, 7–8, 8–9, 9–10 | 1.0 s |
+| 8 | collapsed_first_instruction | 0–6 | 6 s |
+| 9 | collapsed_second_instruction | 6–10 | 4 s |
+| 10 | empty_screen | 10–12 | 2 s |
+
+**Timings read off the experiment code**, not assumed —
+`mc/latest_experiment/3x3_fMRI_part1.py` lines 697–712 (opacity schedule) and
+744–915 (component stop times). The routine is non-slip timed to 12 s. Note the
+second pass is **1.0 s per coin starting at 6 s**, not 1.5 s from 4.5 s, and all
+coins plus the "backwards" warning stop being drawn at 10 s — only
+`sand_pirate` stays to 12 s, which is what makes 10–12 s an empty screen.
+
+Output goes to `EVs_{name}-TR{k}_pt0{th}/` with EVs named
+`{task}_{direction}_instruction_onset`, so `load_data_EVs_instr_TRwise` and
+`pair_correct_tasks` in `scripts/fMRI_run_RSA_instruction.py` read it unchanged:
+set `regression_version` to the config name and `TR` to k.
+
+**Why one GLM per epoch and not one GLM with all epochs.** A joint design was
+built first and rejected on the numbers, measured on FEAT's own design matrix
+(`feat_model`, sub-02 pt1, gamma HRF δ=6/σ=3, 100 s highpass, TR 1.078):
+
+| design | VIF over the epoch regressors |
+|---|---|
+| joint, 6 epochs/task (61 EVs) | 4 – 132 |
+| joint, 9 epochs/task (91 EVs) | 22 – **2555** |
+| **one GLM per epoch (11 EVs)** | **1.01 – 1.05**, max abs r 0.005 |
+
+The epochs are 1–1.5 s, back-to-back, in a fixed order, never jittered, so in a
+joint design adjacent second-pass coins correlate at r = 0.95 and each beta is a
+mixture of its neighbours. Since the hypothesis under test is a gradient across
+A→D, a design that mechanically blends the coin epochs could manufacture that
+signature. Per-epoch GLMs cannot: each holds one regressor per task, ~150 s
+apart. This does not fix precision — there is still one 1.5 s event per
+condition per half — but it makes the noise unstructured rather than organised
+by the design.
+
+**Instruction onset.** `instruct_start = (first start_ABCD_screen of that task)
+− 12 s`. Validated against the on-flip timestamps (`sand_pirate.started`) in the
+`*_all.csv`: those sit on a different clock origin than `globalClock`, but the
+interval to the first `start_ABCD_screen` is constant to **SD ≈ 8–12 ms (< 1
+frame)** across the 10 tasks of a session. Replaces the legacy `01` approach,
+which used `t_reward_afterwait + 3.5` for tasks 2–10.
+
+**Button nuisance regressor: kept, but it does nothing either way.** Measured
+variance inflation on the instruction betas 1.0007 (max 1.004), max abs r with any
+instruction EV 0.12. It does not fix the baseline — the instruction period is
+6.7% of the run and there is no rest anywhere in the design, so the betas are
+unavoidably "instruction vs. execution". For RSA that is a common offset across
+conditions and cancels in correlation distance. Kept for comparability with the
+`01`/`01-TR` GLMs; `"regress_buttons": false` switches it off.
+
+**Caveat — sub-10 pt1.** Its last task's instruction (B1_backw) ends at 1878 s.
+If that run is the nominal 1670 vols x 1.078 s = 1800 s, `feat_model` does not
+warn — it **aborts** with "No valid [onset duration strength] triplets found"
+and builds no design at all. Confirmed locally. The script prints this as an
+upfront warning. Check the real dim4 for sub-10 pt1 before running; the old `01`
+instruction GLMs have the same exposure.
+
+**Figures.** `plot_instruction_RDM` and `plot_model_correlations` in
+`mc/analyse/my_RSA.py` now draw 4 x 4 cm panels in Arial with a 9 pt floor, and
+save .pdf next to .png. Specifics: correlation-matrix annotations went from 4 pt
+(unreadable at print size) to 9 pt, and that panel grows past 4 cm when a matrix
+has too many models for a 9 pt number to fit in a cell — the font floor wins
+over the target footprint; `annot=False` keeps 4 cm. RDM tick labels fall back
+to per-half block labels when the matrix is an assembled (2n x 2n) one, and
+otherwise to every kth real label — labelling both axes TH1/TH2 on the (n x n)
+across block, where rows are TH1 and columns are TH2, would have been wrong.
+Colorbars carry only their two end ticks, since the default '0.0/0.5/1.0' set is
+wider than a 4 cm panel leaves and was being clipped.
+
+
+## 2026-09-02 (per-TR instruction RSA) — within-half-only run: the offset shrank, flipped sign, and still drove the stats
+
+**Inputs.** `group_RSA_within_th_only_intr-vs-exe_glmbase_01-TR{0..11}_cropped`,
+24 maps, 32 subjects, brain mask 144 404 voxels. Analysed with
+`scripts/per_TR_loso.py` (statistics in `mc/analyse/loso.py`), 10 000 sign-flip
+permutations for the SVC/LOSO, 1 000 for whole brain, masks mPFC + MTL.
+Results in `data/derivatives/group/within_th_only_intr-vs-exe_allTRs_2026-09-02`
+(raw) and `..._allTRs_DEMEANED_2026-09-02` (demeaned; see below).
+
+**Did dropping the across-half block remove the bias? Partly, and it flipped.**
+Median whole-brain t, averaged over maps of each class:
+
+| analysis | execution | instruction | exec - instr |
+|---|---|---|---|
+| full (across+within), 2026-08-28 | -0.584 | +1.236 | **-1.82** |
+| within-half only | +0.171 | -0.450 | **+0.62** |
+| within-half + per-subject demeaning | -0.003 | +0.006 | **-0.01** |
+
+The gap shrank ~3x but **reversed sign** — an attenuated version of the same
+artefact would have kept its sign.
+
+**Measured cause: restricting to within-half cells RAISES the execution/
+instruction regressor correlation.** Pearson r between each execution model and
+its own instruction counterpart, sub-02, over the cells the OLS actually fits
+(printed by `fMRI_run_RSA_instruction.py`, re-run locally with TR4 — the model
+RDMs are built from behaviour, so the TR does not enter this number):
+
+| pair | `full_no_diag` (90+90 cells) | `within_only` (90 cells) |
+|---|---|---|
+| curr_rew vs curr_rew_instr | +0.02 | **+0.146** |
+| next_rew vs next_rew_instr | +0.11 | **+0.318** |
+| two_next_rew vs two_next_rew_instr | +0.11 | **+0.318** |
+| three_next_rew vs three_next_rew_instr | +0.02 | **+0.146** |
+| rewDSR vs rewDSR_instr | (n/a) | **+0.231** |
+
+So in the full scope the two regressor families were near-orthogonal (r = .02-.11)
+and the old bias came from the block-structure offset, NOT from exec/instr
+collinearity. Dropping the across-half block removed that block offset but
+*tripled* the direct correlation between execution and instruction regressors.
+In a joint OLS, positively correlated regressors give anti-correlated betas: if
+execution carries the signal, the instruction beta is pushed negative to
+compensate. That is exactly the observed instruction-negative /
+execution-positive offset, and it explains the sign flip. Design-induced
+collinearity, not a scanner artefact — but still an additive offset rather than
+a regional effect.
+
+(Consistent with the structural argument: of the 90 within-half cells, 10 are
+same-task-letter pairs where instruction dissimilarity = 0 while execution
+dissimilarity = 1.)
+
+**The residual offset was producing the "significant" results.** Across the 24
+maps, a map's global median t predicts its peak statistic almost perfectly:
+
+    corr(global median t, mPFC negative peak t) = +0.918, p = 2.6e-10
+    corr(global median t, MTL  negative peak t) = +0.698, p = 1.5e-04
+    median t of the 7 maps WITH a significant negative peak: -0.832
+    median t of the 17 maps WITHOUT:                         +0.073
+
+The sign-flip null is centred on zero, so a map whose whole brain sits at -0.9
+yields a "significant" negative peak somewhere regardless of any regional
+effect. **The negative mPFC/HC hits in the raw run are therefore not findings**
+(largest: `next_rew_instr` mPFC t = -6.84 p_FWE = .0006; MTL 28/-20/-18, 90 %
+right hippocampus, t = -5.43 p = .016). The LOSO timecourses inherit it too
+(r = +0.66 mPFC, +0.44 MTL), which invalidates `three_next_rew` MTL
+(LOSO p = .017) — it has the largest positive offset of all 24 maps (+0.545).
+
+**Fix: `--demean` (new flag).** Subtracts each subject's whole-brain mean,
+separately per TR, from the data array before any statistic, so every sign-flip
+permutation inherits it and there is no separate permutation path (rule 4). The
+test becomes "is this voxel above this subject's own brain-wide level at this
+TR" rather than "above zero". Note this was chosen POST HOC, after seeing the
+offset; both runs are kept and reported side by side. Median t ~ 0 afterwards is
+guaranteed by construction, not a result — the question is which peaks survive.
+After demeaning, corr(offset, mPFC negative peak) collapses +0.918 -> -0.402.
+
+**What changes.** Maps with a positive offset lose, maps with a negative offset
+gain, and one result moves the other way — the signature of a real regional
+effect (demeaning also removes subject-specific global fluctuation, cutting
+between-subject variance):
+
+| map | raw t / p_FWE | demeaned t / p_FWE |
+|---|---|---|
+| `CURR_REW-splitDSR_vs_instr` (execution, reward A) TR2, 22/-90/32 occipital pole | 5.90 / .110 | **6.86 / .032** |
+| `curr_rew` (execution) TR2, 22/-92/34, same site | 5.22 / .300 | 6.32 / .097 |
+| `CURR_REW_INSTR-instr_split` (instruction) TR3, 16/-70/26 cuneus/precuneus | 7.18 / **.007** | 6.19 / .103 |
+
+**Surviving results after demeaning** (whole brain corrected over 144 404
+voxels x 12 TRs; SVC corrected within each mask over voxels x TRs):
+
+- Whole brain: `CURR_REW-splitDSR_vs_instr`, TR2, MNI 22/-90/32, t = 6.86,
+  p_FWE = .032 (44 % occipital pole). Replicated by `curr_rew` at 22/-92/34
+  (p = .097). Execution, not instruction.
+- MTL SVC, POSITIVE and instruction-driven, at one voxel:
+  `REWDSR_INSTR-rewDSR_vs_instr` TR5, MNI -28/-22/-32, t = 5.40, p_FWE = .021;
+  `three_next_rew_instr` TR6, same voxel, t = 5.03, p_FWE = .049.
+  Harvard-Oxford: 29 % left anterior parahippocampal gyrus, 12 % posterior
+  temporal fusiform — parahippocampal/entorhinal, NOT hippocampus proper.
+  **These two are NOT independent**: `three_next_rew` is literally one quarter
+  of the `rewDSR` A_reward vector (`REWDSR_SPLIT_CHANNELS`), and their t-maps
+  correlate r = +0.53. Worse, the result is fragile at threshold —
+  `rewDSR_instr` and `REWDSR_INSTR-rewDSR_vs_instr` are near-identical maps
+  (r = +0.973) peaking at the SAME voxel, yet t = 4.70 / p = .111 versus
+  t = 5.40 / p = .021. A 0.7 change in t moves it across the threshold, so this
+  voxel should be treated as a lead to test in an independent contrast, not as
+  a result.
+- MTL, right posterior parahippocampal 34/-28/-18: `NEXT_REW_INSTR-instr_split`
+  TR11 SVC p = .092 with LOSO p = .029; `next_rew_instr` LOSO p = .031 at TR10.
+
+**Multiple comparisons, stated plainly.** 24 maps x 2 masks = 48 SVC tests plus
+24 whole-brain tests; each p_FWE corrects only over its own voxels x TRs. None
+of the above is corrected across that family. At 48 tests, ~2.4 hits below .05
+are expected by chance and we have 2 in MTL, which are not independent of each
+other — so the MTL parahippocampal result is NOT established by this run.
+
+**Figure.** `offset_diagnostic.pdf` / `.png` in the DEMEANED folder, produced by
+the archived `make_offset_diagnostic.py` beside it.
+
+**Two code fixes made while getting this to run** (both in `mc/analyse/loso.py`
++ `scripts/per_TR_loso.py`):
+1. `check_inputs` — a pre-flight that compares each .nii.gz gzip trailer against
+   the size its NIfTI header implies, confirming only the suspects by real
+   decompression. A truncated download has a readable header and dies inside
+   `get_fdata`, which killed a run partway; this fails in ~1 s instead. It found
+   exactly the 24 files `gzip -t` found (all of TR0, an interrupted transfer,
+   since re-downloaded). Bypass with `--skip-input-check`.
+2. `peak_TR` was a position along the TR axis, not a TR number, so any run over
+   a non-contiguous `--trs` subset mislabelled its peak (and the plot x-axis,
+   labelled "instruction period (s)", assumed index = second). Real TR labels
+   are now passed into `run_svc` / `run_loso` / `run_wholebrain`, stored in each
+   summary JSON as `trs`, and used for both. Contiguous 0-11 runs are unaffected.
+
+**Not repeated / dead ends.** Testing the negative direction against the same
+sign-flip null is only valid when the map has no global offset; with one, it is
+guaranteed to "find" something. Do not report negative-direction peaks from a
+map whose global median t is far from 0 without demeaning first.
+
+## 2026-09-02 (later still) — Shortest-path metric in `behaviour_summary.py`
+
+Added one behavioural metric to `scripts/behaviour_summary.py`: the percentage
+of walks between two consecutive rewards that took the minimum possible number
+of steps. The 3x3 grid is 4-connected (no diagonals, no wrap-around), so the
+minimum is the Manhattan distance between the two rewards. Four walks per
+repeat: D->A, A->B, B->C, C->D. New outputs `fmri_shortest_paths.csv` and
+`ephys_shortest_paths.csv` (one row per walk: n_steps, min_steps, is_shortest),
+new per-subject/per-session column `shortest_path_percent`, group entries
+`shortest_path_percent` / `_pooled` / `_by_repeat` (fMRI) resp.
+`_by_rep_correct` (cells), plus one overview histogram per modality.
+
+**Numbers (all data, no exclusions beyond the ones already in the script):**
+fMRI 95.8 +- 4.1 % (mean +- s.d. over 33 subjects, 12 514 walks; pooled 95.8 %);
+cells 97.4 +- 2.2 % (63 sessions, 56 904 walks; pooled 97.4 %). Mild improvement
+over repeats (fMRI 94.5 % -> 96.3 % from repeat 1 to 5; cells 97.0 % -> 97.6 %).
+Detours are essentially always +2 steps (fMRI 472 of 524 non-shortest walks).
+
+**Two definitional choices, both to keep the metric about paths BETWEEN
+rewards.** (i) The first A of an fMRI configuration is skipped: the location the
+subject starts from is not stored in the cleaned table. (ii) In the cells data
+the D->A walk is only counted when the preceding attempt was itself a retained,
+correct repeat that this attempt continues from, so the exploratory search for A
+at the start of a grid never enters the metric. A variant that counts every
+D->A / grid-initial walk regardless gives 97.1 % pooled instead of 97.4 %, so
+this choice barely moves the number.
+
+**One data glitch, left in.** Exactly 1 of 134 381 cell-data location
+transitions is between non-adjacent squares (a dropped sample in the 25-ms
+trace), which makes 1 of 56 904 walks come out one step SHORTER than the
+Manhattan distance. It is counted as not-shortest; no filter was added.
+
+**Unrelated speed fix in the same file.** The 25-ms location traces are stored
+as a single very wide row and `pd.read_csv` parses them column by column
+(~0.35 s per file, 1489 files ~ 9 min). `_read_location_trace` reads the line
+and parses it with numpy (~10 s total). `ephys_trajectory_candidates` now uses
+it too.
+
+## 2026-09-02 (later) — Single-lag reporting for the double dissociation
+
+Added two ways to report ONE lag instead of the 30+60 / 0+330 window in
+`scripts/overlay_double_dissociation.py`, because the correction scope has to
+match how the lag was chosen. Outputs:
+`overlay_prespecified_lag_tests.csv`, `overlay_peak_lag_permutation.csv`.
+
+**(a) a-priori lag, BH across the 3 ROIs** (`PRESPECIFIED_LAG_DEG`, default
+mPFC 30 deg, HC 0 deg).
+
+**(b) peak lag chosen by looking, sign-flip permutation, max-t across the 12
+lags** (10000 perms, seed 42). Motivated by the lag-lag correlation in
+`lag_lag_correlation_noctrl.csv`: neighbouring lags correlate at r = .33
+(mPFC), .23 (HC_mid), .22 (HC_anterior), so BH over 12 lags assumes an
+independence that does not hold. The permutation flips the sign of whole unit
+curves (keeps each unit's lag-lag structure) and shares a subject's sign
+across ROIs in the across-ROI null. `_check_vectorised_t` asserts the
+vectorised permutation t reproduces `_tstat_gt0` on the observed data, so
+empirical and null use one estimator (CLAUDE.md rule 4).
+
+**Result: the max-t correction buys almost nothing** — mPFC 30 deg cell-level
+BH q = .0177 vs FWE p = .0159; HC_mid 0 deg cell BH q = .057 vs FWE p = .054.
+The lag curves are not correlated enough for the search penalty to shrink much.
+
+**Peak lags under FWE (max-t across 12 lags):** cell mPFC 30 deg t(157) = 3.02,
+p_FWE = .016 (*) is the ONLY peak that survives. Cell HC_mid 0 deg p_FWE = .054,
+cell HC_anterior 330 deg p_FWE = .13, subject mPFC 60 deg p_FWE = .18, subject
+HC_mid 0 deg p_FWE = .14, subject HC_anterior 0 deg p_FWE = .36.
+
+**The a-priori mPFC lag choice is decisive, and that is a trap.** With mPFC
+fixed at 30 deg: cell q = .0044 (**) but subject q = .108 (n.s.). With mPFC
+fixed at 60 deg: subject q = .029 (*) and all three ROIs significant at subject
+level (HC_mid .029, HC_anterior .040), while cell mPFC drops to q = .0496.
+This is the cell-vs-subject peak reversal already documented in the supplement.
+Picking 30 or 60 after seeing these numbers would be circular; recorded here so
+that the choice is made explicitly and on a priori grounds, not by outcome.
+
+**Conclusion: the two-lag window remains the only route where all three ROIs
+survive under BOTH weightings**, so it stays the inference for Fig 3c; single
+lags are fine to quote descriptively.
+
+
+## 2026-09-02 — Double-dissociation overlay: readable results table + results.json
+
+`scripts/overlay_double_dissociation.py` now writes `overlay_results.json` and
+`RESULTS.md` (replacing `WEIGHTING_RESULTS.md`, which only showed 4 of the 12
+lags and one q column). No statistic changed -- this is a reporting refactor.
+
+**Why:** the old CSVs made it impossible to see which t belonged to which r/z,
+and three differently-scoped FDR corrections were all called `..._fdr_...`
+without saying what family they corrected over.
+
+- Every test record now carries `mean_fisher_z` (what the t was computed on),
+  `r_from_fisher_z = tanh(mean_fisher_z)` (the same effect in r units) and
+  `mean_raw_r` (what the figure plots), so t <-> r <-> z is unambiguous.
+- FDR columns renamed to name their family: `q_*_within_roi_12_lags`,
+  `q_*_within_lag_across_overlay_rois`, `q_*_across_rois_and_lags`,
+  `q_*_across_rois`. `FDR_FAMILIES` in the script documents each one and is
+  copied into the json and the md.
+- `overlay_results.json` nests `p` and `fdr_q` inside each test record; also
+  holds `settings`, `test_definitions` and `fdr_families`.
+- Re-ran on
+  `per_lag_encoding/2026-08-28_10-18-21_reload_from_2026-06-30_18-21-57_relabelled/`
+  (the run with the corrected cell coordinates).
+
+**Fig 3c star, target-window contrast (predicted lags > other 10 lags,
+one-sided, BH across the 3 ROIs), subject-balanced:** mPFC 30+60 deg
+dz = 0.057, t(32) = 2.86, p = .0037, q = .0055 (**); HC_mid 0+330 deg
+dz = 0.047, t(35) = 2.88, p = .0034, q = .0055 (**); HC_anterior 0+330 deg
+dz = 0.032, t(51) = 1.81, p = .038, q = .038 (*). Cell-weighted: mPFC
+t(157) = 2.87, q = .0057; HC_anterior t(294) = 2.69, q = .0057; HC_mid
+t(232) = 2.27, q = .012. So all three survive FDR under both weightings.
+
+
 ## 2026-09-01 (later still) — Phase-residualisation choice is now self-documenting
 
 `PHASE_RESIDUALISE = 'cosine_2h'` was justified from a run on the old 8-recday
@@ -2892,7 +3303,23 @@ report the head/tail margins. New columns `clock_status`,
 separates "the clock is fine, the rest is bookkeeping" from "this one can
 corrupt a result".
 
-**It immediately found a real problem: s09 FAILS.** Block 2's offset is the
+**CORRECTION to the paragraph below, made the same day.** The first version of
+the gate treated ANY overrun as a failure, which was wrong and would have thrown
+away four good sessions. A behavioural clock can overrun the recording for two
+unrelated reasons: the recording was stopped a second or two before the task
+ended (truncation -- harmless), or the block mapping is wrong (corrupting). They
+are told apart by magnitude. Across all 60 sessions: 1 genuine failure (s32,
+-1905.5 s, files=2 vs beh_blocks=1) and 4 truncations of 0.9-2.0 s (s09, s10,
+s26, s33). Truncation needs no action at all -- a window past the end of the
+recording gets zero artifact-free exposure and `fit_count_glm` already filters
+`exposure_s > 0` (both verified directly).
+
+**So s09 does NOT invalidate the H1/H6 results.** It loses roughly its last two
+seconds of behaviour, which is at most one window. The earlier claim that the
+development-set numbers needed re-running without s09 was wrong.
+
+**What the gate found (original wording, kept for the record): s09 FAILS.**
+Block 2's offset is the
 cumulative duration of block 1 (1527.4 s), which is only valid if recording
 never stopped. Behaviour block 2 needs 1402.9 s and sits 53.4 s into a 1454.2 s
 file, so it overruns the end by 2.0 s. Every block-2 event in s09 is misaligned

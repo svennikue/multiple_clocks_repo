@@ -1,0 +1,42 @@
+{
+  "name_of_RSA": "instr_cumrew",
+  "load_EVs_from": "DSR_loc-fut-rews-state-dur-type",
+  "regression_version": "01",
+  "TR": 4,
+  "smoothing": false,
+  "fwhm": 5,
+  "searchlight_mask": "grey_matter",
+  "data_rdm_scope": "within_only",
+  "run_single_models": true,
+  "single_model_scopes": {
+    "execution": ["within_only", "across_only"],
+    "instruction": ["within_only"]
+  },
+  "run_combo_models": true,
+  "plot_example_data_RDM": true,
+  "selected_models": [
+    "ABCD_rew", "ABCD_rew_instr",
+    "ABC_rew", "ABC_rew_instr",
+    "AB_rew", "AB_rew_instr",
+    "A_rew", "A_rew_instr",
+    "B_rew", "B_rew_instr",
+    "C_rew", "C_rew_instr",
+    "D_rew", "D_rew_instr"
+  ],
+  "combo_models": [
+    {"name": "first_exe_vs_instr",
+     "regressors": ["A_rew", "A_rew_instr"]},
+    {"name": "two_exe_vs_instr",
+     "regressors": ["AB_rew", "AB_rew_instr"]},
+    {"name": "three_exe_vs_instr",
+     "regressors": ["ABC_rew", "ABC_rew_instr"]},
+    {"name": "four_exe_vs_instr",
+     "regressors": ["ABCD_rew", "ABCD_rew_instr"]},
+    {"name": "instr_split",
+     "regressors": ["A_rew_instr", "B_rew_instr",
+                    "C_rew_instr", "D_rew_instr"]},
+    {"name": "exe_split",
+     "scope": ["within_only", "across_only"],
+     "regressors": ["A_rew", "B_rew", "C_rew", "D_rew"]}
+  ]
+}
