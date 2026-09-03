@@ -388,16 +388,22 @@ def plot_instruction_RDM(rdm, th1_labels, th2_labels, title, vmin=None, vmax=Non
 
 def load_data_EVs_instr_TRwise(data_dir, regression_version, TR, only_load_labels=False):
     """
-    Loader for per-TR instruction-phase GLMs.
-    Reads PEs from   glm_{regression_version}-TR{TR}_pt0{th}.feat/stats
-    and EV mapping   EVs_{regression_version}-TR{TR}_pt0{th}/task-to-EV.txt
+    Loader for one instruction-phase GLM per timepoint.
+    Reads PEs from   glm_{glm}_pt0{th}.feat/stats
+    and EV mapping   EVs_{glm}_pt0{th}/task-to-EV.txt
     for th in {1, 2}. Skips button/press EVs so only the instruction EVs remain.
+
+    `glm` is '{regression_version}-TR{TR}' for the per-TR GLMs ('01-TR4'), or
+    just `regression_version` when TR is None — the epoch GLMs are named after
+    what they measure ('instr_see-A-first') rather than by a TR index, so their
+    config sets regression_version to the full name and leaves TR unset.
     """
+    glm = regression_version if TR is None else f"{regression_version}-TR{TR}"
     EV_dict = {}
     list_loaded = []
     for th in [1, 2]:
-        pe_path = f"{data_dir}/func/glm_{regression_version}-TR{TR}_pt0{th}.feat/stats"
-        EV_txt  = f"{data_dir}/func/EVs_{regression_version}-TR{TR}_pt0{th}/task-to-EV.txt"
+        pe_path = f"{data_dir}/func/glm_{glm}_pt0{th}.feat/stats"
+        EV_txt  = f"{data_dir}/func/EVs_{glm}_pt0{th}/task-to-EV.txt"
         with open(EV_txt, 'r') as file:
             for line in file:
                 index, name_ev = line.strip().split(' ', 1)

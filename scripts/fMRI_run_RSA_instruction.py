@@ -541,7 +541,10 @@ with open(f"{config_path}/{config_file}", "r") as f:
 EV_string = config.get("load_EVs_from")
 regression_version = config.get("regression_version")
 TR = config.get("TR")
-regression_version_full = f"{regression_version}-TR{TR}"
+# The per-TR GLMs are '01-TR4'; the instruction-epoch GLMs are named after the
+# epoch they measure ('instr_see-A-first') and set no TR, so the version is
+# already the full GLM name.
+regression_version_full = regression_version if TR is None else f"{regression_version}-TR{TR}"
 
 
 name_RSA = config.get("name_of_RSA")

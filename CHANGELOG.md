@@ -89,13 +89,13 @@ Same shape as the existing `01-TR{k}` per-TR instruction GLMs, but the epochs
 are defined by what is on screen rather than by TR. 11 GLMs per task half, each
 with 10 EVs (one per task) + the button nuisance:
 
-| k | epoch | window | dur |
-|---|---|---|---|
-| 0–3 | see_{A,B,C,D}_first | 0–1.5, 1.5–3, 3–4.5, 4.5–6 | 1.5 s |
-| 4–7 | see_{A,B,C,D}_second | 6–7, 7–8, 8–9, 9–10 | 1.0 s |
-| 8 | collapsed_first_instruction | 0–6 | 6 s |
-| 9 | collapsed_second_instruction | 6–10 | 4 s |
-| 10 | empty_screen | 10–12 | 2 s |
+| GLM | window | dur |
+|---|---|---|
+| `instr_see-{A,B,C,D}-first` | 0–1.5, 1.5–3, 3–4.5, 4.5–6 | 1.5 s |
+| `instr_see-{A,B,C,D}-second` | 6–7, 7–8, 8–9, 9–10 | 1.0 s |
+| `instr_collapsed-first-instruction` | 0–6 | 6 s |
+| `instr_collapsed-second-instruction` | 6–10 | 4 s |
+| `instr_empty-screen` | 10–12 | 2 s |
 
 **Timings read off the experiment code**, not assumed —
 `mc/latest_experiment/3x3_fMRI_part1.py` lines 697–712 (opacity schedule) and
@@ -104,10 +104,16 @@ second pass is **1.0 s per coin starting at 6 s**, not 1.5 s from 4.5 s, and all
 coins plus the "backwards" warning stop being drawn at 10 s — only
 `sand_pirate` stays to 12 s, which is what makes 10–12 s an empty screen.
 
-Output goes to `EVs_{name}-TR{k}_pt0{th}/` with EVs named
-`{task}_{direction}_instruction_onset`, so `load_data_EVs_instr_TRwise` and
-`pair_correct_tasks` in `scripts/fMRI_run_RSA_instruction.py` read it unchanged:
-set `regression_version` to the config name and `TR` to k.
+Each GLM is named after what it measures rather than by an index, so the output
+is `EVs_instr_see-A-first_pt01/` and `sub-02_draft_GLM_01_instr_see-A-first.fsf`.
+EVs are named `{task}_{direction}_instruction_onset`, which is what
+`pair_correct_tasks` in `scripts/fMRI_run_RSA_instruction.py` expects.
+`load_data_EVs_instr_TRwise` now takes `TR=None` to mean "regression_version is
+already the full GLM name" (it still builds `{version}-TR{TR}` otherwise, so the
+existing `01-TR{k}` configs are unaffected); the epoch configs set
+`"regression_version": "instr_see-A-first"` and no TR.
+Submit with `mc/fmri_analysis/subject_GLM_instruction_epochs.sh`, which is
+`subject_GLM_RDM_conds.sh` plus a loop over the epoch names.
 
 **Why one GLM per epoch and not one GLM with all epochs.** A joint design was
 built first and rejected on the numbers, measured on FEAT's own design matrix

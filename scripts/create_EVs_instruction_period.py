@@ -102,10 +102,12 @@ def load_beh(sub, th, all_file=False):
     raise FileNotFoundError(f"no behavioural file for {sub} pt{th}, tried {options}")
 
 
-print(f"\ncreating {len(segments)} GLMs per task half, {version}-TR0 to {version}-TR{len(segments)-1}:")
-for k, segment in enumerate(segments):
-    print(f"   TR {k:>2} -> {segment['name']:<30} {segment['onset']:>4.1f} - "
-          f"{segment['onset'] + segment['duration']:.1f} s")
+print(f"\ncreating {len(segments)} GLMs per task half:")
+for segment in segments:
+    print(f"   {version}_{segment['name'].replace('_', '-'):<30} "
+          f"{segment['onset']:>4.1f} - {segment['onset'] + segment['duration']:.1f} s")
+print("\nglm_names for the FEAT runner:")
+print("   " + " ".join(s['name'].replace('_', '-') for s in segments))
 
 for sub in subjects:
     for th in [1, 2]:
@@ -164,7 +166,9 @@ for sub in subjects:
 
         # one GLM per instruction epoch
         for seg_i, segment in enumerate(segments):
-            glm_name = f"{version}-TR{seg_i}"
+            # named after what it measures, e.g. 'instr_see-A-first', so the
+            # folder reads EVs_instr_see-A-first_pt01 rather than a bare index.
+            glm_name = f"{version}_{segment['name'].replace('_', '-')}"
             EV_folder = f'{data_dir_deriv}/{sub}/func/EVs_{glm_name}_pt0{th}/'
             if os.path.exists(EV_folder):
                 shutil.rmtree(EV_folder)
