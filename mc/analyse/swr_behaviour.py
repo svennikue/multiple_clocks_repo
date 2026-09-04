@@ -216,3 +216,67 @@ def repeat_table(session, beh=None, data_root=None):
     tab = tab.merge(solved, on="grid_no", how="left")
     tab["reps_to_solve"] = tab.first_solved_rep - tab.rep_overall
     return tab.reset_index(drop=True)
+
+
+def d_events(session, beh=None, data_root=None):
+    """Every arrival at D, with the moment of uncovering and of leaving.
+
+    `t_D` in `all_trial_times` is the moment the fourth reward is UNCOVERED --
+    the successful key press. That is only one of three defensible definitions
+    of "at D", and they ask different questions:
+
+        t_arrive   entering the D location. Includes the approach, so a window
+                   here contains movement.
+        t_uncover  the press (== t_D). What every analysis has used so far.
+        t_leave    stepping off the D location again.
+
+    Two derived windows follow:
+        deliberation  t_arrive -> t_uncover, the subject is ON the reward and
+                      has not yet pressed. The closest thing this task has to
+                      Sakon's pre-vocalisation window.
+        dwell         t_uncover -> t_leave, occupancy after the reward.
+
+    Returns one row per arrival at D with all five times, or an empty frame if
+    the 25 ms location series is not on this machine.
+    """
+    session = int(session)
+    beh = swr_io.load_behaviour(session, data_root=data_root) if beh is None else beh
+    rows = []
+    for grid, g in beh.groupby("grid_no"):
+        g = g.sort_values("rep_overall")
+        loc = _grid_series(session, grid, "locations", data_root)
+        if loc is None:
+            continue
+        onset = float(g.new_grid_onset.iloc[0])
+        first_rep = int(g.rep_overall.iloc[0])
+        nxt = list(g.t_A.to_numpy(float)[1:]) + [np.nan]
+        for (_, r), t_next in zip(g.iterrows(), nxt):
+            t_unc = float(r.t_D)
+            if not np.isfinite(t_unc):
+                continue
+            b = int(round((t_unc - onset) / BIN_S))
+            if not (0 <= b < len(loc)):
+                continue
+            here = loc[b]
+            # walk back to the first bin of this visit, and forward to the last
+            i = b
+            while i > 0 and loc[i - 1] == here:
+                i -= 1
+            j = b
+            while j < len(loc) - 1 and loc[j + 1] == here:
+                j += 1
+            rows.append({
+                "session": session, "grid_no": int(grid),
+                "rep_overall": int(r.rep_overall),
+                "is_discovery": int(int(r.rep_overall) == first_rep),
+                "loc_D": float(here),
+                "t_arrive": onset + i * BIN_S,
+                "t_uncover": t_unc,
+                "t_leave": onset + (j + 1) * BIN_S,
+                "t_next_rep": float(t_next),
+            })
+    ev = pd.DataFrame(rows)
+    if len(ev):
+        ev["deliberation_s"] = ev.t_uncover - ev.t_arrive
+        ev["dwell_s"] = ev.t_leave - ev.t_uncover
+    return ev

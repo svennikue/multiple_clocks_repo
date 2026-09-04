@@ -228,7 +228,11 @@ class CleanAxis:
     """
 
     def __init__(self, intervals):
-        self.iv = np.asarray(intervals, float).reshape(-1, 2)
+        iv = np.asarray(intervals, float).reshape(-1, 2)
+        # sorted by start, so the lookup below can be a searchsorted rather than
+        # a loop over intervals. A session has thousands of clean intervals and
+        # this sits inside the permutation loop.
+        self.iv = iv[np.argsort(iv[:, 0])] if len(iv) else iv
         dur = np.diff(self.iv, axis=1).ravel() if len(self.iv) else np.zeros(0)
         self.cum = np.concatenate([[0.0], np.cumsum(dur)])
         self.total = float(self.cum[-1]) if len(self.cum) else 0.0
@@ -237,9 +241,14 @@ class CleanAxis:
         """Wall seconds -> clean seconds. NaN if t falls inside an artifact."""
         t = np.atleast_1d(np.asarray(t, float))
         out = np.full(t.shape, np.nan)
-        for i, (a, b) in enumerate(self.iv):
-            m = (t >= a) & (t < b)
-            out[m] = self.cum[i] + (t[m] - a)
+        if not len(self.iv):
+            return out
+        i = np.searchsorted(self.iv[:, 0], t, side='right') - 1
+        ok = i >= 0
+        ii = np.clip(i, 0, len(self.iv) - 1)
+        ok &= t < self.iv[ii, 1]          # inside that interval, not past it
+        jj = ii[ok]
+        out[ok] = self.cum[jj] + (t[ok] - self.iv[jj, 0])
         return out
 
     def to_wall(self, c):

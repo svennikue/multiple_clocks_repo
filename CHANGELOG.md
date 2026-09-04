@@ -1,5 +1,40 @@
 # CHANGELOG
 
+## 2026-09-03 — One consolidated lag-wise results table
+
+`scripts/overlay_double_dissociation.py` now writes ONE lag-wise table,
+`overlay_lagwise_tests.csv` (144 rows), replacing `overlay_per_lag_table.csv`
+and `overlay_subject_clustered_lagwise_ttests.csv` (both deleted on re-run,
+along with the older `WEIGHTING_RESULTS.md`). `_subject_clustered_lagwise_tests`
+and the inline per-lag block in `make_overlay` are gone, replaced by
+`_lagwise_tests`.
+
+Grid: unit_of_analysis (cell, subject) x metric (raw_r, fisher_z) x 3 stats
+ROIs x 12 lags. Columns: `p_one_sided`, `q_one_sided_across_12_lags`,
+`q_one_sided_across_rois`, `q_one_sided_across_rois_and_lags`, plus
+`mean_tested_value` (what the t ran on), `mean_raw_r`, `mean_fisher_z`,
+`r_from_fisher_z`, `t`, `df`, n's. One-sided only, as requested. Every BH
+correction runs INSIDE one unit x metric block -- the four blocks are versions
+of the same test, not additional tests. Fisher-z numbers reproduce the two old
+tables exactly. The peak-lag permutation now also covers the 2 x 2 grid.
+
+**Raw r is uniformly slightly stronger than Fisher z** (cell mPFC 30 deg
+t = 3.09 vs 3.02; subject mPFC 60 deg t = 2.22 vs 2.16), as expected since the
+z transform inflates the variance of extreme cell r's. The difference never
+changes a conclusion except at one knife-edge, below.
+
+**What survives, by correction scope (one-sided):**
+- across 12 lags: ONLY cell mPFC 30 deg (q = .014 raw_r / .018 fisher_z).
+  Nothing at subject level, nothing in HC.
+- across 3 ROIs at one lag: cell mPFC 30 deg (.0035/.0044), cell HC_mid 0 deg
+  (.016/.014), cell HC_anterior 330 deg (.034/.037), cell HC_mid 330 deg
+  (.039/.049), subject HC_mid 0 deg (.038/.039).
+- across ROIs AND lags (36 tests): cell mPFC 30 deg is q = .042 with raw r but
+  q = .053 with Fisher z -- the single place the metric flips a threshold.
+  Nothing else survives. Flagged so the choice is never made by outcome; the
+  pre-registered metric (Fisher z) stands.
+
+
 ## 2026-09-03 (instruction-phase RSA) — cumulative reward-prefix models + per-combo RDM scope
 
 `scripts/fMRI_run_RSA_instruction.py` gained a second family of models sliced
@@ -148,6 +183,24 @@ instruction EV 0.12. It does not fix the baseline — the instruction period is
 unavoidably "instruction vs. execution". For RSA that is a common offset across
 conditions and cancels in correlation distance. Kept for comparability with the
 `01`/`01-TR` GLMs; `"regress_buttons": false` switches it off.
+
+**Runners.** `mc/fmri_analysis/subject_GLM_instruction_epochs.sh` submits the
+FEAT jobs (subject x half x epoch) and
+`mc/fmri_analysis/submit_RSA_instruction_epochs.sh` the RSA jobs, writing one
+config snapshot per epoch with `regression_version` set and `TR` null.
+`wrapper_python_fMRI_RSA_clean_config.sh` is unchanged — it only forwards
+subject, config and script name.
+
+**`mc/fmri_analysis/check_GLMs_ran.py`** verifies the FEAT runs before they are
+trusted. Per (subject x half x GLM) it separates: no EV folder, no .feat, no
+stats/, incomplete PEs (killed mid-FILM), FILM unfinished (all PEs but no
+dof/smoothness/sigmasquareds/threshac1 — those are written last), task-to-EV.txt
+pointing past the design, and a `+.feat` twin, which matters because FEAT never
+overwrites an existing output dir: it appends '+' and leaves the stale original
+in place, and the stale one is what the RSA reads. `--check-data` additionally
+loads every PE the RSA uses and flags all-zero or non-finite maps. Prints a
+per-GLM resubmit list and exits 1 when anything failed. Expected GLM names come
+from the same EV config the EV script uses, so the two cannot drift apart.
 
 **Caveat — sub-10 pt1.** Its last task's instruction (B1_backw) ends at 1878 s.
 If that run is the nominal 1670 vols x 1.078 s = 1800 s, `feat_model` does not
@@ -3344,3 +3397,133 @@ there is more than one block.
 **I archived `swr_diagnose_blocks.py` this morning saying "block structure is
 resolved". That was wrong** -- s09 proves it. The capability is back, and better,
 as part of the audit rather than a separate script to remember to run.
+
+## 2026-09-03 — full-cohort SWR hypotheses (n=46): the development-set results do not replicate
+
+Ran all seven hypotheses on the full cluster output: **46 sessions, 33 subjects,
+52,129 accepted ripples, 166 bipolar derivations** (144 after exclusions), via a new
+bundle-backed source so the statistics run on the laptop without the LFP.
+
+### Two method defects fixed first (both affect every earlier p-value)
+
+1. **The permutation was shifting in wall time, not on the artifact-free axis.**
+   `methods.md` §specifies the clean axis and `assign_events_to_windows` has a
+   `shift_s` parameter built for it, but `_shifted_counts_factory` did
+   `t_sh = lo + mod(t - lo + sh, L)` on wall time. Shifted events could land inside
+   artifact stretches where the detector could never have found them. Now uses the
+   documented path. **All 8-session p-values came from the wall-time null.**
+2. **`CleanAxis.to_clean` looped over intervals in Python** (~4,500 per pair) and
+   dominated runtime. Vectorised with searchsorted; verified bit-identical against
+   the loop on all 166 derivations (max abs difference 0.0).
+
+### Results
+
+| | contrast | observed | z | p (one-sided, pre-declared) | q FDR |
+|---|---|---|---|---|---|
+| H1 | first-D vs later-D | -5.5% | -1.78 | 0.966 | (primary, uncorrected) |
+| H2 | exploration vs later pauses | -6.1% | -2.08 | 0.973 | 1.000 |
+| H3 | rate after first-D -> later errors | b=-0.26 | +1.93 | 0.025 | 0.150 |
+| H4 | error vs correct feedback | -7.9% | -5.20 | 1.000 | 1.000 |
+| H5 | plan vs execute | -5.1% | -1.71 | 0.948 | 1.000 |
+| H6 | D special x discovery | -6.2% | -1.35 | 0.916 | 1.000 |
+| H7 | informative feedback | +0.4% | +0.77 | 0.218 | 0.653 |
+
+**H1 does not replicate.** Development 8 sessions: +23.3%. The other 38: **-9.6%**.
+Across all 46, 21/46 sessions positive, median log RR -0.023. The earlier +24.5%
+(z=+2.84, p=0.005) was a small-sample artefact of a lucky draw (s38 +0.69, s06 +0.40,
+s02 +0.40).
+
+**H6, the discriminating test, is null** (-6.2%, p=0.916). Neither "D completes the
+plan" nor its alternative is supported at n=46.
+
+**H4 is the one well-powered effect, in the direction opposite to the pre-declared
+one.** One-sided p=1.000 because the observed value is 5.2 SD on the wrong side of its
+null; two-sided p ~ 2e-7. Ripple rate is **7.9% LOWER after an error than after a
+correct uncovering**, confirmed independently by the GLM (`feedback[T.error]`
+coef -0.159, p=0.0001) with an interaction (coef +0.106, p=0.036: suppression stronger
+during discovery). The PETH shows the dip beginning BEFORE the press. Post-hoc
+direction -- needs held-out confirmation before it is a claim.
+
+### Definitional sweeps (GLM only, `sweep` verb, n_perms=0)
+
+**H1 has no stable window.** The effect grows monotonically with window length
+(0.5s +0.018 -> 5s -0.106), which is the opposite of what an event-locked response
+does. The **largest effect is in the 1 s BEFORE D** (log RR -0.205, p=0.0001) --
+before the event the hypothesis is about. Clipping at the next repeat halves the 2 s
+effect (-0.057 -> -0.020), so part of it was spillover into the next traversal.
+Conclusion: the first traversal has a **sustained lower baseline rate**, and the
+window-averaged tests measure that offset, not a response at D.
+
+**H3 is not robust.** Only 1 of 12 specifications reaches p<0.05 (variable pause,
+per grid, all-later errors: p=0.019). All fixed-window variants null (p=0.29-0.99);
+per-derivation p=0.078. `rate_hz = n/pause` is mechanically coupled to the
+`log(pause_s)` covariate in the same model, and 36% of grids have zero ripples in
+that pause. Do not report H3 as a finding.
+
+### Peri-event time histograms (exposure-corrected, new `describe` verb)
+
+Ripples are **phasically locked to reward uncovering**: a transient peak at
+**+250-750 ms**, riding on a first-traversal baseline that is LOWER than later
+traversals (~0.17 vs ~0.20 Hz). A 2 s window averages the transient away against the
+depressed baseline, which is exactly how H1 becomes -5.5%. The remedy is
+baseline-corrected, time-resolved testing (post vs pre within trial, cluster
+permutation over time), NOT choosing a better window post hoc.
+
+### Ripple-triggered single units (new: `mc/analyse/swr_units.py`)
+
+24 sessions have both ripples and mPFC units. Row order taken from
+`all_cells_region_labels_sub{XX}.txt`, which matches the firing-matrix row count in
+every session; `neurons_with_ROI_labels.csv` has FEWER rows (s18 24 vs 25, s45 15 vs
+18) and its `cell idx` must not be used for this -- it would mislabel HC cells as mPFC.
+
+| region | units | subjects | mean z | p (units) | p (subjects) |
+|---|---|---|---|---|---|
+| HC (positive control) | 277 | 19 | +0.131 | 0.0004 | 0.029 |
+| mPFC | 93 | 16 | +0.054 | 0.32 | 0.44 |
+| PCC | 25 | 3 | +0.515 | 0.0004 | 0.21 |
+
+**Positive control passes** (HC peaks at ripple onset, z~0.28), so spike and LFP
+clocks are aligned. **No ripple-locked mPFC modulation** in the pre-declared
+0-200 ms window. Caveat: HC's own effect is modest for the strongest ripple
+signature in the brain -- if the 25 ms matrices are smoothed rather than raw counts,
+fast coupling is blurred and the mPFC null is uninformative. Check before trusting it.
+
+### Rejection bias is not a confound
+
+chi2=10.32, p=0.0057 is significant only on n=66,435. Actual acceptance:
+exploration 0.6666, first_correct 0.6638, later_repeats 0.6543 -- a **<=1.9% bias on
+counts**, against effects of interest in the tens of percent, and running against H2
+(which was null anyway). Artifact rejection differences are not a confound at all:
+that is the denominator, already handled by artifact-free exposure.
+
+**NULL / dead ends (do not re-run):**
+- H1 as a window-averaged first-D vs later-D contrast, at any window from 0.5 to 5 s.
+  The baseline differs; the window cannot fix it.
+- H3 with the variable-length pause as both window and covariate.
+- H2, H5, H6, H7 as pre-declared -- all null at n=46 with 1000 shifts.
+- Peri-ripple mPFC firing in a 0-200 ms window at 25 ms resolution: null, and
+  possibly under-powered by smoothing.
+
+## 2026-09-04 — correction: "H1-H7" were never pre-registered
+
+SK pointed out that the seven hypotheses in `swr_hypotheses.py` were written by
+Claude from SK's verbal description of the idea. They were never declared in
+advance by anyone. Labelling H1 "primary (pre-declared, uncorrected)" and
+FDR-correcting H2-H7 as a registered family was therefore wrong on two counts:
+
+* it gave those seven contrasts a confirmatory status they never had, and
+* it made a set of exploratory probes read as a failed confirmatory study,
+  which is a much stronger negative claim than the data support.
+
+Relabelled to "exploratory" throughout; the q-values are retained but are
+descriptive only. **The 2026-09-03 entry should be read with this in mind: the
+n=46 nulls mean those particular contrasts do not show an effect, NOT that a
+pre-registered prediction failed.**
+
+The project is at the exploration stage: the open questions are when the effect
+happens, over what window, and how ripples interact with movement. See
+`swr_explore.py` (probes, nothing claimed) and `swr_findings.py` (curated).
+
+N3 (no ripple response at grid onset) is also reframed: under SK's logic that is
+the EXPECTED result, since at grid onset no reward has been uncovered and there
+is nothing plan-relevant to communicate. It is a confirmation, not a null.

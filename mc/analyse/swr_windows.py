@@ -366,7 +366,7 @@ def windows_feedback(uncov, lock_s=1.0, min_gap_s=None):
     return _finalise(rows)
 
 
-def windows_first_D(beh, pre_s=0.0, post_s=2.0):
+def windows_first_D(beh, pre_s=0.0, post_s=2.0, truncate_next=False):
     """The single moment the plan first becomes knowable, per grid.
 
     The fMRI result this is modelled on peaks exactly when the fourth reward is
@@ -374,19 +374,39 @@ def windows_first_D(beh, pre_s=0.0, post_s=2.0):
     against every later arrival at D in the same grid. Unlike the 4x2 discovery
     design it makes no use of A/B/C, which keeps it a single pre-declared
     contrast rather than a table to search.
+
+    The window is `[t_D - pre_s, t_D + post_s]` -- a FIXED span from the moment
+    D is uncovered, not "how long the subject stays at D".
+
+    `post_s=None` instead uses the dwell time: t_D to the start of the next
+    repeat (t_A of repeat n+1), or the grid's end for the last repeat. That is a
+    different question -- occupancy rather than a time-locked response -- and it
+    makes the window length differ systematically between conditions, so the
+    exposure offset is doing much more work.
+
+    `truncate_next=True` clips the fixed window at the start of the next repeat,
+    so a long `post_s` cannot spill into the next traversal. Without it a 2 s
+    window after a later D routinely contains the beginning of the next repeat.
     """
     b = add_phase(beh)
     rows = []
     for (blk, grid), g in b.groupby(['session_no', 'grid_no']):
         g = g.sort_values('rep_overall')
         first_rep = int(g.rep_overall.iloc[0])
-        for _, r in g.iterrows():
+        nxt = list(g.t_A.to_numpy(float)[1:]) + [np.nan]
+        for (_, r), t_next in zip(g.iterrows(), nxt):
             t = float(r['t_D'])
             if not np.isfinite(t):
                 continue
+            if post_s is None:
+                end = t_next if np.isfinite(t_next) else t + REWARD_LOCK_S
+            else:
+                end = t + post_s
+                if truncate_next and np.isfinite(t_next):
+                    end = min(end, t_next)
             is_first = int(r['rep_overall']) == first_rep
             rows.append({
-                "start_s": t - pre_s, "end_s": t + post_s,
+                "start_s": t - pre_s, "end_s": end,
                 "condition": "first_D" if is_first else "later_D",
                 "discovery": "first" if is_first else "later",
                 "is_test": bool(is_first),
@@ -495,3 +515,186 @@ def windows_informative(uncov, lock_s=1.0):
 
 
 DESIGNS["phase3"] = windows_phase3
+
+
+def peri_event_rate(event_t, align_t, intervals, half_s=5.0, bin_s=0.25):
+    """Ripple rate as a function of time relative to a set of alignment events.
+
+    A peri-event time histogram, but **exposure-corrected**: each bin is
+    ripples-in-bin divided by the artifact-free seconds in that bin, summed
+    over alignment events. Without that correction a dip in rate can be a dip
+    in recording quality, which is exactly the artifact this pipeline removes
+    everywhere else.
+
+    Returns (centres_s, rate_hz, n_align, exposure_s_per_bin).
+    """
+    align_t = np.asarray(align_t, float)
+    align_t = align_t[np.isfinite(align_t)]
+    edges = np.arange(-half_s, half_s + bin_s / 2, bin_s)
+    centres = edges[:-1] + bin_s / 2
+    if not len(align_t):
+        return centres, np.full(len(centres), np.nan), 0, np.zeros(len(centres))
+
+    t = np.sort(np.asarray(event_t, float))
+    counts = np.zeros(len(centres))
+    expo = np.zeros(len(centres))
+    for a in align_t:
+        starts = a + edges[:-1]
+        stops = a + edges[1:]
+        counts += (np.searchsorted(t, stops, side="right")
+                   - np.searchsorted(t, starts, side="left"))
+        expo += clean_exposure(intervals, starts, stops)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        rate = np.where(expo > 0, counts / expo, np.nan)
+    return centres, rate, int(len(align_t)), expo
+
+
+D_WINDOW_KINDS = {
+    "uncover_locked": "fixed window from the moment D is uncovered (the press)",
+    "arrival_locked": "fixed window from arriving at the D location",
+    "deliberation": "arrival -> uncovering: standing on the reward, before pressing",
+    "dwell": "uncovering -> leaving the D location",
+    "pre_arrival": "fixed window BEFORE arriving at D (approach)",
+    "post_leave": "fixed window after stepping off D",
+}
+
+
+def windows_from_d_events(dev, kind="uncover_locked", w_s=1.0,
+                          truncate_next=True, min_window_s=None):
+    """H1 windows from the arrival/uncover/leave table (`swb.d_events`).
+
+    `kind` selects what "around D" means -- see D_WINDOW_KINDS. The distinction
+    matters: dwell time at D is ~3x longer on the discovery traversal than
+    later, so any fixed window extending past the press compares a subject who
+    is still standing on the reward against one who has already moved on.
+    The `deliberation` window is the only one that is naturally matched
+    (~0.7 s in both conditions), because it ends at the press by construction.
+
+    `condition` is first_D / later_D, so a positive log(first/later) rate ratio
+    supports the hypothesis.
+    """
+    if not len(dev):
+        return pd.DataFrame()
+    rows = []
+    for r in dev.itertuples():
+        if kind == "uncover_locked":
+            t0, t1 = r.t_uncover, r.t_uncover + w_s
+        elif kind == "arrival_locked":
+            t0, t1 = r.t_arrive, r.t_arrive + w_s
+        elif kind == "deliberation":
+            t0, t1 = r.t_arrive, r.t_uncover
+        elif kind == "dwell":
+            t0, t1 = r.t_uncover, r.t_leave
+        elif kind == "pre_arrival":
+            t0, t1 = r.t_arrive - w_s, r.t_arrive
+        elif kind == "post_leave":
+            t0, t1 = r.t_leave, r.t_leave + w_s
+        else:
+            raise ValueError(f"unknown kind '{kind}'; have {list(D_WINDOW_KINDS)}")
+        if truncate_next and np.isfinite(r.t_next_rep):
+            t1 = min(t1, r.t_next_rep)
+        rows.append({
+            "start_s": t0, "end_s": t1,
+            "condition": "first_D" if r.is_discovery else "later_D",
+            "discovery": "first" if r.is_discovery else "later",
+            "is_test": bool(r.is_discovery),
+            "grid_no": int(r.grid_no), "rep_overall": int(r.rep_overall),
+            "dwell_s": r.dwell_s, "deliberation_s": r.deliberation_s,
+        })
+    w = pd.DataFrame(rows)
+    if not len(w):
+        return w
+    # MIN_WINDOW_S (0.5 s) is far too coarse for the short variants: it drops
+    # 55% of first-D and 46% of later-D deliberation windows -- differentially,
+    # and specifically the fast decisions. The floor is therefore explicit here
+    # rather than inherited from the module default.
+    floor = MIN_WINDOW_S if min_window_s is None else float(min_window_s)
+    w = w[(w.end_s - w.start_s) >= floor].copy()
+    w["duration_s"] = w.end_s - w.start_s
+    return w.reset_index(drop=True)
+
+
+def windows_phase3_whole(beh):
+    """WHOLE phases, not the pauses between repeats.
+
+    `windows_phase3` builds pause windows labelled by the following repeat,
+    which makes "explore" structurally impossible: explore is the first
+    traversal, and the first traversal has no preceding pause. That is why the
+    H5 run contained only {plan, execute}.
+
+    Phases here, per SK:
+        explore   grid onset -> t_D of the first traversal
+                  (until all four rewards have been uncovered once)
+        plan      end of explore -> start of the first error-free solve
+        execute   from the first error-free solve to the end of the grid
+
+    These differ enormously in movement and duration, which is exactly why the
+    pause version existed. The exposure offset handles duration; movement stays
+    a covariate and a confound to be shown, not assumed away.
+    """
+    b = add_phase3(beh)
+    rows = []
+    for (blk, grid), g in b.groupby(['session_no', 'grid_no']):
+        g = g.sort_values('rep_overall')
+        first = g.iloc[0]
+        t_start = float(first.new_grid_onset)
+        t_explore_end = float(first.t_D)
+        solved = g[g.correct.astype(int) == 1]
+        t_exec_start = (float(solved.iloc[0].new_grid_onset) if len(solved)
+                        else np.nan)
+        t_end = float(g.t_D.max())
+        spans = [("explore", t_start, t_explore_end)]
+        if np.isfinite(t_exec_start) and t_exec_start > t_explore_end:
+            spans.append(("plan", t_explore_end, t_exec_start))
+            spans.append(("execute", t_exec_start, t_end))
+        elif np.isfinite(t_exec_start):
+            spans.append(("execute", max(t_exec_start, t_explore_end), t_end))
+        else:
+            spans.append(("plan", t_explore_end, t_end))
+        for name, t0, t1 in spans:
+            if not (np.isfinite(t0) and np.isfinite(t1)) or t1 <= t0:
+                continue
+            rows.append({"start_s": t0, "end_s": t1, "condition": name,
+                         "phase3": name, "grid_no": int(grid),
+                         "rep_overall": int(first.rep_overall)})
+    return _finalise(pd.DataFrame(rows))
+
+
+def windows_immobility(beh, move_times, is_move, min_still_s=1.0,
+                       max_still_s=None):
+    """Periods with no movement key press, labelled by task phase.
+
+    H2 as SK meant it: the subject is standing still and thinking. Comparing
+    immobility during exploration/planning with immobility during execution
+    holds the behavioural state constant and varies only what is known --
+    which the inter-repeat pause version does not, because a pause also
+    contains whatever movement precedes the next traversal.
+
+    `move_times` / `is_move` come from `swr_behaviour.movement_series`, already
+    on the session clock.
+    """
+    b = add_phase3(beh)
+    t = np.asarray(move_times, float)
+    mv = np.asarray(is_move, bool)
+    idx = np.flatnonzero(mv)
+    if idx.size < 2:
+        return pd.DataFrame()
+    # a still period is the gap between consecutive movement presses
+    rows = []
+    for a, c in zip(idx[:-1], idx[1:]):
+        t0, t1 = t[a], t[c]
+        if t1 - t0 < min_still_s:
+            continue
+        if max_still_s is not None and t1 - t0 > max_still_s:
+            continue
+        mid = 0.5 * (t0 + t1)
+        # which repeat is this inside?
+        hit = b[(b.new_grid_onset <= mid) & (b.t_D >= mid)]
+        if not len(hit):
+            continue
+        r = hit.iloc[0]
+        rows.append({"start_s": t0, "end_s": t1,
+                     "condition": r.phase3, "phase3": r.phase3,
+                     "grid_no": int(r.grid_no),
+                     "rep_overall": int(r.rep_overall)})
+    return _finalise(pd.DataFrame(rows))

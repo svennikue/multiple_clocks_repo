@@ -19,6 +19,7 @@ subject equal weight. Never displays "ACC" — remapped to "mPFC".
 """
 from __future__ import annotations
 import argparse, json, os, sys
+from itertools import product
 from pathlib import Path
 
 import numpy as np
@@ -44,16 +45,14 @@ STATS_ROIS = ['mPFC', 'HC_anterior', 'HC_mid']
 # The mean r printed next to a t is the *same* effect expressed in r units, so
 # the reader always knows which r/z, p and q belong to which t.
 TEST_DEFINITIONS = {
-    "per_lag": (
-        "One-sample t of Fisher-z(CV r) > 0 at each of the 12 lags. "
-        "mean_fisher_z is the tested quantity, t_fisher_z_vs_0 is its t, "
-        "mean_raw_r is the untransformed cell/subject mean shown in the "
-        "figure, and r_from_fisher_z = tanh(mean_fisher_z) is the same "
-        "effect as the t, back-transformed to r."),
-    "subject_clustered_per_lag": (
-        "Same test as per_lag but always with one observation per subject "
-        "(Fisher-z averaged across that subject's cells), for all three "
-        "stats ROIs including HC_anterior which is not drawn in the overlay."),
+    "lagwise": (
+        "One-sample t of the tested value > 0 at each of the 12 lags, run "
+        "for every combination of unit_of_analysis (cell = one observation "
+        "per cell; subject = cells averaged within subject first) and metric "
+        "(raw_r = untransformed CV r; fisher_z = Fisher-z CV r). "
+        "mean_tested_value is what the t was computed on; mean_raw_r, "
+        "mean_fisher_z and r_from_fisher_z = tanh(mean_fisher_z) are the "
+        "same effect in every unit, so no t is ever ambiguous."),
     "target_window": (
         "Pre-defined window test. target_mean_vs_zero: mean Fisher-z over "
         "the predicted lags vs 0. target_vs_other_lags: mean Fisher-z over "
@@ -71,18 +70,18 @@ TEST_DEFINITIONS = {
 
 # Which correction is which. Each entry names the family of tests that were
 # corrected together, so a q or FWE p can never be read out of context.
+# In the lag-wise table every correction is computed INSIDE one
+# unit_of_analysis x metric block, never across blocks: cell/subject and
+# raw_r/fisher_z are four versions of the same test, not extra tests.
 CORRECTION_FAMILIES = {
-    "q_within_roi_12_lags": (
-        "BH across the 12 lags of ONE ROI (and one weighting). 12 tests."),
-    "q_within_lag_across_overlay_rois": (
-        "BH across the overlay ROIs at ONE lag (and one weighting). "
-        "As many tests as there are overlay ROIs."),
-    "q_across_rois_and_lags": (
-        "BH across all stats ROIs x all 12 lags at once. 3 x 12 = 36 tests. "
+    "q_one_sided_across_12_lags": (
+        "BH across the 12 lags of ONE ROI. 12 tests."),
+    "q_one_sided_across_rois": (
+        "BH across the 3 stats ROIs at ONE lag (lag-wise table), or across "
+        "the 3 ROIs for one window / pre-specified-lag test. 3 tests."),
+    "q_one_sided_across_rois_and_lags": (
+        "BH across all 3 stats ROIs x 12 lags at once. 36 tests. "
         "The most conservative scope."),
-    "q_across_rois": (
-        "BH across the stats ROIs for ONE window test or ONE pre-specified "
-        "lag, and one weighting. 3 tests (mPFC, HC_anterior, HC_mid)."),
     "p_fwe_maxt_within_roi_12_lags": (
         "Sign-flip permutation FWE across the 12 lags of one ROI: p is the "
         "fraction of permutations whose MAX t over lags beats the observed "
@@ -94,6 +93,10 @@ CORRECTION_FAMILIES = {
 }
 
 STAR_THRESHOLDS = ((0.001, "***"), (0.01, "**"), (0.05, "*"))
+
+# The two analysis choices that get crossed in the lag-wise table:
+# unit of analysis (cell vs subject) x metric (raw r vs Fisher z).
+METRICS = {"raw_r": False, "fisher_z": True}   # name -> Fisher-transform flag
 
 # ---- Single-lag reporting --------------------------------------------
 # Reporting one lag instead of the two-lag window needs the multiple-
@@ -300,64 +303,56 @@ def _tstat_gt0(values):
     return t, p_one, p_two
 
 
-def _subject_clustered_lagwise_tests(records, rois):
-    """Return one lag-wise Fisher-z t test per ROI after subject aggregation.
+def _lagwise_tests(records, rois, weightings):
+    """One row per unit-of-analysis x metric x ROI x lag, with every FDR scope.
 
-    Each cell's CV correlation is Fisher-transformed, cells are averaged
-    within subject at every lag, and the resulting independent subject means
-    are tested against zero.  This avoids treating multiple cells from the
-    same subject as independent observations.
+    The same one-sample t (> 0) is run four ways -- cells or subjects as the
+    unit of analysis, crossed with raw CV r or Fisher-z CV r as the tested
+    quantity -- so the consequences of those two analysis choices can be read
+    off one table. Every BH correction is computed inside one
+    unit_of_analysis x metric block, because correcting across blocks would
+    mix four versions of the same test.
     """
     rows = []
-    for roi in rois:
-        record = records[roi]
-        if record["curves"].size == 0:
-            continue
-        raw_subject_means = _analysis_units(
-            record, weighting="subject", fisher=False)
-        z_subject_means = _analysis_units(
-            record, weighting="subject", fisher=True)
-        t, p_one, p_two = _tstat_gt0(z_subject_means)
-        for j, lag in enumerate(LAGS_DEG_BASE):
-            valid = np.isfinite(z_subject_means[:, j])
-            n_subjects_valid = int(valid.sum())
-            rows.append({
-                "roi": _display(roi),
-                "lag_deg": lag,
-                "test": "one_sample_fisher_z_gt_zero",
-                "analysis_unit": "subject_mean",
-                "subject_aggregation": (
-                    "Fisher-z CV r averaged across cells within subject"),
-                "n_cells": record["curves"].shape[0],
-                "n_subjects_total": np.unique(record["subjects"]).size,
-                "n_subjects_valid": n_subjects_valid,
-                "mean_subject_raw_r": (
-                    float(np.nanmean(raw_subject_means[:, j]))
-                    if n_subjects_valid else np.nan),
-                "mean_subject_fisher_z": (
-                    float(np.nanmean(z_subject_means[:, j]))
-                    if n_subjects_valid else np.nan),
-                "r_from_fisher_z": (
-                    float(np.tanh(np.nanmean(z_subject_means[:, j])))
-                    if n_subjects_valid else np.nan),
-                "t_fisher_z_vs_0": t[j],
-                "df": n_subjects_valid - 1,
-                "p_one_sided": p_one[j],
-                "p_two_sided": p_two[j],
-            })
+    for weighting in weightings:
+        for metric, use_fisher in METRICS.items():
+            for roi in rois:
+                record = records[roi]
+                if record["curves"].size == 0:
+                    continue
+                tested = _analysis_units(record, weighting=weighting,
+                                         fisher=use_fisher)
+                raw = _analysis_units(record, weighting=weighting, fisher=False)
+                z = _analysis_units(record, weighting=weighting, fisher=True)
+                t, p_one, _ = _tstat_gt0(tested)
+                for j, lag in enumerate(LAGS_DEG_BASE):
+                    n_valid = int(np.isfinite(tested[:, j]).sum())
+                    rows.append({
+                        "unit_of_analysis": weighting,
+                        "metric": metric,
+                        "roi": _display(roi),
+                        "lag_deg": lag,
+                        "n_units": n_valid,
+                        "n_cells": record["curves"].shape[0],
+                        "n_subjects": np.unique(record["subjects"]).size,
+                        "df": n_valid - 1,
+                        "mean_tested_value": float(np.nanmean(tested[:, j])),
+                        "mean_raw_r": float(np.nanmean(raw[:, j])),
+                        "mean_fisher_z": float(np.nanmean(z[:, j])),
+                        "r_from_fisher_z": float(np.tanh(np.nanmean(z[:, j]))),
+                        "t": t[j],
+                        "p_one_sided": p_one[j],
+                    })
     out = pd.DataFrame(rows)
-    if not out.empty:
-        # The primary correction treats the 12 circular lags within each ROI
-        # as one family; the second column makes the whole 3 ROI × 12 lag
-        # family available for readers who want that more conservative scope.
-        out["q_one_sided_within_roi_12_lags"] = (
-            out.groupby("roi")["p_one_sided"].transform(_bh_fdr))
-        out["q_two_sided_within_roi_12_lags"] = (
-            out.groupby("roi")["p_two_sided"].transform(_bh_fdr))
-        out["q_one_sided_across_rois_and_lags"] = _bh_fdr(
-            out["p_one_sided"].to_numpy())
-        out["q_two_sided_across_rois_and_lags"] = _bh_fdr(
-            out["p_two_sided"].to_numpy())
+    if out.empty:
+        return out
+    block = ["unit_of_analysis", "metric"]
+    out["q_one_sided_across_12_lags"] = (
+        out.groupby(block + ["roi"])["p_one_sided"].transform(_bh_fdr))
+    out["q_one_sided_across_rois"] = (
+        out.groupby(block + ["lag_deg"])["p_one_sided"].transform(_bh_fdr))
+    out["q_one_sided_across_rois_and_lags"] = (
+        out.groupby(block)["p_one_sided"].transform(_bh_fdr))
     return out
 
 
@@ -517,12 +512,13 @@ def _peak_lag_permutation_tests(records, rois, weightings,
     """
     rng = np.random.default_rng(seed)
     rows = []
-    for weighting in weightings:
+    for weighting, (metric, use_fisher) in product(weightings, METRICS.items()):
         matrices, observed = {}, {}
         for roi in rois:
             if records[roi]["curves"].size == 0:
                 continue
-            z = _analysis_units(records[roi], weighting=weighting, fisher=True)
+            z = _analysis_units(records[roi], weighting=weighting,
+                                fisher=use_fisher)
             _check_vectorised_t(z)
             matrices[roi] = z
             observed[roi] = _tstat_gt0_vectorised(z)
@@ -562,11 +558,11 @@ def _peak_lag_permutation_tests(records, rois, weightings,
             for j, lag in enumerate(LAGS_DEG_BASE):
                 t_obs = observed[roi][j]
                 rows.append({
-                    "weighting": weighting, "roi": roi, "lag_deg": lag,
+                    "unit_of_analysis": weighting, "metric": metric,
+                    "roi": roi, "lag_deg": lag,
                     "n_units": z.shape[0],
-                    "mean_fisher_z": float(z[:, j].mean()),
-                    "r_from_fisher_z": float(np.tanh(z[:, j].mean())),
-                    "t_fisher_z_vs_0": float(t_obs),
+                    "mean_tested_value": float(z[:, j].mean()),
+                    "t": float(t_obs),
                     "df": z.shape[0] - 1,
                     "is_observed_peak_lag": lag == peak_lag,
                     "p_fwe_maxt_within_roi_12_lags": float(
@@ -700,49 +696,12 @@ def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY,
                         dpi=DPI, bbox_inches="tight")
         plt.close(fig)
 
-    # ---------- Print + save table --------------------------------------
-    rows = []
-    for current_weighting in weightings:
-        for roi in rois:
-            record = records[roi]
-            C = _analysis_units(record, weighting=current_weighting, fisher=False)
-            Z = _analysis_units(record, weighting=current_weighting, fisher=True)
-            if C.size == 0:
-                continue
-            mean_r = np.nanmean(C, axis=0)
-            mean_z = np.nanmean(Z, axis=0)
-            t, p_one, p_two = _tstat_gt0(Z)
-            for j, lag in enumerate(LAGS_DEG_BASE):
-                rows.append({
-                    "weighting": current_weighting, "roi": _display(roi),
-                    "n_units": C.shape[0],
-                    "n_cells": record["curves"].shape[0],
-                    "n_subjects": np.unique(record["subjects"]).size,
-                    "lag_deg": lag, "mean_raw_r": mean_r[j],
-                    "mean_fisher_z": mean_z[j],
-                    "r_from_fisher_z": float(np.tanh(mean_z[j])),
-                    "t_fisher_z_vs_0": t[j],
-                    "df": C.shape[0] - 1, "p_one_sided": p_one[j],
-                    "p_two_sided": p_two[j],
-                })
-    tbl = pd.DataFrame(rows)
-    tbl["q_one_sided_within_roi_12_lags"] = (
-        tbl.groupby(["weighting", "roi"])["p_one_sided"].transform(_bh_fdr))
-    tbl["q_two_sided_within_roi_12_lags"] = (
-        tbl.groupby(["weighting", "roi"])["p_two_sided"].transform(_bh_fdr))
-    tbl["q_one_sided_within_lag_across_overlay_rois"] = (
-        tbl.groupby(["weighting", "lag_deg"])["p_one_sided"].transform(_bh_fdr))
-    tbl["q_two_sided_within_lag_across_overlay_rois"] = (
-        tbl.groupby(["weighting", "lag_deg"])["p_two_sided"].transform(_bh_fdr))
-    tbl.to_csv(out_dir / "overlay_per_lag_table.csv", index=False)
-
-    # Always write the lag-wise subject-level inference table, regardless of
-    # whether the requested figures are cell-weighted, subject-balanced, or
-    # both.  STATS_ROIS includes HC_anterior even though it is not in the
-    # default visual overlay.
-    subject_lagwise = _subject_clustered_lagwise_tests(records, STATS_ROIS)
-    subject_lagwise.to_csv(
-        out_dir / "overlay_subject_clustered_lagwise_ttests.csv", index=False)
+    # ---------- One consolidated lag-wise results table ------------------
+    # cell x subject crossed with raw r x Fisher z, for all three stats ROIs
+    # (HC_anterior is included even though it is not drawn in the overlay),
+    # with all three FDR scopes side by side.
+    lagwise = _lagwise_tests(records, STATS_ROIS, ["cell", "subject"])
+    lagwise.to_csv(out_dir / "overlay_lagwise_tests.csv", index=False)
 
     target = _target_tests(records, STATS_ROIS, weightings)
     target.to_csv(out_dir / "overlay_target_window_tests.csv", index=False)
@@ -787,14 +746,13 @@ def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY,
             "mean_raw_r is the untransformed mean that the figure plots. "
             "'p' holds the uncorrected p values, 'fdr_q' the Benjamini-"
             "Hochberg q values -- one entry per correction family, described "
-            "in 'fdr_families'."),
+            "in 'correction_families'."),
         "test_definitions": TEST_DEFINITIONS,
         "correction_families": CORRECTION_FAMILIES,
         "target_window_tests": _json_rows(target),
         "prespecified_lag_tests": _json_rows(prespecified),
         "peak_lag_permutation_tests": _json_rows(peak_perm),
-        "per_lag_tests": _json_rows(tbl),
-        "subject_clustered_per_lag_tests": _json_rows(subject_lagwise),
+        "lagwise_tests": _json_rows(lagwise),
     }
     (out_dir / "overlay_results.json").write_text(json.dumps(results, indent=2))
 
@@ -812,9 +770,12 @@ def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY,
         "untransformed mean drawn in the figure. Cell-weighted rows treat "
         "each cell as an observation; subject-balanced rows average cells "
         "within a subject first, so n = subjects.", "",
-        "## FDR families", "",
-        "Several BH corrections are reported side by side; they differ only "
-        "in which tests were corrected together.", "",
+        "## Multiple-comparisons families", "",
+        "Several corrections are reported side by side; they differ only in "
+        "which tests were corrected together. In the lag-wise table every "
+        "correction runs inside one unit_of_analysis x metric block -- "
+        "cell/subject and raw_r/fisher_z are four versions of the same test, "
+        "not extra tests to correct for.", "",
         "| column | family |", "| --- | --- |",
     ]
     report += [f"| `{name}` | {text} |" for name, text in CORRECTION_FAMILIES.items()]
@@ -868,33 +829,35 @@ def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY,
     ]
     report += _md_table(
         peak_rows,
-        ["weighting", "roi", "lag_deg", "n_units", "df", "mean_fisher_z",
-         "r_from_fisher_z", "t_fisher_z_vs_0",
-         "p_fwe_maxt_within_roi_12_lags",
+        ["unit_of_analysis", "metric", "roi", "lag_deg", "n_units", "df",
+         "mean_tested_value", "t", "p_fwe_maxt_within_roi_12_lags",
          "p_fwe_maxt_across_rois_and_lags", "star"], floatfmt=5)
     report.append("")
 
-    lag_columns = ["roi", "lag_deg", "n_units", "df", "mean_raw_r",
-                   "mean_fisher_z", "r_from_fisher_z", "t_fisher_z_vs_0",
-                   "p_one_sided", "q_one_sided_within_roi_12_lags",
-                   "q_one_sided_within_lag_across_overlay_rois"]
-    for current_weighting in weightings:
-        unit = ("cell-weighted" if current_weighting == "cell"
-                else "subject-balanced")
-        report += [f"## Per-lag tests ({unit})", "",
-                   TEST_DEFINITIONS["per_lag"], ""]
-        report += _md_table(
-            tbl[tbl.weighting == current_weighting], lag_columns, floatfmt=4)
-        report.append("")
-
-    report += ["## Per-lag tests, subject-clustered, all three stats ROIs", "",
-               TEST_DEFINITIONS["subject_clustered_per_lag"], ""]
-    report += _md_table(
-        subject_lagwise,
-        ["roi", "lag_deg", "n_cells", "n_subjects_valid", "df",
-         "mean_subject_raw_r", "mean_subject_fisher_z", "r_from_fisher_z",
-         "t_fisher_z_vs_0", "p_one_sided", "q_one_sided_within_roi_12_lags",
-         "q_one_sided_across_rois_and_lags"], floatfmt=4)
+    report += ["## Lag-wise tests: all four analysis choices", "",
+               TEST_DEFINITIONS["lagwise"], "",
+               "One block per unit_of_analysis x metric. Everything is in "
+               "`overlay_lagwise_tests.csv`; the blocks below are only that "
+               "file split up for reading.", ""]
+    lag_columns = ["roi", "lag_deg", "n_units", "df", "mean_tested_value",
+                   "mean_raw_r", "mean_fisher_z", "r_from_fisher_z", "t",
+                   "p_one_sided", "q_one_sided_across_12_lags",
+                   "q_one_sided_across_rois",
+                   "q_one_sided_across_rois_and_lags"]
+    for unit in ("cell", "subject"):
+        for metric in METRICS:
+            block = lagwise[(lagwise.unit_of_analysis == unit)
+                            & (lagwise.metric == metric)]
+            if block.empty:
+                continue
+            unit_text = ("one observation per cell" if unit == "cell"
+                         else "cells averaged within subject first")
+            metric_text = ("untransformed CV r" if metric == "raw_r"
+                           else "Fisher-z CV r")
+            report += [f"### {unit} x {metric}", "",
+                       f"t on {metric_text}, {unit_text}.", ""]
+            report += _md_table(block, lag_columns, floatfmt=4)
+            report.append("")
 
     report += ["", "## Files", "",
                "- `overlay_results.json`: every test above, with its effect "
@@ -905,19 +868,19 @@ def make_overlay(per_cell_csv, out_dir, rois=ROIS_TO_OVERLAY,
                "per ROI, BH across the 3 ROIs.",
                "- `overlay_peak_lag_permutation.csv`: every lag with its "
                "sign-flip max-t FWE p, for reporting a peak lag.",
-               "- `overlay_per_lag_table.csv`: per-lag means and Fisher tests "
-               "for the overlay ROIs, cell- and subject-weighted.",
-               "- `overlay_subject_clustered_lagwise_ttests.csv`: lag-wise "
-               "Fisher-z t tests after averaging cells within subject for "
-               "mPFC, HC_anterior, and HC_mid.",
+               "- `overlay_lagwise_tests.csv`: THE lag-wise table -- cell "
+               "and subject units crossed with raw r and Fisher z, for all 3 "
+               "stats ROIs x 12 lags, with all three FDR scopes.",
                "- `overlay_meanR_wrapped_subject_weighted.pdf`: standalone "
                "subject-balanced publication overlay.",
                "- `overlay_meanR_weighting_comparison.pdf`: matched cell- "
                "versus subject-weighted comparison.", ""]
     (out_dir / "RESULTS.md").write_text("\n".join(report) + "\n")
-    stale = out_dir / "WEIGHTING_RESULTS.md"
-    if stale.exists():
-        stale.unlink()
+    for name in ("WEIGHTING_RESULTS.md", "overlay_per_lag_table.csv",
+                 "overlay_subject_clustered_lagwise_ttests.csv"):
+        stale = out_dir / name
+        if stale.exists():
+            stale.unlink()
     print("Wrote figures, RESULTS.md and overlay_results.json into", out_dir)
 
 

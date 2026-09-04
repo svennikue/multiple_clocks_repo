@@ -41,6 +41,7 @@ import os
 import glob
 import json
 import re
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -481,3 +482,34 @@ def start_log(out_dir, name, argv=None):
     except Exception as e:
         print(f"[log] could not open log file ({type(e).__name__}: {e}); continuing")
         return None
+
+
+def write_result(out_dir, name, hypothesis, tests, conclusion, extra=None,
+                 verbose=True):
+    """The output contract: every analysis directory carries what it claimed.
+
+    A results table on its own is unreadable six months later -- it does not say
+    what was being asked or what the answer was taken to be. Every analysis
+    writes `<name>_result.json` with:
+
+        hypothesis  what was being tested, in words
+        tests       the statistics, as a list of dicts
+        conclusion  what we take the answer to be, in words, including
+                    "nothing here" when that is the answer
+
+    Alongside a figure showing the data the statistics were computed on.
+    """
+    import json
+    os.makedirs(out_dir, exist_ok=True)
+    payload = {"name": name, "hypothesis": hypothesis,
+               "tests": tests if isinstance(tests, list) else [tests],
+               "conclusion": conclusion,
+               "created": datetime.now().isoformat(timespec="seconds")}
+    if extra:
+        payload.update(extra)
+    p = os.path.join(out_dir, f"{name}_result.json")
+    with open(p, "w") as f:
+        json.dump(payload, f, indent=2, default=str)
+    if verbose:
+        print(f"    wrote {os.path.basename(p)}")
+    return p

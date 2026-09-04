@@ -731,26 +731,42 @@ def _rate_by(counts, col):
     return g
 
 
+# which column splits the conditions, per hypothesis. Shared with
+# scripts/swr_hypotheses.py so the summary panel and the per-hypothesis
+# distribution figures group the data the same way.
+HYP_COND_COL = {"H1": "condition", "H2": "phase_after",
+                "H4": ["feedback", "phase"], "H5": "phase3",
+                "H6": ["state", "discovery"], "H7": "informative"}
+
+
 def hypothesis_figure(results, out_stem=None, title="", ncol=4):
     """One panel per hypothesis: the condition rates, plus the permutation null.
 
     Bars are the pooled rate (events / artifact-free seconds), error bars the
     SEM across subjects, because the subject is the unit of inference. The
-    inset histogram is the circular-shift null with the observed value marked,
+    histogram below is the circular-shift null with the observed value marked,
     since that -- not the GLM p -- is the primary inference.
+
+    Wraps onto `ncol` columns so seven hypotheses still fit an A4 width.
     """
-    keys = [k for k in ("H1", "H2", "H3", "H4") if k in results]
+    keys = [k for k in ("H1", "H2", "H3", "H4", "H5", "H6", "H7")
+            if k in results]
     if not keys:
         return None
+    ncol = int(min(ncol, len(keys)))
+    nblock = int(np.ceil(len(keys) / ncol))
     with plt.rc_context(_rc()):
-        fig, axes = plt.subplots(2, len(keys), squeeze=False,
-                                 figsize=(5.2 * len(keys) * CM, 11 * CM),
-                                 gridspec_kw=dict(height_ratios=[1.5, 1],
-                                                  hspace=0.75, wspace=0.5))
-        for j, k in enumerate(keys):
+        fig, axes = plt.subplots(2 * nblock, ncol, squeeze=False,
+                                 figsize=(4.9 * ncol * CM, 11 * nblock * CM),
+                                 gridspec_kw=dict(hspace=0.95, wspace=0.55))
+        for ax in axes.ravel():
+            ax.axis("off")
+        for i, k in enumerate(keys):
+            blk, j = divmod(i, ncol)
             r = results[k]
             c = r.get("counts")
-            ax = axes[0][j]
+            ax = axes[2 * blk][j]
+            ax.axis("on")
             if k == "H3" and c is not None and len(c):
                 ax.scatter(c.rate_hz, c.errors_per_repeat_after, s=9,
                            color=PHASE_COLORS["discovery"], alpha=0.6,
@@ -759,43 +775,832 @@ def hypothesis_figure(results, out_stem=None, title="", ncol=4):
                     b = np.polyfit(c.rate_hz, c.errors_per_repeat_after, 1)
                     xs = np.linspace(c.rate_hz.min(), c.rate_hz.max(), 20)
                     ax.plot(xs, np.polyval(b, xs), color=OBS_LINE_C, lw=1.2)
-                ax.set_xlabel("Ripple rate after first-D (Hz)")
+                ax.set_xlabel("Ripple rate after\nfirst-D (Hz)")
                 ax.set_ylabel("Errors per later repeat")
             elif c is not None and len(c):
-                # H2's split column is `phase_after` (the phase of the repeat
-                # that follows the pause), not `phase`
-                col = ("condition" if k == "H1" else
-                       "phase_after" if k == "H2" else "feedback")
-                if col not in c.columns:
-                    col = "condition"
-                g = _rate_by(c, col)
-                cols = [PHASE_COLORS.get(str(i), PAL[j % len(PAL)]) for i in g.index]
-                ax.bar(np.arange(len(g)), g["rate_hz"], yerr=g["sem"], color=cols,
-                       edgecolor="w", capsize=2.5, error_kw=dict(lw=0.8))
-                ax.set_xticks(np.arange(len(g)))
-                ax.set_xticklabels([str(i).replace("_", "\n") for i in g.index],
-                                   fontsize=FS_TICK - 1)
-                ax.set_ylabel("Ripple rate (Hz)")
-            ax.set_title(f"{k}", fontsize=FS_TITLE)
+                lab = _cond_series(c, HYP_COND_COL.get(k, "condition"))
+                if lab is None:
+                    lab = _cond_series(c, "condition")
+                if lab is not None:
+                    d = c.copy()
+                    d["_cond"] = lab
+                    g = _rate_by(d, "_cond")
+                    cols = [_cond_color(ix, m) for m, ix in enumerate(g.index)]
+                    ax.bar(np.arange(len(g)), g["rate_hz"], yerr=g["sem"],
+                           color=cols, edgecolor="w", capsize=2.5,
+                           error_kw=dict(lw=0.8))
+                    ax.set_xticks(np.arange(len(g)))
+                    ax.set_xticklabels([str(ix).replace("_", "\n")
+                                        for ix in g.index],
+                                       fontsize=FS_TICK - 2.5)
+                    ax.set_ylabel("Ripple rate (Hz)")
+            ax.set_title(k, fontsize=FS_TITLE)
 
-            # the null
-            ax = axes[1][j]
+            ax = axes[2 * blk + 1][j]
+            ax.axis("on")
             null = r.get("null")
-            if null is None and "null_mean" in r:
-                null = None
             if null is not None and len(np.ravel(null)):
-                ax.hist(np.ravel(null), bins=30, color="0.8", edgecolor="w",
-                        linewidth=0.3)
+                nn = np.ravel(np.asarray(null, float))
+                nn = nn[np.isfinite(nn)]
+                if nn.size:
+                    ax.hist(nn, bins=30, color="0.8", edgecolor="w",
+                            linewidth=0.3)
             obs = r.get("observed_log_rr", np.nan)
             if np.isfinite(obs):
                 ax.axvline(obs, color=OBS_LINE_C, lw=1.6)
             ax.set_xlabel("log rate ratio" if k != "H3" else "coefficient")
             ax.set_ylabel("permutations")
-            p = r.get("p_perm", np.nan)
-            ax.set_title(f"p = {p:.3f}" if np.isfinite(p) else "p = n/a",
+            p_ = r.get("p_perm", np.nan)
+            ax.set_title(f"p = {p_:.3f}" if np.isfinite(p_) else "p = n/a",
                          fontsize=FS_TICK)
         if title:
-            fig.suptitle(title, fontsize=FS_TITLE, y=1.0)
+            fig.suptitle(title, fontsize=FS_TITLE, y=1.002)
+        if out_stem:
+            os.makedirs(os.path.dirname(out_stem), exist_ok=True)
+            fig.savefig(out_stem + ".png", dpi=300)
+            fig.savefig(out_stem + ".pdf")
+            plt.close(fig)
+            print(f"    wrote {os.path.basename(out_stem)}.png/.pdf")
+    return fig
+
+
+# =============================================================================
+# DESCRIPTIVE DISTRIBUTIONS -- how each test arises from the data
+# =============================================================================
+# A test statistic is one number; these panels are the data behind it. The point
+# is to be able to see, for every contrast, (a) the spread across the unit of
+# inference, (b) whether the conditions differ in the things that trivially move
+# ripple rate -- window length, movement, artifact-free exposure -- and (c) where
+# the observed value sits in its own permutation null.
+
+def _cond_color(level, i):
+    lv = str(level)
+    if lv in STATE_COLORS:
+        return STATE_COLORS[lv]
+    if lv in PHASE_COLORS:
+        return PHASE_COLORS[lv]
+    for key, c in PHASE_COLORS.items():
+        if key in lv:
+            return c
+    return PAL[i % len(PAL)]
+
+
+def _cond_series(counts, condition_col):
+    """The condition label per row, as one string column (handles 2-factor)."""
+    if isinstance(condition_col, (list, tuple)):
+        cols = [c for c in condition_col if c in counts.columns]
+        if not cols:
+            return None
+        lab = counts[cols[0]].astype(str)
+        for c in cols[1:]:
+            lab = lab + "\n" + counts[c].astype(str)
+        return lab
+    if condition_col not in counts.columns:
+        return None
+    return counts[condition_col].astype(str)
+
+
+def _strip_box(ax, groups, values, colors, ylabel, rng, paired=None):
+    """Per-unit points with a box, and paired lines when the unit is shared.
+
+    Every point that goes into the statistic is drawn -- nothing is trimmed or
+    winsorised, so an outlier stays visible as an outlier.
+    """
+    pos = np.arange(len(groups))
+    for i, g in enumerate(groups):
+        v = np.asarray(values[g], float)
+        v = v[np.isfinite(v)]
+        if not v.size:
+            continue
+        ax.boxplot(v, positions=[i], widths=0.55, showfliers=False,
+                   medianprops=dict(color="0.15", lw=1.2),
+                   boxprops=dict(color="0.45", lw=0.8),
+                   whiskerprops=dict(color="0.45", lw=0.8),
+                   capprops=dict(color="0.45", lw=0.8))
+        jitter = (rng.random(v.size) - 0.5) * 0.28
+        ax.scatter(i + jitter, v, s=7, color=colors[i], alpha=0.65,
+                   edgecolor="none", zorder=3)
+    if paired is not None and len(groups) > 1:
+        for _, row in paired.iterrows():
+            y = [row.get(g, np.nan) for g in groups]
+            if np.sum(np.isfinite(np.asarray(y, float))) < 2:
+                continue
+            ax.plot(pos, y, color="0.6", lw=0.4, alpha=0.5, zorder=1)
+    ax.set_xticks(pos)
+    ax.set_xticklabels([str(g).replace("_", "\n") for g in groups],
+                       fontsize=FS_TICK - 1)
+    ax.set_ylabel(ylabel)
+
+
+def condition_distributions(name, counts, condition_col, null=None,
+                            observed=None, question="", out_stem=None,
+                            seed=42):
+    """Six panels showing how one hypothesis test arises from its data.
+
+    counts : the window x derivation table the test was computed on
+    null   : the circular-shift null, observed : the empirical statistic
+
+    Panels: per-subject rate, per-derivation rate, window duration, movement,
+    exposure and window count, and the permutation null.
+    """
+    rng = np.random.default_rng(seed)
+    lab = _cond_series(counts, condition_col)
+    if lab is None or not len(counts):
+        return None
+    c = counts.copy()
+    c["_cond"] = lab
+    groups = list(pd.unique(c["_cond"].sort_values()))
+    colors = [_cond_color(g, i) for i, g in enumerate(groups)]
+
+    # rate per unit: summed events over summed exposure, the same pooling the
+    # statistic uses -- a mean of per-window rates would weight a 0.5 s window
+    # like a 5 s one
+    def _rate_per(unit):
+        g = (c.groupby([unit, "_cond"])
+             .agg(n=("n_ripples", "sum"), e=("exposure_s", "sum")))
+        g["r"] = g["n"] / g["e"].replace(0, np.nan)
+        return g["r"].unstack("_cond")
+
+    per_subj = _rate_per("subject_key") if "subject_key" in c else None
+    per_pair = _rate_per("pair_id") if "pair_id" in c else None
+
+    with plt.rc_context(_rc()):
+        fig, axes = plt.subplots(2, 3, figsize=(19 * CM, 13 * CM))
+        fig.subplots_adjust(hspace=0.55, wspace=0.38)
+
+        ax = axes[0][0]
+        if per_subj is not None:
+            _strip_box(ax, groups, {g: per_subj[g].to_numpy() for g in groups
+                                    if g in per_subj},
+                       colors, "Ripple rate (Hz)", rng, paired=per_subj)
+            ax.set_title(f"Per subject (n={per_subj.shape[0]})\nthe unit of inference",
+                         fontsize=FS_TICK)
+
+        ax = axes[0][1]
+        if per_pair is not None:
+            _strip_box(ax, groups, {g: per_pair[g].to_numpy() for g in groups
+                                    if g in per_pair},
+                       colors, "Ripple rate (Hz)", rng, paired=per_pair)
+            ax.set_title(f"Per derivation (n={per_pair.shape[0]})",
+                         fontsize=FS_TICK)
+
+        ax = axes[0][2]
+        if "duration_s" in c:
+            d = c["duration_s"].to_numpy(float)
+            d = d[np.isfinite(d)]
+            # several designs lock a fixed-length window, so the "distribution"
+            # is a constant and plotting it shows only float noise. Say so.
+            if d.size and (d.max() - d.min()) < 1e-6:
+                ax.text(0.5, 0.5, f"fixed by design\n{d[0]:.2f} s\nin every "
+                                  "condition", ha="center", va="center",
+                        transform=ax.transAxes, fontsize=FS_TICK)
+                ax.set_xticks([]); ax.set_yticks([])
+                for sp in ax.spines.values():
+                    sp.set_visible(False)
+            else:
+                _strip_box(ax, groups,
+                           {g: c.loc[c._cond == g, "duration_s"].to_numpy()
+                            for g in groups}, colors, "Window duration (s)", rng)
+            ax.set_title("Window length\n(confound: longer = more ripples)",
+                         fontsize=FS_TICK)
+
+        ax = axes[1][0]
+        if "n_moves" in c:
+            _strip_box(ax, groups,
+                       {g: c.loc[c._cond == g, "n_moves"].to_numpy()
+                        for g in groups}, colors, "Movement presses / window", rng)
+            ax.set_title("Movement\n(confound: suppresses ripples)",
+                         fontsize=FS_TICK)
+
+        ax = axes[1][1]
+        expo = c.groupby("_cond").agg(e=("exposure_s", "sum"),
+                                      n=("n_ripples", "sum"),
+                                      w=("exposure_s", "size")).reindex(groups)
+        ax.bar(np.arange(len(groups)), expo["e"], color=colors, edgecolor="w")
+        ax.set_xticks(np.arange(len(groups)))
+        ax.set_xticklabels([str(g).replace("_", "\n") for g in groups],
+                           fontsize=FS_TICK - 1)
+        ax.set_ylabel("Artifact-free exposure (s)")
+        for i, (_, r) in enumerate(expo.iterrows()):
+            ax.text(i, r["e"], f"{int(r['w'])} win\n{int(r['n'])} rip",
+                    ha="center", va="bottom", fontsize=FS_TICK - 2.5)
+        ax.margins(y=0.22)
+        ax.set_title("Power per condition\n(unequal by design)", fontsize=FS_TICK)
+
+        ax = axes[1][2]
+        if null is not None and np.isfinite(np.asarray(null, float)).any():
+            nn = np.asarray(null, float)
+            nn = nn[np.isfinite(nn)]
+            ax.hist(nn, bins=30, color="0.75", edgecolor="w", lw=0.4)
+            if observed is not None and np.isfinite(observed):
+                ax.axvline(observed, color=OBS_LINE_C, lw=1.6)
+                p = (1 + np.sum(nn >= observed)) / (1 + nn.size)
+                ax.text(0.97, 0.94, f"observed\np = {p:.4f}", ha="right",
+                        va="top", transform=ax.transAxes, fontsize=FS_TICK - 1,
+                        color=OBS_LINE_C)
+            ax.set_xlabel("Statistic under circular shift")
+            ax.set_ylabel("Permutations")
+            ax.set_title(f"Null ({nn.size} shifts)", fontsize=FS_TICK)
+        else:
+            ax.axis("off")
+
+        head = f"{name}: {question}" if question else name
+        fig.suptitle(head, fontsize=FS_TITLE, y=1.005)
+        if out_stem:
+            os.makedirs(os.path.dirname(out_stem), exist_ok=True)
+            fig.savefig(out_stem + ".png", dpi=300)
+            fig.savefig(out_stem + ".pdf")
+            print(f"    wrote {os.path.basename(out_stem)}.png/.pdf")
+    return fig
+
+
+def regression_distributions(name, tab, x, y, null=None, observed=None,
+                             question="", out_stem=None, seed=42):
+    """The same idea for H3, which is a regression rather than a contrast."""
+    rng = np.random.default_rng(seed)
+    with plt.rc_context(_rc()):
+        fig, axes = plt.subplots(1, 4, figsize=(22 * CM, 6.0 * CM))
+        fig.subplots_adjust(wspace=0.42)
+
+        ax = axes[0]
+        ax.scatter(tab[x], tab[y], s=10, color=PHASE_COLORS["discovery"],
+                   alpha=0.6, edgecolor="none")
+        ok = tab[[x, y]].notna().all(axis=1)
+        if ok.sum() > 2:
+            b = np.polyfit(tab.loc[ok, x], tab.loc[ok, y], 1)
+            xs = np.linspace(tab[x].min(), tab[x].max(), 20)
+            ax.plot(xs, np.polyval(b, xs), color=OBS_LINE_C, lw=1.3)
+        ax.set_xlabel("Ripple rate after first-D (Hz)")
+        ax.set_ylabel("Errors after first-D")
+        ax.set_title(f"{len(tab)} grid-derivations", fontsize=FS_TICK)
+
+        for ax, col, lb in ((axes[1], x, "Ripple rate (Hz)"),
+                            (axes[2], y, "Errors after first-D")):
+            v = tab[col].to_numpy(float)
+            v = v[np.isfinite(v)]
+            ax.hist(v, bins=30, color="0.75", edgecolor="w", lw=0.4)
+            ax.set_xlabel(lb); ax.set_ylabel("Grid-derivations")
+            ax.set_title("Distribution", fontsize=FS_TICK)
+
+        ax = axes[3]
+        if null is not None and np.isfinite(np.asarray(null, float)).any():
+            nn = np.asarray(null, float); nn = nn[np.isfinite(nn)]
+            ax.hist(nn, bins=30, color="0.75", edgecolor="w", lw=0.4)
+            if observed is not None and np.isfinite(observed):
+                ax.axvline(observed, color=OBS_LINE_C, lw=1.6)
+            ax.set_xlabel("beta under within-subject shuffle")
+            ax.set_ylabel("Permutations")
+            ax.set_title(f"Null ({nn.size} shuffles)", fontsize=FS_TICK)
+        else:
+            ax.axis("off")
+
+        fig.suptitle(f"{name}: {question}" if question else name,
+                     fontsize=FS_TITLE, y=1.02)
+        if out_stem:
+            os.makedirs(os.path.dirname(out_stem), exist_ok=True)
+            fig.savefig(out_stem + ".png", dpi=300)
+            fig.savefig(out_stem + ".pdf")
+            print(f"    wrote {os.path.basename(out_stem)}.png/.pdf")
+    return fig
+
+
+def effect_forest(name, counts, condition_col, hi, lo, out_stem=None,
+                  question="", unit="session"):
+    """Per-unit log rate ratio for a two-level contrast, ordered, with the pool.
+
+    A single pooled number hides whether an effect is carried by every subject
+    or by one. Each row is one session (or subject) with its own log rate ratio
+    and a Poisson standard error; the vertical line is the pooled estimate over
+    all events and exposure -- the quantity the test is actually computed on.
+    """
+    if condition_col not in counts.columns:
+        return None
+    c = counts[counts[condition_col].isin([hi, lo])]
+    if not len(c):
+        return None
+    g = (c.groupby([unit, condition_col])
+         .agg(n=("n_ripples", "sum"), e=("exposure_s", "sum")))
+    n = g["n"].unstack(condition_col)
+    e = g["e"].unstack(condition_col)
+    if hi not in n or lo not in n:
+        return None
+    keep = (n[hi] > 0) & (n[lo] > 0) & (e[hi] > 0) & (e[lo] > 0)
+    n, e = n[keep], e[keep]
+    if not len(n):
+        return None
+    lrr = np.log((n[hi] / e[hi]) / (n[lo] / e[lo]))
+    se = np.sqrt(1.0 / n[hi] + 1.0 / n[lo])          # Poisson delta method
+    order = np.argsort(lrr.to_numpy())
+    lrr, se = lrr.iloc[order], se.iloc[order]
+    pooled = float(np.log((n[hi].sum() / e[hi].sum()) /
+                          (n[lo].sum() / e[lo].sum())))
+
+    with plt.rc_context(_rc()):
+        h = max(6.0, 0.32 * len(lrr) + 3.0)
+        fig, ax = plt.subplots(figsize=(9 * CM, h * CM))
+        y = np.arange(len(lrr))
+        ax.errorbar(lrr.to_numpy(), y, xerr=se.to_numpy(), fmt="o", ms=3.2,
+                    lw=0.8, color="0.35", ecolor="0.7", zorder=2)
+        ax.axvline(0, color="0.6", lw=0.8, ls=":")
+        ax.axvline(pooled, color=OBS_LINE_C, lw=1.5)
+        ax.set_yticks(y)
+        ax.set_yticklabels([f"s{int(i):02d}" if unit == "session" else str(i)
+                            for i in lrr.index], fontsize=FS_TICK - 2.5)
+        ax.set_xlabel(f"log rate ratio, {hi} vs {lo}")
+        ax.set_ylabel(unit.capitalize())
+        # annotate the pooled line itself rather than a legend box, which lands
+        # on top of a data row in a plot this dense
+        n_pos = int((lrr > 0).sum())
+        ax.set_title(f"{name}: per-{unit} effect\n{question}\n"
+                     f"pooled {pooled:+.3f}   ({n_pos}/{len(lrr)} {unit}s "
+                     f"positive)", fontsize=FS_TICK)
+        ax.margins(y=0.01)
+        if out_stem:
+            os.makedirs(os.path.dirname(out_stem), exist_ok=True)
+            fig.savefig(out_stem + ".png", dpi=300)
+            fig.savefig(out_stem + ".pdf")
+            print(f"    wrote {os.path.basename(out_stem)}.png/.pdf")
+    return fig
+
+
+def peth_figure(panels, out_stem=None, title="", ncol=2, ylabel="Ripple rate (Hz)",
+                xlabel="Time from event (s)"):
+    """Peri-event ripple rate over time, one axis per panel.
+
+    `panels` is a list of (panel_title, {trace_label: (centres, mean, sem, n)}).
+    Time course rather than a bar: a contrast between two windows collapses
+    everything about *when* within the window the difference sits, and a flat
+    PETH with a difference in mean means something quite different from a
+    transient peak at the event.
+    """
+    if not panels:
+        return None
+    nrow = int(np.ceil(len(panels) / ncol))
+    with plt.rc_context(_rc()):
+        fig, axes = plt.subplots(nrow, ncol, squeeze=False,
+                                 figsize=(9.5 * ncol * CM, 6.6 * nrow * CM))
+        fig.subplots_adjust(hspace=0.75, wspace=0.32)
+        for ax in axes.ravel():
+            ax.axis("off")
+        for i, (ptitle, traces) in enumerate(panels):
+            ax = axes[i // ncol][i % ncol]
+            ax.axis("on")
+            for j, (lab, (x, m, se, n)) in enumerate(traces.items()):
+                col = _cond_color(lab, j)
+                x, m = np.asarray(x, float), np.asarray(m, float)
+                se = np.asarray(se, float)
+                ax.plot(x, m, color=col, lw=1.3, label=f"{lab} (n={n})")
+                ok = np.isfinite(m) & np.isfinite(se)
+                ax.fill_between(x[ok], (m - se)[ok], (m + se)[ok], color=col,
+                                alpha=0.22, lw=0)
+            ax.axvline(0, color="0.5", lw=0.8, ls=":")
+            ax.set_xlabel(xlabel)
+            ax.set_ylabel(ylabel)
+            ax.set_title(ptitle, fontsize=FS_TICK)
+            ax.legend(fontsize=FS_TICK - 2.5, frameon=False)
+        if title:
+            fig.suptitle(title, fontsize=FS_TITLE, y=1.005)
+        if out_stem:
+            os.makedirs(os.path.dirname(out_stem), exist_ok=True)
+            fig.savefig(out_stem + ".png", dpi=300)
+            fig.savefig(out_stem + ".pdf")
+            plt.close(fig)
+            print(f"    wrote {os.path.basename(out_stem)}.png/.pdf")
+    return fig
+
+
+def ripple_property_figure(ripples, split=None, out_stem=None, title=""):
+    """Distributions of the four ripple attributes, optionally split.
+
+    Chen report rate, duration, amplitude and peak frequency separately so that
+    an effect can be shown to be on *rate*. If a condition also shifts duration
+    or frequency, the events themselves differ and "more ripples" is the wrong
+    description.
+    """
+    cols = [(c, lab, u) for c, lab, u in (
+        ("duration_s", "Duration", "s"),
+        ("peak_freq_hz", "Peak frequency", "Hz"),
+        ("amp_peak_uv", "Peak amplitude", "µV"),
+        ("rms_peak_z", "Peak RMS", "SD")) if c in ripples.columns]
+    if not cols:
+        return None
+    levels = ([None] if split is None or split not in ripples.columns
+              else list(pd.unique(ripples[split].dropna())))
+    with plt.rc_context(_rc()):
+        fig, axes = plt.subplots(1, len(cols), figsize=(5.4 * len(cols) * CM,
+                                                        6.0 * CM))
+        fig.subplots_adjust(wspace=0.55, top=0.74)
+        axes = np.atleast_1d(axes)
+        for ax, (c, lab, u) in zip(axes, cols):
+            v_all = ripples[c].to_numpy(float)
+            v_all = v_all[np.isfinite(v_all)]
+            if not v_all.size:
+                continue
+            lo, hi = np.percentile(v_all, [0.5, 99.5])
+            bins = np.linspace(lo, hi, 40)
+            for j, lv in enumerate(levels):
+                v = (v_all if lv is None
+                     else ripples.loc[ripples[split] == lv, c].to_numpy(float))
+                v = v[np.isfinite(v)]
+                if not v.size:
+                    continue
+                ax.hist(v, bins=bins, density=True, histtype="step", lw=1.3,
+                        color=("0.35" if lv is None else _cond_color(lv, j)),
+                        label=(None if lv is None else f"{lv} (n={v.size})"))
+                ax.axvline(np.median(v), color=("0.35" if lv is None
+                                                else _cond_color(lv, j)),
+                           lw=0.8, ls=":")
+            ax.set_xlabel(f"{lab} ({u})")
+            ax.set_ylabel("Density")
+            ax.set_title(f"median {np.median(v_all):.3g} {u}", fontsize=FS_TICK)
+            if levels != [None]:
+                ax.legend(fontsize=FS_TICK - 2.5, frameon=False)
+        if title:
+            fig.suptitle(title, fontsize=FS_TITLE, y=1.14)
+        if out_stem:
+            os.makedirs(os.path.dirname(out_stem), exist_ok=True)
+            fig.savefig(out_stem + ".png", dpi=300)
+            fig.savefig(out_stem + ".pdf")
+            plt.close(fig)
+            print(f"    wrote {os.path.basename(out_stem)}.png/.pdf")
+    return fig
+
+
+def rate_by_ordinal(tab, x, out_stem=None, title="", xlabel="Repeat number",
+                    split=None):
+    """Ripple rate against an ordinal (repeat number, solve index).
+
+    The learning curve view: if ripples support loading a plan, rate should
+    fall as the route becomes automatic. A two-level contrast cannot show
+    whether the change is monotonic or a step.
+    """
+    if x not in tab.columns:
+        return None
+    levels = [None] if split is None or split not in tab.columns else \
+        list(pd.unique(tab[split].dropna()))
+    with plt.rc_context(_rc()):
+        fig, ax = plt.subplots(figsize=(9 * CM, 6.5 * CM))
+        for j, lv in enumerate(levels):
+            d = tab if lv is None else tab[tab[split] == lv]
+            g = (d.groupby([x, "subject_key"])
+                 .agg(n=("n_ripples", "sum"), e=("exposure_s", "sum")))
+            g["r"] = g["n"] / g["e"].replace(0, np.nan)
+            m = g.groupby(level=0)["r"].mean()
+            se = g.groupby(level=0)["r"].agg(
+                lambda v: v.std() / max(np.sqrt(v.notna().sum()), 1))
+            k = g.groupby(level=0)["r"].count()
+            keep = k >= 5           # drop ordinals carried by <5 subjects
+            col = "0.35" if lv is None else _cond_color(lv, j)
+            ax.errorbar(m.index[keep], m[keep], yerr=se[keep], fmt="o-", ms=3,
+                        lw=1.1, color=col, ecolor=col, capsize=2,
+                        label=(None if lv is None else str(lv)))
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel("Ripple rate (Hz)")
+        ax.set_title(title or "Rate across repeats", fontsize=FS_TICK)
+        if levels != [None]:
+            ax.legend(fontsize=FS_TICK - 2, frameon=False)
+        if out_stem:
+            os.makedirs(os.path.dirname(out_stem), exist_ok=True)
+            fig.savefig(out_stem + ".png", dpi=300)
+            fig.savefig(out_stem + ".pdf")
+            plt.close(fig)
+            print(f"    wrote {os.path.basename(out_stem)}.png/.pdf")
+    return fig
+
+
+def rate_distribution_figure(channel_qc, out_stem=None, title=""):
+    """Where the ripple rate sits, per derivation / session, against Chen.
+
+    The QC table gives one row per bipolar derivation. Chen's reported range
+    (0.17-0.24 Hz) is drawn as a band so an outlying session is visible as an
+    outlier rather than as a number in a CSV.
+    """
+    need = {"rate_hz", "session"}
+    if not need.issubset(channel_qc.columns):
+        return None
+    q = channel_qc[channel_qc.rate_hz.notna()]
+    if not len(q):
+        return None
+    with plt.rc_context(_rc()):
+        fig, axes = plt.subplots(1, 3, figsize=(19 * CM, 6.2 * CM))
+        fig.subplots_adjust(wspace=0.36, top=0.74)
+
+        ax = axes[0]
+        ax.hist(q.rate_hz, bins=30, color=PAL[1], edgecolor="w", lw=0.4)
+        ax.axvspan(0.17, 0.24, color=OBS_LINE_C, alpha=0.13, lw=0)
+        ax.axvline(q.rate_hz.median(), color=OBS_LINE_C, lw=1.4)
+        ax.set_xlabel("Ripple rate (Hz)")
+        ax.set_ylabel("Derivations")
+        ax.set_title(f"n={len(q)} derivations\nmedian {q.rate_hz.median():.3f} Hz "
+                     "(band = Chen)", fontsize=FS_TICK)
+
+        ax = axes[1]
+        g = q.groupby("session").rate_hz.median().sort_values()
+        ax.plot(np.arange(len(g)), g.to_numpy(), "o", ms=3.2, color=PAL[1])
+        ax.axhspan(0.17, 0.24, color=OBS_LINE_C, alpha=0.13, lw=0)
+        ax.set_xlabel("Session (ordered)")
+        ax.set_ylabel("Median rate (Hz)")
+        ax.set_title(f"{len(g)} sessions", fontsize=FS_TICK)
+
+        ax = axes[2]
+        if "clean_s" in q.columns:
+            ax.scatter(q.clean_s / 60.0, q.rate_hz, s=10, color=PAL[1],
+                       alpha=0.7, edgecolor="none")
+            ax.set_xlabel("Artifact-free recording (min)")
+            ax.set_ylabel("Ripple rate (Hz)")
+            ax.set_title("Rate vs available clean time\n(should be flat)",
+                         fontsize=FS_TICK)
+        else:
+            ax.axis("off")
+        if title:
+            fig.suptitle(title, fontsize=FS_TITLE, y=1.14)
+        if out_stem:
+            os.makedirs(os.path.dirname(out_stem), exist_ok=True)
+            fig.savefig(out_stem + ".png", dpi=300)
+            fig.savefig(out_stem + ".pdf")
+            plt.close(fig)
+            print(f"    wrote {os.path.basename(out_stem)}.png/.pdf")
+    return fig
+
+
+ROI_UNIT_C = {"HC": "#23677E", "mPFC": PAL[1], "EC": PAL[0], "mOFC": PAL[4],
+              "OFC": PAL[4], "PCC": PAL[3], "AMY": "#a30d6c", "other": "0.6"}
+
+
+def ripple_triggered_units_figure(offsets, z_curves, unit_table,
+                                  test_win=(0.0, 0.2), out_stem=None, title="",
+                                  regions=("HC", "mPFC")):
+    """Peri-ripple firing z per region, plus the per-unit distribution.
+
+    Top row: mean +- SEM across units of the z time course, one axis per region.
+    HC comes first deliberately -- it is the positive control.
+    Bottom row: every unit's z in the pre-declared test window, so the group
+    mean cannot hide being driven by a couple of units.
+    """
+    tcols = [c for c in z_curves.columns if c not in ("session", "unit")]
+    Z = z_curves[tcols].to_numpy(float)
+    offs = np.asarray(offsets, float)
+    regs = [r for r in regions if (unit_table.region == r).any()]
+    if not regs:
+        return None
+    with plt.rc_context(_rc()):
+        fig, axes = plt.subplots(2, len(regs), squeeze=False,
+                                 figsize=(8.0 * len(regs) * CM, 12 * CM),
+                                 gridspec_kw=dict(hspace=0.75, wspace=0.4))
+        for j, reg in enumerate(regs):
+            sel = (unit_table.region == reg).to_numpy()
+            col = ROI_UNIT_C.get(reg, PAL[j % len(PAL)])
+
+            ax = axes[0][j]
+            M = Z[sel]
+            m = np.nanmean(M, axis=0)
+            se = np.nanstd(M, axis=0) / max(np.sqrt(np.isfinite(M).any(axis=1).sum()), 1)
+            ax.plot(offs, m, color=col, lw=1.4)
+            ax.fill_between(offs, m - se, m + se, color=col, alpha=0.22, lw=0)
+            ax.axhline(0, color="0.6", lw=0.8, ls=":")
+            ax.axvline(0, color="0.5", lw=0.8, ls=":")
+            ax.axvspan(*test_win, color=OBS_LINE_C, alpha=0.10, lw=0)
+            ax.set_xlabel("Time from ripple peak (s)")
+            ax.set_ylabel("Firing (z vs shifted null)")
+            n_u = int(sel.sum())
+            n_s = int(unit_table.loc[sel, "subject_key"].nunique())
+            extra = "  (positive control)" if reg == "HC" else ""
+            ax.set_title(f"{reg}: {n_u} units, {n_s} subjects{extra}",
+                         fontsize=FS_TICK)
+
+            ax = axes[1][j]
+            v = unit_table.loc[sel, "z_test_window"].to_numpy(float)
+            v = v[np.isfinite(v)]
+            if v.size:
+                ax.hist(v, bins=max(8, min(30, v.size // 2)), color=col,
+                        edgecolor="w", lw=0.4)
+                ax.axvline(0, color="0.6", lw=0.9, ls=":")
+                ax.axvline(float(np.mean(v)), color=OBS_LINE_C, lw=1.5)
+                ax.text(0.97, 0.93, f"mean {np.mean(v):+.2f}\n"
+                                    f"{int((v > 0).sum())}/{v.size} > 0",
+                        ha="right", va="top", transform=ax.transAxes,
+                        fontsize=FS_TICK - 1, color=OBS_LINE_C)
+            ax.set_xlabel(f"z, {test_win[0]*1000:.0f}-{test_win[1]*1000:.0f} ms")
+            ax.set_ylabel("Units")
+            ax.set_title("Per unit", fontsize=FS_TICK)
+        if title:
+            fig.suptitle(title, fontsize=FS_TITLE, y=1.005)
+        if out_stem:
+            os.makedirs(os.path.dirname(out_stem), exist_ok=True)
+            fig.savefig(out_stem + ".png", dpi=300)
+            fig.savefig(out_stem + ".pdf")
+            plt.close(fig)
+            print(f"    wrote {os.path.basename(out_stem)}.png/.pdf")
+    return fig
+
+
+# What the two ends of the coefficient axis mean, per hypothesis, and the
+# hypothesis itself. Without these a reader cannot tell which direction
+# supports the claim -- the GLM codes the TEST condition as the reference, so
+# its coefficient points the opposite way to the log rate ratio.
+SWEEP_DIRECTION = {
+    "H1": ("HYPOTHESIS: first-D > later-D", "later-D > first-D"),
+    "H2": ("HYPOTHESIS: exploration > later repeats", "later > exploration"),
+    "H5": ("HYPOTHESIS: plan > execute", "execute > plan"),
+    "H3": ("HYPOTHESIS: more ripples -> fewer errors", "more ripples -> more errors"),
+    "H4": ("error > correct", "correct > error"),
+}
+SWEEP_HYPOTHESIS = {
+    "H1": "ripples elevated at the FIRST arrival at D vs later arrivals",
+    "H2": "ripples elevated while still planning vs during execution",
+    "H3": "ripple rate after first-D predicts FEWER later errors",
+    "H5": "ripples elevated when planning vs executing",
+}
+
+
+def sweep_figure(tab, which, out_stem=None):
+    """Every definitional variant as a coefficient with its CI, ordered as run.
+
+    The point is to see whether a conclusion depends on a choice nobody
+    defended. A column of overlapping intervals means the choice does not
+    matter; a sign flip across variants means it decides the answer.
+    """
+    if not len(tab) or "coef" not in tab.columns:
+        return None
+    t = tab.dropna(subset=["coef"]).reset_index(drop=True)
+    if not len(t):
+        return None
+    with plt.rc_context(_rc()):
+        h = max(6.0, 0.55 * len(t) + 3.2)
+        fig, ax = plt.subplots(figsize=(13 * CM, h * CM))
+        y = np.arange(len(t))[::-1]
+        sig = t.p_glm < 0.05 if "p_glm" in t.columns else np.zeros(len(t), bool)
+        cols = [OBS_LINE_C if s else "0.55" for s in sig]
+        ax.errorbar(t.coef, y, xerr=1.96 * t.se, fmt="none", ecolor="0.75", lw=1)
+        ax.scatter(t.coef, y, s=28, c=cols, zorder=3)
+        ax.axvline(0, color="0.5", lw=0.9, ls=":")
+        ax.set_yticks(y)
+        ax.set_yticklabels(t.variant, fontsize=FS_TICK - 2)
+        ax.set_xlabel("GLM coefficient (95% CI)")
+        # The single most confusing thing about this plot is that the GLM
+        # coefficient runs OPPOSITE to the hypothesis: the model is coded with
+        # the test condition as reference, so a positive coefficient means the
+        # control condition had more ripples. Say so on the axis.
+        hyp = SWEEP_DIRECTION.get(which, ("test > control", "control > test"))
+        ax.annotate(f"<-- {hyp[0]}", xy=(0.02, -0.13), xycoords="axes fraction",
+                    ha="left", fontsize=FS_TICK - 1, color=OBS_LINE_C)
+        ax.annotate(f"{hyp[1]} -->", xy=(0.98, -0.13), xycoords="axes fraction",
+                    ha="right", fontsize=FS_TICK - 1, color="0.45")
+        ax.set_title(f"{which}: does the conclusion survive the definition?\n"
+                     f"{SWEEP_HYPOTHESIS.get(which, '')}\n"
+                     f"filled = p < 0.05 (exploratory, uncorrected, no permutation)",
+                     fontsize=FS_TICK)
+        for i, (_, r) in enumerate(t.iterrows()):
+            if np.isfinite(r.get("p_glm", np.nan)):
+                ax.text(1.02, y[i], f"p={r.p_glm:.3f}  n={int(r.n_rows)}",
+                        transform=ax.get_yaxis_transform(), va="center",
+                        fontsize=FS_TICK - 2.5, color="0.35")
+        if out_stem:
+            os.makedirs(os.path.dirname(out_stem), exist_ok=True)
+            fig.savefig(out_stem + ".png", dpi=300)
+            fig.savefig(out_stem + ".pdf")
+            plt.close(fig)
+            print(f"    wrote {os.path.basename(out_stem)}.png/.pdf")
+    return fig
+
+
+def window_definition_figure(counts_by_variant, which, out_stem=None,
+                             max_variants=6):
+    """What the windows in each variant actually look like.
+
+    Window length and window count are the two things that decide how much
+    evidence a condition contributes, and they are invisible in a coefficient
+    table. One row per variant: the duration distribution per condition, and
+    how many windows and ripples each condition has.
+    """
+    items = list(counts_by_variant.items())[:max_variants]
+    if not items:
+        return None
+    with plt.rc_context(_rc()):
+        fig, axes = plt.subplots(len(items), 2, squeeze=False,
+                                 figsize=(17 * CM, 4.6 * len(items) * CM),
+                                 gridspec_kw=dict(hspace=1.0, wspace=0.3))
+        for i, (lab, c) in enumerate(items):
+            col = next((k for k in ("condition", "phase_after", "phase3")
+                        if k in c.columns), None)
+            if col is None:
+                continue
+            groups = list(pd.unique(c[col].astype(str).sort_values()))
+            ax = axes[i][0]
+            for j, g in enumerate(groups):
+                v = c.loc[c[col].astype(str) == g, "duration_s"].to_numpy(float)
+                v = v[np.isfinite(v)]
+                if not v.size:
+                    continue
+                ax.hist(v, bins=30, histtype="step", lw=1.3,
+                        color=_cond_color(g, j), density=True,
+                        label=f"{g}  med {np.median(v):.2f}s")
+            ax.set_xlabel("Window duration (s)")
+            ax.set_ylabel("Density")
+            ax.set_title(lab, fontsize=FS_TICK - 1)
+            ax.legend(fontsize=FS_TICK - 3, frameon=False)
+
+            ax = axes[i][1]
+            g2 = c.groupby(c[col].astype(str)).agg(
+                w=("n_ripples", "size"), n=("n_ripples", "sum"),
+                e=("exposure_s", "sum")).reindex(groups)
+            xx = np.arange(len(groups))
+            ax.bar(xx, g2["w"], color=[_cond_color(g, j)
+                                       for j, g in enumerate(groups)],
+                   edgecolor="w")
+            ax.set_xticks(xx)
+            ax.set_xticklabels([g.replace("_", "\n") for g in groups],
+                               fontsize=FS_TICK - 2)
+            ax.set_ylabel("Windows")
+            for k, (_, r) in enumerate(g2.iterrows()):
+                ax.text(k, r["w"], f"{int(r['n'])} rip\n{r['e']:.0f}s",
+                        ha="center", va="bottom", fontsize=FS_TICK - 3)
+            ax.margins(y=0.25)
+            ax.set_title("Evidence per condition", fontsize=FS_TICK - 1)
+        if out_stem:
+            os.makedirs(os.path.dirname(out_stem), exist_ok=True)
+            fig.savefig(out_stem + ".png", dpi=300)
+            fig.savefig(out_stem + ".pdf")
+            plt.close(fig)
+            print(f"    wrote {os.path.basename(out_stem)}.png/.pdf")
+    return fig
+
+
+def pvth_figure(centres, prof_by_subject, results, which, out_stem=None,
+                pre_win=(-0.6, -0.1), base_win=(-1.6, -1.1), smooth=True):
+    """Peri-event time histogram in the Sakon & Kahana (2022) Fig. 2B style.
+
+    Their conventions, kept deliberately: mean +- SEM across subjects; a dotted
+    grey reference line to aid comparison between panels; the significant time
+    range marked by a bar above the traces; the analysis and baseline windows
+    shaded so the reader can see where the statistic was taken. Traces are
+    triangle-smoothed for display only -- every number comes from the unsmoothed
+    data.
+    """
+    import mc.analyse.swr_sakon as sk
+    conds = sorted({c for _, c in prof_by_subject})
+    if not conds:
+        return None
+    centres = np.asarray(centres, float)
+    with plt.rc_context(_rc()):
+        fig, axes = plt.subplots(1, 2, figsize=(17 * CM, 6.6 * CM),
+                                 gridspec_kw=dict(width_ratios=[2, 1]))
+        fig.subplots_adjust(wspace=0.32, top=0.74)
+
+        ax = axes[0]
+        ax.axvspan(*base_win, color="0.85", lw=0, zorder=0)
+        ax.axvspan(*pre_win, color=OBS_LINE_C, alpha=0.12, lw=0, zorder=0)
+        ymax = -np.inf
+        for j, cond in enumerate(conds):
+            subs = sorted({s for s, c in prof_by_subject if c == cond})
+            X = np.vstack([prof_by_subject[(s, cond)] for s in subs])
+            m = np.nanmean(X, axis=0)
+            se = np.nanstd(X, axis=0) / max(np.sqrt(len(subs)), 1)
+            col = _cond_color(cond, j)
+            mm, ss = (sk.triangle_smooth(m), sk.triangle_smooth(se)) if smooth else (m, se)
+            ax.plot(centres, mm, color=col, lw=1.4, label=f"{cond} (n={len(subs)})")
+            ax.fill_between(centres, mm - ss, mm + ss, color=col, alpha=0.22, lw=0)
+            ymax = max(ymax, np.nanmax(mm + ss))
+        # significant clusters, marked as a bar above the traces
+        for j, cond in enumerate(conds):
+            for c in results.get("clusters", {}).get(cond, []):
+                if c["p"] < 0.05:
+                    ax.plot([c["t_start_s"], c["t_stop_s"]],
+                            [ymax * (1.04 + 0.05 * j)] * 2,
+                            color=_cond_color(cond, j), lw=2.5,
+                            solid_capstyle="butt")
+        ax.axvline(0, color="0.35", lw=1.0)
+        ax.set_xlabel("Time from event (s)")
+        ax.set_ylabel("Ripple rate (events/s)")
+        ax.set_title(f"{which}: peri-event ripple rate\n"
+                     f"shaded = baseline (grey) and PRE (green) windows",
+                     fontsize=FS_TICK)
+        ax.legend(fontsize=FS_TICK - 2, frameon=False, loc="upper left")
+        ax.margins(y=0.18)
+
+        # per-subject Eq. 2 t-scores, Sakon Fig. 2C
+        ax = axes[1]
+        for j, cond in enumerate(conds):
+            e2 = (results.get("eq2") or {}).get(cond) or {}
+            per = e2.get("per_subject")
+            if per is None or not len(per):
+                continue
+            v = pd.DataFrame(per)["t"].to_numpy(float)
+            v = v[np.isfinite(v)]
+            x = j + (np.random.default_rng(0).random(v.size) - 0.5) * 0.3
+            col = _cond_color(cond, j)
+            ax.scatter(x, v, s=11, color=col, alpha=0.75, edgecolor="none")
+            ax.plot([j - 0.28, j + 0.28], [v.mean()] * 2, color=col, lw=2.5)
+            if np.isfinite(e2.get("p", np.nan)) and e2["p"] < 0.05:
+                ax.text(j, np.nanmax(v) * 1.05, "*", ha="center",
+                        fontsize=FS_TITLE, color=col)
+        ax.axhline(0, color="0.6", lw=0.9, ls=":")
+        ax.set_xticks(range(len(conds)))
+        ax.set_xticklabels([c.replace("_", "\n") for c in conds],
+                           fontsize=FS_TICK - 1)
+        ax.set_ylabel("Eq. 2 t score (PRE vs own baseline)")
+        ax.set_title("Per subject\npositive = rise above own baseline",
+                     fontsize=FS_TICK)
         if out_stem:
             os.makedirs(os.path.dirname(out_stem), exist_ok=True)
             fig.savefig(out_stem + ".png", dpi=300)

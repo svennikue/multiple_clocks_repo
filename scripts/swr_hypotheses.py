@@ -116,7 +116,16 @@ LOCK_D_S = 2.0        # H1: after arrival at D
 LOCK_FB_S = 1.0       # H4: after feedback, truncated at the next uncovering
 MIN_PAUSE_S = 0.5     # H2/H3: a pause shorter than this is not a rest period
 
-PRIMARY = "H1"
+# CORRECTION (2026-09-04). These seven were written by Claude from SK's verbal
+# description of the idea. They were NEVER pre-registered and were never SK's
+# own declared predictions, so labelling H1 "primary, pre-declared" and
+# FDR-correcting H2-H7 as a registered family was wrong: it dressed a set of
+# exploratory probes up as a confirmatory study, and then reported them as a
+# failed one. They are exploratory, all seven, and the q-values below should be
+# read as descriptive only. The real question -- when, over what window, and how
+# ripples interact with movement -- is still open and is being worked out in
+# swr_explore.py / swr_findings.py.
+PRIMARY = "H1"                      # kept only so old outputs stay readable
 SECONDARY = ("H2", "H3", "H4", "H5", "H6", "H7")
 
 
@@ -130,6 +139,97 @@ def _settings(which, n_perms, analysis_name):
 
 
 # --------------------------------------------------------------- loading ----
+class RippleStore:
+    """Where the detected ripples come from, behind one interface.
+
+    Two sources:
+      `sessions`  the per-session detection output on this machine. What the
+                  cluster has.
+      `bundle`    a bundle downloaded from the cluster, carrying the same three
+                  tables for every session in a few MB. What the laptop has.
+
+    The bundle exists so these statistics can be redone without moving the LFP.
+    Everything that reads ripples goes through here, so both paths run the
+    IDENTICAL analysis code -- the source cannot change a result.
+    """
+
+    def __init__(self, analysis_name=ANALYSIS_NAME, data_root=None, bundle=None):
+        self.analysis_name = analysis_name
+        self.R = data_root or swr_io.get_data_root()
+        self.bundle_path = None
+        if bundle is None:
+            self.source = "sessions"
+            paths = sorted(glob.glob(os.path.join(
+                swr_io.derivatives_dir(self.R), "s*", "LFP-ripples",
+                analysis_name, "ripple_events.csv")))
+            self._sessions = [int(p.split(os.sep)[-4][1:]) for p in paths]
+            self._dirs = {s: os.path.dirname(p)
+                          for s, p in zip(self._sessions, paths)}
+        else:
+            self.source = "bundle"
+            self._load_bundle(bundle)
+
+    def _load_bundle(self, bundle):
+        """`bundle` is the bundle directory, or the .pkl inside it."""
+        if os.path.isdir(bundle):
+            d = bundle
+            tabs = {k: pd.read_csv(os.path.join(d, f"{k}.csv"))
+                    for k in ("ripples", "intervals", "channel_qc")}
+        else:
+            import pickle
+            with open(bundle, "rb") as f:
+                b = pickle.load(f)
+            d = os.path.dirname(bundle)
+            tabs = {k: b[k] for k in ("ripples", "intervals", "channel_qc")}
+        self.bundle_path = d
+        self._rip = {s: g for s, g in tabs["ripples"].groupby("session")}
+        self._iv = {s: g for s, g in tabs["intervals"].groupby("session")}
+        self._qc = {s: g.set_index("pair_id")
+                    for s, g in tabs["channel_qc"].groupby("session")}
+        self._sessions = sorted(self._rip)
+        # the bundle carries its own subject key, so a stale local manifest
+        # cannot silently re-cluster the robust standard errors
+        r = tabs["ripples"]
+        self._subj = (r[["session", "subject_key", "recording_site"]]
+                      .drop_duplicates("session").set_index("session")
+                      .to_dict("index"))
+
+    def sessions(self):
+        return list(self._sessions)
+
+    def get(self, sess):
+        """(accepted events, artifact-free intervals, channel QC) for a session.
+
+        Events are already filtered to those that passed detection, in both
+        sources -- the bundle stores only accepted ripples.
+        """
+        sess = int(sess)
+        if self.source == "bundle":
+            return (self._rip[sess], self._iv[sess], self._qc[sess])
+        d = self._dirs[sess]
+        ev = pd.read_csv(os.path.join(d, "ripple_events.csv"))
+        ev = ev[ev.passed.fillna(False)]
+        iv = pd.read_csv(os.path.join(d, "clean_intervals.csv"))
+        qc = pd.read_csv(os.path.join(d, "channel_qc.csv")).set_index("pair_id")
+        return ev, iv, qc
+
+    def subject_map(self):
+        if self.source == "bundle":
+            return self._subj
+        m = pd.read_csv(os.path.join(swr_io.derivatives_dir(self.R), "group",
+                                     "swr", "session_manifest.csv"))
+        return m.set_index("session")[["subject_key",
+                                       "recording_site"]].to_dict("index")
+
+    def describe(self):
+        n = sum(len(self._rip[s]) for s in self._sessions) \
+            if self.source == "bundle" else None
+        where = self.bundle_path or f"{swr_io.derivatives_dir(self.R)}/s*/LFP-ripples"
+        print(f"  source: {self.source}  ({len(self._sessions)} sessions"
+              + (f", {n} accepted ripples" if n is not None else "") + ")")
+        print(f"          {where}")
+
+
 def _sessions_with_events(analysis_name, R):
     out = []
     for p in sorted(glob.glob(os.path.join(swr_io.derivatives_dir(R), "s*",
@@ -145,12 +245,9 @@ def _subject_map(R):
     return m.set_index("session")[["subject_key", "recording_site"]].to_dict("index")
 
 
-def _count_windows(sess, rip_dir, windows, beh, R, subj):
+def _count_windows(sess, store, windows, beh, R, subj):
     """Ripple counts per (derivation x window), with exposure and movement."""
-    ev = pd.read_csv(os.path.join(rip_dir, "ripple_events.csv"))
-    ev = ev[ev.passed.fillna(False)]
-    iv_all = pd.read_csv(os.path.join(rip_dir, "clean_intervals.csv"))
-    qc = pd.read_csv(os.path.join(rip_dir, "channel_qc.csv")).set_index("pair_id")
+    ev, iv_all, qc = store.get(sess)
     if not len(windows) or not len(ev):
         return pd.DataFrame()
 
@@ -173,12 +270,15 @@ def _count_windows(sess, rip_dir, windows, beh, R, subj):
     return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
 
 
-def _gather(design_fn, analysis_name, R, subj, needs_uncover=False):
+def _gather(design_fn, store, R, subj, needs_uncover=False):
     """Build one design across every session that has detection output."""
     parts, per_session = [], {}
-    for sess, rip_dir in _sessions_with_events(analysis_name, R):
+    for sess in store.sessions():
         try:
             beh = swr_io.load_behaviour(sess, data_root=R)
+            # designs that need the session number (the ones reading the 25 ms
+            # location series) get it from the frame rather than a closure
+            beh = beh.assign(session=int(sess))
         except Exception as e:
             print(f"  s{sess:02d}: behaviour unreadable ({e})"); continue
         try:
@@ -192,7 +292,7 @@ def _gather(design_fn, analysis_name, R, subj, needs_uncover=False):
             continue
         if not len(w):
             continue
-        c = _count_windows(sess, rip_dir, w, beh, R, subj)
+        c = _count_windows(sess, store, w, beh, R, subj)
         if len(c):
             parts.append(c)
             per_session[sess] = w
@@ -292,63 +392,66 @@ def _bh_fdr(p):
 
 
 # ------------------------------------------------------------------ H1-H4 ---
-def _shifted_counts_factory(analysis_name, R, subj, per_session, max_shift_frac=1.0):
+def _shifted_counts_factory(store, R, subj, per_session, max_shift_frac=1.0):
     """Return a function(rng) -> counts table with each session's events shifted.
 
     The shift is circular on the artifact-free axis, so a shifted event can never
     land inside an artifact and every session keeps its own ripple
     autocorrelation and its own number of events.
     """
-    cache = {}
+    from mc.analyse.swr_artifact import CleanAxis
+
+    # One entry per (session, derivation): the events, the artifact-free
+    # intervals, the windows and the movement covariate. Built once; the
+    # permutation loop only redraws the shift.
+    cache = []
     for sess, w in per_session.items():
-        rip_dir = os.path.join(swr_io.session_deriv_dir(sess, R), "LFP-ripples",
-                               analysis_name)
-        ev = pd.read_csv(os.path.join(rip_dir, "ripple_events.csv"))
-        ev = ev[ev.passed.fillna(False)]
-        iv_all = pd.read_csv(os.path.join(rip_dir, "clean_intervals.csv"))
-        qc = pd.read_csv(os.path.join(rip_dir, "channel_qc.csv")).set_index("pair_id")
+        ev, iv_all, qc = store.get(sess)
         try:
             beh = swr_io.load_behaviour(sess, data_root=R)
         except Exception:
             continue
         mv = swb.presses_in_windows(sess, beh, w, data_root=R)
-        cache[sess] = (ev, iv_all, qc, w, mv)
+        meta = subj.get(sess, {})
+        for pair_id, e in ev.groupby("pair_id"):
+            if pair_id in qc.index and bool(qc.loc[pair_id, "excluded"]):
+                continue
+            iv = iv_all[iv_all.pair_id == pair_id][["start_s", "stop_s"]].to_numpy()
+            if not len(iv):
+                continue
+            clean_total = float(CleanAxis(iv).total)
+            if clean_total <= 0:
+                continue
+            cache.append((sess, pair_id, e.t_peak_s.to_numpy(float), iv, w, mv,
+                          clean_total, meta.get("subject_key")))
 
     def make(rng):
         rows = []
-        for sess, (ev, iv_all, qc, w, mv) in cache.items():
-            span = float(w.end_s.max() - w.start_s.min()) or 1.0
-            for pair_id, e in ev.groupby("pair_id"):
-                if pair_id in qc.index and bool(qc.loc[pair_id, "excluded"]):
-                    continue
-                iv = iv_all[iv_all.pair_id == pair_id][["start_s", "stop_s"]].to_numpy()
-                if not len(iv):
-                    continue
-                t = e.t_peak_s.to_numpy(float)
-                lo, hi = iv[:, 0].min(), iv[:, 1].max()
-                L = hi - lo
-                if L <= 0:
-                    continue
-                sh = rng.uniform(0.05 * L, 0.95 * L)
-                t_sh = lo + np.mod(t - lo + sh, L)
-                a = win.assign_events_to_windows(t_sh, w, iv).reset_index(drop=True)
-                a["session"] = sess
-                a["pair_id"] = pair_id
-                a["n_moves"] = mv
-                meta = subj.get(sess, {})
-                a["subject_key"] = meta.get("subject_key")
-                rows.append(a)
+        for sess, pair_id, t, iv, w, mv, clean_total, skey in cache:
+            # The shift is drawn on the ARTIFACT-FREE axis and applied by
+            # `assign_events_to_windows` itself, so a shifted event can never
+            # land inside an artifact -- where the detector could not have
+            # found it, and where it would make the null easier to beat.
+            # shift_s=0 is the observed case through the identical function.
+            sh = rng.uniform(0.05 * clean_total, 0.95 * clean_total)
+            a = win.assign_events_to_windows(t, w, iv, shift_s=sh)
+            a = a.reset_index(drop=True)
+            a["session"] = sess
+            a["pair_id"] = pair_id
+            a["n_moves"] = mv
+            a["subject_key"] = skey
+            rows.append(a)
         return pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
     return make
 
 
 def _run_window_hypothesis(name, question, design_fn, contrast, formula,
-                           analysis_name, R, subj, n_perms, needs_uncover=False,
-                           out_dir=None):
+                           store, R, subj, n_perms, needs_uncover=False,
+                           out_dir=None, cond_col=None, forest=None):
     print("\n" + "=" * 74)
     print(f" {name}: {question}")
     print("=" * 74)
-    counts, per_session = _gather(design_fn, analysis_name, R, subj,
+    counts, per_session = _gather(design_fn, store, R, subj,
                                   needs_uncover=needs_uncover)
     if not len(counts):
         print("  no windows built"); return None
@@ -369,21 +472,48 @@ def _run_window_hypothesis(name, question, design_fn, contrast, formula,
               f"cluster-robust by subject):")
         print("   " + tb.round(4).to_string().replace("\n", "\n   "))
 
-    make = _shifted_counts_factory(analysis_name, R, subj, per_session)
-    null = np.array([contrast(make(np.random.RandomState(SEED + k)))
-                     for k in range(n_perms)])
-    p, z, sd = _perm_p(obs, null, one_sided=True)
+    if n_perms and n_perms > 0:
+        make = _shifted_counts_factory(store, R, subj, per_session)
+        null = np.array([contrast(make(np.random.RandomState(SEED + k)))
+                         for k in range(n_perms)])
+        p, z, sd = _perm_p(obs, null, one_sided=True)
+    else:
+        # exploration mode: the GLM is the whole output. No permutation means
+        # no p_perm -- do not quietly substitute the GLM p for it.
+        null, p, z, sd = np.zeros(0), np.nan, np.nan, np.nan
     # The null is not centred on zero: a log ratio of small counts is biased
     # downward (Jensen), and first-D windows are few. That is precisely why
     # inference is against the shifted null and not against zero -- the null
     # carries the identical bias because it is built by the identical code.
-    print(f"  permutation ({n_perms} circular shifts): null {np.nanmean(null):+.4f}"
-          f" +- {sd:.4f}, z = {z:+.2f}, p_one_sided = {p:.4f}")
+    if null.size:
+        print(f"  permutation ({n_perms} circular shifts): null "
+              f"{np.nanmean(null):+.4f} +- {sd:.4f}, z = {z:+.2f}, "
+              f"p_one_sided = {p:.4f}")
+    else:
+        print("  permutation: SKIPPED (n_perms=0) -- GLM only, exploratory")
 
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
         counts.to_csv(os.path.join(out_dir, f"{name}_counts.csv"), index=False)
         np.save(os.path.join(out_dir, f"{name}_null.npy"), null)
+        # the data behind the number: spread across subjects and derivations,
+        # the two confounds, the power imbalance, and the null
+        try:
+            rfig.condition_distributions(
+                name, counts, cond_col or "condition", null=null, observed=obs,
+                question=question,
+                out_stem=os.path.join(out_dir, "figures", f"{name}_distributions"))
+        except Exception as e:
+            print(f"    distribution figure failed: {type(e).__name__}: {e}")
+        # per-session effect, so a pooled number cannot hide being carried by
+        # a handful of sessions
+        if forest:
+            try:
+                rfig.effect_forest(
+                    name, counts, *forest, question=question,
+                    out_stem=os.path.join(out_dir, "figures", f"{name}_forest"))
+            except Exception as e:
+                print(f"    forest figure failed: {type(e).__name__}: {e}")
     return {"hypothesis": name, "question": question, "observed_log_rr": obs,
             "null": null,
             "rate_change_pct": 100 * (np.exp(obs) - 1) if np.isfinite(obs) else np.nan,
@@ -394,7 +524,7 @@ def _run_window_hypothesis(name, question, design_fn, contrast, formula,
             "counts": counts}
 
 
-def _run_H3(analysis_name, R, subj, n_perms, out_dir=None):
+def _run_H3(store, R, subj, n_perms, out_dir=None):
     """Does the ripple rate after first-D predict subsequent performance?"""
     name = "H3"
     question = ("ripple rate in the pause after first-D predicts errors in the "
@@ -402,7 +532,7 @@ def _run_H3(analysis_name, R, subj, n_perms, out_dir=None):
     print("\n" + "=" * 74); print(f" {name}: {question}"); print("=" * 74)
 
     rows = []
-    for sess, rip_dir in _sessions_with_events(analysis_name, R):
+    for sess in store.sessions():
         try:
             beh = swr_io.load_behaviour(sess, data_root=R)
             rt = swb.repeat_table(sess, beh=beh, data_root=R)
@@ -410,10 +540,7 @@ def _run_H3(analysis_name, R, subj, n_perms, out_dir=None):
             print(f"  s{sess:02d}: {type(e).__name__}: {e}"); continue
         if not len(rt):
             continue
-        ev = pd.read_csv(os.path.join(rip_dir, "ripple_events.csv"))
-        ev = ev[ev.passed.fillna(False)]
-        iv_all = pd.read_csv(os.path.join(rip_dir, "clean_intervals.csv"))
-        qc = pd.read_csv(os.path.join(rip_dir, "channel_qc.csv")).set_index("pair_id")
+        ev, iv_all, qc = store.get(sess)
 
         for grid, g in rt.groupby("grid_no"):
             g = g.sort_values("rep_overall")
@@ -499,6 +626,22 @@ def _run_H3(analysis_name, R, subj, n_perms, out_dir=None):
         os.makedirs(out_dir, exist_ok=True)
         tab.to_csv(os.path.join(out_dir, "H3_grids.csv"), index=False)
         np.save(os.path.join(out_dir, "H3_null.npy"), null)
+        try:
+            rfig.regression_distributions(
+                "H3", tab, "rate_hz", "errors_after", null=null, observed=obs,
+                question=question,
+                out_stem=os.path.join(out_dir, "figures", "H3_distributions"))
+        except Exception as e:
+            print(f"    distribution figure failed: {type(e).__name__}: {e}")
+        # per-session effect, so a pooled number cannot hide being carried by
+        # a handful of sessions
+        if forest:
+            try:
+                rfig.effect_forest(
+                    name, counts, *forest, question=question,
+                    out_stem=os.path.join(out_dir, "figures", f"{name}_forest"))
+            except Exception as e:
+                print(f"    forest figure failed: {type(e).__name__}: {e}")
     return {"hypothesis": name, "question": question, "observed_log_rr": obs,
             "null": null,
             "rate_change_pct": np.nan, "null_mean": float(np.nanmean(null)),
@@ -509,13 +652,23 @@ def _run_H3(analysis_name, R, subj, n_perms, out_dir=None):
 
 
 # ------------------------------------------------------------------- main ---
-def run(which=None, analysis_name=ANALYSIS_NAME, n_perms=N_PERMS, save_all=True):
+def run(which=None, analysis_name=ANALYSIS_NAME, n_perms=N_PERMS, save_all=True,
+        bundle=None, out_dir=None):
+    """Run the hypothesis tests.
+
+    `bundle` points at a bundle directory (or its .pkl) downloaded from the
+    cluster; without it the per-session detection output on this machine is
+    used. Both go through `RippleStore`, so the analysis is identical.
+    """
     R = swr_io.get_data_root()
-    out_dir = os.path.join(swr_io.derivatives_dir(R), "group", "swr", "hypotheses")
-    swr_io.start_log(os.path.join(swr_io.derivatives_dir(R), "group", "swr"),
-                     "swr_hypotheses")
+    if out_dir is None:
+        out_dir = os.path.join(swr_io.derivatives_dir(R), "group", "swr",
+                               "hypotheses")
+    swr_io.start_log(os.path.dirname(out_dir), "swr_hypotheses")
     np.random.seed(SEED)
-    subj = _subject_map(R)
+    store = RippleStore(analysis_name, R, bundle=bundle)
+    store.describe()
+    subj = store.subject_map()
     wanted = [which] if isinstance(which, str) else (
         list(which) if which else ["H1", "H2", "H3", "H4", "H5", "H6", "H7"])
 
@@ -526,7 +679,9 @@ def run(which=None, analysis_name=ANALYSIS_NAME, n_perms=N_PERMS, save_all=True)
             lambda b: win.windows_first_D(b, post_s=LOCK_D_S),
             lambda c: _log_rate_diff(c, "condition", "first_D", "later_D"),
             "n_ripples ~ condition + n_moves",
-            analysis_name, R, subj, n_perms, out_dir=out_dir if save_all else None))
+            store, R, subj, n_perms, out_dir=out_dir if save_all else None,
+            cond_col="condition",
+            forest=("condition", "first_D", "later_D")))
     if "H2" in wanted:
         results.append(_run_window_hypothesis(
             "H2", "ripples elevated in pauses before the grid is first solved",
@@ -538,9 +693,11 @@ def run(which=None, analysis_name=ANALYSIS_NAME, n_perms=N_PERMS, save_all=True)
             lambda c: _log_rate_diff(c, "phase_after", "exploration",
                                      "later_repeats"),
             "n_ripples ~ phase_after + n_moves",
-            analysis_name, R, subj, n_perms, out_dir=out_dir if save_all else None))
+            store, R, subj, n_perms, out_dir=out_dir if save_all else None,
+            cond_col="phase_after",
+            forest=("phase_after", "exploration", "later_repeats")))
     if "H3" in wanted:
-        results.append(_run_H3(analysis_name, R, subj, n_perms,
+        results.append(_run_H3(store, R, subj, n_perms,
                                out_dir=out_dir if save_all else None))
     if "H5" in wanted:
         results.append(_run_window_hypothesis(
@@ -548,7 +705,8 @@ def run(which=None, analysis_name=ANALYSIS_NAME, n_perms=N_PERMS, save_all=True)
             lambda b: win.windows_phase3(b, min_pause_s=MIN_PAUSE_S),
             lambda c: _log_rate_diff(c, "phase3", "plan", "execute"),
             "n_ripples ~ C(phase3, Treatment('execute')) + n_moves",
-            analysis_name, R, subj, n_perms, out_dir=out_dir if save_all else None))
+            store, R, subj, n_perms, out_dir=out_dir if save_all else None,
+            cond_col="phase3", forest=("phase3", "plan", "execute")))
     if "H6" in wanted:
         results.append(_run_window_hypothesis(
             "H6", "within the discovery traversal, is D special? (D vs A/B/C, "
@@ -556,7 +714,8 @@ def run(which=None, analysis_name=ANALYSIS_NAME, n_perms=N_PERMS, save_all=True)
             lambda b: win.windows_discovery(b, lock_s=LOCK_D_S),
             _interaction_D_vs_ABC,
             "n_ripples ~ C(state) * C(discovery) + n_moves",
-            analysis_name, R, subj, n_perms, out_dir=out_dir if save_all else None))
+            store, R, subj, n_perms, out_dir=out_dir if save_all else None,
+            cond_col=["state", "discovery"]))
     if "H7" in wanted:
         results.append(_run_window_hypothesis(
             "H7", "feedback that could change behaviour vs feedback that could not",
@@ -564,16 +723,19 @@ def run(which=None, analysis_name=ANALYSIS_NAME, n_perms=N_PERMS, save_all=True)
             lambda c: _log_rate_diff(c, "informative", "informative",
                                      "uninformative"),
             "n_ripples ~ C(feedback) * C(phase) + n_moves",
-            analysis_name, R, subj, n_perms, needs_uncover=True,
-            out_dir=out_dir if save_all else None))
+            store, R, subj, n_perms, needs_uncover=True,
+            out_dir=out_dir if save_all else None, cond_col="informative",
+            forest=("informative", "informative", "uninformative")))
     if "H4" in wanted:
         results.append(_run_window_hypothesis(
             "H4", "ripple rate differs after error vs correct feedback",
             lambda u: win.windows_feedback(u, lock_s=LOCK_FB_S),
             lambda c: _log_rate_diff(c, "feedback", "error", "correct"),
             "n_ripples ~ feedback * phase + n_moves",
-            analysis_name, R, subj, n_perms, needs_uncover=True,
-            out_dir=out_dir if save_all else None))
+            store, R, subj, n_perms, needs_uncover=True,
+            out_dir=out_dir if save_all else None,
+            cond_col=["feedback", "phase"],
+            forest=("feedback", "error", "correct")))
 
     results = [r for r in results if r is not None]
     if not results:
@@ -588,9 +750,12 @@ def run(which=None, analysis_name=ANALYSIS_NAME, n_perms=N_PERMS, save_all=True)
     if sec.any():
         summary.loc[sec, "q_fdr_secondary"] = _bh_fdr(summary.loc[sec, "p_perm"])
     n_sec = int(sec.sum())
+    # not "primary"/"secondary": none of these was pre-registered (see the
+    # correction at the top of this file)
     summary["role"] = np.where(summary.hypothesis == PRIMARY,
-                               "primary (pre-declared, uncorrected)",
-                               f"secondary (FDR across the {n_sec} run here)")
+                               "exploratory (uncorrected)",
+                               f"exploratory (FDR shown across the {n_sec} run "
+                               "here, descriptive only)")
 
     print("\n" + "=" * 78); print(" SUMMARY"); print("=" * 78)
     cols = ["hypothesis", "observed_log_rr", "rate_change_pct", "z", "p_perm",
@@ -610,6 +775,474 @@ def run(which=None, analysis_name=ANALYSIS_NAME, n_perms=N_PERMS, save_all=True)
         except Exception as e:
             print(f"  figure failed: {type(e).__name__}: {e}")
         print(f"\n saved -> {out_dir}")
+    return None
+
+
+# ============================================================================
+# SWEEP -- the definitional choices, laid out side by side
+# ============================================================================
+# Every hypothesis here rests on choices that were made once and then never
+# revisited: how long a window is, what counts as a phase, what "errors after"
+# means. None of them is obviously right. This runs the alternatives against
+# each other with the GLM only (n_perms=0 by default), so the cost of looking
+# is seconds rather than an hour.
+#
+# It is an exploration tool. A p from here is not an inference -- the variant
+# has to be chosen on grounds other than its p, and then tested with the
+# permutation on data that did not pick it.
+
+def _pool_later_per_grid(counts):
+    """One later-D row per (grid, derivation), so the contrast is 1:1.
+
+    As run, every later arrival at D is its own row: ~11 later-Ds against 1
+    first-D per grid, unpaired and dominated by the later condition. Pooling
+    counts and exposure within grid makes it a matched comparison at the cost
+    of statistical power.
+    """
+    keys = [k for k in ("session", "pair_id", "grid_no", "condition",
+                        "subject_key", "recording_site") if k in counts.columns]
+    agg = {"n_ripples": "sum", "exposure_s": "sum", "duration_s": "sum"}
+    if "n_moves" in counts.columns:
+        agg["n_moves"] = "sum"
+    out = counts.groupby(keys, as_index=False).agg(agg)
+    out["rate_hz"] = out.n_ripples / out.exposure_s.replace(0, np.nan)
+    return out
+
+
+def _glm_row(counts, formula, term, label, extra=None):
+    res = _glm(counts, formula, label)
+    row = {"variant": label, "n_rows": len(counts),
+           "n_sessions": int(counts.session.nunique()),
+           "n_windows": int(counts.groupby(["session", "start_s"]).ngroups)
+           if "start_s" in counts.columns else np.nan}
+    row.update(extra or {})
+    if res is not None and "table" in res:
+        tb = res["table"]
+        hit = [i for i in tb.index if term in str(i)]
+        if hit:
+            r = tb.loc[hit[0]]
+            row.update({"term": hit[0], "coef": float(r["coef"]),
+                        "se": float(r["se"]), "z": float(r["z"]),
+                        "p_glm": float(r["p"]),
+                        "rate_ratio": float(r.get("rate_ratio", np.nan))})
+    return row
+
+
+def sweep(which="H1", bundle=None, analysis_name=ANALYSIS_NAME, n_perms=0,
+          out_dir=None):
+    """Test the definitional alternatives for one hypothesis, side by side."""
+    R = swr_io.get_data_root()
+    if out_dir is None:
+        out_dir = os.path.join(swr_io.derivatives_dir(R), "group", "swr",
+                               "sweeps")
+    os.makedirs(out_dir, exist_ok=True)
+    swr_io.start_log(out_dir, f"swr_sweep_{which}")
+    np.random.seed(SEED)
+    store = RippleStore(analysis_name, R, bundle=bundle)
+    store.describe()
+    subj = store.subject_map()
+    print(f"\n  sweeping {which}   (n_perms={n_perms}"
+          + ("  -- GLM only, exploratory)" if not n_perms else ")"))
+
+    rows, keep = [], {}
+
+    if which == "H1":
+        # What does "around D" mean? t_D in all_trial_times is the moment D is
+        # UNCOVERED (the press). Arrival, dwell and the deliberation period
+        # before the press are different events and ask different questions.
+        # Dwell is ~3x longer on the discovery traversal, so any window running
+        # past the press compares a subject still standing on the reward with
+        # one who has already moved on. `deliberation` is the only variant that
+        # is matched by construction.
+        variants = []
+        for w in (0.5, 1.0, 2.0):
+            variants.append((f"uncover-locked, {w:g} s", "uncover_locked", w))
+            variants.append((f"arrival-locked, {w:g} s", "arrival_locked", w))
+        variants += [
+            ("deliberation (arrive -> press)", "deliberation", None),
+            ("dwell (press -> leave)", "dwell", None),
+            ("1 s BEFORE arriving at D", "pre_arrival", 1.0),
+            ("1 s after leaving D", "post_leave", 1.0),
+        ]
+        for lab, kind, w in variants:
+            def build(b, kind=kind, w=w):
+                dev = swb.d_events(int(b.session.iloc[0]), beh=b, data_root=R)
+                return win.windows_from_d_events(dev, kind=kind,
+                                                 w_s=w if w else 1.0)
+            c, _ = _gather(build, store, R, subj)
+            if not len(c):
+                print(f"    {lab}: no windows"); continue
+            for pairing in ("unique later-Ds", "later-Ds pooled per grid"):
+                cc = c if pairing == "unique later-Ds" else _pool_later_per_grid(c)
+                d = cc.groupby("condition").duration_s.median()
+                rows.append(_glm_row(
+                    cc, "n_ripples ~ condition + n_moves", "condition",
+                    f"{lab}  [{pairing}]",
+                    extra={"obs_log_rr": _log_rate_diff(cc, "condition",
+                                                        "first_D", "later_D"),
+                           "median_dur_first": float(d.get("first_D", np.nan)),
+                           "median_dur_later": float(d.get("later_D", np.nan)),
+                           "kind": kind, "pairing": pairing}))
+            keep[lab] = c
+            print(f"    {lab:34s} done ({len(c)} rows)")
+
+    elif which in ("H2", "H5"):
+        variants = [
+            ("pauses >= 0.5 s  (as run)", dict(min_pause_s=0.5)),
+            ("pauses >= 1 s", dict(min_pause_s=1.0)),
+            ("pauses >= 2 s", dict(min_pause_s=2.0)),
+            ("pauses >= 5 s", dict(min_pause_s=5.0)),
+        ]
+        for lab, kw in variants:
+            mp = kw["min_pause_s"]
+            c2, _ = _gather(lambda b, mp=mp: win.windows_pauses(b).query(
+                f"duration_s >= {mp}"), store, R, subj)
+            if len(c2):
+                d = c2.groupby("phase_after").duration_s.median()
+                rows.append(_glm_row(
+                    c2, "n_ripples ~ phase_after + n_moves", "later_repeats",
+                    f"2-phase, {lab}",
+                    extra={"obs_log_rr": _log_rate_diff(
+                        c2, "phase_after", "exploration", "later_repeats"),
+                        "median_dur_first": float(d.get("exploration", np.nan)),
+                        "median_dur_later": float(d.get("later_repeats", np.nan))}))
+                keep[f"2-phase, {lab}"] = c2
+            c3, _ = _gather(lambda b, mp=mp: win.windows_phase3(b, min_pause_s=mp),
+                            store, R, subj)
+            if len(c3):
+                d = c3.groupby("phase3").duration_s.median()
+                rows.append(_glm_row(
+                    c3, "n_ripples ~ C(phase3, Treatment('execute')) + n_moves",
+                    "plan", f"3-phase, {lab}",
+                    extra={"obs_log_rr": _log_rate_diff(c3, "phase3", "plan",
+                                                        "execute"),
+                           "median_dur_first": float(d.get("plan", np.nan)),
+                           "median_dur_later": float(d.get("execute", np.nan))}))
+                keep[f"3-phase, {lab}"] = c3
+            print(f"    {lab:36s} done")
+
+    elif which == "H3":
+        rows = _sweep_H3(store, R, subj, out_dir)
+
+    tab = pd.DataFrame(rows)
+    if len(tab):
+        print("\n" + "=" * 100)
+        print(f" {which}: definitional variants  (GLM only -- NOT an inference)")
+        print("=" * 100)
+        cols = [c for c in ("variant", "n_rows", "obs_log_rr", "coef", "se",
+                            "z", "p_glm", "median_dur_first", "median_dur_later",
+                            "n_grids", "unit", "outcome") if c in tab.columns]
+        print(tab[cols].round(4).to_string(index=False))
+        tab.to_csv(os.path.join(out_dir, f"sweep_{which}.csv"), index=False)
+        try:
+            rfig.sweep_figure(tab, which,
+                              out_stem=os.path.join(out_dir, "figures",
+                                                    f"sweep_{which}"))
+        except Exception as e:
+            print(f"  sweep figure failed: {type(e).__name__}: {e}")
+    if keep:
+        try:
+            rfig.window_definition_figure(
+                keep, which,
+                out_stem=os.path.join(out_dir, "figures", f"windows_{which}"))
+        except Exception as e:
+            print(f"  window figure failed: {type(e).__name__}: {e}")
+    print(f"\n saved -> {out_dir}")
+    return None
+
+
+def _sweep_H3(store, R, subj, out_dir):
+    """H3's three separate choices: the window, the outcome, and the unit."""
+    import statsmodels.api as sm
+    import statsmodels.formula.api as smf
+
+    windows = [("pause after first-D (as run)", None), ("fixed 1 s after D", 1.0),
+               ("fixed 2 s after D", 2.0), ("fixed 5 s after D", 5.0)]
+    rows = []
+    for wlab, fixed in windows:
+        recs = []
+        for sess in store.sessions():
+            try:
+                beh = swr_io.load_behaviour(sess, data_root=R)
+                rt = swb.repeat_table(sess, beh=beh, data_root=R)
+            except Exception:
+                continue
+            if not len(rt):
+                continue
+            ev, iv_all, qc = store.get(sess)
+            for grid, g in rt.groupby("grid_no"):
+                g = g.sort_values("rep_overall")
+                disc, later = g[g.is_discovery == 1], g[g.is_discovery == 0]
+                if not len(disc) or not len(later):
+                    continue
+                t0 = float(disc.t_D.iloc[0])
+                t1 = float(later.t_start.iloc[0])
+                if not (np.isfinite(t0) and np.isfinite(t1)):
+                    continue
+                end = t0 + fixed if fixed else t1
+                if end - t0 < MIN_PAUSE_S:
+                    continue
+                w = win._finalise(pd.DataFrame([{
+                    "start_s": t0, "end_s": end, "grid_no": int(grid),
+                    "condition": "post_first_D", "is_test": True}]))
+                if not len(w):
+                    continue
+                for pair_id, e in ev.groupby("pair_id"):
+                    if pair_id in qc.index and bool(qc.loc[pair_id, "excluded"]):
+                        continue
+                    iv = iv_all[iv_all.pair_id == pair_id][["start_s", "stop_s"]].to_numpy()
+                    a = win.assign_events_to_windows(e.t_peak_s.to_numpy(float), w, iv)
+                    if not len(a) or float(a.exposure_s.iloc[0]) <= 0:
+                        continue
+                    nxt = later.iloc[0]
+                    recs.append({
+                        "session": sess, "grid_no": int(grid),
+                        "pair_id": pair_id,
+                        "subject_key": subj.get(sess, {}).get("subject_key"),
+                        "n_ripples": float(a.n_ripples.iloc[0]),
+                        "exposure_s": float(a.exposure_s.iloc[0]),
+                        "rate_hz": float(a.n_ripples.iloc[0]) / float(a.exposure_s.iloc[0]),
+                        "pause_s": end - t0,
+                        "errors_all_later": float(later.n_errors.sum()),
+                        "errors_next_repeat": float(nxt.n_errors),
+                        "n_repeats_after": int(len(later)),
+                        "errors_in_discovery": float(disc.n_errors.iloc[0]),
+                        "reps_to_solve": float(nxt.get("reps_to_solve", np.nan)),
+                    })
+        t = pd.DataFrame(recs)
+        if len(t) < 10:
+            continue
+        grid_avg = (t.groupby(["session", "subject_key", "grid_no"], as_index=False)
+                    .agg(rate_hz=("rate_hz", "mean"),
+                         errors_all_later=("errors_all_later", "first"),
+                         errors_next_repeat=("errors_next_repeat", "first"),
+                         n_repeats_after=("n_repeats_after", "first"),
+                         pause_s=("pause_s", "first"),
+                         errors_in_discovery=("errors_in_discovery", "first")))
+        for unit, d in (("per derivation", t), ("per grid", grid_avg)):
+            for outcome, off in (("errors_all_later", "n_repeats_after"),
+                                 ("errors_next_repeat", None)):
+                dd = d.copy()
+                dd["_off"] = (np.log(dd[off].clip(lower=1)) if off
+                              else np.zeros(len(dd)))
+                f = (f"{outcome} ~ rate_hz + errors_in_discovery "
+                     "+ np.log(pause_s)")
+                try:
+                    m = smf.glm(f, data=dd,
+                                family=sm.families.NegativeBinomial(),
+                                offset=dd["_off"]).fit(
+                        cov_type="cluster",
+                        cov_kwds={"groups": dd.subject_key.astype("category").cat.codes})
+                    rows.append({
+                        "variant": f"{wlab} | {unit} | {outcome}",
+                        "window": wlab, "unit": unit, "outcome": outcome,
+                        "n_rows": len(dd),
+                        "n_grids": int(grid_avg.groupby(["session", "grid_no"]).ngroups),
+                        "coef": float(m.params["rate_hz"]),
+                        "se": float(m.bse["rate_hz"]),
+                        "z": float(m.tvalues["rate_hz"]),
+                        "p_glm": float(m.pvalues["rate_hz"]),
+                        "frac_zero_rate": float((dd.rate_hz == 0).mean()),
+                        "median_pause_s": float(dd.pause_s.median())})
+                except Exception as e:
+                    print(f"    {wlab}|{unit}|{outcome} failed: {e}")
+        print(f"    {wlab:32s} done ({len(t)} derivation-rows)")
+    return rows
+
+
+# ============================================================================
+# DESCRIPTIVE -- no permutations, no GLM, just what the data look like
+# ============================================================================
+
+def _peth_across(store, align_by_session, half_s, bin_s):
+    """PETH averaged over derivations within subject, then across subjects.
+
+    The subject is the unit of inference everywhere else in this script, so it
+    is the unit here too: a subject with five derivations must not count five
+    times in the error band.
+    """
+    per_subj = {}
+    centres = None
+    for sess, aligns in align_by_session.items():
+        if not len(aligns):
+            continue
+        try:
+            ev, iv_all, qc = store.get(sess)
+        except KeyError:
+            continue
+        skey = store.subject_map().get(sess, {}).get("subject_key", f"s{sess}")
+        for pair_id, e in ev.groupby("pair_id"):
+            if pair_id in qc.index and bool(qc.loc[pair_id, "excluded"]):
+                continue
+            iv = iv_all[iv_all.pair_id == pair_id][["start_s", "stop_s"]].to_numpy()
+            if not len(iv):
+                continue
+            c, r, n, _ = win.peri_event_rate(e.t_peak_s.to_numpy(float), aligns,
+                                             iv, half_s=half_s, bin_s=bin_s)
+            centres = c
+            per_subj.setdefault(skey, []).append(r)
+    if centres is None or not per_subj:
+        return None
+    M = np.vstack([np.nanmean(np.vstack(v), axis=0) for v in per_subj.values()])
+    n_sub = M.shape[0]
+    mean = np.nanmean(M, axis=0)
+    sem = np.nanstd(M, axis=0) / max(np.sqrt(n_sub), 1)
+    return centres, mean, sem, n_sub
+
+
+def _align_reward(beh, state, first):
+    """t_<state> on the first traversal of each grid (or on later ones)."""
+    out = {}
+    for sess, b in beh.groupby("session"):
+        ts = []
+        for _, g in b.groupby("grid_no"):
+            g = g.sort_values("rep_overall")
+            sel = g.iloc[:1] if first else g.iloc[1:]
+            ts += [float(v) for v in sel[f"t_{state}"] if np.isfinite(v)]
+        out[int(sess)] = np.asarray(ts, float)
+    return out
+
+
+def _align_uncover(unc, query):
+    out = {}
+    for sess, u in unc.groupby("session"):
+        q = u.query(query) if query else u
+        out[int(sess)] = q.t_s.to_numpy(float)
+    return out
+
+
+def describe(bundle=None, analysis_name=ANALYSIS_NAME, out_dir=None,
+             counts_dir=None, half_s=5.0, bin_s=0.25):
+    """Every descriptive view of the data, with no inference at all.
+
+    Fast on purpose: the per-hypothesis figures used to be written only after
+    that hypothesis's 1000 permutations, which made looking at the data cost an
+    hour. Nothing here permutes.
+
+    `counts_dir` regenerates the per-hypothesis panels from `H*_counts.csv`
+    already written by `run`, so no design has to be rebuilt.
+    """
+    import pickle
+    R = swr_io.get_data_root()
+    gdir = os.path.join(swr_io.derivatives_dir(R), "group", "swr")
+    if out_dir is None:
+        out_dir = os.path.join(gdir, "descriptive")
+    figs = os.path.join(out_dir, "figures")
+    os.makedirs(figs, exist_ok=True)
+    swr_io.start_log(out_dir, "swr_describe")
+
+    store = RippleStore(analysis_name, R, bundle=bundle)
+    store.describe()
+
+    if bundle and os.path.isdir(bundle):
+        rip = pd.read_csv(os.path.join(bundle, "ripples.csv"))
+        beh = pd.read_csv(os.path.join(bundle, "behaviour.csv"))
+        unc = pd.read_csv(os.path.join(bundle, "uncover.csv"))
+    else:
+        with open(bundle, "rb") as f:
+            b = pickle.load(f)
+        rip, beh, unc = b["ripples"], b["behaviour"], b["uncover"]
+
+    print(f"\n  {len(rip)} ripples | {len(beh)} repeats | {len(unc)} uncoverings")
+
+    # ---- 1. what the ripples themselves look like
+    print("\n  [1/5] ripple attributes")
+    rfig.ripple_property_figure(
+        rip, out_stem=os.path.join(figs, "ripple_properties"),
+        title="Accepted ripples: the four Chen attributes")
+    rfig.ripple_property_figure(
+        rip, split="recording_site",
+        out_stem=os.path.join(figs, "ripple_properties_by_site"),
+        title="Ripple attributes by recording site")
+
+    # ---- 2. rate per session and per subject
+    print("  [2/5] rate distributions")
+    qc = pd.concat([store.get(s)[2].assign(session=s) for s in store.sessions()])
+    qc = qc[~qc.excluded.fillna(False)]
+    rfig.rate_distribution_figure(
+        qc, out_stem=os.path.join(figs, "rate_distributions"),
+        title="Ripple rate per derivation, session and subject")
+
+    # ---- 3. peri-event rate: the time course behind every contrast
+    print("  [3/5] peri-event time histograms (the slow one)")
+    panels = []
+    tr = {}
+    for lab, first in (("first traversal", True), ("later traversals", False)):
+        got = _peth_across(store, _align_reward(beh, "D", first), half_s, bin_s)
+        if got:
+            tr[lab] = got
+    if tr:
+        panels.append(("Aligned to arrival at D  (H1)", tr))
+
+    tr = {}
+    for st in ("A", "B", "C", "D"):
+        got = _peth_across(store, _align_reward(beh, st, True), half_s, bin_s)
+        if got:
+            tr[st] = got
+    if tr:
+        panels.append(("Discovery traversal, each reward  (H6)", tr))
+
+    tr = {}
+    for lab, q in (("correct", "correct == 1"), ("error", "correct == 0")):
+        got = _peth_across(store, _align_uncover(unc, q), half_s, bin_s)
+        if got:
+            tr[lab] = got
+    if tr:
+        panels.append(("Aligned to feedback  (H4)", tr))
+
+    tr = {}
+    for lab, q in (("correct, discovery", "correct == 1 and is_discovery == 1"),
+                   ("error, discovery", "correct == 0 and is_discovery == 1"),
+                   ("correct, later", "correct == 1 and is_discovery == 0"),
+                   ("error, later", "correct == 0 and is_discovery == 0")):
+        got = _peth_across(store, _align_uncover(unc, q), half_s, bin_s)
+        if got:
+            tr[lab] = got
+    if tr:
+        panels.append(("Feedback x phase  (H7)", tr))
+
+    if panels:
+        rfig.peth_figure(panels, out_stem=os.path.join(figs, "peri_event_rate"),
+                         title="Ripple rate around task events "
+                               "(exposure-corrected, mean +- SEM across subjects)")
+
+    # ---- 4/5. per-hypothesis panels, from counts already written by `run`
+    if counts_dir and os.path.isdir(counts_dir):
+        print(f"  [4/5] per-hypothesis panels from {counts_dir}")
+        for f in sorted(glob.glob(os.path.join(counts_dir, "H*_counts.csv"))):
+            name = os.path.basename(f).split("_")[0]
+            c = pd.read_csv(f)
+            nl = os.path.join(counts_dir, f"{name}_null.npy")
+            null = np.load(nl) if os.path.isfile(nl) else None
+            col = rfig.HYP_COND_COL.get(name, "condition")
+            try:
+                rfig.condition_distributions(
+                    name, c, col, null=null,
+                    out_stem=os.path.join(figs, f"{name}_distributions"))
+            except Exception as e:
+                print(f"    {name} distributions failed: {type(e).__name__}: {e}")
+            fo = {"H1": ("condition", "first_D", "later_D"),
+                  "H2": ("phase_after", "exploration", "later_repeats"),
+                  "H5": ("phase3", "plan", "execute"),
+                  "H7": ("informative", "informative", "uninformative"),
+                  "H4": ("feedback", "error", "correct")}.get(name)
+            if fo and fo[0] in c.columns:
+                try:
+                    rfig.effect_forest(name, c, *fo,
+                                       out_stem=os.path.join(figs, f"{name}_forest"))
+                except Exception as e:
+                    print(f"    {name} forest failed: {type(e).__name__}: {e}")
+            if "repeat_number" in c.columns:
+                rfig.rate_by_ordinal(
+                    c, "repeat_number",
+                    out_stem=os.path.join(figs, f"{name}_by_repeat"),
+                    title=f"{name}: rate across repeats", split="phase_after")
+            if "solve_index" in c.columns and "repeat_number" not in c.columns:
+                rfig.rate_by_ordinal(
+                    c, "solve_index",
+                    out_stem=os.path.join(figs, f"{name}_by_solve"),
+                    title=f"{name}: rate across solves", xlabel="Solve index")
+    print(f"\n saved -> {figs}")
     return None
 
 
@@ -718,6 +1351,8 @@ def export_bundle(analysis_name=ANALYSIS_NAME, out_name="swr_bundle"):
 
 if __name__ == "__main__":
     if fire is not None:
-        fire.Fire({'run': run, 'export': export_bundle})
+        fire.Fire({'run': run, 'export': export_bundle,
+                   'describe': describe,
+                   'sweep': sweep})
     else:
         run()
