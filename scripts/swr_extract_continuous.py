@@ -133,16 +133,12 @@ def extract_session(session, analysis_name=ANALYSIS_NAME, save_all=True,
     # ---- hard gate: does every behavioural event land inside its recording?
     blocks, bt, warn = pp.session_block_table(session, data_root=data_root)
     print(f"\ns{session:02d}: {len(blocks)} block(s), {len(pairs)} pairs")
-    print(blocks[["block", "duration_s", "fs_raw", "offset_s",
-                  "head_margin_s", "tail_margin_s"]].to_string(index=False))
-    if len(blocks) != len(bt):
-        # s32 is the known case: one behavioural block, two recordings with a
-        # 444.8 s hole between them (file t_starts 12042.7 and 14465.0 on a
-        # shared amplifier clock). The cumulative-duration clock cannot express
-        # a gap inside a block, so the mapping is not recoverable here. Skip
-        # with a reason rather than crashing a batch run.
-        reason = (f"{len(blocks)} recordings vs {len(bt)} behavioural blocks "
-                  f"-- recording gap inside a behavioural block")
+    for w in warn:
+        print(f"  note: {w}")
+    # Emptiness first: the empty frame carries no `block`/`offset_s` columns,
+    # so printing the table before this check turns a clean skip into a KeyError.
+    if not len(blocks):
+        reason = "no readable recording -- see the notes above"
         print(f"  SKIPPED s{session:02d}: {reason}")
         if save_all:
             out_dir = os.path.join(swr_io.session_deriv_dir(session, data_root),
@@ -150,25 +146,38 @@ def extract_session(session, analysis_name=ANALYSIS_NAME, save_all=True,
             os.makedirs(out_dir, exist_ok=True)
             with open(os.path.join(out_dir, "SKIPPED.json"), "w") as f:
                 json.dump({"session": session, "reason": reason,
-                           "n_recordings": len(blocks),
-                           "n_behavioural_blocks": len(bt),
-                           "block_durations_s": list(blocks.duration_s)}, f, indent=2)
+                           "warnings": warn}, f, indent=2)
         return None
-    bad = blocks[(blocks.head_margin_s < -CLOCK_TOLERANCE_S)
-                 | (blocks.tail_margin_s < -CLOCK_TOLERANCE_S)]
-    if len(bad):
-        raise RuntimeError(
-            f"s{session:02d}: behavioural events fall >{CLOCK_TOLERANCE_S}s "
-            f"outside their recording -- block alignment failed:\n{bad}")
-    n_over = int((blocks.tail_margin_s < 0).sum())
-    if n_over:
-        print(f"  note: {n_over} block(s) overrun by <{CLOCK_TOLERANCE_S}s "
-              f"(trailing repeat past recording end; will be dropped downstream)")
+    print(blocks[["block", "duration_s", "fs_raw", "offset_s",
+                  "head_margin_s", "tail_margin_s"]].to_string(index=False))
+
+    # The count gate that used to sit here -- "n recordings vs m behavioural
+    # blocks, recording gap inside a block" -- skipped seven sessions, and for
+    # five of them the diagnosis was simply wrong: the directory held
+    # recordings that are not part of the task (another day's session, an
+    # intervening task, an aborted start, a 4.3 s stub). `resolve_run` now
+    # picks the run that carries the behaviour, so a count mismatch is normal
+    # and no longer interesting.
+    #
+    # A short recording is a different thing and is NOT fatal. The trailing
+    # windows get exposure_s = 0 and are dropped by the GLM, exactly as the
+    # already-tolerated sub-5 s truncations are. Raising here instead threw
+    # away whole sessions over a fraction of their length: s58 loses 1.2%,
+    # s62 1.6%, s32 10%, s63 34%.
+    head = float(np.nanmin(blocks.head_margin_s.astype(float)))
+    tail = float(np.nanmin(blocks.tail_margin_s.astype(float)))
+    truncated_s = max(0.0, -tail) + max(0.0, -head)
+    if truncated_s > 0:
+        span = float(bt.beh_end_s.max() - bt.beh_start_s.min())
+        print(f"  TRUNCATED s{session:02d}: {truncated_s:.1f}s of behaviour "
+              f"({100 * truncated_s / span:.1f}% of the task) has no recording "
+              f"(head {head:.1f}s, tail {tail:.1f}s). Those windows get zero "
+              f"exposure; the session is carried as a partial.")
 
     sig, meta = pp.preprocess_session(session, pairs, data_root=data_root,
                                       verbose=verbose)
     meta["behaviour_blocks"] = bt.to_dict("records")
-    meta["clock_overrun_blocks"] = n_over
+    meta["truncated_s"] = truncated_s          # behaviour with no recording
     meta["discovery_warnings"] = warn
 
     print(f"  -> {sig.shape[0]} pairs x {sig.shape[1]} samples "

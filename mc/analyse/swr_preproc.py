@@ -138,6 +138,23 @@ def nsx_time_origin(path):
 # BLOCK STRUCTURE
 # =============================================================================
 
+def _blackrock_reader(path, nsx):
+    """BlackrockIO for one .nsX, tolerating a .nev that disagrees with it.
+
+    neo cross-checks segment counts between the .nsx and its companion .nev and
+    refuses to open the file when they differ -- s52 has 3 segments in the .nev
+    and 2 in the .ns2, which cost the whole session. The .nev carries spike and
+    event data that this pipeline never reads, so pointing the reader at a .nev
+    that does not exist skips the check and the LFP loads normally.
+    """
+    import neo
+    try:
+        return neo.io.BlackrockIO(filename=path, nsx_to_load=int(nsx))
+    except Exception:
+        return neo.io.BlackrockIO(filename=path, nsx_to_load=int(nsx),
+                                  nev_override=path + "__absent__")
+
+
 def blackrock_block_info(path, nsx):
     """(duration_s, fs, n_channels, seg_index) of the real recording segment.
 
@@ -145,8 +162,7 @@ def blackrock_block_info(path, nsx):
     longest segment is the real one. Picking it independently reproduces the
     YAML `segment` field wherever that field is populated.
     """
-    import neo
-    reader = neo.io.BlackrockIO(filename=path, nsx_to_load=int(nsx))
+    reader = _blackrock_reader(path, nsx)
     best = (0.0, np.nan, 0, None)
     for bi in range(reader.block_count()):
         for si in range(reader.segment_count(bi)):
@@ -162,12 +178,168 @@ def blackrock_block_info(path, nsx):
     return best
 
 
-def session_block_table(session, data_root=None):
-    """Per-block file, duration, sampling rate and session-clock offset.
+CLOCK_TOLERANCE_S = 5.0        # shared with swr_extract_continuous
 
-    offset_k = cumulative duration of files 0..k-1 (see module docstring).
-    Adds `beh_start_s` / `beh_end_s` and the head/tail margin so the caller can
-    assert every behavioural event lands inside its recording.
+# Sessions where the recording durations alone do NOT determine which files
+# carry the task, resolved from evidence outside the timings. Every entry needs
+# its reason recorded here -- these are the only places a human choice enters
+# the block structure, and `resolve_run` refuses rather than guess without one.
+RUN_OVERRIDE = {
+    # s08 and s09 are the same patient (YEK) and their directories hold the
+    # SAME four .ns3 files. The filenames pair them: EMU-030 blk-01 with
+    # EMU-031 blk-02 (run-02) is one session, and the remaining two the other.
+    # s09's behaviour fits files 1+2 with -2.0s of trailing truncation, which
+    # leaves 3+4 for s08 -- and 3+4 is the only length-2 run that fits s08
+    # anyway, so the two agree. A recording cannot host two sessions' tasks.
+    9:  ((0, 1), "EMU-030 blk-01 + EMU-031 blk-02 are the matched pair; "
+                 "the other two files carry s08"),
+    # datafile202302_b001.ns2 is block 1 of one behavioural block; _b002 is a
+    # separate run of the same patient. Duration alone cannot tell them apart
+    # (both are long enough), the b00N suffix can.
+    47: ((0,), "datafile202302_b001 is the task block; _b002 is a separate run"),
+}
+
+
+def _ncs_group_info(group):
+    """(fs, duration_s, n_files) for one .ncs suffix group.
+
+    Reading these off `group[0]` -- the alphabetically first file -- is wrong
+    twice over at UCLA. 2 kHz macros and 32 kHz micro-wires share a group, so
+    the first name decides the sampling rate; and header-only stubs sort early,
+    so for s40 the probe was `A1.ncs`, which contains no data at all. That
+    reported the task block as 1925 s at 32 kHz when the macro channels say
+    2287 s at 2 kHz, and the session looked short of its behaviour.
+
+    The MODAL sampling rate is taken instead -- macros always outnumber micros
+    -- and the duration is the longest file at that rate.
+    """
+    rates, durs = [], []
+    for f in group:
+        n_rec = (os.path.getsize(f) - NCS_HEADER_BYTES) // NCS_REC.itemsize
+        fs = float(ncs_header(f).get('SamplingFrequency', np.nan))
+        if np.isfinite(fs) and fs > 0 and n_rec > 0:
+            rates.append(fs)
+            durs.append(n_rec * 512.0 / fs)
+    if not rates:
+        return np.nan, np.nan, 0
+    rates = np.asarray(rates)
+    modal = float(np.bincount(rates.astype(int)).argmax())
+    at_modal = [d for r, d in zip(rates, durs) if r == modal]
+    return modal, float(max(at_modal)), len(rates)
+
+
+def _nsx_number(path, cfg):
+    """Which .nsX stream to read, taken from the file on disk.
+
+    `cfg['LFP_file_format']` is the string 'ncs' for the two UCLA sessions that
+    turned out to be Blackrock (s50, s51). `discover_raw_files` notices and
+    rebinds its own local `fmt`, but that never reaches here, so this used to
+    do `int('ncs')` and raise -- losing both sessions to a config typo rather
+    than to anything about the data.
+    """
+    fmt = (cfg or {}).get('LFP_file_format')
+    if fmt in (2, 3, '2', '3'):
+        return int(fmt)
+    ext = os.path.splitext(path)[1]
+    return int(ext[-1]) if ext[:-1] == '.ns' and ext[-1].isdigit() else 3
+
+
+def resolve_run(durations, bt, tol=CLOCK_TOLERANCE_S, override=None):
+    """Which contiguous run of recordings carries this session's behaviour.
+
+    A session directory does not only hold that session's task. It can hold
+    another day's session (s08 and s09 share four files, and s08's task is
+    recordings 3+4), an intervening run of a different task (s21's recording 2
+    is `task-T3`), an aborted start (s40's 107 s and 143 s groups, s47's second
+    file) or a 4.3 s stub (s59's recording 3). Pairing `files[k]` with block
+    `k` and refusing to run when the counts differ lost seven sessions to that.
+
+    Every contiguous run is tried as the session timeline and the behaviour is
+    tested against the run AS A WHOLE, on the cumulative-duration clock the
+    module docstring establishes:
+
+        head = min(beh_start)                          slack before the task
+        tail = sum(durations in run) - max(beh_end)    slack after it
+
+    Testing the run rather than block k against file k is also what recovers
+    s19: its block 2 begins 12.3 s before file 2 does, which the per-file test
+    calls a fatal misalignment, while on the concatenation the session fits
+    with 17.4 s and 42.6 s to spare.
+
+    NOTHING IS GUESSED. `head` is min(beh_start) whatever run is chosen, so the
+    fit test only really asserts "the concatenation is long enough" -- a weak
+    constraint that several runs can satisfy. Measured over the 53 sessions with
+    known durations, exactly one run fits for 49 of them; ambiguity is real for
+    s08, s09, s40 and s47 only. Rather than pick a winner on a margin, those are
+    resolved by an explicit constraint or refused:
+
+      1. runs that fit, within `tol`
+      2. of those, prefer len(run) == n_behavioural_blocks -- one recording per
+         block is what an uninterrupted acquisition produces. This alone makes
+         s08 and s40 unique
+      3. still more than one -> AMBIGUOUS. No run is returned. The caller must
+         supply `override`, and the reason is recorded in RUN_OVERRIDE below
+
+    Returns (run, head_s, tail_s, status) with status one of 'unique',
+    'by_block_count', 'override', 'truncated', 'AMBIGUOUS'. 'truncated' means no
+    run is long enough -- a short recording, not a mapping error, carried as a
+    partial. 'AMBIGUOUS' returns an empty run: refusing is the honest outcome
+    when the timings genuinely do not determine the answer.
+
+    Verified against the 48 sessions that already read correctly -- the run is
+    (0..n_blocks-1) for every one of them, so this is a no-op there.
+    """
+    d = np.asarray(durations, float)
+    beh_start, beh_end = float(bt.beh_start_s.min()), float(bt.beh_end_s.max())
+    nb = len(bt)
+
+    fitting, best_any = [], None
+    for a in range(len(d)):
+        for b in range(a, len(d)):
+            run = tuple(range(a, b + 1))
+            if not np.isfinite(d[list(run)]).all():
+                continue
+            total = float(d[list(run)].sum())
+            head, tail = beh_start, total - beh_end
+            if best_any is None or min(head, tail) > best_any[0]:
+                best_any = (min(head, tail), run, head, tail)
+            if min(head, tail) > -tol:
+                fitting.append((run, head, tail))
+
+    if override is not None:
+        run = tuple(override)
+        total = float(d[list(run)].sum())
+        return run, beh_start, total - beh_end, 'override'
+    if not fitting:
+        if best_any is None:
+            return (), np.nan, np.nan, 'AMBIGUOUS'
+        _, run, head, tail = best_any
+        return run, head, tail, 'truncated'
+    if len(fitting) == 1:
+        run, head, tail = fitting[0]
+        return run, head, tail, 'unique'
+
+    by_count = [f for f in fitting if len(f[0]) == nb]
+    if len(by_count) == 1:
+        run, head, tail = by_count[0]
+        return run, head, tail, 'by_block_count'
+    return (), np.nan, np.nan, 'AMBIGUOUS'
+
+
+def session_block_table(session, data_root=None):
+    """The recordings carrying this session, with their session-clock offsets.
+
+    One row per recording IN THE RESOLVED RUN (see `resolve_run`), not one per
+    behavioural block -- those are not the same thing whenever the directory
+    holds recordings that are not part of the task.
+
+    offset_k = cumulative duration of the run's files 0..k-1 (module docstring).
+    `head_margin_s` sits on the first row and `tail_margin_s` on the last, both
+    session-level, so `np.nanmin` over either column still gives the worst
+    margin and `swr_audit_sessions` needs no change.
+
+    `rec_index` indexes back into `discover_raw_files`, so the caller loads the
+    right files without re-deriving the mapping.
     """
     import pandas as pd
     data_root = data_root or swr_io.get_data_root()
@@ -179,32 +351,53 @@ def session_block_table(session, data_root=None):
     rows = []
     for k, f in enumerate(files):
         if kind == 'blackrock':
-            dur, fs, nch, seg = blackrock_block_info(f, cfg['LFP_file_format'])
+            try:
+                dur, fs, nch, seg = blackrock_block_info(f, _nsx_number(f, cfg))
+            except Exception as e:
+                warn.append(f"{os.path.basename(f)}: {type(e).__name__}: {e}")
+                dur, fs, nch, seg = np.nan, np.nan, 0, None
             name, t_origin = os.path.basename(f), nsx_time_origin(f)
         else:
-            probe = f[0]
-            size = os.path.getsize(probe)
-            n_rec = (size - NCS_HEADER_BYTES) // NCS_REC.itemsize
-            hdr = ncs_header(probe)
-            fs = float(hdr.get('SamplingFrequency', np.nan))
-            dur, nch, seg = n_rec * 512.0 / fs, len(f), None
-            name, t_origin = f"{len(f)} .ncs files", hdr.get('TimeCreated')
-        rows.append({"block": k + 1, "file": name, "seg_index": seg,
+            fs, dur, nch = _ncs_group_info(f)
+            seg = None
+            name = f"{len(f)} .ncs files"
+            t_origin = ncs_header(f[0]).get('TimeCreated') if f else None
+        rows.append({"rec_index": k, "file": name, "seg_index": seg,
                      "fs_raw": fs, "n_channels": nch, "duration_s": dur,
                      "time_origin": t_origin})
 
-    df = pd.DataFrame(rows)
-    if df.empty:
-        return df, bt, warn
-    df["offset_s"] = np.concatenate([[0.0], np.cumsum(df["duration_s"])[:-1]])
+    full = pd.DataFrame(rows)
+    if full.empty:
+        return full, bt, warn
 
-    for k in range(min(len(df), len(bt))):
-        b = bt.iloc[k]
-        df.loc[k, "beh_start_s"] = b.beh_start_s
-        df.loc[k, "beh_end_s"] = b.beh_end_s
-        df.loc[k, "head_margin_s"] = b.beh_start_s - df.loc[k, "offset_s"]
-        df.loc[k, "tail_margin_s"] = (df.loc[k, "offset_s"]
-                                      + df.loc[k, "duration_s"] - b.beh_end_s)
+    ov = RUN_OVERRIDE.get(int(session))
+    run, head, tail, status = resolve_run(full.duration_s.values, bt,
+                                          override=ov[0] if ov else None)
+    if status == 'AMBIGUOUS':
+        warn.append(
+            "block structure is AMBIGUOUS: more than one run of recordings is "
+            "long enough to hold the behaviour and none has one recording per "
+            "block. The durations do not determine the answer -- add an entry "
+            "to swr_preproc.RUN_OVERRIDE with the evidence that does.")
+        return full.iloc[0:0], bt, warn
+    if not len(run):
+        return full.iloc[0:0], bt, warn + ["no readable recording"]
+    if status == 'override':
+        warn.append(f"run {'+'.join(str(i + 1) for i in run)} set by "
+                    f"RUN_OVERRIDE: {ov[1]}")
+    elif run != tuple(range(len(bt))):
+        warn.append(f"recordings {'+'.join(str(i + 1) for i in run)} carry the "
+                    f"behaviour, not 1..{len(bt)} ({status})")
+
+    df = full.iloc[list(run)].reset_index(drop=True)
+    df.insert(0, "block", np.arange(1, len(df) + 1))
+    df["offset_s"] = np.concatenate([[0.0], np.cumsum(df["duration_s"])[:-1]])
+    for col in ("beh_start_s", "beh_end_s", "head_margin_s", "tail_margin_s"):
+        df[col] = np.nan
+    df.loc[0, "beh_start_s"] = float(bt.beh_start_s.min())
+    df.loc[len(df) - 1, "beh_end_s"] = float(bt.beh_end_s.max())
+    df.loc[0, "head_margin_s"] = head
+    df.loc[len(df) - 1, "tail_margin_s"] = tail
     return df, bt, warn
 
 
@@ -285,8 +478,7 @@ def _load_blackrock_channels(path, nsx, seg_index, ch_positions,
     over 4800 s is ~1.5 GB as float64 from neo. Only the channels we actually
     need are ever materialised -- `channel_indexes` is passed to neo.
     """
-    import neo
-    reader = neo.io.BlackrockIO(filename=path, nsx_to_load=int(nsx))
+    reader = _blackrock_reader(path, nsx)
     seg = reader.read_segment(block_index=0, seg_index=int(seg_index), lazy=True)
     asig = max(seg.analogsignals, key=lambda a: a.shape[0])
     t0_file = float(asig.t_start.magnitude)
@@ -370,13 +562,15 @@ def preprocess_session(session, pairs, data_root=None, verbose=True,
     for k, b in blocks.iterrows():
         if verbose:
             print(f"    block {int(b.block)}: {b.duration_s:.0f}s @ {b.fs_raw:.0f}Hz")
+        # `rec_index` points into `files`, NOT the row order: the resolved run
+        # may skip recordings that are not part of this session's task.
+        f = files[int(b.rec_index)]
         if kind == 'blackrock':
             raw = _load_blackrock_channels(
-                os.path.join(os.path.dirname(files[k]), os.path.basename(files[k])),
-                cfg['LFP_file_format'], b.seg_index, wanted,
+                f, _nsx_number(f, cfg), b.seg_index, wanted,
                 b.fs_raw, b.duration_s, verbose=verbose)
         else:
-            raw = _load_ncs_channels(files[k], wanted, b.duration_s, verbose=verbose)
+            raw = _load_ncs_channels(f, wanted, b.duration_s, verbose=verbose)
         per_block.append(raw)
 
     # Concatenating the blocks in order reproduces the behavioural clock,

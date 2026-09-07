@@ -133,10 +133,15 @@ def audit_one_session(session, cfg, subj_map, data_root, check_clock=True):
     # recording, which is how a multi-block session silently misassigns every
     # event in block 2+. That is checked here by reading the file headers.
     clock = {"clock_status": "not_checked", "min_head_margin_s": np.nan,
-             "min_tail_margin_s": np.nan}
+             "min_tail_margin_s": np.nan, "run": "", "n_rec_found": n_files}
     if check_clock and n_files and beh is not None:
         try:
-            blocks, _, _ = pre.session_block_table(session, data_root=data_root)
+            blocks, _, bwarn = pre.session_block_table(session, data_root=data_root)
+            warnings += [f"blocks: {w}" for w in bwarn
+                         if w not in fwarn and "carry the behaviour" in str(w)
+                         or "RUN_OVERRIDE" in str(w) or "AMBIGUOUS" in str(w)]
+            if len(blocks) and "rec_index" in blocks:
+                clock["run"] = "+".join(str(int(i) + 1) for i in blocks.rec_index)
             if len(blocks) and "head_margin_s" in blocks:
                 h = blocks["head_margin_s"].astype(float)
                 t = blocks["tail_margin_s"].astype(float)
@@ -147,10 +152,27 @@ def audit_one_session(session, cfg, subj_map, data_root, check_clock=True):
                 if not np.isfinite(worst):
                     clock["clock_status"] = "unknown"
                 elif worst < -TRUNCATION_TOL_S:
-                    clock["clock_status"] = "FAILED"
+                    # This used to read "block mapping is wrong" and exclude the
+                    # session. It no longer can: `resolve_run` picks the run of
+                    # recordings that actually carries the behaviour, so by the
+                    # time the margins are computed the mapping is already the
+                    # best one available. A remaining overrun is therefore a
+                    # SHORT RECORDING, not a misassignment -- and short is not a
+                    # reason to drop a session, only to lose the windows that
+                    # have no data. Reported with its size so the decision is
+                    # yours; nothing is excluded on this alone.
+                    clock["clock_status"] = "truncated_major"
+                    try:
+                        span = float(blocks_df.beh_end_s.max()
+                                     - blocks_df.beh_start_s.min())
+                    except Exception:
+                        span = np.nan
+                    pct = f", {100 * -worst / span:.0f}% of the task" \
+                        if np.isfinite(span) and span > 0 else ""
                     warnings.append(
-                        f"clock: behaviour falls OUTSIDE the recording by "
-                        f"{-worst:.1f}s -- block mapping is wrong")
+                        f"clock: {-worst:.1f}s of behaviour has no recording"
+                        f"{pct} -- those windows get zero exposure and are "
+                        f"dropped by the GLM; the rest of the session is usable")
                 elif worst < 0:
                     clock["clock_status"] = "truncated"
                     warnings.append(
@@ -180,9 +202,10 @@ def audit_one_session(session, cfg, subj_map, data_root, check_clock=True):
         status = "no_behaviour"
     elif n_files == 0:
         status = "no_raw_files"
-    elif clock["clock_status"] == "FAILED":
-        status = "clock_failed"
-    elif clock["clock_status"] == "truncated":
+    elif clock["clock_status"] in ("truncated", "truncated_major"):
+        # Not an exclusion. A truncated recording costs the windows that have
+        # no data, not the session -- see the clock gate above for why there is
+        # no longer a "mapping is wrong" category to exclude on.
         status = "needs_review"
     elif warnings:
         status = "needs_review"
@@ -209,6 +232,7 @@ def audit_one_session(session, cfg, subj_map, data_root, check_clock=True):
         "multi_block": n_beh_blocks > 1,
         "status": status,
         "clock_status": clock["clock_status"],
+        "run": clock["run"],
         "min_head_margin_s": clock["min_head_margin_s"],
         "min_tail_margin_s": clock["min_tail_margin_s"],
         "n_warnings": len(warnings),
@@ -297,24 +321,53 @@ def audit_sessions(sessions=None, save_all=True, verbose=False,
 
     # ---- triage: which warnings actually matter ------------------------
     if "clock_status" in manifest:
+        # Which recordings were chosen, per session. This is the table to read
+        # when a session behaves oddly: `run` naming anything other than
+        # 1..n_blocks means the directory holds recordings that are not part of
+        # the task, and the resolver skipped them.
+        if "run" in manifest:
+            print("\n--- BLOCK STRUCTURE (which recordings carry the behaviour) ---")
+            bs = manifest[manifest.run.astype(str).str.len() > 0].copy()
+            bs["expected"] = bs.n_beh_blocks.apply(
+                lambda n: "+".join(str(i + 1) for i in range(int(n))) if n else "")
+            odd = bs[bs.run != bs.expected]
+            print(f"  {len(bs) - len(odd)}/{len(bs)} sessions use recordings "
+                  f"1..n_blocks, i.e. unchanged from the old positional mapping")
+            if len(odd):
+                print("  the rest -- CHECK THESE:")
+                for _, r in odd.iterrows():
+                    print(f"    s{int(r.session):02d}  files_found={int(r.n_raw_files)} "
+                          f"beh_blocks={int(r.n_beh_blocks)}  run={r.run:10s} "
+                          f"(expected {r.expected})")
+            miss = manifest[(manifest.n_raw_files > 0)
+                            & (manifest.run.astype(str).str.len() == 0)]
+            if len(miss):
+                print("  NO RUN RESOLVED (nothing was read) -- these are dropped:")
+                for _, r in miss.iterrows():
+                    print(f"    s{int(r.session):02d}  {str(r.warnings)[:110]}")
+
         print("\n--- CLOCK CHECK (the only warning that can corrupt a result) ---")
         print(manifest.clock_status.value_counts().to_string())
         bad = manifest[manifest.clock_status.isin(
-            ["FAILED", "truncated", "tight", "unknown"])]
+            ["truncated", "truncated_major", "tight", "unknown"])]
         for _, r in bad.iterrows():
-            print(f"  s{int(r.session):02d}  {r.clock_status:8s} "
+            print(f"  s{int(r.session):02d}  {r.clock_status:15s} "
                   f"head {r.min_head_margin_s:8.1f}s  tail {r.min_tail_margin_s:8.1f}s"
                   f"  files={int(r.n_raw_files)} beh_blocks={int(r.n_beh_blocks)}")
         if not len(bad):
             print("  every session's behaviour fits inside its recording "
                   f"with >= {CLOCK_MARGIN_S}s margin at both ends.")
         else:
-            print(f"  FAILED    = mapping is wrong (overrun > {TRUNCATION_TOL_S}s). "
-                  "Do not analyse.")
-            print(f"  truncated = recording stopped < {TRUNCATION_TOL_S}s before the "
-                  "task ended. Usable:")
-            print("              the trailing windows get zero exposure and are "
-                  "dropped by the GLM.")
+            print(f"  truncated       = recording stopped < {TRUNCATION_TOL_S}s "
+                  "before the task ended.")
+            print(f"  truncated_major = it stopped more than {TRUNCATION_TOL_S}s "
+                  "early. Both are USABLE:")
+            print("                    the windows with no data get zero exposure "
+                  "and are dropped by")
+            print("                    the GLM. Neither is an exclusion -- check "
+                  "the % in the warning")
+            print("                    and decide whether the remainder is worth "
+                  "analysing.")
 
         cosmetic = manifest[(manifest.status == "needs_review")
                             & (manifest.clock_status == "ok")]

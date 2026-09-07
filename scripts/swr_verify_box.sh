@@ -68,10 +68,16 @@ while IFS= read -r _line; do
 done < <($RC lsf --dirs-only $FID "$REMOTE" 2>/dev/null | sed 's:/*$::')
 [ "${#FOLDERS[@]}" -gt 0 ] || { echo "no folders returned -- check remote/FID"; exit 1; }
 
-tot_ok=0; tot_bad=0; tot_none=0; BAD_SESSIONS=()
+tot_ok=0; tot_bad=0; tot_none=0; BAD_SESSIONS=(); UNPARSED=()
 
 for f in "${FOLDERS[@]}"; do
-    [[ "$f" =~ ^s([0-9]+)([A-Za-z]*)_ ]] || continue
+    # Never skip silently: `s6?_BCM_YFP_day2?` does not parse, and quietly
+    # dropping it is how a folder goes unchecked without anyone noticing.
+    if ! [[ "$f" =~ ^s([0-9]+)([A-Za-z]*)_ ]]; then
+        printf "%-30s %-6s %8s %8s %8s %8s   %s\n" \
+               "$f" "-" "-" "-" "-" "-" "NOT CHECKED (no session number in name)"
+        UNPARSED+=("$f"); continue
+    fi
     snum="${BASH_REMATCH[1]}"
     sess=$(printf "%02d" "$snum")
     [[ " $SKIP_FOLDERS " == *" $f "* ]] && continue
@@ -127,6 +133,13 @@ printf "%.0s-" {1..104}; echo
 echo "  complete       : $tot_ok"
 echo "  incomplete     : $tot_bad"
 echo "  not downloaded : $tot_none"
+[ "${#UNPARSED[@]}" -gt 0 ] && {
+    echo "  NOT CHECKED    : ${#UNPARSED[@]}  -> ${UNPARSED[*]}"
+    echo "                   (folder name has no leading s<NN>_; check these by hand)"
+}
+echo
+echo "  NOTE: only folders under this remote/FID were seen. UCLA sessions live on"
+echo "        a different Box share -- re-run with REMOTE=... FID=... to cover them."
 
 [ "${#BAD_SESSIONS[@]}" -eq 0 ] && { echo; echo "  nothing to re-fetch."; exit 0; }
 
