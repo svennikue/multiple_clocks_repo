@@ -258,6 +258,22 @@ def build_contacts(sessions=None, save_all=True, verbose=False,
             swr_io.write_settings(gdir, _settings_dict(
                 list(manifest.session.astype(int)), v2026))
             print(f"\nSaved -> {gdir}")
+
+            # Publication coverage figure. Optional: it needs nilearn plotting
+            # and the MNI templates, which a compute node without a warm
+            # nilearn_data cache does not have. Contact building must not fail
+            # because a figure could not be drawn.
+            fdir = os.path.join(gdir, "figures")
+            os.makedirs(fdir, exist_ok=True)
+            stem = os.path.join(fdir, "contact_coverage")
+            try:
+                import matplotlib
+                matplotlib.use("Agg")
+                import mc.plotting.ripple_figures as rfig
+                rfig.contact_coverage_figure(allc, out_stem=stem)
+                print(f"Coverage figure -> {stem}.pdf / .jpg")
+            except Exception as e:
+                print(f"  [coverage figure skipped: {type(e).__name__}: {e}]")
     return None
 
 

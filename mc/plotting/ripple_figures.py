@@ -1724,3 +1724,143 @@ def sliding_cluster_figure(sw_by_cond, which, width_key, out_stem=None):
             plt.close(fig)
             print(f"    wrote {os.path.basename(out_stem)}.png")
     return fig
+
+
+# ------------------------------------------------- contact coverage ----
+#
+# Where the hippocampal derivations actually are. Three orthogonal glass-brain
+# projections with the Harvard-Oxford hippocampus (the same 25 % probability
+# map that selected the contacts) shaded behind them, so the figure shows the
+# selection criterion and its result in one picture.
+
+SITE_C = {"baylor": "#B74C2D", "utah": "#448363", "ucla": "#CCB178"}
+SITE_LABEL = {"baylor": "Baylor", "utah": "Utah", "ucla": "UCLA"}
+HC_SHADE = ("#dcdcdc", "#5a5a5a")     # light -> dark grey ramp for the HC MIP
+HPC_PROB_SHOW = 25.0                  # matches contact_anatomy.HPC_PROB_MIN
+
+
+def _hippocampus_prob_img():
+    """Harvard-Oxford subcortical P(hippocampus) as a single 3-D image.
+
+    Left and right volumes are combined with `max`, exactly as
+    `anatomy_atlas.hippocampal_probability` does when it reads a contact, so
+    the shading and the selection rule cannot drift apart.
+    """
+    import nibabel as nib
+    from nilearn import datasets as nldatasets
+
+    atlas = nldatasets.fetch_atlas_harvard_oxford("sub-prob-2mm")
+    img = atlas.maps if hasattr(atlas.maps, "get_fdata") else nib.load(atlas.maps)
+    names = [str(n) for n in atlas.labels]
+    n_vol = img.shape[3] if img.ndim == 4 else 1
+    off = 1 if len(names) == n_vol + 1 else 0        # drop the 'Background' entry
+    idx = [i - off for i, n in enumerate(names) if "hippocampus" in n.lower()]
+    idx = [i for i in idx if 0 <= i < n_vol]
+    if not idx:
+        raise RuntimeError("no hippocampus volume in the HO subcortical atlas")
+    data = img.get_fdata()[..., idx].max(axis=-1)
+    out = nib.Nifti1Image(data, img.affine)
+    # A 2 mm atlas projected as a maximum-intensity silhouette has visibly
+    # blocky edges at print size; a light smooth is cosmetic only and does not
+    # touch the map that selects contacts.
+    from nilearn.image import smooth_img
+    return smooth_img(out, 2.0)
+
+
+def contact_coverage_figure(contacts, out_stem=None, height_cm=3.5,
+                            show_unselected=True, title=None):
+    """Glass-brain coverage figure: every macro contact, hippocampal ones on top.
+
+    `contacts` is the pooled macro-contact table (`macro_contacts_all.csv`):
+    one row per recording channel, with `mni_x/y/z`, `resolved`, `is_hpc` and
+    `recording_site`.
+
+    Unselected resolved contacts are drawn small and pale to show the extent of
+    the implantation; the selected hippocampal contacts are drawn on top,
+    coloured by recording site, so it is visible at a glance that coverage is
+    not carried by one centre.
+
+    Sized for print at `height_cm` (default 3.5 cm) with 9 pt Arial, and
+    written to `<out_stem>.pdf` (vector) and `<out_stem>.jpg` (300 dpi).
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LinearSegmentedColormap
+    from matplotlib.lines import Line2D
+    from nilearn import plotting as nlplot
+
+    df = contacts.copy()
+    xyz = ["mni_x", "mni_y", "mni_z"]
+    df = df[df[xyz].notna().all(axis=1)]
+    if "resolved" in df.columns:
+        df = df[df["resolved"].fillna(False).astype(bool)]
+    sel = df[df["is_hpc"].fillna(False).astype(bool)]
+    rest = df[~df["is_hpc"].fillna(False).astype(bool)]
+
+    # Three orthogonal projections; the widths below are the MNI bounding-box
+    # aspect ratios, so the panels are not distorted relative to each other.
+    # 3.05 is the summed MNI bounding-box aspect of the three projections, so
+    # the panels keep their true proportions; the rest of the width is legend.
+    brain_frac = 0.72
+    h_in = height_cm * CM
+    w_in = h_in * 3.05 / brain_frac
+
+    # _rc() sets savefig.bbox="tight", which would grow the saved page past
+    # `height_cm` to make room for the L/R annotations. The axes rects below
+    # already fill the figure, so the page is saved exactly as sized.
+    rc = dict(_rc()); rc["savefig.bbox"] = None
+    with plt.rc_context(rc):
+        fig = plt.figure(figsize=(w_in, h_in))
+        cmap = LinearSegmentedColormap.from_list("hc_shade", HC_SHADE)
+        disp = nlplot.plot_glass_brain(
+            _hippocampus_prob_img(), display_mode="ortho",
+            figure=fig, axes=(0.0, 0.02, brain_frac, 0.94),
+            cmap=cmap, vmin=0, vmax=100, threshold=HPC_PROB_SHOW,
+            plot_abs=False, colorbar=False, black_bg=False, alpha=0.5,
+            annotate=False)
+        # nilearn's own L/R annotation ignores the rc font size and prints
+        # far too large on a 3.5 cm panel.
+        disp.annotate(size=FS_TICK)
+
+        if show_unselected and len(rest):
+            disp.add_markers(rest[xyz].to_numpy(float),
+                             marker_color="#c8c8c8", marker_size=0.8,
+                             alpha=0.35, edgecolors="none")
+        for site, g in sel.groupby("recording_site"):
+            disp.add_markers(g[xyz].to_numpy(float),
+                             marker_color=SITE_C.get(str(site), "#888888"),
+                             marker_size=6, alpha=0.95, edgecolors="none")
+
+        handles = [Line2D([], [], marker="o", linestyle="none",
+                          markersize=3.2, markeredgewidth=0,
+                          color=SITE_C.get(s, "#888888"),
+                          label=f"{SITE_LABEL.get(s, s)} ({(sel.recording_site == s).sum()})")
+                   for s in ["baylor", "utah", "ucla"]
+                   if (sel.recording_site == s).any()]
+        if show_unselected and len(rest):
+            handles.append(Line2D([], [], marker="o", linestyle="none",
+                                  markersize=2.0, markeredgewidth=0,
+                                  color="#bfbfbf",
+                                  label=f"other contacts ({len(rest):,})"))
+        # The threshold belongs in the caption, not the key: spelling it out
+        # here is the one label that does not fit a 3.5 cm panel.
+        handles.append(Line2D([], [], marker="s", linestyle="none",
+                              markersize=3.2, markeredgewidth=0,
+                              color=HC_SHADE[1], label="hippocampus"))
+
+        leg_ax = fig.add_axes([brain_frac + 0.005, 0.0,
+                               1.0 - brain_frac - 0.005, 1.0])
+        leg_ax.axis("off")
+        leg_ax.legend(handles=handles, loc="center left", frameon=False,
+                      fontsize=FS_TICK, handletextpad=0.4,
+                      labelspacing=0.45, borderpad=0.0, borderaxespad=0.0)
+        if title:
+            fig.suptitle(title, fontsize=FS_TITLE, y=1.04)
+
+        if out_stem:
+            # bbox_inches=None, not "tight": the axes rects already fill the
+            # figure, and a tight box would grow it past `height_cm` to make
+            # room for the L/R annotations, which is the one dimension that
+            # has to be exact for a print panel.
+            fig.savefig(out_stem + ".pdf")
+            fig.savefig(out_stem + ".jpg", dpi=300)
+        return fig

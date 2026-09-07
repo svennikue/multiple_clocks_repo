@@ -1,5 +1,48 @@
 # CHANGELOG
 
+## 2026-09-07 — instruction-phase GLM audit: '+' twins handled, reruns gated
+
+FEAT never overwrites an output directory: it appends `+` and leaves the old
+one in place. Repeated submissions of the instruction-epoch GLMs (partly after
+quota failures) left up to three generations of the same run side by side
+(`glm_instr_see-A-first_pt01{,+,++}.feat`) in any mix of complete and broken,
+while `my_RSA.py:405` only ever reads the plain `..._pt01.feat`. So a finished
+GLM could sit in a `++` twin while the RSA read a truncated base, and
+`check_GLMs_ran.py` reported the run as missing.
+
+**`check_GLMs_ran.py` now audits the whole set of `+` generations per run**
+instead of the base directory alone, and sorts the grid into: `OK`,
+`DUPLICATES` (base complete, twins redundant), `PROMOTE_TWIN` (base
+missing/broken but a twin is complete — a rename, *not* a rerun), a failure
+status (no complete copy anywhere → rerun), or `NO_EV_FOLDER`/`NO_DRAFT_FSF`
+(inputs missing, cannot be submitted at all). The per-folder completeness test
+is unchanged (design.mat `/NumWaves` → all PEs non-empty → FILM end-markers →
+`task-to-EV.txt` agrees with the design). It writes `report.txt`,
+`cleanup_feat_dirs.sh`, `todo_submit.txt` and `settings.json` to
+`derivatives/group/glm_audit_<version>_<date>/`.
+
+**No data is deleted by the audit.** `cleanup_feat_dirs.sh` is a dry run unless
+given `--apply`, and re-validates every path at the moment of deletion against
+`*/derivatives/sub-*/func/glm_*.feat` containing a `stats/` or `design.fsf`,
+refusing anything else (verified against injected paths for the derivatives
+root, a `func/` dir, an `EVs_*` folder, a non-FEAT `glm_*.feat` and a `..`
+traversal — all refused under `--apply`). Promotion moves the broken base aside
+first and removes it only once the twin is in place, so an interrupted run
+cannot leave the good data deleted.
+
+**`subject_GLM_instruction_epochs.sh` no longer loops over the full grid.** It
+runs the audit, submits only runs with no complete copy anywhere, and refuses
+to start while cleanup is outstanding (a leftover base directory would send the
+new run into yet another `+` twin). `ALL=1` restores the old full-grid
+behaviour, `DRYRUN=1` prints without submitting, and an explicit
+`todo_submit.txt` can be passed instead. A completed GLM with unchanged
+settings is never resubmitted.
+
+Verified end to end on a synthetic derivatives tree covering all cases (clean /
+duplicates / promote / incomplete-only / no feat / no EVs / no draft fsf /
+base-gone-but-`++`-good): audit → cleanup → re-audit converges, and only the
+genuinely missing runs reach the todo list.
+
 ## 2026-09-07 — FEAT directories pruned to free scratch space (`prune_feat_dirs.py`)
 
 Scratch ran out of space during the instruction-epoch GLMs. `mc/fmri_analysis/prune_feat_dirs.py`
@@ -4074,3 +4117,80 @@ happens, over what window, and how ripples interact with movement. See
 N3 (no ripple response at grid onset) is also reframed: under SK's logic that is
 the EXPECTED result, since at grid onset no reward has been uncovered and there
 is nothing plan-relevant to communicate. It is a confirmation, not a null.
+
+---
+
+## 2026-09-07 — Methods figures for single-unit QC and ROI assignment
+
+`scripts/qc_methods_figure.py` → `data/ephys_humans/derivatives/QC_methods_figure_2026-09-07/`
+
+Two 18 × 4 cm panels (Arial, min 9 pt, 11 pt headings), pdf + png (300 dpi) + svg,
+built purely from existing derivatives — no analysis re-run, nothing recomputed:
+
+* `qc_all_sessions_rebuild.mat` (output of `scripts/call_cell_wise_QC.m`)
+* `neurons_with_ROI_labels.csv` (output of `scripts/cell_to_roi_july26.py`)
+* `abcd_data_08-Sep-2025.mat` — raw spike times, read **only** for the pooled
+  ISI histogram; cached to `pooled_isi_histogram.npz` so the 6 GB file is
+  touched once.
+
+**Fig 1 — single-unit QC.** (a) spike count/unit, 300-spike cut-off;
+(b) firing rate of the 36 spike-excluded vs the 1006 retained units;
+(c) pooled ISI over the 984 final units with the 1.5 ms refractory window;
+(d) max pairwise correlation (100 ms bins), r = 0.50 dedup threshold.
+Panels follow the funnel: a/b cover all 1042 sorted units, d the 1006
+base-accepted units, c the 984 final units.
+
+**Fig 2 — from recorded to analysed units.** (a) yield 1042 → 984 → 924;
+(b) hippocampal MNI-y with the anterior/mid split at y = −21 mm
+(Poppenk & Moscovitch 2013); (c) units per ROI with contributing sessions.
+
+Numbers (all reconcile exactly):
+
+| stage | n |
+|---|---|
+| sorted units | 1042 |
+| excluded, < 300 spikes | 36 |
+| excluded, RPV ≥ 1 % | **0** |
+| excluded, duplicate r ≥ 0.50 | 22 |
+| QC-passed | 984 |
+| excluded, ROI < 3 sessions | 60 |
+| **analysed** | **924** |
+
+Per ROI: HC_anterior 295 (52 sessions), HC_mid 233 (36), mPFC 158 (33),
+mOFC 142 (27), PCC 61 (10), EC 35 (8). Not analysed: Visual 21, PHC 12,
+medial_CC 8, Thalamus 8, Insula 7, leftover 4.
+
+Two things worth knowing for the methods text:
+
+1. **The RPV criterion never excluded anything.** Max RPV across all units is
+   0.60 %, well under the 1 % threshold (median 0 %). The refractory criterion
+   is real but was not binding — the manuscript should say units *satisfied*
+   it rather than implying units were removed by it.
+2. **No waveforms are stored** in `abcd_data_*.mat` (fields: cellID, channelNum,
+   electrodeLabel, excludeCell, psth_trials*, region, regionLabel, roi,
+   spikeTimes, spike_rate, unitNum). The Wave_clus waveform criteria
+   (consistency, slope, amplitude, trough-to-peak) cannot be plotted from the
+   current derivatives; the pooled ISI panel stands in for spike-isolation
+   quality. Add waveform panels only if the sorted waveform templates are
+   re-exported.
+
+Direction check on the hippocampal split: `mc/analyse/anatomy_atlas.py:273`
+assigns `y >= -21 → HC_anterior`, so larger y = anterior. The axis arrow
+"posterior → anterior" pointing right is correct as drawn.
+
+### Addendum (same day) — firing-rate descriptives
+
+The 1.58 Hz quoted in Fig 1b is the **median**, not the mean. Panel b now
+labels both values "mdn" so they cannot be misread. Firing rate over the whole
+session, per unit:
+
+| set | n | mean ± SD | median | IQR | range |
+|---|---|---|---|---|---|
+| all sorted | 1042 | 2.96 ± 4.06 | 1.50 | 0.52–3.71 | 0.041–32.98 |
+| after < 300-spike exclusion | 1006 | 3.06 ± 4.10 | 1.58 | 0.59–3.82 | 0.048–32.98 |
+| final QC-passed | 984 | 3.04 ± 4.11 | 1.56 | 0.58–3.82 | 0.048–32.98 |
+| the 36 excluded units | 36 | 0.10 ± 0.04 | 0.10 | 0.08–0.13 | 0.041–0.23 |
+
+The distribution is strongly right-skewed (mean ≈ 2× median, max 33 Hz), so
+median + IQR is the honest descriptor for the manuscript; quoting the mean
+alone overstates the typical unit.

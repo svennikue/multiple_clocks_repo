@@ -78,6 +78,12 @@ plt.rcParams.update({
     "xtick.labelsize": FS_SMALL,
     "ytick.labelsize": FS_SMALL,
     "legend.fontsize": FS_SMALL,
+    # Keep mathtext ($n$, $y$, bold panel letters) in Arial too -- the
+    # default mathtext fontset is DejaVu and would mix typefaces.
+    "mathtext.fontset": "custom",
+    "mathtext.rm": "Arial",
+    "mathtext.it": "Arial:italic",
+    "mathtext.bf": "Arial:bold",
     "axes.linewidth": 0.6,
     "xtick.major.width": 0.6,
     "ytick.major.width": 0.6,
@@ -169,8 +175,12 @@ def tidy(ax):
 # ------------------------------------------------------------- figure 1
 def figure_quality_control(qc, isi):
     edges, counts, n_isi_units = isi
-    keep = qc[qc.is_reliable]
+    # Sequential funnel, so every panel accounts for all units at its own
+    # stage: a/b = all 1042 sorted units (spike-count criterion),
+    # d = the base-accepted units (duplicate criterion), c = final units.
+    base = qc[qc.base_accept]
     drop_spikes = qc[qc.excl_spikes]
+    keep = qc[qc.is_reliable]
     drop_dup = qc[qc.excl_dup]
 
     fig, axes = plt.subplots(
@@ -181,7 +191,7 @@ def figure_quality_control(qc, isi):
     # -- a: spike count per unit ------------------------------------------
     ax = axes[0]
     bins = np.logspace(np.log10(qc.n_spikes.min()), np.log10(qc.n_spikes.max()), 40)
-    ax.hist([keep.n_spikes, drop_spikes.n_spikes], bins=bins, stacked=True,
+    ax.hist([base.n_spikes, drop_spikes.n_spikes], bins=bins, stacked=True,
             color=[C_KEEP, C_DROP], edgecolor="black", linewidth=0.25)
     ax.axvline(MIN_SPIKES, color=C_THRESH, ls="--", lw=1.0)
     ax.set_xscale("log")
@@ -200,7 +210,7 @@ def figure_quality_control(qc, isi):
     # covers the data or the panel heading.
     ax = axes[1]
     bins = np.logspace(np.log10(qc.FR_Hz.min()), np.log10(qc.FR_Hz.max()), 40)
-    ax.hist(keep.FR_Hz, bins=bins, color=C_KEEP, edgecolor="black",
+    ax.hist(base.FR_Hz, bins=bins, color=C_KEEP, edgecolor="black",
             linewidth=0.25)
     ax.hist(drop_spikes.FR_Hz, bins=bins, color=C_DROP, edgecolor="black",
             linewidth=0.25)
@@ -210,11 +220,11 @@ def figure_quality_control(qc, isi):
     ax.set_xticks([1e-1, 1e0, 1e1])
     ax.set_ylim(0, ax.get_ylim()[1] * 1.40)
     ax.text(0.02, 0.99, f"excl. {len(drop_spikes)}\n"
-                        f"{drop_spikes.FR_Hz.median():.2f} Hz",
+                        f"mdn {drop_spikes.FR_Hz.median():.2f}",
             transform=ax.transAxes, ha="left", va="top", fontsize=FS_SMALL,
             color=C_DROP, linespacing=1.15)
-    ax.text(0.98, 0.99, f"incl. {len(keep)}\n"
-                        f"{keep.FR_Hz.median():.2f} Hz",
+    ax.text(0.98, 0.99, f"kept {len(base)}\n"
+                        f"mdn {base.FR_Hz.median():.2f}",
             transform=ax.transAxes, ha="right", va="top", fontsize=FS_SMALL,
             color=C_KEEP, linespacing=1.15)
     panel_letter(ax, "b", "Firing rate")
@@ -276,7 +286,7 @@ def figure_roi_assignment(qc, roi):
     fig, axes = plt.subplots(
         1, 3, figsize=(18 * CM, 4 * CM),
         gridspec_kw=dict(width_ratios=[0.85, 1.3, 1.35], wspace=0.45,
-                         left=0.055, right=0.985, bottom=0.36, top=0.80))
+                         left=0.105, right=0.985, bottom=0.36, top=0.80))
 
     # -- a: unit yield -----------------------------------------------------
     # Horizontal bars: at 4 cm height these are the only stage labels that
@@ -320,11 +330,8 @@ def figure_roi_assignment(qc, roi):
     ax.text(0.98, 0.97, f"anterior\n{len(y_ant)}", transform=ax.transAxes,
             ha="right", va="top", fontsize=FS_SMALL, linespacing=1.15,
             color=get_roi_colour("HC_anterior"), fontweight="bold")
-    ax.annotate(f"{HC_ANT_MID_Y:.0f} mm",
-                xy=(HC_ANT_MID_Y, 0.99), xycoords=("data", "axes fraction"),
-                xytext=(3, 0), textcoords="offset points",
-                ha="left", va="top", fontsize=FS_SMALL, color=C_THRESH)
-    panel_letter(ax, "b", f"Hippocampal split ($n$ = {len(hc)})")
+    panel_letter(ax, "b",
+                 f"Hippocampal split, $y$ = $-${abs(HC_ANT_MID_Y):.0f} mm")
     tidy(ax)
 
     # -- c: units per ROI --------------------------------------------------
@@ -344,10 +351,11 @@ def figure_roi_assignment(qc, roi):
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=45, ha="right", rotation_mode="anchor")
     ax.set_ylabel("Units")
-    ax.set_ylim(0, max(values) * 1.25)
+    ax.set_ylim(0, max(values) * 1.45)
     ax.set_yticks([0, 150, 300])
-    ax.text(0.02, 0.99, "grey = sessions", transform=ax.transAxes,
-            ha="left", va="top", fontsize=FS_SMALL, color="#4a4a4a")
+    ax.text(0.01, 1.0, "grey =\nsessions", transform=ax.transAxes,
+            ha="left", va="top", fontsize=FS_SMALL, color="#4a4a4a",
+            linespacing=1.15)
     panel_letter(ax, "c", "Units per ROI")
     tidy(ax)
 
