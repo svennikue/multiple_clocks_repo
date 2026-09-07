@@ -1,7 +1,30 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-EXPLORATION. Descriptive probes on what drives ripple rate in this task.
+EXPLORATION. The single scratch script: probes, sweeps, and event-locked tests.
+
+This is where things are tried. PNG only, few or no permutations, no
+multiple-comparison correction, nothing here is a claim. Its job is to work out
+which contrasts are worth running properly and how to compare conditions fairly.
+
+Results that survive and are understood move to `swr_findings.py`, which is the
+curated, reproducible set.
+
+    python scripts/swr_explore.py probes       --bundle=<dir>
+    python scripts/swr_explore.py event_locked --bundle=<dir> --which=D_stages
+    python scripts/swr_explore.py sweep        --bundle=<dir> --which=H1
+    python scripts/swr_explore.py describe     --bundle=<dir>
+
+VERBS
+  probes        what drives rate: stillness, movement, drift, peri-press
+  event_locked  Sakon/He design -- peri-event histogram, before/during/after
+                windows against the same trial's baseline, sliding window with
+                cluster correction. Alignments: H1, rewards, rewards_first,
+                reward_first_vs_later, {A,B,C,D}_stages, D_learn_by_error
+  sweep         the definitional alternatives for one hypothesis, side by side
+  describe      distributions, PETHs and per-hypothesis panels, no inference
+
+Descriptive probes on what drives ripple rate in this task.
 
 This is the scratch script: many quick checks, PNG only, no permutations, no
 multiple-comparison correction, nothing here is an inference. Its job is to
@@ -28,6 +51,9 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import mc.analyse.swr_io as swr_io
+import mc.analyse.swr_bundle as swr_bundle
+import mc.analyse.swr_eventlocked as swr_el
+import mc.analyse.ripples as rip_
 import mc.analyse.swr_probes as pr
 import mc.analyse.swr_sakon as sk
 import mc.plotting.ripple_figures as rfig
@@ -45,13 +71,8 @@ ALL_PROBES = ("movement", "stillness", "drift", "peth_presses",
 
 
 def _store(bundle, analysis_name="swr_v1"):
-    import importlib.util as iu
-    spec = iu.spec_from_file_location(
-        "swr_hyp", os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "swr_hypotheses.py"))
-    hyp = iu.module_from_spec(spec)
-    spec.loader.exec_module(hyp)
-    return hyp.RippleStore(analysis_name, swr_io.get_data_root(), bundle=bundle)
+    return swr_bundle.RippleStore(analysis_name, swr_io.get_data_root(),
+                                  bundle=bundle)
 
 
 def _subject_t(df, value="diff", subject_col="subject_key"):
@@ -71,6 +92,28 @@ def _png(fig, out_dir, name):
     fig.savefig(p, dpi=200, bbox_inches="tight")
     plt.close(fig)
     print(f"    wrote {name}.png")
+
+
+def _legacy(name):
+    """The sweep/describe implementations still live in the archived hypothesis
+    script; they are exploration, so they are reachable from here."""
+    import importlib.util as iu
+    here = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(here, "archived", "swr_hypotheses.py")
+    if not os.path.isfile(path):
+        path = os.path.join(here, "swr_hypotheses.py")
+    spec = iu.spec_from_file_location("swr_hyp", path)
+    m = iu.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return getattr(m, name)
+
+
+def _sweep(*a, **k):
+    return _legacy("sweep")(*a, **k)
+
+
+def _describe(*a, **k):
+    return _legacy("describe")(*a, **k)
 
 
 def run(bundle=None, probes=None, out_dir=None, analysis_name="swr_v1",
@@ -434,6 +477,8 @@ def run(bundle=None, probes=None, out_dir=None, analysis_name="swr_v1",
 
 if __name__ == "__main__":
     if fire is not None:
-        fire.Fire({"run": run})
+        fire.Fire({"probes": run, "run": run,
+                   "event_locked": swr_el.run,
+                   "sweep": _sweep, "describe": _describe})
     else:
         run()

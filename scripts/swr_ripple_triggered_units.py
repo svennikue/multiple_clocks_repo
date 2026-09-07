@@ -69,6 +69,12 @@ REGIONS = {"mPFC": ("ACC",), "HC": ("HC",), "EC": ("EC",), "OFC": ("OFC",),
 # explore + plan = the route is not yet known; execute = it is
 UNSOLVED = ("explore", "plan")
 SOLVED = ("execute",)
+# The circular shift must stay inside the state the ripple came from. Without
+# this, unsolved ripples -- which occupy a short span at the start of each grid
+# -- get shifted into execution, and their null is estimated from a regime with
+# different firing. That is what made the hippocampal positive control fail in
+# the unsolved state while passing in solved.
+_PHASES = {"unsolved": UNSOLVED, "solved": SOLVED, "all": None}
 
 
 def _ripple_phase(ripple_t, beh):
@@ -148,7 +154,8 @@ def run(bundle=None, half_s=HALF_S, n_shift=N_SHIFT, out_dir=None,
                     tt = np.sort(rs.choice(t, size=n_match, replace=False))
                     g2 = swu.peri_ripple_matrix(sess, tt, beh, half_s=half_s,
                                                 n_shift=n_shift, data_root=R,
-                                                seed=SEED + d)
+                                                seed=SEED + d,
+                                                restrict_phases=_PHASES.get(state))
                     if g2 is None:
                         continue
                     offs, obs, nm, nsd, labels, n_used = g2
@@ -160,7 +167,8 @@ def run(bundle=None, half_s=HALF_S, n_shift=N_SHIFT, out_dir=None,
             else:
                 got = swu.peri_ripple_matrix(sess, t, beh, half_s=half_s,
                                              n_shift=n_shift, data_root=R,
-                                             seed=SEED)
+                                             seed=SEED,
+                                             restrict_phases=_PHASES.get(state))
                 if got is None:
                     continue
                 offs, obs, nm, nsd, labels, n_used = got

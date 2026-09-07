@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
+from matplotlib import colors
 from matplotlib import gridspec
 from scipy.signal import butter, sosfiltfilt, hilbert
 from scipy.fft import next_fast_len
@@ -833,14 +834,33 @@ def hypothesis_figure(results, out_stem=None, title="", ncol=4):
 # ripple rate -- window length, movement, artifact-free exposure -- and (c) where
 # the observed value sits in its own permutation null.
 
+# Feedback valence gets its own hue so that a crossed label like
+# "error, discovery" is not drawn in the same colour as "correct, discovery".
+# The substring fallback below matched on phase alone, which made every
+# 2x2 feedback figure unreadable.
+FEEDBACK_COLORS = {"correct": "#0E3D3A", "error": "#B03A5B"}
+
+
 def _cond_color(level, i):
     lv = str(level)
     if lv in STATE_COLORS:
         return STATE_COLORS[lv]
     if lv in PHASE_COLORS:
         return PHASE_COLORS[lv]
+    low = lv.lower()
+    # crossed labels: valence sets the hue, phase sets the lightness
+    val = next((v for v in FEEDBACK_COLORS if v in low), None)
+    if val is not None:
+        base = np.array(colors.to_rgb(FEEDBACK_COLORS[val]))
+        if "first" in low:
+            f = 0.0
+        elif "learn" in low or "discovery" in low:
+            f = 0.32
+        else:
+            f = 0.62
+        return tuple(base + (np.array([1.0, 1.0, 1.0]) - base) * f)
     for key, c in PHASE_COLORS.items():
-        if key in lv:
+        if key in low:
             return c
     return PAL[i % len(PAL)]
 
@@ -1527,7 +1547,8 @@ def window_definition_figure(counts_by_variant, which, out_stem=None,
 
 
 def pvth_figure(centres, prof_by_subject, results, which, out_stem=None,
-                pre_win=(-0.6, -0.1), base_win=(-1.6, -1.1), smooth=True):
+                pre_win=(-0.6, -0.1), base_win=(-1.6, -1.1), smooth=True,
+                windows=None):
     """Peri-event time histogram in the Sakon & Kahana (2022) Fig. 2B style.
 
     Their conventions, kept deliberately: mean +- SEM across subjects; a dotted
@@ -1578,33 +1599,128 @@ def pvth_figure(centres, prof_by_subject, results, which, out_stem=None,
         ax.legend(fontsize=FS_TICK - 2, frameon=False, loc="upper left")
         ax.margins(y=0.18)
 
-        # per-subject Eq. 2 t-scores, Sakon Fig. 2C
+        # before / during / after, each against the same baseline
         ax = axes[1]
+        wnames = list(windows) if windows else ["_pre"]
+        xs = np.arange(len(wnames))
         for j, cond in enumerate(conds):
-            e2 = (results.get("eq2") or {}).get(cond) or {}
-            per = e2.get("per_subject")
-            if per is None or not len(per):
-                continue
-            v = pd.DataFrame(per)["t"].to_numpy(float)
-            v = v[np.isfinite(v)]
-            x = j + (np.random.default_rng(0).random(v.size) - 0.5) * 0.3
+            got = (results.get("eq2") or {}).get(cond) or {}
+            m, lo, hi, stars = [], [], [], []
+            for w in wnames:
+                e2 = got.get(w) if isinstance(got.get(w), dict) else None
+                if not e2 or "mean_t" not in e2:
+                    m.append(np.nan); lo.append(np.nan); hi.append(np.nan)
+                    stars.append(False); continue
+                per = pd.DataFrame(e2["per_subject"])["t"].to_numpy(float)
+                per = per[np.isfinite(per)]
+                m.append(per.mean())
+                se = per.std(ddof=1) / max(np.sqrt(per.size), 1)
+                lo.append(se); hi.append(se)
+                stars.append(e2.get("p", 1) < 0.05)
             col = _cond_color(cond, j)
-            ax.scatter(x, v, s=11, color=col, alpha=0.75, edgecolor="none")
-            ax.plot([j - 0.28, j + 0.28], [v.mean()] * 2, color=col, lw=2.5)
-            if np.isfinite(e2.get("p", np.nan)) and e2["p"] < 0.05:
-                ax.text(j, np.nanmax(v) * 1.05, "*", ha="center",
-                        fontsize=FS_TITLE, color=col)
+            off = (j - (len(conds) - 1) / 2) * 0.14
+            ax.errorbar(xs + off, m, yerr=[lo, hi], fmt="o", ms=5, lw=1.4,
+                        capsize=3, color=col, label=str(cond))
+            for k, st in enumerate(stars):
+                if st and np.isfinite(m[k]):
+                    ax.text(xs[k] + off, m[k] + hi[k] + 0.04, "*", ha="center",
+                            fontsize=FS_TITLE, color=col)
         ax.axhline(0, color="0.6", lw=0.9, ls=":")
-        ax.set_xticks(range(len(conds)))
-        ax.set_xticklabels([c.replace("_", "\n") for c in conds],
-                           fontsize=FS_TICK - 1)
-        ax.set_ylabel("Eq. 2 t score (PRE vs own baseline)")
-        ax.set_title("Per subject\npositive = rise above own baseline",
+        ax.set_xticks(xs)
+        ax.set_xticklabels([w.split("(")[0].strip() + "\n"
+                            + ("(" + w.split("(")[1] if "(" in w else "")
+                            for w in wnames], fontsize=FS_TICK - 2)
+        ax.set_ylabel("Eq. 2 t score vs own baseline")
+        ax.set_title("Before / during / after\npositive = above own baseline",
                      fontsize=FS_TICK)
+        ax.legend(fontsize=FS_TICK - 2.5, frameon=False)
         if out_stem:
             os.makedirs(os.path.dirname(out_stem), exist_ok=True)
             fig.savefig(out_stem + ".png", dpi=300)
             fig.savefig(out_stem + ".pdf")
             plt.close(fig)
             print(f"    wrote {os.path.basename(out_stem)}.png/.pdf")
+    return fig
+
+
+def sliding_cluster_figure(sw_by_cond, which, width_key, out_stem=None):
+    """The sliding-window test and the permutation null that corrects it.
+
+    Left: the t statistic at every window position, with the cluster-forming
+    threshold drawn and any surviving cluster shaded. Nothing was chosen here --
+    every position was evaluated, which is the point of the panel.
+    Right: the null distribution of maximum cluster mass from the sign-flip
+    permutation, with the observed cluster masses marked. That is what the
+    p-value is, drawn rather than asserted.
+    """
+    conds = list(sw_by_cond)
+    if not conds:
+        return None
+    with plt.rc_context(_rc()):
+        fig, axes = plt.subplots(1, 2, figsize=(18 * CM, 6.4 * CM),
+                                 gridspec_kw=dict(width_ratios=[1.85, 1]))
+        fig.subplots_adjust(wspace=0.3, top=0.72)
+
+        ax = axes[0]
+        thr = None
+        for j, cond in enumerate(conds):
+            sw = sw_by_cond[cond]
+            col = _cond_color(cond, j)
+            ax.plot(sw["centres"], sw["t"], color=col, lw=1.5, label=str(cond))
+            thr = sw.get("null", {}).get("threshold_t", thr)
+            for c in sw["clusters"]:
+                if c["p"] < 0.05:
+                    ax.axvspan(c["t_start_s"], c["t_stop_s"], color=col,
+                               alpha=0.16, lw=0)
+                    ax.annotate(f"p = {c['p']:.3f}",
+                                xy=(c["peak_at_s"], 0), xytext=(0, -26),
+                                textcoords="offset points", ha="center",
+                                fontsize=FS_TICK - 1.5, color=col)
+        if thr:
+            for sgn in (1, -1):
+                ax.axhline(sgn * thr, color="0.6", lw=0.8, ls=":")
+        ax.axhline(0, color="0.45", lw=0.9)
+        ax.axvline(0, color="0.35", lw=1.1)
+        ax.set_xlabel("Centre of the sliding window (s from event)")
+        ax.set_ylabel("t vs own baseline")
+        ax.set_title(f"{which}: every window position tested "
+                     f"({width_key} wide)\ndotted = cluster-forming threshold; "
+                     f"shaded = survives correction", fontsize=FS_TICK)
+        ax.legend(fontsize=FS_TICK - 2, frameon=False)
+
+        # The null of MAX cluster mass has a large atom at zero -- most
+        # sign-flipped surrogates contain no suprathreshold run at all -- and a
+        # long right tail. On a linear axis the zero spike flattens everything
+        # else, so the tail (which is what the p-value reads off) is invisible.
+        # Log counts, and the zero fraction stated rather than drawn.
+        ax = axes[1]
+        zero_txt = []
+        for j, cond in enumerate(conds):
+            n = sw_by_cond[cond].get("null", {})
+            mass = np.asarray(n.get("null_mass", []), float)
+            if not mass.size:
+                continue
+            col = _cond_color(cond, j)
+            frac0 = float(np.mean(mass <= 0))
+            zero_txt.append(f"{cond}: {frac0:.0%} of surrogates have no cluster")
+            pos = mass[mass > 0]
+            if pos.size:
+                ax.hist(pos, bins=40, color=col, alpha=0.45, lw=0,
+                        label=f"{cond} null (mass > 0)")
+            for m in n.get("obs_mass", []):
+                ax.axvline(m, color=col, lw=1.8)
+        ax.set_yscale("log")
+        ax.set_xlabel("Max cluster mass under sign-flipping")
+        ax.set_ylabel("Permutations (log)")
+        ax.set_title("Permutation null\nvertical lines = observed clusters",
+                     fontsize=FS_TICK)
+        ax.legend(fontsize=FS_TICK - 3, frameon=False, loc="upper right")
+        if zero_txt:
+            ax.text(0.02, -0.34, "\n".join(zero_txt), transform=ax.transAxes,
+                    fontsize=FS_TICK - 3, color="0.45", va="top")
+        if out_stem:
+            os.makedirs(os.path.dirname(out_stem), exist_ok=True)
+            fig.savefig(out_stem + ".png", dpi=300)
+            plt.close(fig)
+            print(f"    wrote {os.path.basename(out_stem)}.png")
     return fig

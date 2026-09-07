@@ -83,8 +83,31 @@ def dedup_ripples(t, tol_s=DEDUP_S):
     return t[keep]
 
 
+def phase_bin_mask(beh, grid, n_bins, onset, phases):
+    """Boolean over a grid's 25 ms bins: does this bin belong to `phases`?
+
+    Used to keep the circular-shift null inside the behavioural regime the real
+    ripple came from. A repeat is taken to span up to its own t_D, so the first
+    repeat whose t_D falls after a bin is the repeat containing it.
+    """
+    from mc.analyse.swr_windows import add_phase3
+    g = add_phase3(beh[beh.grid_no == grid]).sort_values("rep_overall")
+    td = g.t_D.to_numpy(float)
+    ph = g.phase3.to_numpy()
+    ok = np.isfinite(td)
+    td, ph = td[ok], ph[ok]
+    if not td.size:
+        return np.zeros(n_bins, bool)
+    t = onset + np.arange(n_bins) * BIN_S
+    j = np.searchsorted(td, t, side="left")
+    inside = j < len(td)
+    out = np.zeros(n_bins, bool)
+    out[inside] = np.isin(ph[j[inside]], list(phases))
+    return out
+
+
 def peri_ripple_matrix(session, ripple_t, beh, half_s=1.0, n_shift=200,
-                       data_root=None, seed=42):
+                       data_root=None, seed=42, restrict_phases=None):
     """Peri-ripple firing per unit, with a circular-shift null.
 
     Returns (offsets_s, observed, null_mean, null_sd, labels, n_ripples) where
@@ -96,6 +119,14 @@ def peri_ripple_matrix(session, ripple_t, beh, half_s=1.0, n_shift=200,
     value: one number per shift, over the whole session. Accumulating variance
     per grid instead would mix per-grid sums with per-window means and give a
     meaningless spread.
+
+    `restrict_phases` confines the shift to bins belonging to those task phases
+    (e.g. ("explore", "plan")). Without it the shift runs over the whole grid,
+    so ripples from a phase occupying a short span at the start of each grid get
+    shifted mostly into execution, where firing differs -- the null is then
+    estimated from the wrong regime, and the comparison between phases is
+    meaningless. With it, a shifted ripple stays in the same behavioural state
+    as the real one, which is the whole point of a circular-shift control.
     """
     session = int(session)
     labels = unit_labels(session, data_root)
@@ -119,24 +150,41 @@ def peri_ripple_matrix(session, ripple_t, beh, half_s=1.0, n_shift=200,
         b = b[(b >= half) & (b < nb - half)]
         if not b.size or nb - 2 * half <= 1:
             continue
-        blocks.append((M, b, half, nb))
+        allowed = None
+        if restrict_phases is not None:
+            mask = phase_bin_mask(beh, grid, nb, onset, restrict_phases)
+            mask[:half] = False
+            mask[nb - half:] = False        # the window must fit
+            allowed = np.flatnonzero(mask)
+            if allowed.size < 2 * half:
+                continue                    # too little of this phase to shift in
+        blocks.append((M, b, half, nb, allowed))
         n_used += b.size
         n_units = M.shape[0]
     if not blocks or not n_used:
         return None
 
     obs = np.zeros((n_units, offs.size))
-    for M, b, h, nb in blocks:
+    for M, b, h, nb, allowed in blocks:
         obs += M[:, b[:, None] + offs[None, :]].sum(axis=1)
     obs /= n_used
 
     null = np.empty((n_shift, n_units, offs.size))
     for k in range(n_shift):
         tot = np.zeros((n_units, offs.size))
-        for M, b, h, nb in blocks:
-            lo, span = h, nb - 2 * h
-            sh = int(rng.integers(1, span))
-            bs = lo + np.mod(b - lo + sh, span)
+        for M, b, h, nb, allowed in blocks:
+            if allowed is None:
+                lo, span = h, nb - 2 * h
+                sh = int(rng.integers(1, span))
+                bs = lo + np.mod(b - lo + sh, span)
+            else:
+                # circular shift on the PHASE-RESTRICTED axis: rank each ripple
+                # among the allowed bins, rotate, map back. Exactly the clean-
+                # axis idea, applied to behavioural state instead of artifact.
+                rank = np.searchsorted(allowed, b)
+                rank = np.clip(rank, 0, allowed.size - 1)
+                sh = int(rng.integers(1, allowed.size))
+                bs = allowed[np.mod(rank + sh, allowed.size)]
             tot += M[:, bs[:, None] + offs[None, :]].sum(axis=1)
         null[k] = tot / n_used
     return (offs * BIN_S, obs, null.mean(axis=0), null.std(axis=0),

@@ -106,6 +106,15 @@ AGGREGATE MODELS
     Both report CV r against zero — no winner's-curse comparison
     against best-single-lag (the previous T6 was misleading).
 
+CELL COHORT (`CELL_SET`, same vocabulary as spatial_peaks_simple)
+    'all_in_roi_table' is the main analysis. 'not_in_rsa' restricts to the
+    sessions that could NOT enter the population-RSA pseudopopulation
+    (they solved different reward layouts), giving a cell cohort with zero
+    overlap with the RSA sample — the manuscript's independent replication.
+    'rsa' is its complement. The flag is honoured on the reload path too,
+    so a cohort is re-tested from the cached CV r and the cached per-cell
+    permutation p; nothing is recomputed.
+
 QUALITY CONTROLS (borrowed from spatial_peaks)
     MIN_DWELL_BINS         per-location dwell threshold (default 25 bins)
     WEIGHTED_CORRELATION   weight Pearson r by min(train_dwell, held_dwell)
@@ -229,6 +238,17 @@ ROIS_TO_RUN = ['mPFC', 'mOFC', 'PCC', 'PHC',
 
 PHASE_RESIDUALISE      = 'cosine'
 TRIALS                 = 'all_minus_explore'
+
+# Which cells enter the analysis. Same vocabulary as
+# `spatial_peaks_simple.CELL_SET`, resolved by `cs.load_cells`:
+#   'all_in_roi_table' — every cell with an ROI label (the main analysis)
+#   'rsa'              — only sessions that share the 8 RSA layouts
+#   'not_in_rsa'       — only sessions that do NOT, i.e. the cohort with
+#                        zero overlap with the population-RSA sample.
+# Honoured on BOTH paths: on a full run it selects which cells are
+# computed; under RELOAD_FROM it subsets the cached per-cell table, so a
+# cohort can be re-tested without recomputing CV or permutations.
+CELL_SET               = 'all_in_roi_table'
 N_PERMUTATIONS         = 1000
 N_JOBS                 = -1
 RANDOM_SEED            = 42
@@ -1780,7 +1800,7 @@ def fig_per_roi_r_hist(per_cell, ctrl_mode, save_stem, fisher_z=False):
 
 # ── Main ──────────────────────────────────────────────────────────────
 def _load_cells():
-    cells = cs.load_cells(cell_set='all_in_roi_table', rois_keep=ROIS_TO_RUN)
+    cells = cs.load_cells(cell_set=CELL_SET, rois_keep=ROIS_TO_RUN)
     cells = cells.copy()
     cells['subject_id'] = cells['subject_id'].astype(str).str.zfill(2)
     if 'cell_idx' not in cells.columns:
@@ -2146,6 +2166,30 @@ def _stats_and_plots(per_cell, out_dir, fig_dir):
     return roi_stats
 
 
+def _subset_cell_set(per_cell, cell_set=None):
+    """Restrict a cached per-cell table to `CELL_SET`.
+
+    The reload path never touches `cs.load_cells`, so the cohort rule is
+    applied here instead — on the SESSION, using the same RSA session
+    list `cs.load_cells` uses, so the two paths cannot drift apart. This
+    is what lets a cohort (e.g. the cells that could not enter the
+    population-RSA pseudopopulation) be re-tested from cached CV r and
+    cached permutation p, with no CV and no permutations recomputed.
+    """
+    cell_set = CELL_SET if cell_set is None else cell_set
+    if cell_set == 'all_in_roi_table':
+        return per_cell
+    if cell_set not in ('rsa', 'not_in_rsa'):
+        raise ValueError(f'Unknown CELL_SET {cell_set!r}')
+    rsa_subjects = {int(s) for s in cs.load_rsa_subjects()}
+    in_rsa = per_cell['subject_id'].astype(int).isin(rsa_subjects)
+    keep = in_rsa if cell_set == 'rsa' else ~in_rsa
+    out = per_cell[keep].copy()
+    print(f'  cell_set={cell_set} — {len(out)}/{len(per_cell)} cells kept '
+          f'from {out["subject_id"].nunique()} sessions')
+    return out
+
+
 def _load_reload_per_cell(reload_dir):
     """Read per_cell_ALL_ROIs.csv from a previous run directory."""
     csv = os.path.join(reload_dir, 'per_cell_ALL_ROIs.csv')
@@ -2161,6 +2205,8 @@ def main():
     run_tag = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     if RELOAD_FROM is not None:
         run_tag += f'_reload_from_{os.path.basename(os.path.normpath(RELOAD_FROM))}'
+    elif CELL_SET != 'all_in_roi_table':
+        run_tag += f'_{CELL_SET}'
     out_dir = os.path.join(OUT_BASE, run_tag)
     fig_dir = os.path.join(out_dir, 'figures')
     os.makedirs(fig_dir, exist_ok=True)
@@ -2170,6 +2216,9 @@ def main():
     if RELOAD_FROM is not None:
         if RELABEL_FROM is not None:
             run_tag += '_relabelled'
+        if CELL_SET != 'all_in_roi_table':
+            run_tag += f'_{CELL_SET}'
+        if RELABEL_FROM is not None or CELL_SET != 'all_in_roi_table':
             out_dir = os.path.join(OUT_BASE, run_tag)
             fig_dir = os.path.join(out_dir, 'figures')
             os.makedirs(fig_dir, exist_ok=True)
@@ -2177,6 +2226,7 @@ def main():
         with open(os.path.join(out_dir, 'config.json'), 'w') as f:
             json.dump({'reload_from': RELOAD_FROM,
                        'relabel_from': RELABEL_FROM,
+                       'cell_set': CELL_SET,
                        'n_permutations': N_PERMUTATIONS,
                        'fisher_z_sensitivity': {
                            'enabled': True,
@@ -2205,6 +2255,7 @@ def main():
                 cell_key_per_cell='cell_idx')
 
         per_cell = _canonicalize_roi_names(per_cell)
+        per_cell = _subset_cell_set(per_cell)
         per_cell.to_csv(os.path.join(out_dir, 'per_cell_ALL_ROIs.csv'), index=False)
         _stats_and_plots(per_cell, out_dir, fig_dir)
         # Descriptive model-regressor correlation across subjects/configs.
@@ -2222,6 +2273,7 @@ def main():
         'run_tag':              run_tag,
         'method':               'lag_shifted_rate_map_weighted_pearson',
         'rois_to_run':          ROIS_TO_RUN,
+        'cell_set':             CELL_SET,
         'phase_residualise':    PHASE_RESIDUALISE,
         'trials':               TRIALS,
         'lags_deg':             LAGS_DEG,

@@ -17,6 +17,7 @@ extraction modes (voxel / cluster_peak / cluster_com).
 - circular regression / phase / Hotelling test
 """
 
+import argparse
 import json
 import os
 import re
@@ -39,9 +40,30 @@ from scipy.stats import ttest_rel, ttest_1samp, f as f_dist
 PEAK_MODES = ["voxel", "cluster_peak", "cluster_com"]
 
 N_CLUSTERS = 3
-CLUSTER_THRESHOLD = 90  # 0, "z", a value between 20 and 99 for percentile
 AXIS = "z"              # "x", "y", "z"
 PLOT_SUBJECT_LINES = True
+
+# --- Cluster-forming threshold -------------------------------------
+# All thresholds are evaluated WITHIN the ROI mask (non-zero voxels only).
+# The input maps are masked, so ~99.5% of the volume is exactly 0; taking a
+# percentile over the whole volume returns 0.0 and silently disables the
+# threshold. Hence "in-mask" everywhere below.
+#
+#   THRESHOLD_MODE = "zero"        -> keep voxels > 0            (default)
+#   THRESHOLD_MODE = "percentile"  -> keep voxels > in-mask percentile
+#                                     THRESHOLD_VALUE (e.g. 90)
+#   THRESHOLD_MODE = "z"           -> keep voxels > in-mask mean +
+#                                     THRESHOLD_VALUE * in-mask SD
+#
+# MIN_CLUSTER_VOXELS discards connected components smaller than this before
+# picking the largest-mass one; 1 keeps every component.
+#
+# Defaults reproduce the published mPFC gradient (quarters_button_state,
+# cluster_com, z-axis): mean z = 17.95, 19.50, 21.89, 22.67;
+# linear trend t(32) = 2.75, p = 0.0098.
+THRESHOLD_MODE = "zero"
+THRESHOLD_VALUE = 90.0
+MIN_CLUSTER_VOXELS = 1
 
 # Figure colors
 COSINE_COLOR = "darkred"
@@ -151,32 +173,51 @@ DATASETS = [
 # ============== PEAK / CLUSTER EXTRACTION ============
 # =====================================================
 
-def extract_clusters(subj_data, affine, mode="cluster_peak",
-                     n_clusters=1, threshold=CLUSTER_THRESHOLD):
+def cluster_forming_threshold(subj_data, threshold_mode, threshold_value):
+    """Threshold value, computed within the ROI mask (non-zero voxels)."""
+    in_mask_vals = subj_data[(subj_data != 0) & np.isfinite(subj_data)]
+    if in_mask_vals.size == 0:
+        return np.inf
+
+    if threshold_mode == "zero":
+        return 0.0
+    if threshold_mode == "percentile":
+        return float(np.percentile(in_mask_vals, threshold_value))
+    if threshold_mode == "z":
+        return float(in_mask_vals.mean() + threshold_value * in_mask_vals.std())
+    raise ValueError("THRESHOLD_MODE must be one of: zero, percentile, z")
+
+
+def extract_clusters(subj_data, affine, mode="cluster_peak", n_clusters=1,
+                     threshold_mode=None, threshold_value=None,
+                     min_cluster_voxels=None):
     if mode == "voxel":
         peak_index = np.unravel_index(np.argmax(subj_data), subj_data.shape)
         return [nib.affines.apply_affine(affine, peak_index)]
 
-    if threshold == 0:
-        binary = subj_data > 0
-    elif threshold == "z":
-        z = (subj_data - np.mean(subj_data)) / np.std(subj_data)
-        binary = z > 1.0
-    elif threshold > 20:
-        threshold = np.percentile(subj_data, threshold)
-        binary = subj_data > threshold
+    # resolved here (not as default args) so CLI overrides of the globals apply
+    threshold_mode = THRESHOLD_MODE if threshold_mode is None else threshold_mode
+    threshold_value = THRESHOLD_VALUE if threshold_value is None else threshold_value
+    min_cluster_voxels = (MIN_CLUSTER_VOXELS if min_cluster_voxels is None
+                          else min_cluster_voxels)
+
+    threshold = cluster_forming_threshold(subj_data, threshold_mode, threshold_value)
+    binary = (subj_data > threshold) & (subj_data != 0) & np.isfinite(subj_data)
     labeled_array, n_found = label(binary)
 
     if n_found == 0:
         return []
 
-    masses = []
-    for cid in range(1, n_found + 1):
-        mask = labeled_array == cid
-        masses.append(subj_data[mask].sum())
+    sizes = np.bincount(labeled_array.ravel())[1:]
+    masses = np.array([subj_data[labeled_array == cid].sum()
+                       for cid in range(1, n_found + 1)])
 
-    masses = np.array(masses)
-    sorted_ids = np.argsort(masses)[::-1] + 1
+    big_enough = np.where(sizes >= min_cluster_voxels)[0]
+    if big_enough.size == 0:
+        return []
+
+    # rank surviving components by summed beta (mass), strongest first
+    sorted_ids = big_enough[np.argsort(masses[big_enough])[::-1]] + 1
 
     coords = []
     for cid in sorted_ids[:n_clusters]:
@@ -768,7 +809,9 @@ def run_pipeline(datasets, base_dir, out_dir, roi_label="", postprocess=None):
         "axis":                 AXIS,
         "peak_modes":           list(PEAK_MODES),
         "n_clusters":           N_CLUSTERS,
-        "cluster_threshold":    CLUSTER_THRESHOLD,
+        "threshold_mode":       THRESHOLD_MODE,
+        "threshold_value":      THRESHOLD_VALUE,
+        "min_cluster_voxels":   MIN_CLUSTER_VOXELS,
         "orderness_method":     ORDERNESS_METHOD if USE_ORDERNESS else None,
     }
 
@@ -827,7 +870,9 @@ def run_pipeline(datasets, base_dir, out_dir, roi_label="", postprocess=None):
         f.write(f"- **base_dir:** `{base_dir}`\n")
         f.write(f"- **axis:** `{AXIS}`\n")
         f.write(f"- **peak modes:** {', '.join(PEAK_MODES)}\n")
-        f.write(f"- **cluster threshold:** {CLUSTER_THRESHOLD}\n")
+        f.write(f"- **threshold:** mode=`{THRESHOLD_MODE}`, "
+                f"value={THRESHOLD_VALUE} (evaluated within the ROI mask)\n")
+        f.write(f"- **min cluster voxels:** {MIN_CLUSTER_VOXELS}\n")
         if USE_ORDERNESS:
             f.write(f"- **orderness method:** {ORDERNESS_METHOD}\n")
         f.write("\n")
@@ -844,8 +889,48 @@ def run_pipeline(datasets, base_dir, out_dir, roi_label="", postprocess=None):
     return all_stats
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Subject-wise cluster centre-of-mass gradient analysis. "
+                    "Defaults reproduce the published mPFC result "
+                    "(t(32)=2.75, p=0.0098).")
+    parser.add_argument("--threshold-mode", choices=["zero", "percentile", "z"],
+                        default=THRESHOLD_MODE,
+                        help="Cluster-forming threshold, evaluated within the "
+                             "ROI mask (default: %(default)s).")
+    parser.add_argument("--threshold-value", type=float, default=THRESHOLD_VALUE,
+                        help="Percentile (e.g. 90) for --threshold-mode "
+                             "percentile, or number of SDs for z. Ignored for "
+                             "zero (default: %(default)s).")
+    parser.add_argument("--min-cluster-voxels", type=int, default=MIN_CLUSTER_VOXELS,
+                        help="Discard connected components smaller than this "
+                             "(default: %(default)s).")
+    parser.add_argument("--axis", choices=["x", "y", "z"], default=AXIS,
+                        help="Anatomical axis to project onto (default: %(default)s).")
+    parser.add_argument("--n-clusters", type=int, default=N_CLUSTERS,
+                        help="Clusters kept per subject, ranked by summed beta "
+                             "(default: %(default)s).")
+    parser.add_argument("--peak-modes", nargs="+", default=PEAK_MODES,
+                        choices=["voxel", "cluster_peak", "cluster_com"],
+                        help="Extraction modes to run (default: all three).")
+    parser.add_argument("--out-dir", default=None,
+                        help="Output directory (default: timestamped folder "
+                             "inside the result dir).")
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
+    args = parse_args()
+
+    THRESHOLD_MODE = args.threshold_mode
+    THRESHOLD_VALUE = args.threshold_value
+    MIN_CLUSTER_VOXELS = args.min_cluster_voxels
+    AXIS = args.axis
+    N_CLUSTERS = args.n_clusters
+    PEAK_MODES = args.peak_modes
+    axis_index = {"x": 0, "y": 1, "z": 2}[AXIS]
+
     _ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    OUT_DIR = os.path.join(result_dir, f"gradient_results_{_ts}")
+    OUT_DIR = args.out_dir or os.path.join(result_dir, f"gradient_results_{_ts}")
     run_pipeline(DATASETS, base_dir=result_dir, out_dir=OUT_DIR,
                  roi_label="mPFC")

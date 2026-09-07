@@ -1826,7 +1826,11 @@ def plot_roi_beta_glassbrain(
     roi_display_names=None,
     title=None,
     save_path=None,
-    is_t_val=False
+    is_t_val=False,
+    figure=None,
+    axes=None,
+    draw_colorbar=True,
+    draw_footer=True,
 ):
     """Glass-brain with each ROI shaded by a heatmap value.
 
@@ -1902,10 +1906,13 @@ def plot_roi_beta_glassbrain(
     base_cmap = cm.get_cmap(cmap_name)
     norm = Normalize(vmin=-vmax, vmax=vmax)
 
+    # `title=''` means "draw no title" (figure panels label themselves);
+    # `title=None` keeps the historical default caption.
     display = nlplot.plot_glass_brain(
         None, display_mode=display_mode,
-        title=title or 'ROI beta glass-brain',
+        title=(None if title == '' else (title or 'ROI beta glass-brain')),
         black_bg=False, plot_abs=False,
+        figure=figure, axes=axes,
     )
 
     sig_rois_drawn, plotted, skipped = [], [], []
@@ -1958,23 +1965,25 @@ def plot_roi_beta_glassbrain(
     if skipped:
         print(f"  [roi-beta-glassbrain] no mask available for: {skipped}")
 
-    fig = plt.gcf()
+    fig = figure if figure is not None else plt.gcf()
 
     # Horizontal colour-bar in the bottom-right corner of the figure,
-    # well clear of all brain panels.
-    sm = cm.ScalarMappable(cmap=base_cmap, norm=norm)
-    sm.set_array([])
-    cax = fig.add_axes([0.74, 0.06, 0.22, 0.022])
-    cbar = fig.colorbar(sm, cax=cax, orientation='horizontal')
-    if is_t_val == False:
-        cbar.set_label('beta', fontsize=9)
-        cbar.ax.tick_params(labelsize=8)
-    else:
-        cbar.set_label('t vs 0', fontsize=9)
-        cbar.ax.tick_params(labelsize=8)
+    # well clear of all brain panels.  Skipped when the caller draws the
+    # brain into its own axes and supplies a shared colour-bar itself.
+    if draw_colorbar:
+        sm = cm.ScalarMappable(cmap=base_cmap, norm=norm)
+        sm.set_array([])
+        cax = fig.add_axes([0.74, 0.06, 0.22, 0.022])
+        cbar = fig.colorbar(sm, cax=cax, orientation='horizontal')
+        if is_t_val == False:
+            cbar.set_label('beta', fontsize=9)
+            cbar.ax.tick_params(labelsize=8)
+        else:
+            cbar.set_label('t vs 0', fontsize=9)
+            cbar.ax.tick_params(labelsize=8)
     # Footer caption listing significant ROIs (the contour already marks
     # them on the brain; this is the legend for the outline).
-    if sig_rois_drawn:
+    if draw_footer and sig_rois_drawn:
         display_names = roi_display_names or {}
         sig_names = [display_names.get(roi, roi_display(roi))
                      for roi in sig_rois_drawn]

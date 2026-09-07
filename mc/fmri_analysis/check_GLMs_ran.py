@@ -129,8 +129,11 @@ def check_one(sub, th, glm, check_data=False):
         return 'INCOMPLETE_PES', (f"{len(missing_pe)}/{n_waves} PEs missing or empty "
                                   f"(first: pe{missing_pe[0]})")
 
+    # prune_feat_dirs.py strips everything but the PEs from old GLMs, which
+    # removes two of the FILM markers. The PEs are still the real ones.
+    pruned = os.path.exists(f"{feat}/PRUNED.json")
     missing_marker = [m for m in FILM_DONE_MARKERS if not os.path.exists(f"{stats}/{m}")]
-    if missing_marker:
+    if missing_marker and not pruned:
         return 'FILM_UNFINISHED', f"all PEs present but missing {', '.join(missing_marker)}"
 
     rsa_pes = rsa_pe_indices(EV_folder)

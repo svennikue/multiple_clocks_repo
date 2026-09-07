@@ -20,6 +20,13 @@ Pipeline per cell:
                        validated on held-out grid. ORIGINAL control.
   4. Permutation null via per-rep circular shifts of the location series.
 
+CELL COHORT
+  `CELL_SET` picks which cells enter: 'all_in_roi_table' (main analysis),
+  'not_in_rsa' (only sessions that could not enter the population-RSA
+  pseudopopulation — zero overlap with the RSA sample), or 'rsa'. It is
+  honoured under RELOAD_FROM as well, so a cohort is re-tested from the
+  cached CV r and cached permutation p without recomputing either.
+
 RELATION TO `per_lag_encoding.py`
   Shared: phase residualisation, twelve lagged 9-location rate maps,
   leave-one-group-out validation, dwell-weighted Pearson correlations, and
@@ -113,6 +120,13 @@ RELABEL_FROM    = ("/Users/xpsy1114/Documents/projects/multiple_clocks/"
 # RELABEL_FROM  = None
 
 # Cells / data --------------------------------------------------------
+# 'all_in_roi_table' = every labelled cell (main analysis); 'not_in_rsa' =
+# only the sessions that could NOT enter the population-RSA pseudopopulation
+# (they solved different reward layouts), i.e. a cohort with zero overlap
+# with the RSA sample; 'rsa' = its complement. Honoured on BOTH paths: on a
+# full run it selects which cells are computed, and under RELOAD_FROM it
+# subsets the cached per-cell table, so a cohort can be re-tested without
+# recomputing CV or permutations.
 CELL_SET        = "all_in_roi_table"     # 'rsa', 'not_in_rsa', or 'all_in_roi_table'
 SUBJECTS        = "all"                  # 'all' or list[int]
 ROIS_KEEP       = None                   # None = all in registry
@@ -1336,6 +1350,29 @@ def _reload_per_cell(reload_from):
     return df, csv.parent
 
 
+def _subset_cell_set(per_cell, cell_set=CELL_SET):
+    """Restrict a cached per-cell table to `CELL_SET`.
+
+    The reload path never calls `cs.load_cells`, so the cohort rule is
+    applied here instead — on the SESSION, using the same RSA session list
+    `cs.load_cells` uses, so the two paths cannot drift apart. This is what
+    lets a cohort be re-tested from cached CV r and cached permutation p,
+    with nothing recomputed.
+    """
+    if cell_set == "all_in_roi_table":
+        return per_cell
+    if cell_set not in ("rsa", "not_in_rsa"):
+        raise ValueError(f"Unknown CELL_SET {cell_set!r}")
+    rsa_subjects = {int(x) for x in cs.load_rsa_subjects()}
+    subj_col = "subject_int" if "subject_int" in per_cell.columns else "subject_id"
+    in_rsa = per_cell[subj_col].astype(int).isin(rsa_subjects)
+    keep = in_rsa if cell_set == "rsa" else ~in_rsa
+    out = per_cell[keep].copy()
+    print(f"  cell_set={cell_set} — {len(out)}/{len(per_cell)} cells kept "
+          f"from {out[subj_col].nunique()} sessions")
+    return out
+
+
 def run():
     np.random.seed(RANDOM_SEED)
 
@@ -1353,8 +1390,9 @@ def run():
                 cell_key_per_cell="cell_idx")
             relabel_tag = "_relabelled"
 
+        cohort_tag = "" if CELL_SET == "all_in_roi_table" else f"_{CELL_SET}"
         run_tag = (datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-                   + f"_reload_from_{src_dir.name}{relabel_tag}")
+                   + f"_reload_from_{src_dir.name}{relabel_tag}{cohort_tag}")
         out_dir = Path(OUT_BASE) / run_tag
         out_dir.mkdir(parents=True, exist_ok=True)
         settings_snap = {**_settings_dict(), "reload_from": str(src_dir)}
@@ -1367,6 +1405,7 @@ def run():
         if RELABEL_FROM is not None:
             print(f"  RELABEL mode — ROI col overwritten from {RELABEL_FROM}")
         print(f"  {len(per_cell)} cells loaded; skipping CV + perms.")
+        per_cell = _subset_cell_set(per_cell)
         print(f"  out_dir = {out_dir}")
         per_cell.to_csv(out_dir / "per_cell.csv", index=False)
         return _stats_and_plots(per_cell, out_dir, skip_raw_plots=True)

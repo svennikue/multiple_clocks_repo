@@ -1,5 +1,552 @@
 # CHANGELOG
 
+## 2026-09-07 — FEAT directories pruned to free scratch space (`prune_feat_dirs.py`)
+
+Scratch ran out of space during the instruction-epoch GLMs. `mc/fmri_analysis/prune_feat_dirs.py`
+strips first-level `.feat` directories down to what is actually read.
+
+**What is deleted, and only in old GLMs.** Two levels, as intended:
+
+- *Level 1, never touched:* GLM names matching `01`, `01-TR*`, `instr_*`,
+  `all-paths-fixed_stickrews_split-buttons`, plus anything written in the last
+  7 days (`--protect-days`). The age rule also covers FEAT jobs still running.
+- *Level 2, pruned:* everything else under `sub-*/func/glm_*.feat`. The
+  directory stays; `stats/pe*.nii.gz`, `stats/{dof,smoothness}`, the `design.*`
+  text files, `absbrainthresh.txt` and `custom_timing_files/` survive.
+  Removed: `confoundEV*`/`InputconfoundEV*`, `stats/{cope,varcope,tstat,zstat,
+  res4d,sigmasquareds,threshac1}*`, `thresh_zstat*`, `rendered_thresh_zstat*`,
+  `cluster_*`, `tsplot/`, `logs/`, `mask/mean_func/example_func`.
+
+**No data is affected.** Every `glm_*.feat` reference in the repo resolves to
+`.feat/stats/pe*.nii.gz` (grepped before writing the script); nothing reads the
+deleted files. Nothing outside `sub-*/func/glm_*.feat` is considered, so
+`preproc_clean_*.feat`, `EVs_*` and `motion/` are out of scope entirely.
+
+**Reproducibility.** Scan writes `settings.json`, `report.txt`, `scan.json` and
+`to_delete.txt` to `derivatives/group/feat_cleanup_<stamp>/`; deletion works
+only from that manifest, re-validates every path independently, and appends
+`deleted.log`. Each pruned directory gets a `PRUNED.json` recording what was
+kept and when. `check_GLMs_ran.py` reads that marker so pruned GLMs are not
+reported as `FILM_UNFINISHED` (two of its FILM completion markers are among the
+deleted files).
+
+## 2026-09-06 — why the HC current-location effect disappeared: `l2_norm`
+
+**Symptom.** In the joint RSA GLM the `location` regressor used to be
+significant (uncorrected) in both hippocampal ROIs even with DSR in the model;
+in the 2026-08-27 and 2026-08-31 runs it was not.
+
+**Cause: `l2_norm` was added to the shared control stack, not anything about
+the data.** Combos across runs (all `split_halves_z`, all 1000 perms,
+`shift_and_swap`):
+
+All p below are the one-sided permutation p, UNCORRECTED.
+
+| run | combo | l2_norm in stack | HC ant `location` | HC mid `location` |
+|-----|-------|------------------|-------------------|-------------------|
+| 2026-07-30 | `ctrl_dsrFULL` | no | b=.0403, p=.009 | b=.0330, p=.025 |
+| 2026-08-27/31 | `ctrl_fMRI-state_dsrFULL` | yes | b=.0330, p=.052 | b=.0153, p=.215 |
+| 2026-08-31 | `ctrl_fMRI-state_dsrFULL-noL2` | no | b=.0371, p=.012 | b=.0341, p=.021 |
+
+`l2_norm` (graded negative distance from the current location to each of the 9
+grid nodes) and the categorical `location` RDM correlate r = 0.588 — two
+parameterisations of the same variable. Fitting both splits the spatial
+variance: in `ctrl_fMRI-state_dsrFULL` the HC mid spatial signal moves onto
+`l2_norm` (b=.0347, p=.057) and off `location` (p=.215).
+
+**Not the cause.** (a) The ROI-table rebuild (`alt_final_roi`, 2026-08-27:
+mOFC 85->74, HC ant 162->171, HC mid 143->145) — comparing the two no-L2 combos
+across the tables gives HC ant .0403 -> .0371 and HC mid .0330 -> .0341, i.e.
+nothing. (b) `bttn_next`, also added in August: it is present in the `-noL2`
+combo, which restores the uncorrected effect.
+
+**Consequence — and what may and may not be claimed.** Report
+`ctrl_fMRI-state_dsrFULL-noL2` for any location claim. Dropping `l2_norm` does
+not touch the DSR conclusions: mPFC dsr_fmri b=.0445 -> .0441 (p=.011 either
+way), HC mid b=.0828 -> .0836 (p=.001 either way).
+
+But `-noL2` does NOT make location significant in the joint model. Per-combo
+BH-FDR across the 5 ROIs puts both HC effects at **q = .052**, which is why the
+`location` column of
+`pub_figures_v2/heatmap_roi_x_regressor_FDR_ctrl_fMRI-state_dsrFULL-noL2_split_halves_z.pdf`
+carries no stars. The correct wording is therefore: current location is
+significant in HC when the model is fitted ON ITS OWN (single-model RSA, see
+the next entry: q_FDR = .0025 for both HC ROIs), and a TREND when it has to
+compete with DSR and the other controls (HC ant b=.037, t=2.26, p=.012; HC mid
+b=.034, t=2.09, p=.021; q=.052 for both). Do not call the joint-model effect
+significant.
+
+## 2026-09-06 — Fig 2g: single-model current-location RSA (no DSR control)
+
+New `scripts/RSA_DSR_location_only_figure.py`. Pure plotting of the
+`location`-alone rows of `results_summary.csv` (run 2026-08-31_17-57-30,
+`split_halves_z`); nothing refitted. Only BH-FDR across the 5 ROIs shown is
+computed here.
+
+| ROI | n cells | t | beta | p_perm | q_FDR |
+|-----|---------|---|------|--------|-------|
+| mPFC | 65 | 0.25 | .0037 | .410 | .410 |
+| mOFC | 74 | 0.61 | .0091 | .293 | .366 |
+| PCC | 51 | 1.28 | .0190 | .127 | .211 |
+| HC ant | 171 | 3.19 | .0472 | .001 | .0025 |
+| HC mid | 145 | 4.35 | .0643 | .001 | .0025 |
+
+Middle and anterior hippocampus are the only ROIs that fit the current-location
+population geometry. Outputs (heatmap, sagittal + lyrz glass brains, combined
+panel, values CSV, config) in the run's `location_only_figure_2026-09-06/`.
+`mc.plotting.cell_results.plot_roi_beta_glassbrain` gained optional
+`figure`/`axes`/`draw_colorbar`/`draw_footer` args so the brain can be drawn
+into a shared panel, and `title=''` now means "no title".
+
+## 2026-09-06 — `CELL_SET` now works on the reload path; non-RSA cohort re-run
+
+**The gap.** `spatial_peaks_simple.CELL_SET` ('rsa' | 'not_in_rsa' |
+'all_in_roi_table') was only read on the FULL-COMPUTE path — line 1383's
+`cs.load_cells(cell_set=CELL_SET, ...)`. Under `RELOAD_FROM` the flag was
+silently ignored, so re-testing a cohort from cached results was impossible
+without recomputing 1,000 permutations per cell. `per_lag_encoding.py` had no
+cohort flag at all: `_load_cells` hardcoded `cell_set='all_in_roi_table'`.
+
+**The fix.** `CELL_SET` added to `per_lag_encoding.py` with the same three
+values, and both scripts now apply it on BOTH paths. On reload each subsets its
+cached per-cell table via a new `_subset_cell_set`, which resolves the cohort
+from `cs.load_rsa_subjects()` — the same session list `cs.load_cells` uses, so
+the compute path and the reload path cannot drift apart. The cohort is recorded
+in the run tag and in config/settings JSON. Cached CV r and cached per-cell
+permutation p are reused; nothing is recomputed. Verified: the reload run
+reproduces a standalone filtered re-run bit-for-bit across
+`per_roi_stats.csv`, `per_roi_lagwise_by_unit.csv` and
+`per_roi_predicted_window_by_unit.csv`.
+
+**Why it was needed.** The manuscript claims the future-tuning effect replicates
+in cells that could not enter the population-RSA pseudopopulation. That claim
+carried stale numbers (n = 434, mPFC n = 90) from an older ROI labelling.
+
+**Cohort (current labels, `neurons_with_ROI_labels.csv` / `alt_final_roi`).**
+419 of 955 cells, 35 of 63 sessions — the sessions absent from
+`all_sessions_dsrRSA_grouping_summary.json`, so overlap with the RSA sample is
+exactly zero. Per ROI: mPFC 93 (18 sessions), HC_anterior 124 (26), HC_mid 88
+(17), mOFC 68 (17), EC 32 (7), PCC 10 (4). **Supersedes "n = 434, mPFC n = 90".**
+Runs:
+`per_lag_encoding/2026-09-06_20-56-52_reload_from_2026-08-28_10-18-21_..._not_in_rsa`
+and
+`spatial_peaks_simple/2026-09-06_20-58-05_reload_from_2026-08-28_10-23-56_..._not_in_rsa`.
+
+**mPFC — replicates under BOTH estimators.** Main (pooled-training) estimator,
+a-priori 30+60 deg window: across cells vs zero t(92) = 2.62, p = .0051,
+q = .015; vs the same cells' other ten lags t(92) = 2.78, p = .0033, q = .0099.
+Across the 18 sessions the specificity contrast survives (t(17) = 2.17,
+p = .022, q = .034) but the vs-zero test does not (t(17) = 1.42, p = .087,
+q = .131) — expected with 18 rather than 33 sessions. Peak: 30 deg across cells
+(r = .072, t(92) = 2.77, q over 12 lags = .041; sign-flip max-t FWE within ROI
+p = .038), 60 deg across sessions (r = .070, t(17) = 1.54, p = .071).
+Permutation null: 25/93 cells (26.9%) at 30 deg (binomial q = 1.9e-11), 17/93
+(18.3%) at 60 deg (q = 2.0e-05).
+Paired-grid-group estimator, same cohort: window vs zero t(92) = 3.03,
+q = .0048; vs other lags t(92) = 2.81, q = .0090; subject level t(17) = 1.85,
+p = .041 and t(17) = 1.90, p = .037 (q = .12 after FDR over 3 ROIs). Peak
+30 deg across cells (r = .054, q over 12 lags = .030), 60 deg across sessions
+(r = .085, t(17) = 2.24, p = .019). 13/93 cells beat their permutation null
+(14.0%, binomial q = .0044).
+
+**HC_mid — partly replicates.** Main estimator, subject level: window vs other
+lags t(16) = 2.32, p = .017, q = .034; vs zero t(16) = 2.02, p = .030, q = .091.
+0 deg holds (subject r = .093, t(16) = 1.97, p = .033; cell r = .067,
+t(87) = 2.26, p = .013), but 330 deg does NOT carry over (subject r = -.003).
+18/88 cells (20.5%) beat the null at 0 deg. Under the paired-grid estimator the
+window is only a trend (cell vs zero t(87) = 1.77, q = .060).
+
+**HC_anterior — does NOT replicate.** Window null at both units and under both
+estimators (main, subject: vs zero t(25) = -0.31, vs other lags t(25) = -0.12);
+the cohort's peak drifts to 90 deg (cell r = .036, t(123) = 1.65, FWE n.s.).
+Per-cell permutation fractions stay above chance (16/124 at 0 deg, 21/124 at
+330 deg) — a statement about spatial structure, not about the predicted window.
+
+**Consequence for the manuscript.** "All ROI-level effects were further
+reproduced" is too strong and must be narrowed: mPFC reproduces under both
+estimators, HC_mid only its present-lag half and mainly on the specificity
+contrast, HC_anterior not at all. The mPFC subject-level vs-zero test being at
+trend with 18 rather than 33 sessions should be stated, not omitted.
+
+## 2026-09-06 — Cluster-forming threshold in `get_subj_gradients.py` was inactive
+
+**The bug.** `extract_clusters` took `CLUSTER_THRESHOLD = 90` and applied
+`np.percentile(subj_data, 90)` over the WHOLE volume. The input maps are
+masked: 4,179 non-zero voxels out of 902,629, i.e. 99.5% exact zeros. The
+90th percentile of that volume is therefore exactly 0.0 — verified in 33/33
+subjects and in every 4-condition dataset — so the branch reduced to
+`subj_data > 0` and the nominal "top 10%" threshold never engaged. Anything
+describing this analysis as a 90th-percentile threshold is wrong; it is a
+threshold at zero.
+
+Two smaller defects in the same function: threshold values in (0, 20] left
+`binary` undefined (NameError), and the `"z"` branch z-scored across the full
+volume including the 99.5% zeros rather than within the mask.
+
+**What the analysis actually computes.** Per subject and condition: threshold
+the beta map at zero within the ROI mask, label 6-connected components
+(scipy default connectivity), keep the component with the largest summed beta,
+take its beta-weighted centroid, convert to MNI, read the z-coordinate. All
+weights are positive because the cluster is defined as > 0.
+
+The connectivity step is not cosmetic. Positive voxels are 54.6% of the mask
+on average (range 2-98%); the retained component holds a mean 93% of them but
+as little as 16% (20/132 subject x condition cells below 90%, 5/132 below 50%),
+and the resulting z can differ from an all-positive-voxel COM by up to 24 mm.
+Dropping connectivity gives t(32) = 2.05, p = 0.048 instead of
+t(32) = 2.75, p = 0.0098 — so "centre of mass of the positive effects" is NOT
+an accurate description of this analysis.
+
+The ROI mask support is byte-identical (4,179 voxels) across all 33 subjects
+and all four quarters, so the Q0->Q3 shift cannot be a mask-geometry artifact.
+
+**The fix.** `CLUSTER_THRESHOLD` replaced by `THRESHOLD_MODE`
+("zero" | "percentile" | "z"), `THRESHOLD_VALUE`, and a new
+`MIN_CLUSTER_VOXELS` extent filter; all thresholds now computed within the
+mask via `cluster_forming_threshold()`. Exposed as CLI flags
+(`--threshold-mode`, `--threshold-value`, `--min-cluster-voxels`, `--axis`,
+`--n-clusters`, `--peak-modes`, `--out-dir`) and recorded in the run JSON/MD.
+Defaults are mode="zero", extent=1, which reproduce the published numbers
+exactly: mean z = 17.95, 19.50, 21.89, 22.67; t(32) = 2.748, p = 0.0098.
+Verified identical to the stored 2026-08-03 run (t = 2.7484 / 2.7371).
+
+**Threshold sweep (6 thresholds x 3 extents x 3 datasets), reported in full,
+no cell selected.** Engaging a real threshold WEAKENS the test at every
+setting: in-mask p50 t=2.27, p75 t=1.25, p90 t=1.42, p95 t=1.79, z>1 t=1.64,
+against t=2.75 at zero. The slopes barely move (1.0-2.2 mm/step across the
+whole grid vs 1.65 at zero) — it is the between-subject SD of the slopes that
+inflates, from ~3.45 mm at zero to ~6.75 at p90. Thresholding shrinks the
+surviving cluster to a handful of voxels and each subject centroid becomes a
+noisier estimate; the effect is not disappearing, the precision is.
+
+FAILED DIRECTION — do not repeat: choosing a threshold because it maximises t
+is threshold-shopping, and the currently used setting happens to be the best
+cell in the grid. The sweep is a robustness check, not a menu. On that reading
+it is reassuring: the slope is positive in 18/18 cells for both real datasets,
+while the rotated control flips sign across cells and never approaches
+significance (18/18 cells p > 0.25, |t| <= 1.16). Direction is
+threshold-independent and specific to the true quarter ordering; only power
+depends on the threshold. Sweep saved to
+`data/derivatives/group/..._cropped_masked/gradient_threshold_sweep_2026-09-06_13-46-28/`.
+
+**Follow-up: does the gradient-mask PC1 axis fit better than MNI z?** No — it
+fits worse. Reproduced the axis exactly as `cell_gradient_master_table.gradient_axis`
+defines it (PC1 of the 2,765 `gradient_thr_1.5.nii.gz` voxels, x folded to |x|,
+oriented +z): PC1 = [-0.038, -0.409, 0.912], matching the [-0.04, -0.41, 0.91]
+in the methods text. Projecting the same subject-wise cluster COMs onto it
+(quarters_button_state, cluster_com, defaults):
+
+  MNI z   slope=1.652 mm/step  SD=3.45  t(32)=2.748  p=0.0098
+  PC1     slope=1.535 mm/step  SD=3.65  t(32)=2.417  p=0.0215
+  MNI y   slope=-0.089         SD=2.71  t(32)=-0.188 p=0.852
+  MNI |x| slope=0.200          SD=0.74  t(32)=1.558  p=0.129
+
+The loss decomposes exactly: 0.912*1.652 + (-0.409)*(-0.089) + (-0.038)*0.200
+= 1.535. PC1's posterior tilt mixes in the y-axis, which carries no trend at
+all, so it dilutes the z signal (slope down 7%) while adding between-subject
+variance (SD up 6%). Rotated control stays null on both axes (z p=0.431,
+PC1 p=0.316).
+
+Also: PC1 is derived from the group t-maps of these same four quarters in these
+same 33 subjects, so projecting their COMs onto it re-uses the data the trend
+is being tested on. MNI z is data-independent. z is therefore both the better-
+performing and the cleaner choice for the fMRI trend. PC1 remains the right
+axis for the CELL projection, where the electrophysiology is an independent
+dataset.
+
+Number to correct in the methods text: "r = 0.98 with MNI z" is the correlation
+across all 158 mPFC cells, most of which lie OUTSIDE the gradient mask. Among
+the 87 cells that actually enter the analysis it is r = 0.789; across the mask
+voxels themselves it is r = 0.967. Quoting 0.98 overstates how interchangeable
+the two axes are for the cells the analysis uses.
+
+**Follow-up 2: the two axes are NOT interchangeable for the cell median split.**
+r = 0.967 is the PC1-vs-z correlation across the 2,765 mask VOXELS (mask
+geometry, cell-independent). r = 0.789 is across the 87 in-mask CELLS; Spearman
+is 0.675. The drop is range restriction plus clumping: the 87 cells occupy only
+19 distinct coordinates (cells on one microwire bundle share a location) and
+span just SD = 2.19 mm along either axis, against a mask that is tens of mm long.
+
+Consequence for the median split: 5 of the 19 sites change side when the axis is
+swapped, carrying 33 of 87 cells (38%). Group sizes barely move (48/39 on PC1 vs
+49/38 on z) but the membership does.
+
+  median fMRI preferred angle:  PC1  ventral 36.3 deg | dorsal 83.5 deg (diff 47.2)
+                                z    ventral 27.9 deg | dorsal 93.5 deg (diff 65.6)
+  pooled cell profile argmax:   PC1  ventral 30 deg   | dorsal 60 deg
+                                z    ventral 30 deg   | dorsal 30 deg
+
+The fMRI-angle contrast survives and is LARGER on z. The pooled cell tuning
+result does not: the ventral/dorsal peak difference exists on PC1 and vanishes
+on z. It is a one-bin shift on a 30-deg grid either way -- the PC1 dorsal peak
+(60 deg) leads its runner-up (30 deg) by only 0.032 in mean r, and under z the
+two are 0.005 apart. The dorsal peak is a near-tie between adjacent bins and the
+axis choice tips it. PC1 was chosen on stated a priori grounds ("more precise"),
+independently of this outcome, but the cell-side result is load-bearing on that
+choice and should be reported as such.
+
+**Unrelated issue spotted in the 8-condition set.** The "now" condition
+(`LOCATION-...-mask_reward-path_beta_std.nii.gz`) has 146,417 non-zero voxels
+against 4,179 for the other seven, i.e. a different and much larger support.
+Its COM is therefore not comparable to the mPFC-ROI COMs it is plotted beside,
+which affects the eighths/circular analysis. The stored 2026-08-03 run had
+pruned this file as missing and ran 7 conditions; it is present now, so the
+eighths result changed (t=0.99 -> t=1.67). Not yet addressed.
+
+## 2026-09-06 — State on a 0-1 scale, and panel g2/g3 show only the regressed cells
+
+**State scale.** "Different state" rendered lighter than "different location"
+because the two models were on different scales. ``my_RSA.compute_crosscorr``
+demeans each row before the cosine, so on a 4-element one-hot two different
+states come out at 1 - (-1/3) = 1.333 while the Hamming models top out at 1.0;
+on a shared colour scale 1.0 then sits at ~75% of the range. The figure now
+scores the state regressor by Hamming on its A-D LABEL (`_state_label_EV`,
+`STATE_AS_HAMMING`), putting all three models on 0..1. This is the same binary
+same/different matrix, only rescaled, and the RSA GLM z-scores every regressor,
+so it cannot change a result — but it is a rescaling, not the pipeline's own
+numbers, and the flag documents that. All three models now reproduce their
+all-tasks block exactly (previously position-in-sequence did not).
+
+**Regressed cells.** ``used_cell_mask`` reproduces the two restrictions the RSA
+config applies (``diagonal_included: false``, ``masked_conds: true``): only the
+strict upper triangle is regressed, and only path-path / reward-reward cells
+(``make_category_masks(..., mask_only_path_rew_combos=True)`` keeps the
+``same``-type cells). Panels g2 and g3 now blank everything else, and g2 gains
+a leading "cells regressed" panel showing the mask itself — 12 of 28
+upper-triangle cells per 8-bin task block.
+
+Consequence worth knowing: within ONE task block every surviving cell is a
+different-state comparison, because the four path bins are states A-D and so
+are the four reward bins. The position-in-sequence regressor is therefore
+CONSTANT within a task block under the mask and only varies across
+configurations (the blue diagonal stripes in g3). That is the same reason
+`fMRI_run_RSA_without_rsatoolbox_clean.py` drops `path_rew` and `A-state` from
+the path-path and reward-reward subsets.
+
+Output folder rolled over with the date: ``method_schematic_06-09-2026/``.
+``method_schematic_05-09-2026/`` holds the previous, unmasked run.
+
+## 2026-09-05 (later) — Panel g split into within-half / across-half / all-tasks
+
+Reverted the example subject to **sub-02** (the previous route: 6-5-8-9-8-7-4-1-2-3),
+whose model RDMs carry a range of values rather than only 0 and 1. Its two task
+halves solved 5-9-4-3 by different routes at B_path — instead of avoiding that,
+panel g now uses it as the teaching point:
+
+- **g1  within one run** (`within_half_rdms`) — bin i vs bin j of task half 1.
+  This is the arithmetic panel f counts out, and it is only didactic: the RSA
+  never compares a run with itself.
+- **g2  across the two runs** (sliced from the all-tasks RDMs) — rows = task
+  half 1, columns = task half 2, so no cell can be inflated by shared noise.
+  Above it, `draw_route_strips` shows both halves' routes with the differing
+  bin framed in red, making visible why the B_path diagonal is 1.00 here while
+  it is 0.00 in g1, and why new off-diagonals appear (A_path/B_path 0.50,
+  B_path/C_path 0.75).
+- **g3  all task configurations** — unchanged, and it now fixes the colour
+  limits (`_rdm_limits`, 2nd–98th percentile of the all-tasks matrix) that
+  every other RDM panel and panel f reuse, so one dissimilarity has one colour
+  throughout the figure.
+
+g2 is sliced from the all-tasks matrices rather than recomputed, so it is that
+block by construction whatever metric the pipeline scored a model with.
+`across_half_rdms` reproduces it for the two Hamming models (verified at build
+time) and symmetrises as `(M + M.T)/2` exactly as `compute_hamming_distance`
+does; it differs for position-in-sequence only because the RSA scores that one
+with `compute_crosscorr`.
+
+**Panel f overlap bars now use the RDM colormap** (`rdm_colour`): an element
+that matches contributes 0 to the Hamming distance and gets the RDM's
+"similar" colour, one that differs contributes 1 and gets its "dissimilar"
+colour, both under the g3 limits. Each bar now ends in a single square — the
+one RDM cell that comparison produces — and the numbers read
+"6/96 match = 6.2% → d 0.94", tying panel f directly to panel g.
+
+Numbers are back to the sub-02 values: comparison 1 (A_reward vs B_reward)
+concurrent 6/96 = 6.2%, location d 1.00; comparison 2 (B_path vs C_path)
+concurrent 6/96 = 6.2%, location d 0.50.
+
+## 2026-09-05 — Panel g single-task RDM now IS the block of the all-tasks RDM
+
+The within-task RDM in panel g did not match the corresponding diagonal block
+of the across-tasks RDM. Cause: the two matrices were computed differently.
+``single_task_rdms`` compared task half 1 against itself, whereas the RSA (and
+therefore the all-tasks matrix) compares task half 1 against task half 2. For
+sub-02 the subject walked a different route through B_path in the second half,
+so the block had a non-zero diagonal at B_path (1.00) and off-diagonals of
+0.50/0.75 where the within-task version had 0 and 0.50.
+
+Two changes, both needed:
+
+1. ``single_task_rdms_from_across`` slices the example task's diagonal block
+   straight out of the across-task RDMs, and panel g1 now renders that block
+   with the same colour limits as g2 (``_rdm_row_figure`` returns the limits it
+   used; g2 is drawn first). The two rows of panel g can no longer drift apart
+   whatever the data do. ``across_task_rdms_*`` now also carry ``task_keys``
+   and ``block_labels`` so the block can be located.
+2. ``_pick_fmri_subject`` chooses the example subject rather than hard-coding
+   sub-02: it requires the two task halves to have walked the SAME modal route
+   through the example configuration (17 of 33 subjects qualify for 5-9-4-3),
+   then prefers the route visiting the most distinct grid locations, no
+   non-adjacent steps, the most commonly walked route, lowest subject number.
+   This lands on **sub-01** (9 distinct locations, 0 non-adjacent steps, route
+   shared by 9 subjects). ``FMRI_SUB`` overrides it.
+
+Verified at build time: the sliced block reproduces the within-task matrix
+exactly for the concurrent and current-location models. It differs for
+position-in-sequence only because the RSA scores that model with
+``compute_crosscorr`` while the within-task helper used a 0/1 categorical —
+the figure shows the RSA's own values.
+
+Numbers changed with the subject. Route 3→6→5(A)→6→9(B)→8→7→4(C)→1→2→3.
+Panel f now reads 12/96 = 12.5% concurrent for both comparisons, with current
+location 0% in both — sub-02's 50% at B_path/C_path was specific to its route.
+The informative location cell for sub-01 sits at A_path/B_path instead (both
+pass through location 6, dissimilarity 0), visible as the off-diagonal blue in
+the current-location RDM. Swap ``FMRI_PAIRS`` to ``((1, 3), (0, 2))`` to put
+that pair in panel f.
+
+Output folder: ``data/derivatives/group/method_schematic_05-09-2026/``.
+
+## 2026-09-04 — Methods schematic panel f reworked
+
+Panel f of the RSA methods figure now shows TWO within-task comparisons
+instead of three mixed ones — one per comparison type the RSA actually uses,
+since across-phase (path–reward) cells are excluded from the regression:
+
+- 1  reward–reward: 5-9-4-3 A_reward vs B_reward — concurrent 6/96 = 6.2%,
+     current location 0%, position in sequence 0%
+- 2  path–path: 5-9-4-3 B_path vs C_path — concurrent 6/96 = 6.2%,
+     current location 50% (both bins pass through location 8),
+     position in sequence 0%
+
+Both are the same plan rolled by two bins, so the concurrent overlap is
+identical; the two rows differ in what the unfolding code says. The two
+across-task comparisons (same place now / same future lags) are dropped from
+the default but still reachable via ``build_pairs(..., cross_task=True)`` and
+``pick_pair``.
+
+The panel now makes the two time axes explicit, which was the point of the
+rework: the rainbow future-lag bar with its degree labels sits on top of EVERY
+comparison (across a row = how far into the future), while each row is one
+encoded time bin. Every strip carries its own A–D annotation underneath —
+"at A" / "→B" per block, with the reward blocks framed in that state's colour —
+so it is visible that the same lag position holds a different part of the task
+depending on which bin the code is read out from. The four cells of the
+position-in-sequence block are labelled A–D inside the boxes.
+
+Two helpers added: ``_is_reward_bin`` (a bin where the subject is AT the
+reward: ``*_reward`` for fMRI, ``*_early`` for sEEG) and ``_ink``, which
+darkens the pale state colours (C = #C7C6E2) until they are legible as text.
+Block labels fall back to one letter per state RUN when there is less than
+0.70 cm per block (the 12-bin sEEG case); the runs are found from the labels
+rather than assumed, so they stay correct whatever bin the strip starts at.
+
+## 2026-09-04 — Methods schematic for the gradient (harmonic angle) analysis
+
+New `mc/plotting/gradient_schematic.py` + `scripts/build_gradient_schematic_figure.py`
+explain `scripts/harmonic_angle_maps.py` in seven panels: the concurrent code
+cut into four quarters that enter one searchlight GLM (a); the four β's every
+voxel therefore has (b); the angle assigned to each quarter — the bin CENTRE,
+45/135/225/315° — and the cos/sin projection (c); those two components as one
+vector whose angle is the preferred future step and whose length is the effect
+size (d); the per-subject vectors, their group mean and the Hotelling T² test
+(e); the same subjects on the unit circle with R̄ and Rayleigh (f, the
+`USE_UNIT_VECTOR_MAPS` branch); and the resulting preferred-angle map (g).
+Same cm-based layout, 9/11 pt fonts and cyclic rainbow as
+`method_schematic.py`. Output: `data/derivatives/group/gradient_schematic_<date>/`.
+
+Everything plotted is real. β profiles, per-subject (cos, sin), Hotelling and
+Rayleigh statistics and the angle map are read from the analysis outputs; the
+sagittal slice is the one carrying the most suprathreshold mPFC voxels
+(x = +10 mm, 39 voxels). The two example voxels are picked by a fixed rule —
+among the 480 mPFC voxels with Hotelling p < 0.05, the ventral and dorsal
+quintiles along MNI z, and within each the largest amplitude:
+
+- ventral MNI [2, 36, −8]: β = [0.0132, 0.0074, −0.0063, −0.0060],
+  angle 79.4°, amplitude 0.0236, Hotelling F = 6.90 p = 0.0033,
+  Rayleigh R̄ = 0.31 p = 0.75
+- dorsal  MNI [12, 46, +14]: β = [0.0080, 0.0124, −0.0020, −0.0054],
+  angle 105.7°, amplitude 0.0204, Hotelling F = 4.30 p = 0.0225,
+  Rayleigh R̄ = 0.32 p = 0.71
+
+Both voxels are Hotelling-significant but Rayleigh-null, i.e. a reliable
+group-mean vector without per-subject angle agreement. Panel f states this
+outcome rather than implying the voxel passed both tests.
+
+**Colour-lookup bug caught while building panel g.** Rendering the angle map
+with `vmin=-180, vmax=180` on the cyclic colormap puts 0° in the MIDDLE of the
+map (blue) instead of at yellow; the mPFC cluster came out green/teal rather
+than red/purple. The angle is now wrapped into [0, 360) before lookup. Only
+affects this figure — `harmonic_angle_maps.py` writes signed degrees and the
+fsleyes recipes in its README use `hsv`, which has the same wrap issue if the
+display range is set to −180..180; worth checking there too.
+
+## 2026-09-04 — Methods schematic: fixed physical sizes, rainbow future scale
+
+`mc/plotting/method_schematic.py` now lays every panel out in absolute cm
+(`_add_ax_cm`, `_cm_canvas`, and cm-valued data coordinates for the code
+strips) and saves WITHOUT `bbox_inches='tight'`, so the plotted boxes come out
+at exactly the declared size on an A4 page and the type stays at its nominal
+point size. Sizes: RDM 4x4 cm each, panel c block 4x4 cm, and the code row
+7 cm (concurrent) + 2 cm (current location) + 3 cm (position in sequence).
+Panels d and e are now one row sharing those three columns, matching panel f.
+Fonts: 11 pt headings, 9 pt everywhere else — `FONT_TICK` was 8 pt and is now
+9 pt, the A4 floor. `_thin` blanks tick labels that would sit closer than
+0.32 cm, and block labels collapse to one letter per state when a loop has
+more than one bin per state (the 12-bin sEEG case).
+
+Future lag / task angle now uses the cyclic rainbow of the mPFC gradient
+figures (`FUTURE_CMAP`, `lag_colors`): 0 deg yellow, 90 red, 180 blue,
+270 green, wrapping back to yellow — replacing the yellow-to-brown ramp.
+
+Panel a places each state letter on the wedge where the subject is AT that
+reward (derived from the bin labels) instead of at a fixed 90 deg spacing.
+
+Numbers, comparisons and the data pipeline are unchanged.
+
+## 2026-09-04 — Methods schematic: unfolding vs concurrent code
+
+New `mc/plotting/method_schematic.py` + `scripts/build_method_schematic_figures.py`
+build the figure that explains the two competing model geometries (panels a-g:
+bins as future angles; example configuration and executed trajectory; the
+per-bin encodings; the concurrent code read out from two bins; the unfolding
+code; similarity by counting overlapping elements; the resulting RDMs for the
+single task and across all tasks). Output goes to
+`data/derivatives/group/method_schematic_<date>/` — one assembled overview plus
+every panel as its own PDF/PNG, with a settings JSON per figure.
+
+Two example tasks, each in the framework it belongs to:
+`5-9-4-3` (fMRI, sub-02 E1_forw, 8 bins x 12 resampled steps -> 96-element DSR,
+mirroring `create_fMRI_model_RDMs_on_clean_beh.py`) and `3-7-9-5` (sEEG, modal
+path over 870 correct trials, 12 bins x 1 location, mirroring
+`RSA_DSR_ROIs_simple.py`). Across-task RDMs come from the real pipeline:
+`my_RSA.build_across_halves_model_RDM` on the saved EV pickle for fMRI,
+`compute_hamming_distance` over the 8 configurations for sEEG.
+
+**Alignment bug found in the sEEG schematics.** The raw 360-bin sEEG loops for
+`3-7-9-5` are anchored on reward D, not reward A: the modal 12-bin trajectory
+reads 5-6-3-3-1-7-7-8-9-9-6-5, so labelling bin 0 as 'A' put the wrong
+locations under A-D — the mismatch visible in the earlier Fig-1e simulation
+panel. `align_to_state_A` now picks the rotation that lines the four
+state-onset bins up with the four rewarded locations (here: shift 2, 4/4 onsets
+matched) and the shift is logged. The fMRI side needs no rotation: its bins are
+labelled from behaviour.
+
+Also logged (`non_adjacent_steps`): downsampling the sEEG loop to 12 bins drops
+intermediate locations, so `3-7-9-5` shows two non-adjacent grid steps
+(3->1, 1->7). Reported rather than smoothed. The fMRI trajectory
+6-5-8-9-8-7-4-1-2-3 is fully adjacent.
+
+Comparisons selected automatically for panel f (fMRI example, Hamming
+similarity of the 96-element codes):
+- same task, A_reward vs B_reward: concurrent 6.2%, location 0%, position 0%
+- 5-9-4-3 A_path vs 1-7-5-3 D_path — same place now: concurrent 12.5%,
+  location 100%, position 0%
+- 5-9-4-3 B_reward vs 3-5-7-1 C_reward — different place now, same locations at
+  the same future lags: concurrent 56.2%, location 0%, position 0%
+The last two are the dissociation the RSA rests on and are picked by
+`pick_pair`, not hand-chosen.
+
 ## 2026-09-03 — One consolidated lag-wise results table
 
 `scripts/overlay_double_dissociation.py` now writes ONE lag-wise table,

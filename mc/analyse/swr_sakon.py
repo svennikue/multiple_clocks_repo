@@ -199,7 +199,8 @@ def fit_eq1(df, condition_col="condition", rate_col="rate",
 
 
 def fit_eq2(df, rate_event="rate_event", rate_base="rate_base",
-            subject_col="subject_key", session_col="session"):
+            subject_col="subject_key", session_col="session",
+            n_perm_sign=10000):
     """Sakon Eq. 2: per subject, event window vs its own baseline window.
 
     Per subject: rate ~ window_indicator + (1|session). Then a one-sample
@@ -244,10 +245,85 @@ def fit_eq2(df, rate_event="rate_event", rate_base="rate_base",
         return {"error": f"only {len(per)} subjects fitted", "per_subject": per}
     tt = per["t"].dropna()
     t_stat, p = st.ttest_1samp(tt, 0.0)
+    pm = perm_sign_flip(tt, n_perm=n_perm_sign)
     return {"per_subject": per, "n_subjects": int(len(tt)),
             "mean_t": float(tt.mean()), "t": float(t_stat), "p": float(p),
+            "p_perm": pm.get("p_perm", np.nan), "perm": pm,
             "df": int(len(tt) - 1),
             "direction": "positive = event window above its own baseline"}
+
+
+def perm_sign_flip(values, n_perm=10000, seed=42):
+    """Non-parametric p for "is the per-subject mean different from zero".
+
+    Sign-flipping is the exact permutation for a within-subject contrast: under
+    the null, whether a subject's event window is above or below its own
+    baseline is a coin flip, so flipping signs generates the null distribution
+    without assuming normality. Two-sided.
+    """
+    v = np.asarray(values, float)
+    v = v[np.isfinite(v)]
+    if v.size < 3:
+        return {"error": f"only {v.size} values"}
+    rng = np.random.default_rng(seed)
+    obs = float(v.mean())
+    flips = rng.choice([-1.0, 1.0], size=(n_perm, v.size))
+    null = (flips * v).mean(axis=1)
+    p = float((1 + np.sum(np.abs(null) >= abs(obs))) / (1 + n_perm))
+    return {"observed": obs, "p_perm": p, "n": int(v.size),
+            "n_perm": int(n_perm), "null_sd": float(null.std()),
+            "z": float((obs - null.mean()) / (null.std() + 1e-12))}
+
+
+def sliding_window(rates_by_subject, bin_s=BIN_S, width_s=0.5):
+    """Boxcar-average each subject's time course into a sliding window.
+
+    Removes the window choice: instead of picking 0-0.5 s because that is where
+    the peak looked biggest, every position is evaluated and the multiple
+    comparisons across positions are handled by the cluster permutation. A
+    `width_s` window is just a moving average of `width_s / bin_s` bins, so the
+    whole family comes free from the peri-event histogram already computed.
+
+    Returns (smoothed, valid_centre_index) -- positions where the full window
+    fits are marked valid; the rest are NaN rather than edge-padded, because
+    edge padding would invent data at exactly the extremes a reader inspects.
+    """
+    X = np.asarray(rates_by_subject, float)
+    k = max(int(round(width_s / bin_s)), 1)
+    out = np.full(X.shape, np.nan)
+    if X.shape[1] < k:
+        return out, np.zeros(X.shape[1], bool)
+    ker = np.ones(k) / k
+    half = k // 2
+    for i in range(X.shape[0]):
+        v = np.convolve(X[i], ker, mode="valid")
+        out[i, half:half + len(v)] = v
+    valid = np.zeros(X.shape[1], bool)
+    valid[half:half + (X.shape[1] - k + 1)] = True
+    return out, valid
+
+
+def sliding_window_cluster(rates_by_subject, centres, bin_s=BIN_S,
+                           width_s=0.5, n_perm=1000, seed=42, alpha=0.05):
+    """Sliding-window test with cluster correction over window positions.
+
+    `rates_by_subject` should already be baseline-subtracted, so each value is
+    "this window minus this subject's own baseline" -- the Eq. 2 quantity,
+    evaluated everywhere instead of at one chosen place.
+    """
+    X, valid = sliding_window(rates_by_subject, bin_s=bin_s, width_s=width_s)
+    Xv = X[:, valid]
+    if Xv.shape[1] < 2:
+        return None
+    t_obs, cl, pv, nullinfo = cluster_perm_time(Xv, n_perm=n_perm, seed=seed,
+                                                alpha=alpha)
+    c = np.asarray(centres, float)[valid]
+    return {"centres": c, "t": t_obs, "width_s": width_s, "null": nullinfo,
+            "n_subjects": int(Xv.shape[0]),
+            "clusters": [{"t_start_s": float(c[a]), "t_stop_s": float(c[b - 1]),
+                          "p": p, "peak_t": float(np.nanmax(np.abs(t_obs[a:b]))),
+                          "peak_at_s": float(c[a + int(np.nanargmax(np.abs(t_obs[a:b])))])}
+                         for (a, b), p in zip(cl, pv)]}
 
 
 def cluster_perm_time(rates_by_subject, n_perm=1000, seed=42, alpha=0.05):
@@ -294,4 +370,5 @@ def cluster_perm_time(rates_by_subject, n_perm=1000, seed=42, alpha=0.05):
         null[k] = max([np.nansum(np.abs(tk[a:b])) for a, b in cl], default=0.0)
 
     p = [float((1 + np.sum(null >= m)) / (1 + n_perm)) for m in obs_mass]
-    return t_obs, obs, p
+    return t_obs, obs, p, {"null_mass": null, "obs_mass": obs_mass,
+                           "threshold_t": float(thr)}

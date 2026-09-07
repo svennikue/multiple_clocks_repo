@@ -1,51 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Event-locked ripple analysis in the Sakon & Kahana / He et al. design.
+Event-locked ripple analysis in the Sakon & Kahana (2022) / He et al. (2026)
+design. Implementation only; the CLI is `scripts/swr_explore.py event_locked`.
 
-Why this exists: every window-averaged contrast in `swr_hypotheses.py` compares
-two conditions that differ in BASELINE ripple rate, so the contrast measures the
-baseline difference and not the event. Both reference papers avoid this the same
-way -- compare a window around the event with the same window shifted earlier in
-the SAME trial (Sakon Eq. 2), so the state difference cancels.
-
-    python scripts/swr_event_locked.py run --bundle=<bundle dir>
-    python scripts/swr_event_locked.py run --which=H1 --n_perm=1000
-
-Design parameters are the papers', not tuned here:
-    100 ms bins; PRE -600..-100 ms; BASELINE -1600..-1100 ms; POST +200..+700 ms
-    events within 2 s of another event dropped (no ripple counted twice)
-    Eq. 1  between conditions, LME with subject and session random effects
-    Eq. 2  within trial vs its own baseline, per subject, then a one-sample t
-    cluster-based permutation over time bins, sign-flipped across subjects
-
-The one deliberate deviation: rate is per ARTIFACT-FREE second. Sakon has no
-artifact mask; we do, and a window half-removed by rejection offers half the
-opportunity to see a ripple.
+Both papers solve the problem this project ran into -- a rate contrast between
+two conditions is contaminated by any baseline difference between them -- the
+same way: compare a window around the event with the SAME window shifted earlier
+in the same trial, so the state difference cancels.
 
 @author: Svenja Kuchenhoff
 """
 
 import os
-import sys
 import json
 from datetime import datetime
 
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import mc.analyse.swr_io as swr_io
+import mc.analyse.swr_bundle as swr_bundle
 import mc.analyse.swr_sakon as sk
 import mc.analyse.swr_behaviour as swb
 import mc.plotting.ripple_figures as rfig
-
-try:
-    import fire
-except ImportError:
-    fire = None
-
-print("ARGS:", sys.argv)
 
 ANALYSIS_NAME = "swr_v1"
 HALF_S = 2.0
@@ -106,6 +84,85 @@ def _alignments(which, beh, unc, sess):
                     first.append(v[0]); later += list(v[1:])
         return {"first traversal": np.asarray(first, float),
                 "later traversals": np.asarray(later, float)}
+    if which in ("feedback_x_stage", "reward_x_feedback",
+                 "reward_x_feedback_x_stage"):
+        # ONE phase definition, used everywhere (SK, 2026-09-04):
+        #   first uncovers   the first traversal of the grid
+        #   while learning   up to AND INCLUDING the first fully correct repeat
+        #   once known       every repeat after that
+        # Note the boundary: the first error-free repeat counts as learning,
+        # not as execution, because that is the repeat on which the route is
+        # first demonstrated rather than merely relied on.
+        stage_of, seeking = {}, {}
+        for _, g in b.groupby("grid_no"):
+            g = g.sort_values("rep_overall")
+            reps = g.rep_overall.to_numpy(int)
+            corr = g.correct.to_numpy(int)
+            sol = reps[corr == 1]
+            fs = int(sol[0]) if sol.size else np.inf
+            for r_ in reps:
+                stage_of[(int(g.grid_no.iloc[0]), int(r_))] = (
+                    "first uncovers" if r_ == reps[0]
+                    else "while learning" if r_ <= fs else "once known")
+            # which reward was being SOUGHT at each moment of each repeat:
+            # after k rewards have been collected, the subject is looking for
+            # the (k+1)th. Errors inherit the reward they were searching for.
+            for _, r_row in g.iterrows():
+                ts = [float(r_row[f"t_{x}"]) for x in "ABCD"]
+                seeking[(int(g.grid_no.iloc[0]), int(r_row.rep_overall))] = ts
+
+        rows = []
+        for e in u.itertuples():
+            key = (int(e.grid_no), int(e.rep_overall))
+            stg = stage_of.get(key)
+            ts = seeking.get(key)
+            if stg is None or ts is None:
+                continue
+            n_before = int(np.sum([np.isfinite(t_) and t_ < e.t_s for t_ in ts]))
+            tgt = "ABCD"[min(n_before, 3)]
+            if int(e.correct) == 1 and isinstance(e.state, str):
+                tgt = e.state          # a correct uncovering names its own reward
+            rows.append({"t_s": float(e.t_s),
+                         "valence": "correct" if int(e.correct) == 1 else "error",
+                         "stage": stg, "reward": tgt})
+        R_ = pd.DataFrame(rows)
+        if not len(R_):
+            return {}
+        if which == "feedback_x_stage":
+            return {f"{v}, {s_}": R_.query("valence == @v and stage == @s_")
+                    .t_s.to_numpy(float)
+                    for v in ("correct", "error")
+                    for s_ in ("first uncovers", "while learning", "once known")}
+        if which == "reward_x_feedback":
+            return {f"{v} {rw}": R_.query("valence == @v and reward == @rw")
+                    .t_s.to_numpy(float)
+                    for rw in "ABCD" for v in ("correct", "error")}
+        out = {}
+        for rw in "ABCD":
+            for v in ("correct", "error"):
+                for s_ in ("first uncovers", "while learning", "once known"):
+                    k = f"{v} {rw}, {s_}"
+                    sel = R_.query("valence == @v and reward == @rw and stage == @s_")
+                    if len(sel) >= 20:      # too few events for a stable estimate
+                        out[k] = sel.t_s.to_numpy(float)
+        return out
+    if which == "feedback_x_phase":
+        # The 2x2 behind the descriptive figure: what the subject was told
+        # (correct / error) crossed with whether the route was still being
+        # discovered. A correct uncovering during discovery IS the acquisition
+        # of a new reward location, so this condition overlaps F5 by
+        # construction -- it contains all four A-D uncoverings of the first
+        # traversal, not only D.
+        out = {}
+        for lab, q in (("correct, discovery", "correct == 1 and is_discovery == 1"),
+                       ("error, discovery", "correct == 0 and is_discovery == 1"),
+                       ("correct, later", "correct == 1 and is_discovery == 0"),
+                       ("error, later", "correct == 0 and is_discovery == 0")):
+            out[lab] = u.query(q).t_s.to_numpy(float)
+        return out
+    if which == "feedback":
+        return {"correct": u[u.correct == 1].t_s.to_numpy(float),
+                "error": u[u.correct == 0].t_s.to_numpy(float)}
     if which == "D_learn_by_error":
         # SK's idea: the pre-event dip for "D while learning" may be the
         # error-related suppression (H4), since learning repeats are exactly the
@@ -171,13 +228,6 @@ def _alignments(which, beh, unc, sess):
 
 def run(which="H1", bundle=None, analysis_name=ANALYSIS_NAME, n_perm=1000,
         out_dir=None, half_s=HALF_S, save_all=True):
-    import importlib.util as iu
-    spec = iu.spec_from_file_location(
-        "swr_hyp", os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "swr_hypotheses.py"))
-    hyp = iu.module_from_spec(spec)
-    spec.loader.exec_module(hyp)
-
     R = swr_io.get_data_root()
     if out_dir is None:
         out_dir = os.path.join(swr_io.derivatives_dir(R), "group", "swr",
@@ -185,7 +235,7 @@ def run(which="H1", bundle=None, analysis_name=ANALYSIS_NAME, n_perm=1000,
     os.makedirs(out_dir, exist_ok=True)
     swr_io.start_log(out_dir, f"swr_event_locked_{which}")
 
-    store = hyp.RippleStore(analysis_name, R, bundle=bundle)
+    store = swr_bundle.RippleStore(analysis_name, R, bundle=bundle)
     store.describe()
     subj = store.subject_map()
     beh = pd.read_csv(os.path.join(bundle, "behaviour.csv"))
