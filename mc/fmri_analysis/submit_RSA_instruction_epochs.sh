@@ -1,41 +1,89 @@
 #!/bin/bash
-# Submit one job per (subject, instruction epoch) for the instruction-phase RSA.
+# Submit the instruction-phase searchlight RSA, one job per (subject, epoch),
+# but ONLY for jobs that can actually run and are not already done.
 #
-# Replaces the per-TR submit loop. The GLMs are no longer named by a TR index
-# ('01-TR4') but by the epoch they measure ('instr_see-A-first'), so instead of
-# overriding the config's TR field this overrides regression_version and sets
-# TR to null -- fMRI_run_RSA_instruction.py then treats regression_version as
-# the full GLM name (see load_data_EVs_instr_TRwise).
+#   bash submit_RSA_instruction_epochs.sh                 # audit, then submit what is missing
+#   bash submit_RSA_instruction_epochs.sh todo_rsa.txt    # submit exactly this list
+#   DRYRUN=1 bash submit_RSA_instruction_epochs.sh        # print what would be submitted
+#   SKIP_CHANGED=1 bash submit_RSA_instruction_epochs.sh  # leave results whose settings differ
 #
-# wrapper_python_fMRI_RSA_clean_config.sh does NOT need changing: it still just
-# forwards subject, config and script name to python.
+# The GLMs are not named by a TR index ('01-TR4') but by the epoch they measure
+# ('instr_see-A-first'), so each job gets a config snapshot with
+# regression_version set to the epoch GLM and TR set to null --
+# fMRI_run_RSA_instruction.py then treats regression_version as the full GLM
+# name (see load_data_EVs_instr_TRwise). check_RSA_ran.py writes those snapshots.
+#
+# WHAT IS DIFFERENT FROM A PLAIN GRID LOOP
+# This used to submit 33 subjects x 11 epochs unconditionally. Most of those
+# jobs cannot succeed or need not run: the RSA reads glm_instr_<epoch>_pt0{1,2}
+# .feat directly, so a subject whose epoch GLM never finished produces a job
+# that dies on a missing PE, and a subject that is already done just recomputes
+# the same maps for an hour. check_RSA_ran.py therefore decides the list first:
+#   - the epoch GLM must be complete in the BASE directory the RSA reads
+#     (same check as check_GLMs_ran.py; a finished '+' twin does not count,
+#      the FEAT cleanup has to run first)
+#   - the modelled EVs, reference image and searchlight mask must exist
+#   - a finished result with THESE settings means the job is skipped; a result
+#     built with different settings is rerun (SKIP_CHANGED=1 to leave it)
 
 scratchDir="/home/fs0/xpsy1114/scratch/data"
 analysisDir="/home/fs0/xpsy1114/scratch/analysis"
-cond_dir="${analysisDir}/multiple_clocks_repo/condition_files"
-base_config="rsa_instruction_cumulative_rew.json"
 scriptname="fMRI_run_RSA_instruction.py"
+base_config="rsa_instruction_cumulative_rew.json"
 
-# must match EV_config_instruction.json -- create_EVs_instruction_period.py
-# prints exactly this list when it runs.
-version="instr"
-glm_names="see-A-first see-B-first see-C-first see-D-first see-A-second see-B-second see-C-second see-D-second collapsed-first-instruction collapsed-second-instruction empty-screen"
+# this script, check_RSA_ran.py and the job wrapper all live in the repo
+scriptDir=$(dirname "$0")
+jobWrapper="${scriptDir}/update_fMRI/wrapper_python_fMRI_RSA_clean_config.sh"
 
 module load fsl
 
-for glm_name in $glm_names; do
-    epoch_config="${base_config%.json}_${glm_name}.json"
-    # snapshot of the base config, pointed at this epoch's GLM
-    python -c "
-import json
-c = json.load(open('${cond_dir}/${base_config}'))
-c['regression_version'] = '${version}_${glm_name}'
-c['TR'] = None
-json.dump(c, open('${cond_dir}/${epoch_config}', 'w'), indent=2)
-"
-    for subjectTag in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 22 23 24 25 26 27 28 30 31 32 33 34 35; do
-        echo "submitting subject ${subjectTag}, epoch ${glm_name}"
-        fsl_sub -T 30 bash "${analysisDir}/wrapper_python_fMRI_RSA_clean_config.sh" \
+todoFile="$1"
+
+if [ -z "$todoFile" ]; then
+    auditDir="${scratchDir}/derivatives/group/rsa_audit_$(date +%F)"
+    echo "No list given -- auditing first, so that finished RSAs are not rerun."
+    pythonBin=$(command -v python3 || command -v python)
+    if [ -z "$pythonBin" ]; then
+        echo "ERROR: no python found. Pass a todo list instead."
+        exit 1
+    fi
+    skipArg=""
+    [ -n "${SKIP_CHANGED:-}" ] && skipArg="--skip-changed"
+    $pythonBin "${scriptDir}/check_RSA_ran.py" \
+        --base-config "${base_config}" \
+        --data-dir "${scratchDir}/derivatives" \
+        --config-dir "${analysisDir}/multiple_clocks_repo/condition_files" \
+        --out-dir "${auditDir}" $skipArg || exit 1
+    todoFile="${auditDir}/todo_rsa.txt"
+    if [ ! -f "$todoFile" ]; then
+        echo "ERROR: the audit wrote no todo list ($todoFile)"
+        exit 1
+    fi
+fi
+
+runList=$(mktemp "${TMPDIR:-/tmp}/rsa_runlist.XXXXXX")
+trap 'rm -f "$runList"' EXIT
+grep -v '^#' "$todoFile" | grep -v '^[[:space:]]*$' > "$runList"
+
+n_runs=$(wc -l < "$runList" | tr -d "[:space:]")
+if [ "$n_runs" -eq 0 ]; then
+    echo "Nothing to submit -- every RSA is either done or blocked (see the report)."
+    exit 0
+fi
+echo "Submitting $n_runs job(s) from $todoFile"
+
+n_submitted=0
+while read -r subjectTag epoch_config; do
+    [ -z "$subjectTag" ] && continue
+    if [ -n "${DRYRUN:-}" ]; then
+        echo "DRYRUN would submit: sub-${subjectTag}  ${epoch_config}"
+    else
+        echo "submitting sub-${subjectTag}  ${epoch_config}"
+        fsl_sub -T 30 bash "${jobWrapper}" \
             "${subjectTag}" "${epoch_config}" "${scriptname}"
-    done
-done
+    fi
+    n_submitted=$((n_submitted+1))
+done < "$runList"
+
+echo
+echo "Done: $n_submitted job(s) submitted."

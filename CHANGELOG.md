@@ -1,5 +1,47 @@
 # CHANGELOG
 
+## 2026-09-07 — instruction RSA submitted only where it can run (`check_RSA_ran.py`)
+
+`submit_RSA_instruction_epochs.sh` used to submit 33 subjects x 11 epochs
+unconditionally. Most of those jobs either cannot succeed or need not run: the
+RSA opens `glm_instr_<epoch>_pt0{1,2}.feat/stats/pe*.nii.gz` directly, so a
+subject whose epoch GLM never finished produces a job that dies on a missing
+PE, and a subject already analysed just recomputes the same searchlight maps.
+
+**`check_RSA_ran.py`** decides the list first, per (subject, epoch):
+`READY` (submit), `RERUN_CHANGED` (a result exists but with different settings —
+submitted, overwriting the old maps, unless `--skip-changed`), `DONE` (skip),
+`GLM_NOT_READY`, `MISSING_INPUT` (modelled EVs / example_func / searchlight
+mask). GLM readiness calls `check_GLMs_ran.check_one`, so "complete" means the
+same thing in the FEAT audit and here; `PROMOTE_TWIN` deliberately does **not**
+count as ready, because the finished run is then in a `+` twin while the base
+directory the RSA reads is broken.
+
+**"Already done" means done with THESE settings.** The marker is
+`{sub}_settings_summary.json`, which the RSA writes as its very last action, so
+its presence means the whole run finished rather than some of the maps. Its
+contents are compared field by field (`COMPARED_KEYS`: EV_string,
+regression_version(+_full), TR, RDM_version, smoothing, fwhm, searchlight_mask,
+data_rdm_scope, models_evaluated, run_single/combo_models, combo_models). A
+field missing from an older summary counts as a difference — the settings
+cannot be shown to match, so it is rerun rather than assumed done.
+
+Writes `todo_rsa.txt`, `report.txt` and `settings.json` to
+`derivatives/group/rsa_audit_<name>_<date>/`, plus one per-epoch config
+snapshot (`<base>_<epoch>.json`, regression_version = the epoch GLM, TR = null)
+next to the base config.
+
+**Bug found and fixed:** `wrapper_python_fMRI_RSA_clean_config.sh` hardcoded
+`fMRI_run_RSA_without_rsatoolbox_clean.py` while
+`submit_RSA_instruction_epochs.sh` was already passing the script name as `$3`.
+Every instruction-epoch RSA job submitted through it therefore ran the WRONG
+python script. The wrapper now takes `$3`, defaulting to the old name so
+existing callers are unaffected, and the submit script calls the repo copy by
+path rather than the unversioned copy sitting loose in `$analysisDir`.
+
+Jobs run in conda env `spyder-env` via `fsl_sub -T 30`. `DRYRUN=1` prints
+without submitting; a todo list can be passed explicitly.
+
 ## 2026-09-07 — instruction-phase GLM audit: '+' twins handled, reruns gated
 
 FEAT never overwrites an output directory: it appends `+` and leaves the old

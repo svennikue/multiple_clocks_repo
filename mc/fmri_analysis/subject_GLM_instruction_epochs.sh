@@ -108,7 +108,7 @@ else
     done
 fi
 
-n_runs=$(wc -l < "$runList")
+n_runs=$(wc -l < "$runList" | tr -d "[:space:]")
 if [ "$n_runs" -eq 0 ]; then
     echo "Nothing to submit -- every GLM already has a complete run."
     exit 0
