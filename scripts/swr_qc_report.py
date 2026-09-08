@@ -857,6 +857,140 @@ def sharpwave_control(session, analysis_name=ANALYSIS_NAME, win_s=WIN_S):
     return None
 
 
+def sharpwave_examples(session, analysis_name=ANALYSIS_NAME, n=12, win_s=WIN_S):
+    """The clearest single ripples in a session, ranked by sharp-wave depth.
+
+    The grand average is trough-locked, so the ripple survives averaging while
+    the sharp wave -- whose polarity depends on which side of the CA1 pyramidal
+    layer a contact sits (SS6.4) -- partly cancels. A publication figure wants a
+    SINGLE event where both are visible on the same trace, and that has to be
+    chosen by eye from candidates rather than by averaging.
+
+    Scores every detected event on the MONOPOLAR contacts, before the bipolar
+    subtraction removes the spatially broad sharp wave, and keeps the best `n`.
+
+        score = sharp-wave trough depth at the ripple, in flank SD
+
+    Writes, per session, into LFP-ripples/{name}/:
+        sharpwave_examples_best.pdf   contact sheet, one panel per candidate
+        sharpwave_examples_best.npz   the raw snippets, to replot the chosen one
+        sharpwave_examples_best.csv   pair_id, t_peak_s, score -- the index
+
+    Nothing here feeds detection or statistics; it only re-reads existing event
+    times to choose a figure.
+    """
+    session = int(session)
+    R = swr_io.get_data_root()
+    clean_dir = os.path.join(swr_io.session_deriv_dir(session, R),
+                             "LFP-clean", analysis_name)
+    rip_dir = os.path.join(swr_io.session_deriv_dir(session, R),
+                           "LFP-ripples", analysis_name)
+    pairs = pd.read_csv(os.path.join(clean_dir, "pairs.csv"))
+    with open(os.path.join(clean_dir, "meta.json")) as f:
+        fs = float(json.load(f)["fs"])
+    ev = pd.read_csv(os.path.join(rip_dir, "ripple_events.csv"))
+    ev = ev[ev.passed.fillna(False)]
+    if not len(ev):
+        print(f"  s{session:02d}: no passed events"); return None
+    bip = np.load(os.path.join(clean_dir, "continuous.npy"), mmap_mode="r")
+
+    cfg_s = swr_io.session_config(session, data_root=R)
+    _, kind, _ = swr_io.discover_raw_files(session, cfg_s, data_root=R)
+    mono, mmeta = pre.preprocess_session(session, pairs, data_root=R,
+                                         verbose=False, monopolar=True)
+    ch_ids = list(mmeta["pair_ids"])
+    n_s = min(mono.shape[1], bip.shape[1])
+    half = int(round(win_s * fs))
+    edge = int(round(0.05 * fs))
+
+    cands = []
+    for i, p_ in pairs.iterrows():
+        if i >= bip.shape[0]:
+            continue
+        e = ev[ev.pair_id == p_.pair_id]
+        if not len(e):
+            continue
+        raw_b = np.asarray(bip[i], float)[:n_s]
+        pk = rfig.trough_lock(e, rfig._bp(raw_b, fs, *rfig.RIPPLE_BAND))
+        keep = (pk - half >= 0) & (pk + half < n_s)
+        pk, e = pk[keep], e.iloc[keep]
+        if not len(pk):
+            continue
+        if kind == "blackrock":
+            keys = (str(int(p_.ns_pos_a)), str(int(p_.ns_pos_b)))
+        else:
+            keys = (str(p_.ns_label_a), str(p_.ns_label_b))
+        for key in keys:
+            if key not in ch_ids:
+                continue
+            x = np.asarray(mono[ch_ids.index(key)], float)[:n_s]
+            sw = rfig._lp(x, fs, rfig.SW_BAND_HZ)
+            for j, c in enumerate(pk):
+                seg = sw[c - half:c + half]
+                flank = np.r_[seg[:edge], seg[-edge:]]
+                sd = float(np.std(flank))
+                if sd <= 0:
+                    continue
+                mid = seg[half - int(0.03 * fs):half + int(0.03 * fs)]
+                depth = float(np.max(np.abs(mid - np.median(flank)))) / sd
+                cands.append({"pair_id": p_.pair_id, "contact": key,
+                              "t_peak_s": float(e.t_peak_s.iloc[j]),
+                              "score": depth, "centre": int(c),
+                              "raw": x[c - half:c + half].copy(),
+                              "bip": raw_b[c - half:c + half].copy()})
+    if not cands:
+        print(f"  s{session:02d}: no candidates"); return None
+
+    cands.sort(key=lambda d: -d["score"])
+    best = cands[:int(n)]
+    idx = pd.DataFrame([{k: b[k] for k in ("pair_id", "contact", "t_peak_s", "score")}
+                        for b in best])
+    idx.insert(0, "session", session)
+    idx.insert(1, "rank", np.arange(1, len(best) + 1))
+    idx.to_csv(os.path.join(rip_dir, "sharpwave_examples_best.csv"), index=False)
+    np.savez_compressed(
+        os.path.join(rip_dir, "sharpwave_examples_best.npz"),
+        raw=np.array([b["raw"] for b in best]),
+        bip=np.array([b["bip"] for b in best]),
+        fs=fs, win_s=win_s,
+        pair_id=np.array([b["pair_id"] for b in best]),
+        contact=np.array([b["contact"] for b in best]),
+        t_peak_s=np.array([b["t_peak_s"] for b in best]),
+        score=np.array([b["score"] for b in best]))
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    t = (np.arange(-half, half) / fs) * 1000.0
+    ncol = 3
+    nrow = int(np.ceil(len(best) / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(3.2 * ncol, 2.1 * nrow),
+                             sharex=True)
+    for ax, b in zip(np.atleast_1d(axes).ravel(), best):
+        sw = rfig._lp(b["raw"], fs, rfig.SW_BAND_HZ)
+        rip = rfig._bp(b["raw"], fs, *rfig.RIPPLE_BAND)
+        ax.plot(t, b["raw"], color="0.35", lw=0.6)
+        ax.plot(t, sw, color="#0e3d3a", lw=1.6, label=f"sharp wave (<{rfig.SW_BAND_HZ:.0f} Hz)")
+        ax.plot(t, rip * 3 + np.max(b["raw"]) * 0.9, color="#F15A29", lw=0.7,
+                label="80–120 Hz (×3)")
+        ax.set_title(f"#{best.index(b)+1} {b['pair_id']} ch{b['contact']}\n"
+                     f"t={b['t_peak_s']:.1f}s  score={b['score']:.1f}", fontsize=8)
+        ax.tick_params(labelsize=7)
+    for ax in np.atleast_1d(axes).ravel()[len(best):]:
+        ax.axis("off")
+    np.atleast_1d(axes).ravel()[0].legend(fontsize=6, frameon=False)
+    fig.suptitle(f"s{session:02d}: clearest sharp-wave ripples (monopolar, "
+                 f"pre-subtraction)", fontsize=10)
+    fig.supxlabel("Time from ripple trough (ms)", fontsize=9)
+    fig.supylabel(r"Voltage ($\mu$V)", fontsize=9)
+    fig.tight_layout()
+    out = os.path.join(rip_dir, "sharpwave_examples_best.pdf")
+    fig.savefig(out, dpi=300)
+    plt.close(fig)
+    print(f"  s{session:02d}: {len(best)} candidates -> {out}")
+    return idx
+
+
 def _metrics_cli(session, analysis_name=ANALYSIS_NAME):
     """qc_metrics returns a DataFrame so qc_report can reuse it; fire would render
     that as an attribute listing instead of the printed table."""
@@ -895,6 +1029,7 @@ def qc_report(session=None, analysis_name=ANALYSIS_NAME, max_events=800,
 if __name__ == "__main__":
     if fire is not None:
         fire.Fire({'report': qc_report, 'metrics': _metrics_cli,
+                   'examples': sharpwave_examples,
                    'group': qc_group, 'figure': group_figure,
                    'sharpwave': sharpwave_control})
     else:
