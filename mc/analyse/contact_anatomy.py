@@ -254,6 +254,65 @@ def load_ucla_macros(v2026_folder):
     return out
 
 
+# UCLA amplifier channel numbers are offset by one 128-channel bank: the micros
+# occupy 1-128 and the macros 129-256, which is why s50/s51's .ns3 reports
+# `chan129 ... chan256`. The montage JSON numbers its macro channels from 1, so
+# macro channel c is recorded as `chan{MACRO_BANK_OFFSET + c}`. Verified against
+# both patients: every mapped name exists in the recording, and the declared
+# macro count (77 for p576, 95 for p578) fits inside the 128-channel bank.
+MACRO_BANK_OFFSET = 128
+
+
+def load_ucla_montage(v2026_folder, offset=MACRO_BANK_OFFSET):
+    """{subject_label: DataFrame[ns_label, anat_label, ncs_stem]} from montage JSON.
+
+    s50 and s51 are recorded on Blackrock, whose header carries no electrode
+    names -- every channel is `chan129 ... chan256`. Without a key from those
+    numbers to the localised contacts both sessions were unusable, since ROI is
+    assigned from the MNI coordinate and there was no way to reach it.
+
+    The montage file supplies exactly that key. `macroChannels` is a list of
+    `[probe_label, first_channel, last_channel]`, contiguous and in recording
+    order, so channel `c` on probe P is contact `c - first + 1` of P:
+
+        macroChannels: [["RAI", 1, 7], ["RFO", 8, 13], ["RPI", 14, 21], ...]
+        -> chan129 = RAI-1, chan135 = RAI-7, chan136 = RFO-1, ...
+
+    Contact 1 is the deepest: |MNI_x| increases monotonically along every probe
+    at 5-6 mm spacing (LMH-1..7 runs 29.8 -> 64.7 mm). The localisation tables
+    list contacts 1..n with no gaps and fewer than the montage declares, so the
+    contacts that were never localised are the OUTERMOST ones; they simply find
+    no anatomy row and are reported unresolved. Nothing is renumbered.
+
+    `ncs_stem` is built with the same dash-stripping `load_ucla_macros` applies,
+    so `LOF-AC` contact 1 becomes `LOFAC1` on both sides of the join.
+    """
+    import glob
+    import json as _json
+    out = {}
+    for subj, prefix in anat_src.UCLA_SUBJECT_TO_FILE.items():
+        pat = prefix.split("-")[-1]                       # 'sub-576' -> '576'
+        hits = sorted(glob.glob(os.path.join(v2026_folder,
+                                            f"montage_Patient-{pat}_*.json")))
+        if not hits:
+            continue
+        with open(hits[0]) as f:
+            mont = _json.load(f)
+        rows = []
+        for entry in mont.get("macroChannels", []):
+            if len(entry) < 3:
+                continue
+            label, first, last = str(entry[0]).strip(), int(entry[1]), int(entry[2])
+            for c in range(first, last + 1):
+                k = c - first + 1
+                rows.append({"ns_label": f"chan{offset + c}",
+                             "anat_label": f"{label}-{k}",
+                             "ncs_stem": f"{label}{k}".replace("-", "")})
+        if rows:
+            out[subj] = pd.DataFrame(rows)
+    return out
+
+
 # =============================================================================
 # JOIN ANATOMY TO ACTUAL LFP CHANNELS
 # =============================================================================
@@ -307,7 +366,8 @@ def load_channel_list(session, data_root, verbose=False):
 
 
 def build_macro_table(session, recording_site, subject_label, channels,
-                      baylor_macros=None, utah_mat=None, ucla_macros=None):
+                      baylor_macros=None, utah_mat=None, ucla_macros=None,
+                      ucla_montage=None):
     """One row per LFP channel in `channels` (the `channels.npy` order).
 
     Never drops a channel: unmatched ones come back with `resolved=False`
@@ -373,14 +433,40 @@ def build_macro_table(session, recording_site, subject_label, channels,
             key = "utah_chan"
 
     elif site == 'ucla':
-        table = (ucla_macros or {}).get(str(subject_label).strip().strip("'"))
+        subj_lab = str(subject_label).strip().strip("'")
+        table = (ucla_macros or {}).get(subj_lab)
         if table is None:
-            base["unresolved_reason"] = f"no v2026 xlsx for '{subject_label}'"
+            base["unresolved_reason"] = f"no v2026 xlsx for '{subj_lab}'"
             anat = pd.DataFrame()
         else:
             base["ncs_stem"] = base["ns_label"].str.replace(
                 r'\.ncs$|_\d{4}$', "", regex=True)
-            anat = table
+            # Blackrock-recorded UCLA sessions (s50, s51) have no electrode
+            # names -- `chan129..chan256`. The montage JSON maps those numbers
+            # to probe contacts; without it there is no route from a channel to
+            # its MNI coordinate and the session is unusable.
+            if base["ncs_stem"].str.match(r'^chan\d+$').all():
+                mont = (ucla_montage or {}).get(subj_lab)
+                if mont is None or not len(mont):
+                    base["unresolved_reason"] = (
+                        f"channels are positional (chanN) and no montage JSON "
+                        f"for '{subj_lab}' -- cannot reach an MNI coordinate")
+                    anat = pd.DataFrame()
+                else:
+                    known = set(base["ns_label"])
+                    missing = sorted(set(mont.ns_label) - known)
+                    if missing:
+                        print(f"    s{int(session):02d}: {len(missing)} montage "
+                              f"channels absent from the recording, e.g. "
+                              f"{missing[:4]} -- check MACRO_BANK_OFFSET")
+                    base = base.merge(mont[["ns_label", "ncs_stem"]],
+                                      on="ns_label", how="left",
+                                      suffixes=("_raw", ""))
+                    base["ncs_stem"] = base["ncs_stem"].fillna(
+                        base.pop("ncs_stem_raw"))
+                    anat = table
+            else:
+                anat = table
         key = "ncs_stem"
 
     else:

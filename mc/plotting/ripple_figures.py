@@ -1864,3 +1864,271 @@ def contact_coverage_figure(contacts, out_stem=None, height_cm=3.5,
             fig.savefig(out_stem + ".pdf")
             fig.savefig(out_stem + ".jpg", dpi=300)
         return fig
+
+
+# ============================================================ 3-D coverage ==
+# A surface rendering, rather than the glass-brain projection above. The
+# projection is honest about every contact but flattens the hippocampus into a
+# smear; a translucent pial surface with the hippocampus rendered as a solid
+# body puts each contact inside a structure the reader recognises.
+FSAVERAGE_ENV = "SUBJECTS_DIR"
+CORTEX_C = (0.78, 0.78, 0.78)     # pial surface, drawn nearly invisible
+CORTEX_ALPHA = 0.085
+HPC_BODY_C = "#23677E"            # project convention: hippocampus
+HPC_BODY_ALPHA = 0.62
+CONTACT_C = "#0d0d0d"
+CONTACT_EXCLUDED_C = "#b9b9b9"
+
+# MNI305 (= fsaverage surface RAS) -> MNI152. FreeSurfer's mni152reg matrix.
+# Our coordinates are MNI152, so foci are pushed through its inverse before
+# being planted on the fsaverage surface. The offset is only 1-2 mm, but it is
+# a systematic one and free to remove.
+_MNI305_TO_MNI152 = np.array([
+    [0.9975, -0.0073, 0.0176, -0.0429],
+    [0.0146, 1.0009, -0.0024, 1.5496],
+    [-0.0130, -0.0093, 0.9971, 1.1840],
+    [0.0, 0.0, 0.0, 1.0]])
+
+
+def mni152_to_fsaverage(coords):
+    """MNI152 mm -> fsaverage surface RAS (MNI305) mm."""
+    xyz = np.asarray(coords, float).reshape(-1, 3)
+    inv = np.linalg.inv(_MNI305_TO_MNI152)
+    return (inv @ np.c_[xyz, np.ones(len(xyz))].T).T[:, :3]
+
+
+# Camera angles in mne.viz.Brain's convention, verified by rendering landmark
+# foci at (0, 70, 0), (0, 0, 75) and (-70, 0, 0) rather than by guessing: the
+# rolls below put anterior left in the lateral views and anterior up in the
+# axial ones. Leaving roll unset gives a different orientation per call, which
+# is why every entry names one.
+BRAIN_VIEWS = {
+    "left":     dict(azimuth=180, elevation=90,  roll=90),
+    "right":    dict(azimuth=0,   elevation=90,  roll=270),
+    "dorsal":   dict(azimuth=180, elevation=0,   roll=0),
+    "ventral":  dict(azimuth=180, elevation=180, roll=180),
+    "oblique":  dict(azimuth=215, elevation=65,  roll=90),
+    "anterior": dict(azimuth=90,  elevation=90,  roll=0),
+}
+
+
+def _subjects_dir():
+    """fsaverage's parent directory, fetching it if MNE has not already."""
+    from mne.datasets import fetch_fsaverage
+    return os.path.dirname(fetch_fsaverage(verbose=False))
+
+
+HPC_PROB_MIN = 25.0        # the selection threshold, from contact_anatomy
+
+
+def _hippocampus_mesh(prob_min=HPC_PROB_MIN):
+    """The hippocampus AS THE ANALYSIS DEFINES IT, as a surface in MNI305.
+
+    This draws the Harvard-Oxford subcortical *probability* map thresholded at
+    the same value that selected the contacts, not FreeSurfer's `aseg`
+    segmentation of fsaverage. The distinction is not cosmetic. The two
+    disagree by a lot -- Harvard-Oxford at 25% is 15,296 mm3 against aseg's
+    10,552 -- so a contact chosen at P = 30% is genuinely inside the criterion
+    and genuinely outside `aseg`, and drawing `aseg` under it makes a correct
+    selection look like a localisation error.
+
+    A figure whose shaded region is not the region the text describes is
+    misleading even when every number in the text is right.
+    """
+    import nibabel as nib
+    import pyvista as pv
+    from skimage.measure import marching_cubes
+    import mc.analyse.anatomy_atlas as anat_atlas
+
+    img, idx = anat_atlas._load_hc_prob()
+    vol = img.get_fdata()[..., idx].max(-1)
+    verts, faces, _, _ = marching_cubes(vol, level=float(prob_min))
+    mni = nib.affines.apply_affine(img.affine, verts)
+    return pv.PolyData(mni152_to_fsaverage(mni),
+                       np.c_[np.full(len(faces), 3), faces].ravel())
+
+
+def contacts_3d_views(included, excluded=None, hemispheres=None,
+                      excluded_hemispheres=None, out_stem=None,
+                      views=("left", "right", "dorsal"), size=(1600, 1200),
+                      contact_scale=0.20, excluded_scale=0.18,
+                      cortex_alpha=CORTEX_ALPHA, hpc_alpha=HPC_BODY_ALPHA,
+                      hpc_color=HPC_BODY_C, contact_color=CONTACT_C,
+                      excluded_color=CONTACT_EXCLUDED_C, distance=430,
+                      hpc_source="atlas", prob_min=HPC_PROB_MIN):
+    """Render hippocampal contacts inside a translucent fsaverage brain.
+
+    `included` and `excluded` are (n, 3) arrays of MNI152 coordinates in mm.
+    `hemispheres` (and `excluded_hemispheres`), if given, are matching arrays of
+    'L'/'R': a lateral view then shows only the contacts on the side being
+    looked at. Without that split, a left-lateral view draws right-hemisphere
+    contacts 60 mm behind the left hippocampus and lets the reader believe they
+    missed it. The axial views need no split -- the two sides are separated in
+    the image already.
+
+    `hpc_source` is 'atlas' (Harvard-Oxford at `prob_min`, the criterion that
+    selected the contacts -- the default, and the honest one) or 'aseg'
+    (FreeSurfer's segmentation of fsaverage, a smaller volume).
+
+    Rendered under a PARALLEL projection. Under the default perspective camera
+    the far hemisphere is magnified and displaced relative to the near one, so
+    a contact sitting squarely inside the hippocampus can be drawn outside it.
+
+    Returns {view_name: RGB screenshot}. With `out_stem`, each view is also
+    written to `<out_stem>_<view>.png`.
+    """
+    import mne
+
+    inc = np.asarray(included, float).reshape(-1, 3)
+    exc = (np.asarray(excluded, float).reshape(-1, 3)
+           if excluded is not None and len(excluded) else None)
+    hemi = None if hemispheres is None else np.asarray(hemispheres, dtype=object)
+    exc_hemi = (None if excluded_hemispheres is None
+                else np.asarray(excluded_hemispheres, dtype=object))
+
+    brain = mne.viz.Brain(
+        "fsaverage", hemi="both", surf="pial", subjects_dir=_subjects_dir(),
+        background="white", size=size, alpha=cortex_alpha, cortex=CORTEX_C,
+        units="mm", offscreen=True)
+    if hpc_source == "atlas":
+        brain._renderer.plotter.add_mesh(
+            _hippocampus_mesh(prob_min), color=hpc_color, opacity=hpc_alpha,
+            smooth_shading=True)
+    else:
+        brain.add_volume_labels(
+            aseg="aseg", labels=["Left-Hippocampus", "Right-Hippocampus"],
+            colors=[hpc_color, hpc_color], alpha=hpc_alpha, smooth=0.0,
+            fill_hole_size=1, legend=False)
+    brain._renderer.plotter.enable_parallel_projection()
+
+    shots = {}
+    for name in views:
+        side = {"left": "L", "right": "R"}.get(name)
+        keep = slice(None) if (side is None or hemi is None) else (hemi == side)
+        keep_e = (slice(None) if (side is None or exc_hemi is None)
+                  else (exc_hemi == side))
+
+        # Foci are re-added per view because the hemisphere subset changes; the
+        # cortex and hippocampus meshes are built once and kept.
+        added = []
+        if exc is not None and len(exc[keep_e]):
+            added.append(brain.add_foci(exc[keep_e], hemi="vol",
+                                        color=excluded_color,
+                                        scale_factor=excluded_scale, alpha=0.9))
+        if len(inc[keep]):
+            added.append(brain.add_foci(inc[keep], hemi="vol",
+                                        color=contact_color,
+                                        scale_factor=contact_scale))
+        brain.show_view(distance=distance, **BRAIN_VIEWS[name])
+        shots[name] = brain.screenshot()
+        if out_stem:
+            import imageio.v2 as imageio
+            imageio.imwrite(f"{out_stem}_{name}.png", shots[name])
+        for actor in added:
+            try:
+                brain._renderer.plotter.remove_actor(actor)
+            except Exception:
+                pass
+    brain.close()
+    return shots
+
+def _trim_white(imgs, pad=10):
+    """Crop each view to its content, then pad them to a common height.
+
+    Cropping alone is not enough: matplotlib stretches every panel to the same
+    axes height, so two views cropped to different heights would show the same
+    brain at two different scales. Padding to a common height and letting the
+    widths vary keeps the millimetres per pixel identical across panels while
+    still removing the empty margin a renderer leaves at the sides.
+    """
+    out = []
+    for im in imgs:
+        mask = (im < 250).any(axis=2)
+        if not mask.any():
+            out.append(im)
+            continue
+        rows, cols = np.where(mask)
+        r0, r1 = max(rows.min() - pad, 0), min(rows.max() + pad + 1, im.shape[0])
+        c0, c1 = max(cols.min() - pad, 0), min(cols.max() + pad + 1, im.shape[1])
+        out.append(im[r0:r1, c0:c1])
+
+    h = max(im.shape[0] for im in out)
+    padded = []
+    for im in out:
+        top = (h - im.shape[0]) // 2
+        bot = h - im.shape[0] - top
+        padded.append(np.pad(im, ((top, bot), (0, 0), (0, 0)),
+                             constant_values=255))
+    return padded
+
+
+def contact_coverage_3d_figure(included, excluded=None, out_stem=None,
+                               views=("left", "right", "dorsal"), width_cm=12.0,
+                               view_labels=None, legend=True,
+                               counts=None, save_views=True, **kw):
+    """Publication panel: the 3-D views laid out side by side, with a key.
+
+    A 3-D render is a raster whatever the container, so the PDF embeds the
+    screenshot rather than pretending to be vector; it is written at 600 dpi so
+    it survives being printed at a quarter of a page.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
+    shots = contacts_3d_views(included, excluded=excluded, views=views,
+                              out_stem=out_stem if save_views else None, **kw)
+    imgs = _trim_white([shots[v] for v in views])
+    aspects = [im.shape[1] / im.shape[0] for im in imgs]
+
+    # The axes are placed by hand rather than left to the default subplot
+    # margins: an imshow axes keeps its image's aspect, so default margins
+    # would leave a white band above and below the brains and shrink them for
+    # no reason. Panel height follows from the width, since _trim_white has
+    # already given every view the same pixel height.
+    w_in = width_cm * CM
+    title_in = 0.20 if view_labels else 0.0
+    legend_in = 0.22 if legend else 0.0
+    panel_h_in = w_in / sum(aspects)
+    h_in = panel_h_in + title_in + legend_in
+
+    rc = dict(_rc()); rc["savefig.bbox"] = "tight"
+    with plt.rc_context(rc):
+        fig, axes = plt.subplots(
+            1, len(imgs), figsize=(w_in, h_in),
+            gridspec_kw=dict(width_ratios=aspects, wspace=0.01,
+                             left=0.0, right=1.0,
+                             bottom=legend_in / h_in,
+                             top=1.0 - title_in / h_in))
+        axes = np.atleast_1d(axes)
+        for ax, im, v in zip(axes, imgs, views):
+            ax.imshow(im)
+            ax.set_axis_off()
+            if view_labels:
+                ax.set_title(view_labels.get(v, v), fontsize=FS_TICK, pad=2)
+
+        if legend:
+            n_inc = len(included)
+            n_exc = 0 if excluded is None else len(excluded)
+            handles = [Line2D([], [], marker="o", linestyle="none",
+                              markersize=3.4, markeredgewidth=0,
+                              color=kw.get("contact_color", CONTACT_C),
+                              label=f"analysed ({counts or n_inc})")]
+            if n_exc:
+                handles.append(Line2D(
+                    [], [], marker="o", linestyle="none", markersize=3.0,
+                    markeredgewidth=0,
+                    color=kw.get("excluded_color", CONTACT_EXCLUDED_C),
+                    label=f"not analysed ({n_exc})"))
+            handles.append(Line2D([], [], marker="s", linestyle="none",
+                                  markersize=3.4, markeredgewidth=0,
+                                  color=kw.get("hpc_color", HPC_BODY_C),
+                                  label="hippocampus"))
+            fig.legend(handles=handles, loc="lower center", frameon=False,
+                       ncol=len(handles), fontsize=FS_TICK,
+                       handletextpad=0.35, columnspacing=1.4,
+                       borderaxespad=0.1)
+
+        if out_stem:
+            fig.savefig(out_stem + ".pdf", dpi=600)
+            fig.savefig(out_stem + ".png", dpi=600)
+        return fig

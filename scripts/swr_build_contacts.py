@@ -100,8 +100,11 @@ def build_contacts(sessions=None, save_all=True, verbose=False,
         print("  [--use_atlas=False: native-space ROI only]")
     baylor_macros = ca.load_baylor_macros(v2026)
     ucla_macros = ca.load_ucla_macros(v2026)
+    ucla_montage = ca.load_ucla_montage(v2026)
     print(f"  baylor macro tables: {len(baylor_macros)} subjects")
     print(f"  ucla macro tables:   {len(ucla_macros)} subjects")
+    print(f"  ucla montage maps:   {len(ucla_montage)} subjects "
+          f"(chanN -> contact, for the Blackrock-recorded UCLA sessions)")
 
     # Utah electrode files are resolved PER SESSION (own folder, then same
     # patient), not by coord-matching cells against every folder -- see
@@ -135,7 +138,7 @@ def build_contacts(sessions=None, save_all=True, verbose=False,
         contacts = ca.build_macro_table(
             session, site, label, channels,
             baylor_macros=baylor_macros, utah_mat=utah_mat,
-            ucla_macros=ucla_macros)
+            ucla_macros=ucla_macros, ucla_montage=ucla_montage)
         contacts = ca.label_contacts_with_atlas(contacts, atlases=atlases)
 
         pairs = ca.build_bipolar_pairs(contacts)
